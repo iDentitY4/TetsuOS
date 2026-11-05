@@ -1,0 +1,18 @@
+From: Philippe Simons <simons.philippe@gmail.com>
+Subject: [PATCH] drm/sun4i: tcon_top: fix first row on RG35XX panel
+
+Refreshed against Linux 7.2.15; see board/rg35xxsp/patches/README.md for origin.
+---
+diff --git a/drivers/gpu/drm/sun4i/sun8i_tcon_top.c b/drivers/gpu/drm/sun4i/sun8i_tcon_top.c
+index 9cbd655..1c083a6 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_tcon_top.c
++++ b/drivers/gpu/drm/sun4i/sun8i_tcon_top.c
+@@ -226,7 +226,7 @@ static int sun8i_tcon_top_bind(struct device *dev, struct device *master,
+ 		goto err_assert_reset;
+ 	}
+ 
+-	writel(0, regs + TCON_TOP_PORT_SEL_REG);
++	writel(0x20, regs + TCON_TOP_PORT_SEL_REG);
+ 	writel(0, regs + TCON_TOP_GATE_SRC_REG);
+ 
+ 	/*

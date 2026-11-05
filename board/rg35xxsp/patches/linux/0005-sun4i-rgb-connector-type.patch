@@ -1,0 +1,18 @@
+From: Philippe Simons <simons.philippe@gmail.com>
+Subject: [PATCH 1/1] sun4i: set rgb connector as DSI
+
+Refreshed against Linux 7.2.15; see board/rg35xxsp/patches/README.md for origin.
+---
+diff --git a/drivers/gpu/drm/sun4i/sun4i_rgb.c b/drivers/gpu/drm/sun4i/sun4i_rgb.c
+index dfb6acc..e29c400 100644
+--- a/drivers/gpu/drm/sun4i/sun4i_rgb.c
++++ b/drivers/gpu/drm/sun4i/sun4i_rgb.c
+@@ -222,7 +222,7 @@ int sun4i_rgb_init(struct drm_device *drm, struct sun4i_tcon *tcon)
+ 					 &sun4i_rgb_con_helper_funcs);
+ 		ret = drm_connector_init(drm, &rgb->connector,
+ 					 &sun4i_rgb_con_funcs,
+-					 DRM_MODE_CONNECTOR_Unknown);
++					 DRM_MODE_CONNECTOR_DSI);
+ 		if (ret) {
+ 			dev_err(drm->dev, "Couldn't initialise the rgb connector\n");
+ 			goto err_cleanup_connector;

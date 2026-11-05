@@ -1,0 +1,43 @@
+From: Philippe Simons <simons.philippe@gmail.com>
+Subject: [PATCH 9/9] rg35xx: enable pwm backlight
+
+Refreshed against Linux 7.2.15; see board/rg35xxsp/patches/README.md for origin.
+---
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-2024.dts b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-2024.dts
+index b52726d..15dbb4b 100644
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-2024.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-2024.dts
+@@ -22,9 +22,10 @@ aliases {
+ 	};
+ 
+ 	backlight: backlight {
+-		compatible = "gpio-backlight";
+-		gpios = <&pio 3 28 GPIO_ACTIVE_HIGH>; // PD28
+-		default-on;
++		compatible = "pwm-backlight";
++		pwms = <&pwm 0 40000 0>;
++		pinctrl-0 = <&lcd_backlight_pin>;
++		pinctrl-names = "default";
+ 	};
+ 
+ 	battery: battery {
+@@ -301,6 +302,11 @@ &pio {
+ 	vcc-pg-supply = <&reg_aldo4>;
+ 	vcc-ph-supply = <&reg_cldo3>;
+ 	vcc-pi-supply = <&reg_cldo3>;
++
++	lcd_backlight_pin: pwm0-pin {
++		pins = "PD28";
++		function = "pwm0";
++	};
+ };
+ 
+ &r_i2c {
+@@ -463,3 +469,7 @@ &tcon_lcd0 {
+ &tcon_lcd0_out_lcd {
+ 	remote-endpoint = <&panel_in_rgb>;
+ };
++
++&pwm {
++	status = "okay";
++};

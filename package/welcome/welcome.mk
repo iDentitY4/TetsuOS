@@ -1,0 +1,6 @@
+WELCOME_VERSION = 0.1.0
+WELCOME_SITE = $(BR2_EXTERNAL_RG35XXSP_PATH)/src/welcome
+WELCOME_SITE_METHOD = local
+WELCOME_LICENSE = MIT
+
+$(eval $(cargo-package))

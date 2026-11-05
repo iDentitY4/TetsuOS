@@ -1,0 +1,14 @@
+#!/bin/sh
+
+case "$1" in
+start)
+	/usr/bin/welcome >/var/log/welcome.log 2>&1 &
+	;;
+stop)
+	killall welcome 2>/dev/null
+	;;
+*)
+	echo "Usage: $0 {start|stop}"
+	exit 1
+	;;
+esac

@@ -1,0 +1,19 @@
+# Linux patches
+
+Mainline Linux 7.2 has the DE33 display engine driver and the NV3052C panel
+timings for this device, but not the H616 LCD pipeline, device tree wiring or
+PWM backlight. These patches add them.
+
+They come from the H700 patch set in ROCKNIX
+(https://github.com/ROCKNIX/distribution, `next` branch at commit
+58b8b5f48e1d, `projects/ROCKNIX/devices/H700/patches/linux`), written by their
+upstream authors. Each is refreshed to apply exactly to Linux 7.2.15, which
+squashes multi-commit files, so the original commit boundaries are in ROCKNIX.
+
+| Patch here | ROCKNIX source |
+| --- | --- |
+| `linux/0001-display-pipeline-and-rg35xx-lcd.patch` | `0002-rg35xx-enable-HDMI-LCD.patch` |
+| `linux/0002-tcon-top-fix-first-panel-row.patch` | `0003-Update-sun8i_tcon_top.c.patch` |
+| `linux/0003-h616-pwm-controller.patch` | `0008-v8_20260804_james_hilliard1_introduce_allwinner_h616_pwm_controller.patch` |
+| `linux/0004-rg35xx-pwm-backlight.patch` | `0010-rg35xx-enable-pwm-backlight.patch` |
+| `linux/0005-sun4i-rgb-connector-type.patch` | `0155-sun4i-set-rgb-connector-as-DSI.patch` |
