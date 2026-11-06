@@ -18,7 +18,7 @@ squashes multi-commit files, so the original commit boundaries are in ROCKNIX.
 | `linux/0004-rg35xx-pwm-backlight.patch` | `0010-rg35xx-enable-pwm-backlight.patch` |
 | `linux/0005-sun4i-rgb-connector-type.patch` | `0155-sun4i-set-rgb-connector-as-DSI.patch` |
 
-Two patches are specific to this project:
+Three patches are specific to this project:
 
 - `linux/0006-rg35xx-sp-lpddr3-ram-voltage.patch` runs the RAM rail at 1.2V for
   LPDDR3 units.
@@ -26,3 +26,5 @@ Two patches are specific to this project:
   which share the port with the device controller and would otherwise take it
   over at boot. USB host mode needs this reverted, plus a dual-role setup like
   ROCKNIX's `0151` and `0152` patches.
+- `linux/0008-rg35xx-sp-swap-x-y-buttons.patch` swaps the X and Y button pins,
+  which the shared RG35XX device tree has the wrong way round for the test unit.

@@ -1,0 +1,26 @@
+Subject: [PATCH] arm64: dts: allwinner: rg35xx-sp: fix the X and Y button pins
+
+The shared device tree has X on PA3 and Y on PA2. On the test SP they are the
+other way round, which sent BTN_WEST from the top button and BTN_NORTH from the
+left one. Swap the pins, so the labels and codes match the buttons.
+---
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
+@@ -50,3 +50,17 @@
+ &ohci0 {
+ 	status = "disabled";
+ };
++
++/*
++ * The shared RG35XX device tree has X on PA3 and Y on PA2, but on the SP the top
++ * button, X, is on PA2 and the left button, Y, is on PA3.
++ */
++&gpio_keys_gamepad {
++	button-x {
++		gpios = <&pio 0 2 GPIO_ACTIVE_LOW>; /* PA2 */
++	};
++
++	button-y {
++		gpios = <&pio 0 3 GPIO_ACTIVE_LOW>; /* PA3 */
++	};
++};

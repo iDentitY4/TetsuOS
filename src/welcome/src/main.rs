@@ -1,6 +1,7 @@
 mod canvas;
 mod fb;
 mod font;
+mod input;
 
 use std::io::{self, Write};
 use std::process::ExitCode;
@@ -38,18 +39,36 @@ fn run_on_device() -> io::Result<()> {
         .inspect_err(|error| eprintln!("warning: could not claim console: {error}"));
 
     let (width, height) = framebuffer.size();
-    framebuffer.draw(&canvas::welcome_screen(width, height, &kernel_release()))?;
+    let kernel = kernel_release();
+    let events = input::spawn_readers();
+    let mut controls = input::Controls::new();
+    framebuffer.draw(&canvas::welcome_screen(width, height, &kernel, &controls))?;
     println!("drew {width}x{height} welcome screen");
 
-    loop {
-        sleep(Duration::from_secs(3600));
+    while let Ok(event) = events.recv() {
+        let mut changed = controls.apply(&event);
+        // Events that arrived during the last draw are shown together.
+        for event in events.try_iter() {
+            changed |= controls.apply(&event);
+        }
+        if changed {
+            framebuffer.draw(&canvas::welcome_screen(width, height, &kernel, &controls))?;
+        }
     }
+    Ok(())
 }
 
-/// Renders to a PPM image, to check the layout without the device.
+/// Renders to a PPM image, to check the layout without the device. Up has been
+/// pressed and A is held, so the image shows each look a button can have.
 fn write_preview(path: &str) -> io::Result<()> {
+    const BTN_DPAD_UP: u16 = 0x220;
+    const BTN_EAST: u16 = 0x131;
     let (width, height) = PREVIEW_SIZE;
-    let canvas = canvas::welcome_screen(width, height, &kernel_release());
+    let mut controls = input::Controls::new();
+    controls.apply(&input::Event::key(BTN_DPAD_UP, 1));
+    controls.apply(&input::Event::key(BTN_DPAD_UP, 0));
+    controls.apply(&input::Event::key(BTN_EAST, 1));
+    let canvas = canvas::welcome_screen(width, height, &kernel_release(), &controls);
     let mut file = io::BufWriter::new(std::fs::File::create(path)?);
     write!(file, "P6\n{width} {height}\n255\n")?;
     for pixel in &canvas.pixels {

@@ -1,6 +1,7 @@
 //! Device-independent drawing, which keeps the screen testable away from the hardware.
 
 use crate::font;
+use crate::input::{Button, Controls};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Rgb(pub u8, pub u8, pub u8);
@@ -37,9 +38,12 @@ impl Canvas {
 
     /// Draws one line of text centred horizontally at `y`.
     fn text(&mut self, text: &str, y: usize, scale: usize, color: Rgb) {
+        let x = self.width.saturating_sub(text_width(text, scale)) / 2;
+        self.text_at(text, x, y, scale, color);
+    }
+
+    fn text_at(&mut self, text: &str, mut x: usize, y: usize, scale: usize, color: Rgb) {
         let advance = (font::WIDTH + 1) * scale;
-        let width = (text.chars().count() * advance).saturating_sub(scale);
-        let mut x = self.width.saturating_sub(width) / 2;
         for c in text.chars() {
             for (row, bits) in font::glyph(c).iter().enumerate() {
                 for col in 0..font::WIDTH {
@@ -52,38 +56,87 @@ impl Canvas {
         }
     }
 
-    /// A small open clamshell handheld, centred at the top of the screen.
-    fn handheld(&mut self, y: usize) {
-        let x = self.width.saturating_sub(120) / 2;
-        // Lid and screen
-        self.rect(x, y, 120, 88, BODY);
-        self.rect(x + 12, y + 10, 96, 68, ACCENT);
-        // Hinge
-        self.rect(x + 8, y + 88, 104, 6, MUTED);
-        // Base
-        self.rect(x, y + 94, 120, 64, BODY);
-        // D-pad
-        self.rect(x + 16, y + 118, 30, 10, TEXT);
-        self.rect(x + 26, y + 108, 10, 30, TEXT);
-        // Face buttons
-        self.rect(x + 76, y + 122, 10, 10, ACCENT);
-        self.rect(x + 92, y + 110, 10, 10, ACCENT);
+    /// One control: filled while held, outlined once it has been seen working.
+    fn tile(&mut self, tile: &Tile, controls: &Controls) {
+        let Tile { button, x, y, w, h } = *tile;
+        let label = button.label();
+        let label_color = if controls.is_held(button) {
+            self.rect(x, y, w, h, ACCENT);
+            BACKGROUND
+        } else if controls.was_seen(button) {
+            self.rect(x, y, w, h, ACCENT);
+            self.rect(x + 3, y + 3, w.saturating_sub(6), h.saturating_sub(6), BODY);
+            ACCENT
+        } else {
+            self.rect(x, y, w, h, BODY);
+            TEXT
+        };
+        let label_x = x + w.saturating_sub(text_width(label, TILE_TEXT_SCALE)) / 2;
+        let label_y = y + h.saturating_sub(font::HEIGHT * TILE_TEXT_SCALE) / 2;
+        self.text_at(label, label_x, label_y, TILE_TEXT_SCALE, label_color);
     }
 }
 
+fn text_width(text: &str, scale: usize) -> usize {
+    (text.chars().count() * (font::WIDTH + 1) * scale).saturating_sub(scale)
+}
+
+struct Tile {
+    button: Button,
+    x: usize,
+    y: usize,
+    w: usize,
+    h: usize,
+}
+
+const fn tile(button: Button, x: usize, y: usize, w: usize, h: usize) -> Tile {
+    Tile { button, x, y, w, h }
+}
+
+const TILE_TEXT_SCALE: usize = 2;
+
+/// Arranged like the device: shoulders on top, the d-pad left, face buttons right.
+const TILES: [Tile; 18] = [
+    tile(Button::L2, 26, 92, 88, 40),
+    tile(Button::L1, 126, 92, 88, 40),
+    tile(Button::R1, 426, 92, 88, 40),
+    tile(Button::R2, 526, 92, 88, 40),
+    tile(Button::Up, 118, 146, 76, 50),
+    tile(Button::Left, 38, 204, 76, 50),
+    tile(Button::Right, 198, 204, 76, 50),
+    tile(Button::Down, 118, 262, 76, 50),
+    tile(Button::X, 446, 146, 76, 50),
+    tile(Button::Y, 366, 204, 76, 50),
+    tile(Button::A, 526, 204, 76, 50),
+    tile(Button::B, 446, 262, 76, 50),
+    tile(Button::Select, 26, 330, 88, 40),
+    tile(Button::Menu, 126, 330, 88, 40),
+    tile(Button::Start, 226, 330, 88, 40),
+    tile(Button::VolumeDown, 326, 330, 88, 40),
+    tile(Button::VolumeUp, 426, 330, 88, 40),
+    tile(Button::Lid, 526, 330, 88, 40),
+];
+
 /// Lays out the welcome screen.
-pub fn welcome_screen(width: usize, height: usize, kernel: &str) -> Canvas {
+pub fn welcome_screen(width: usize, height: usize, kernel: &str, controls: &Controls) -> Canvas {
     let mut canvas = Canvas::new(width, height);
-    canvas.handheld(48);
-    canvas.text("WELCOME", 240, 8, TEXT);
-    canvas.text("RG35XX SP LINUX", 322, 3, ACCENT);
-    canvas.text(&format!("LINUX {kernel}"), 420, 2, MUTED);
+    canvas.text("WELCOME", 14, 5, TEXT);
+    canvas.text("RG35XX SP LINUX", 58, 2, ACCENT);
+    for tile in &TILES {
+        canvas.tile(tile, controls);
+    }
+    match controls.last() {
+        Some(last) => canvas.text(last, 390, 4, ACCENT),
+        None => canvas.text("PRESS ANY BUTTON", 394, 3, MUTED),
+    }
+    canvas.text(&format!("LINUX {kernel}"), 448, 2, MUTED);
     canvas
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::input::Event;
 
     fn count(canvas: &Canvas, color: Rgb) -> usize {
         canvas.pixels.iter().filter(|p| **p == color).count()
@@ -91,10 +144,69 @@ mod tests {
 
     #[test]
     fn draws_on_the_native_panel_size() {
-        let canvas = welcome_screen(640, 480, "7.2.15");
+        let canvas = welcome_screen(640, 480, "7.2.15", &Controls::new());
         assert_eq!(canvas.pixels.len(), 640 * 480);
         assert!(count(&canvas, TEXT) > 0);
         assert!(count(&canvas, ACCENT) > 0);
+    }
+
+    fn pixel(canvas: &Canvas, x: usize, y: usize) -> Rgb {
+        canvas.pixels[y * canvas.width + x]
+    }
+
+    #[test]
+    fn tiles_fit_the_panel_without_overlapping() {
+        for (i, a) in TILES.iter().enumerate() {
+            assert!(a.x + a.w <= 640 && a.y + a.h <= 480, "{:?}", a.button);
+            assert!(
+                text_width(a.button.label(), TILE_TEXT_SCALE) <= a.w,
+                "{:?}",
+                a.button
+            );
+            for b in &TILES[i + 1..] {
+                let apart = a.x + a.w <= b.x
+                    || b.x + b.w <= a.x
+                    || a.y + a.h <= b.y
+                    || b.y + b.h <= a.y;
+                assert!(apart, "{:?} overlaps {:?}", a.button, b.button);
+            }
+        }
+    }
+
+    #[test]
+    fn every_button_has_one_tile() {
+        for (i, a) in TILES.iter().enumerate() {
+            assert!(TILES[i + 1..].iter().all(|b| a.button != b.button), "{:?}", a.button);
+        }
+    }
+
+    #[test]
+    fn face_buttons_sit_where_the_device_has_them() {
+        let find = |button| TILES.iter().find(|t| t.button == button).unwrap();
+        let (x, y, a, b) = (find(Button::X), find(Button::Y), find(Button::A), find(Button::B));
+        assert!(x.y < y.y && x.y < a.y && x.y < b.y, "X is on top");
+        assert!(y.x < x.x && y.x < a.x && y.x < b.x, "Y is on the left");
+        assert!(a.x > x.x && a.x > y.x && a.x > b.x, "A is on the right");
+        assert!(b.y > x.y && b.y > y.y && b.y > a.y, "B is on the bottom");
+    }
+
+    #[test]
+    fn a_tile_shows_held_and_then_seen() {
+        const BTN_EAST: u16 = 0x131;
+        let a = TILES.iter().find(|t| t.button == Button::A).unwrap();
+        let mut controls = Controls::new();
+
+        let idle = welcome_screen(640, 480, "", &controls);
+        assert_eq!(pixel(&idle, a.x, a.y), BODY);
+
+        controls.apply(&Event::key(BTN_EAST, 1));
+        let held = welcome_screen(640, 480, "", &controls);
+        assert_eq!(pixel(&held, a.x + 3, a.y + 3), ACCENT);
+
+        controls.apply(&Event::key(BTN_EAST, 0));
+        let seen = welcome_screen(640, 480, "", &controls);
+        assert_eq!(pixel(&seen, a.x, a.y), ACCENT);
+        assert_eq!(pixel(&seen, a.x + 3, a.y + 3), BODY);
     }
 
     #[test]
@@ -114,7 +226,7 @@ mod tests {
 
     #[test]
     fn survives_a_screen_smaller_than_the_layout() {
-        let canvas = welcome_screen(64, 48, "a-very-long-kernel-release-string");
+        let canvas = welcome_screen(64, 48, "a-very-long-kernel-release-string", &Controls::new());
         assert_eq!(canvas.pixels.len(), 64 * 48);
     }
 }
