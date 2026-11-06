@@ -14,6 +14,10 @@ Working on the test unit, confirmed by the user:
 - Boot log saved at about 15 and 60 seconds after init starts
 - The welcome screen shows each control as it is pressed: filled while held, outlined
   once seen, with the last press named below. An unlisted key shows as `KEY <code>`.
+- Audio: speakers and headphones play, and outputs switch automatically with the jack,
+  including during playback and when booting with headphones plugged in
+- USB console connects without `Login incorrect`, using `getty -w`, so the login prompt
+  appears only after pressing Enter
 
 Not working yet:
 
@@ -21,7 +25,8 @@ Not working yet:
 - Wi-Fi: since the kernel trim, `4021000.mmc` probes and finds the SDIO card, which it
   didn't before (cause not verified). There is no Wi-Fi driver or firmware yet
 - Battery level: `CONFIG_AXP20X_POWER` is not enabled
-- Audio and GPU are untouched
+- GPU is untouched
+- Audio volume is fixed at boot by `S20audio`, because nothing uses the volume buttons yet
 
 The kernel is trimmed to the Allwinner platform with modules off, and the user confirmed
 that it boots and that everything still works, including power-off. The image went from
@@ -78,6 +83,10 @@ Proposed, not yet confirmed by the user:
   `mdev` or `eudev`. Add new drivers to `linux.fragment` as `=y`. Don't turn
   `CONFIG_MODULES` off in a fragment over a config that has `=m` entries: each one
   becomes built in, which added 1,377 drivers in a trial.
+- **Audio levels:** `amixer` percentages are raw steps, not loudness. `DAC` at 50% and
+  `Line Out` at 50% total about -58 dB, which sounded silent. If the `DAC` switch is off,
+  the DAC never runs and playback fails with error -5.
+- **Headphones are silent while the `Speaker` path is on,** so the two can't play at once.
 - **Panels:** ROCKNIX has a separate v2 panel device tree for the SP. This unit
   works with the mainline NV3052C driver, but another unit may not.
 - **The linux-sunxi wiki returns 403 to automated fetches.** Use U-Boot's
