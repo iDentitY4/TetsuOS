@@ -1,0 +1,17 @@
+#!/bin/sh
+# The codec starts muted, and the path must be complete for its DAC to run:
+# with the DAC switch off, playback fails with an I/O error.
+
+case "$1" in
+start)
+	amixer -q sset 'DAC' 100% on
+	amixer -q sset 'Line Out' 80% on
+	amixer -q sset 'Line Out Source' Stereo
+	;;
+stop)
+	;;
+*)
+	echo "Usage: $0 {start|stop}"
+	exit 1
+	;;
+esac
