@@ -26,15 +26,14 @@ Not working yet:
 The kernel is trimmed to the Allwinner platform with modules off, and the user confirmed
 that it boots and that everything still works, including power-off. The image went from
 40.6 MB to 19.8 MB, and the root filesystem contents from 94 MB to 7.9 MB. The kernel now
-reaches `init` at 2.16 seconds, down from 2.86. Of that, about 1.64 seconds is the time
-needed to send its messages over `console=ttyS0` at 115200 baud, a port with nothing
-connected.
+reached `init` at 2.16 seconds, down from 2.86. Removing `console=ttyS0` from
+`extlinux.conf` then brought that to 0.52 seconds, because sending messages to that port
+at 115200 baud took most of the time. With a serial adapter, add it back to see kernel
+messages on that port.
 
 ## Next steps
 
 Proposed, not yet confirmed by the user:
-
-- Drop `console=ttyS0,115200n8` from `extlinux.conf` for a faster boot
 
 1. Audio and GPU
 2. Launcher and first emulator
