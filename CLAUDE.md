@@ -18,18 +18,27 @@ Working on the test unit, confirmed by the user:
 Not working yet:
 
 - USB host mode is disabled, so USB accessories don't work
-- Wi-Fi: `pwrseq_simple` fails with error -2 and `4021000.mmc` stays deferred
+- Wi-Fi: since the kernel trim, `4021000.mmc` probes and finds the SDIO card, which it
+  didn't before (cause not verified). There is no Wi-Fi driver or firmware yet
 - Battery level: `CONFIG_AXP20X_POWER` is not enabled
 - Audio and GPU are untouched
+
+The kernel is trimmed to the Allwinner platform with modules off, and the user confirmed
+that it boots and that everything still works, including power-off. The image went from
+40.6 MB to 19.8 MB, and the root filesystem contents from 94 MB to 7.9 MB. The kernel now
+reaches `init` at 2.16 seconds, down from 2.86. Of that, about 1.64 seconds is the time
+needed to send its messages over `console=ttyS0` at 115200 baud, a port with nothing
+connected.
 
 ## Next steps
 
 Proposed, not yet confirmed by the user:
 
-1. Trim the kernel config for faster boots (about 89 MB of modules today)
-2. Audio and GPU
-3. Launcher and first emulator
-4. Before any release: remove the U-Boot boot diagnostics and set a root password
+- Drop `console=ttyS0,115200n8` from `extlinux.conf` for a faster boot
+
+1. Audio and GPU
+2. Launcher and first emulator
+3. Before any release: remove the U-Boot boot diagnostics and set a root password
 
 ## Test hardware
 
@@ -66,6 +75,10 @@ Proposed, not yet confirmed by the user:
 - **X and Y pins:** the face buttons are X top, Y left, A right, B bottom, as confirmed
   by the user. The shared device tree has X on PA3 and Y on PA2, but this unit has them
   the other way round, so patch 0008 swaps the pins. Another SP may differ.
+- **Kernel modules are off, and nothing could load them anyway,** since there is no
+  `mdev` or `eudev`. Add new drivers to `linux.fragment` as `=y`. Don't turn
+  `CONFIG_MODULES` off in a fragment over a config that has `=m` entries: each one
+  becomes built in, which added 1,377 drivers in a trial.
 - **Panels:** ROCKNIX has a separate v2 panel device tree for the SP. This unit
   works with the mainline NV3052C driver, but another unit may not.
 - **The linux-sunxi wiki returns 403 to automated fetches.** Use U-Boot's
@@ -74,6 +87,7 @@ Proposed, not yet confirmed by the user:
 ## Layout
 
 - `configs/rg35xxsp_defconfig`: Buildroot config, with all version pins
+- `board/rg35xxsp/linux.defconfig`: trimmed base kernel config
 - `board/rg35xxsp/linux.fragment`, `uboot.fragment`, `busybox.fragment`: config changes
 - `board/rg35xxsp/patches/linux/`: kernel patches, with origins in `patches/README.md`
 - `board/rg35xxsp/rootfs-overlay/`: init scripts and the power button handler
@@ -94,7 +108,8 @@ command make preview        # renders welcome-preview.ppm on the PC
 cd src/welcome && cargo test
 ```
 
-Fragment and patch changes need a clean package rebuild, then a normal build:
+Kernel config, fragment and patch changes need a clean package rebuild, then a normal
+build:
 
 ```sh
 P=$PWD

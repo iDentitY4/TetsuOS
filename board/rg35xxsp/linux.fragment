@@ -1,4 +1,5 @@
-# Built in rather than modular, so the screen works without a module loader.
+# Added to linux.defconfig, which has modules off. Set new drivers to y here, because
+# nothing on the device loads modules.
 
 # Display pipeline
 CONFIG_DRM=y
