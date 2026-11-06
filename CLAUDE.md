@@ -25,7 +25,9 @@ Not working yet:
 - Wi-Fi: since the kernel trim, `4021000.mmc` probes and finds the SDIO card, which it
   didn't before (cause not verified). There is no Wi-Fi driver or firmware yet
 - Battery level: `CONFIG_AXP20X_POWER` is not enabled
-- GPU is untouched
+- GPU: Panfrost detects the Mali-G31 and manages its power, confirmed by the user, but
+  nothing uses it yet because Mesa isn't built. Not committed. `card0` is now the GPU and
+  `card1` the display, so name the display device explicitly
 - Audio volume is fixed at boot by `S20audio`, because nothing uses the volume buttons yet
 
 The kernel is trimmed to the Allwinner platform with modules off, and the user confirmed
