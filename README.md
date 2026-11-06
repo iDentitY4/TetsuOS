@@ -3,7 +3,9 @@
 A custom Linux OS for the Anbernic RG35XX SP (Allwinner H700). It currently
 boots to a welcome screen, as the base for a retro gaming OS.
 
-**Status: boots to the welcome screen on an LPDDR3 RG35XX SP (first confirmed 2026-11-06).**
+**Status: boots to the welcome screen on an LPDDR3 RG35XX SP (first confirmed
+2026-11-06). The power button and USB-C console also work on that unit. USB host
+mode is disabled, so USB accessories don't work yet.**
 
 **RAM type:** RG35XX SP units vary. This build is for LPDDR3 at 1.2V, using values
 read from one unit's working bootloader. An LPDDR4 unit needs different settings
@@ -54,10 +56,10 @@ After a boot attempt, check the card's `RGBOOT` partition on a PC:
 | `bootcount.txt` and `uboot-env.txt`, no `bootlog.txt` | U-Boot worked; Linux failed or didn't finish | A USB-serial adapter on the UART is the next step |
 | `bootlog.txt` | Linux booted | Read it: it has connector, backlight, deferred probe, app and `dmesg` output |
 
-The log is written about 15 seconds after init starts, so wait before powering
-off.
+The log is written about 15 seconds after init starts, and again about a minute
+after, so wait before powering off.
 
-Once booted, the USB-C port should also offer a root shell. On the PC, run
+Once booted, the USB/OTG port also offers a root shell. On the PC, run
 `screen /dev/ttyACM0 115200`, press Enter, and log in as `root`. Quit with
 Ctrl-a, then k, then y. Root has no password, so this image is for development
 only.

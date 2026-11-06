@@ -1,0 +1,24 @@
+Subject: [PATCH] arm64: dts: allwinner: rg35xx-sp: keep USB port in device mode
+
+EHCI0 and OHCI0 share PHY 0 with MUSB. Starting them calls phy_set_mode(HOST),
+which changes dr_mode to host and routes the port away from MUSB, even though
+usbotg has dr_mode = "peripheral". Disable them, so the USB serial gadget works.
+---
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
+@@ -38,3 +38,15 @@
+ 	regulator-min-microvolt = <1200000>;
+ 	regulator-max-microvolt = <1200000>;
+ };
++
++/*
++ * The host controllers share PHY 0 with the MUSB device controller. When they
++ * start, they switch the PHY to host mode, and the USB gadget never connects.
++ */
++&ehci0 {
++	status = "disabled";
++};
++
++&ohci0 {
++	status = "disabled";
++};

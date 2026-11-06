@@ -17,3 +17,12 @@ squashes multi-commit files, so the original commit boundaries are in ROCKNIX.
 | `linux/0003-h616-pwm-controller.patch` | `0008-v8_20260804_james_hilliard1_introduce_allwinner_h616_pwm_controller.patch` |
 | `linux/0004-rg35xx-pwm-backlight.patch` | `0010-rg35xx-enable-pwm-backlight.patch` |
 | `linux/0005-sun4i-rgb-connector-type.patch` | `0155-sun4i-set-rgb-connector-as-DSI.patch` |
+
+Two patches are specific to this project:
+
+- `linux/0006-rg35xx-sp-lpddr3-ram-voltage.patch` runs the RAM rail at 1.2V for
+  LPDDR3 units.
+- `linux/0007-rg35xx-sp-usb-device-mode.patch` disables the USB host controllers,
+  which share the port with the device controller and would otherwise take it
+  over at boot. USB host mode needs this reverted, plus a dual-role setup like
+  ROCKNIX's `0151` and `0152` patches.

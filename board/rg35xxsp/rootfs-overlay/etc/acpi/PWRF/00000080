@@ -1,0 +1,3 @@
+#!/bin/sh
+# Power button pressed: shut down cleanly
+exec /sbin/poweroff

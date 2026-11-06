@@ -2,10 +2,7 @@
 # Saves diagnostics to the FAT boot partition, so a failed display can be
 # debugged by reading the SD card on a PC. No serial adapter needed.
 
-save_log() {
-	# Give deferred drivers and the welcome app time to finish
-	sleep 15
-
+write_log() {
 	dev="$(blkid | grep 'LABEL="RGBOOT"' | head -n 1 | cut -d: -f1)"
 	[ -n "$dev" ] || return 1
 
@@ -15,8 +12,11 @@ save_log() {
 
 	{
 		echo "== kernel"; uname -a
+		echo "== uptime"; cat /proc/uptime
 		echo "== welcome app"; cat /var/log/welcome.log
 		echo "== welcome running"; pidof welcome
+		echo "== acpid running"; pidof acpid
+		echo "== input devices"; grep -E '^(N:|H:)' /proc/bus/input/devices
 		echo "== framebuffers"; ls -l /dev/fb* /sys/class/graphics
 		echo "== drm connectors"
 		for c in /sys/class/drm/card*-*; do
@@ -26,12 +26,30 @@ save_log() {
 		for b in /sys/class/backlight/*; do
 			echo "$b: $(cat "$b/brightness" 2>/dev/null)/$(cat "$b/max_brightness" 2>/dev/null)"
 		done
+		echo "== usb controller"
+		for u in /sys/class/udc/*; do
+			echo "$u: state=$(cat "$u/state" 2>/dev/null) speed=$(cat "$u/current_speed" 2>/dev/null) function=$(cat "$u/function" 2>/dev/null)"
+		done
+		echo "== usb power"
+		for p in /sys/class/power_supply/*usb*; do
+			echo "$p: present=$(cat "$p/present" 2>/dev/null) online=$(cat "$p/online" 2>/dev/null)"
+		done
+		echo "== usb serial port"; ls -l /dev/ttyGS0; ps | grep '[g]etty'
 		echo "== deferred probes"; cat /sys/kernel/debug/devices_deferred 2>/dev/null
 		echo "== dmesg"; dmesg
 	} >/mnt/boot/bootlog.txt 2>&1
 
 	sync
 	umount /mnt/boot
+}
+
+save_log() {
+	# Give deferred drivers and the welcome app time to finish
+	sleep 15
+	write_log
+	# Again later, to catch a USB cable connected after boot
+	sleep 45
+	write_log
 }
 
 case "$1" in
