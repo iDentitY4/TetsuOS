@@ -73,14 +73,22 @@ reached `init` at 2.16 seconds, down from 2.86. Removing `console=ttyS0` from
 at 115200 baud took most of the time. With a serial adapter, add it back to see kernel
 messages on that port.
 
+The root filesystem contents went from 255 MB to 40 MB. Buildroot's Panfrost option forces
+LLVM, and through Mesa's OpenCL option Clang and libclc, but Panfrost's shaders are
+precompiled on the PC. `external.mk` builds Mesa with `-Dllvm=disabled`, and
+`post-build.sh` deletes the unused libraries and tools, then fails the build if anything
+links to a missing library. Claude checked over SSH that `kmscube` still runs at
+59.94 fps on Panfrost. The rootfs partition is still a fixed 1 GiB.
+
 ## Next steps
 
 Proposed, not yet confirmed by the user:
 
-1. Slim the root filesystem (254 MB). `libclang` and `libclang-cpp` take 94 MB and aren't
-   linked directly by Mesa's main library. Buildroot's Panfrost option requires LLVM, but
-   the driver shouldn't need it on the device
-2. Before any release: remove the U-Boot boot diagnostics and set a root password
+1. An in-game menu with save states, volume, brightness and quit
+2. More systems, such as Game Boy / Game Boy Color, NES and SNES
+3. Remember volume and brightness across reboots
+4. Before any release: remove the U-Boot boot diagnostics and set a root password, which
+   SSH now also accepts empty
 
 ## Test hardware
 
@@ -132,7 +140,8 @@ Proposed, not yet confirmed by the user:
   in `kmscube -D /dev/dri/card1`, and stop the welcome app first with
   `/etc/init.d/S90welcome stop`.
 - **`kmscube` quits on any waiting input,** printing `user interrupted!`. Paste its test
-  as one line, because lines pasted after it count as input.
+  as one line, because lines pasted after it count as input. Over SSH, closed input also
+  counts, so give it open input: `sleep 30 | kmscube -D /dev/dri/card1 -c 600`.
 - **The GPU needs `CONFIG_SUN50I_H6_PRCM_PPU`.** It has no default, and without it
   Panfrost fails silently, with only `ignoring dependency` in the log.
 - **RGDATA starts at a fixed 4 GiB,** past the image, so writing the image can't reach it.
@@ -151,6 +160,8 @@ Proposed, not yet confirmed by the user:
 - `board/rg35xxsp/patches/linux/`: kernel patches, with origins in `patches/README.md`
 - `board/rg35xxsp/rootfs-overlay/`: init scripts and the power button handler
 - `board/rg35xxsp/extlinux.conf`, `genimage.cfg`, `post-image.sh`: SD card image
+- `board/rg35xxsp/post-build.sh`: removes unused Mesa build dependencies from the rootfs
+- `external.mk`: includes the packages, and builds Mesa without LLVM
 - `package/welcome/`, `package/libretro-mgba/`: Buildroot packages for the app and core
 - `src/welcome/`: Rust launcher and libretro frontend, with no crate dependencies
 - `scripts/flash.sh`: checked SD card flashing

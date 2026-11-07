@@ -42,7 +42,7 @@ push_rootfs() {
 		--exclude=/THIS_IS_NOT_YOUR_ROOT_FILESYSTEM \
 		--exclude=/dev/ --exclude=/proc/ --exclude=/sys/ --exclude=/run/ \
 		--exclude=/tmp/ --exclude=/mnt/ --exclude=/media/ --exclude=/root/ \
-		--exclude=/var/ --exclude=/etc/dropbear/ \
+		--exclude=/var/ --exclude=/etc/dropbear \
 		"$TARGET/" "$DEVICE:/"
 	on_device /etc/init.d/S90welcome restart
 	echo "Changed init scripts take effect after a reboot."
