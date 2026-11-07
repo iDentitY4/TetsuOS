@@ -1,0 +1,16 @@
+Subject: [PATCH] ASoC: sun4i-codec: suspend and resume with the system
+
+The driver handles the suspend and resume triggers, but never registers the
+power management callbacks that lead to them. During system sleep, the DMA
+engine keeps looping the last audio buffer through the output.
+---
+--- a/sound/soc/sunxi/sun4i-codec.c
++++ b/sound/soc/sunxi/sun4i-codec.c
+@@ -2443,6 +2443,7 @@
+ 	.driver = {
+ 		.name = "sun4i-codec",
+ 		.of_match_table = sun4i_codec_of_match,
++		.pm = &snd_soc_pm_ops,
+ 	},
+ 	.probe = sun4i_codec_probe,
+ 	.remove = sun4i_codec_remove,

@@ -11,6 +11,7 @@ const BODY: Rgb = Rgb(0x2B, 0x30, 0x3F);
 const ACCENT: Rgb = Rgb(0x4F, 0xD1, 0xC5);
 const TEXT: Rgb = Rgb(0xF2, 0xF4, 0xF8);
 const MUTED: Rgb = Rgb(0x8A, 0x92, 0xA6);
+const LOW: Rgb = Rgb(0xF0, 0x64, 0x64);
 
 pub struct Canvas {
     pub width: usize,
@@ -152,6 +153,18 @@ fn first_visible(selected: usize) -> usize {
     (selected + 1).saturating_sub(MENU_ROWS)
 }
 
+/// The charge level, and whether it is rising.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Battery {
+    pub percent: u32,
+    pub charging: bool,
+}
+
+/// At or below this level, while not charging, the level is shown as a warning.
+const LOW_BATTERY_PERCENT: u32 = 15;
+const BATTERY_TOP: usize = 8;
+const BATTERY_TEXT_SCALE: usize = 2;
+
 /// Lays out the list of games. `no_games` adds a note on where to put them.
 pub fn menu_screen(
     width: usize,
@@ -159,9 +172,16 @@ pub fn menu_screen(
     labels: &[String],
     selected: usize,
     no_games: bool,
+    battery: Option<Battery>,
 ) -> Canvas {
     let mut canvas = Canvas::new(width, height);
     canvas.text("RG35XX SP LINUX", 20, 4, TEXT);
+    if let Some(Battery { percent, charging }) = battery {
+        let label = format!("{percent}%{}", if charging { "+" } else { "" });
+        let color = if percent <= LOW_BATTERY_PERCENT && !charging { LOW } else { MUTED };
+        let x = width.saturating_sub(text_width(&label, BATTERY_TEXT_SCALE) + MENU_LEFT);
+        canvas.text_at(&label, x, BATTERY_TOP, BATTERY_TEXT_SCALE, color);
+    }
     let first = first_visible(selected);
     for (row, (index, label)) in labels.iter().enumerate().skip(first).take(MENU_ROWS).enumerate() {
         let y = MENU_TOP + row * MENU_ROW;
@@ -214,7 +234,7 @@ mod tests {
 
     #[test]
     fn the_selected_row_is_highlighted() {
-        let canvas = menu_screen(640, 480, &labels(3), 1, false);
+        let canvas = menu_screen(640, 480, &labels(3), 1, false, None);
         let row = |index: usize| pixel(&canvas, 639, MENU_TOP + index * MENU_ROW + 2);
         assert_eq!(row(0), BACKGROUND);
         assert_eq!(row(1), ACCENT);
@@ -225,14 +245,33 @@ mod tests {
     fn a_very_long_name_and_list_are_safe() {
         let mut names = labels(40);
         names[39] = "X".repeat(500);
-        let canvas = menu_screen(640, 480, &names, 39, false);
+        let canvas = menu_screen(640, 480, &names, 39, false, None);
         assert_eq!(canvas.pixels.len(), 640 * 480);
     }
 
     #[test]
     fn the_menu_survives_a_small_screen() {
-        let canvas = menu_screen(64, 48, &labels(3), 2, true);
+        let battery = Some(Battery { percent: 100, charging: true });
+        let canvas = menu_screen(64, 48, &labels(3), 2, true, battery);
         assert_eq!(canvas.pixels.len(), 64 * 48);
+    }
+
+    #[test]
+    fn the_battery_warns_only_when_low_and_not_charging() {
+        let shown = |percent, charging| {
+            let battery = Some(Battery { percent, charging });
+            count(&menu_screen(640, 480, &labels(1), 0, false, battery), LOW) > 0
+        };
+        assert!(shown(15, false));
+        assert!(!shown(16, false));
+        assert!(!shown(15, true));
+    }
+
+    #[test]
+    fn the_battery_stays_clear_of_the_title() {
+        let widest = text_width("100%+", BATTERY_TEXT_SCALE);
+        let title_end = (640 + text_width("RG35XX SP LINUX", 4)) / 2;
+        assert!(640 - MENU_LEFT - widest > title_end);
     }
 
     fn pixel(canvas: &Canvas, x: usize, y: usize) -> Rgb {

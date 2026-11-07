@@ -108,6 +108,11 @@ impl Event {
         Self { event_type: EV_KEY, code, value }
     }
 
+    /// Whether this event is the lid opening.
+    pub fn is_lid_opening(&self) -> bool {
+        self.event_type == EV_SW && self.code == SW_LID && self.value == VALUE_RELEASED
+    }
+
     /// The button this event pressed, if any. Repeats and releases don't count.
     pub fn pressed(&self) -> Option<Button> {
         if self.value == VALUE_RELEASED || self.value == VALUE_REPEAT {
@@ -229,6 +234,17 @@ mod tests {
         bytes[TIME_SIZE + 2..TIME_SIZE + 4].copy_from_slice(&BTN_EAST.to_ne_bytes());
         bytes[TIME_SIZE + 4..].copy_from_slice(&1i32.to_ne_bytes());
         assert_eq!(Event::parse(&bytes), Event::key(BTN_EAST, 1));
+    }
+
+    #[test]
+    fn the_lid_reports_closing_as_a_press_and_opening_separately() {
+        let closing = Event { event_type: EV_SW, code: SW_LID, value: 1 };
+        let opening = Event { event_type: EV_SW, code: SW_LID, value: 0 };
+        assert_eq!(closing.pressed(), Some(Button::Lid));
+        assert!(!closing.is_lid_opening());
+        assert_eq!(opening.pressed(), None);
+        assert!(opening.is_lid_opening());
+        assert!(!Event::key(BTN_EAST, 0).is_lid_opening());
     }
 
     #[test]

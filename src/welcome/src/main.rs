@@ -4,15 +4,16 @@ mod font;
 mod input;
 mod libretro;
 
+use canvas::Battery;
 use input::{Button, Controls, Event};
 use libretro::Persistence;
 use std::ffi::OsString;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::thread::sleep;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const FB_PATH: &str = "/dev/fb0";
 /// The display drivers may finish probing after init starts.
@@ -53,6 +54,12 @@ const SYSTEMS: [System; 2] = [
 
 const BUTTON_TEST_LABEL: &str = "BUTTON TEST";
 const VOLUME_STEP: u32 = 2;
+const BATTERY_DIR: &str = "/sys/class/power_supply/axp20x-battery";
+/// How often the menu checks the battery, so plugging in a charger shows promptly.
+const BATTERY_REFRESH: Duration = Duration::from_secs(1);
+const SLEEP_CONTROL: &str = "/sys/power/state";
+/// After a wake, how long the lid gets to report opening before sleeping again.
+const LID_WAKE_WAIT: Duration = Duration::from_millis(300);
 
 fn open_framebuffer() -> io::Result<fb::Framebuffer> {
     let mut remaining = FB_WAIT_SECONDS;
@@ -112,6 +119,35 @@ fn parse_persistence(arg: &str) -> io::Result<Persistence> {
     }
 }
 
+/// Reads the charge level from a power supply's folder in sysfs.
+fn read_battery(directory: &Path) -> Option<Battery> {
+    let read = |name: &str| std::fs::read_to_string(directory.join(name)).ok();
+    Some(Battery {
+        percent: read("capacity")?.trim().parse().ok()?,
+        charging: read("status")?.trim() == "Charging",
+    })
+}
+
+/// Sleeps until the lid opens. Anything else that wakes the device, like the power button
+/// being pressed in a bag, only leads to sleeping again.
+fn sleep_until_lid_opens(events: &Receiver<Event>) {
+    loop {
+        if let Err(error) = std::fs::write(SLEEP_CONTROL, "freeze") {
+            eprintln!("warning: could not sleep: {error}");
+            return;
+        }
+        let deadline = Instant::now() + LID_WAKE_WAIT;
+        while let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
+            match events.recv_timeout(remaining) {
+                Ok(event) if event.is_lid_opening() => return,
+                Ok(_) => {}
+                Err(RecvTimeoutError::Timeout) => break,
+                Err(RecvTimeoutError::Disconnected) => return,
+            }
+        }
+    }
+}
+
 fn change_volume(button: Button) {
     let change = if button == Button::VolumeUp { "+" } else { "-" };
     let level = format!("{VOLUME_STEP}{change}");
@@ -137,8 +173,10 @@ fn play_game(rom: &Path, events: &Receiver<Event>) -> io::Result<()> {
         .spawn()?;
     while game.try_wait()?.is_none() {
         if let Ok(event) = events.recv_timeout(Duration::from_millis(100)) {
-            if let Some(button @ (Button::VolumeUp | Button::VolumeDown)) = event.pressed() {
-                change_volume(button);
+            match event.pressed() {
+                Some(button @ (Button::VolumeUp | Button::VolumeDown)) => change_volume(button),
+                Some(Button::Lid) => sleep_until_lid_opens(events),
+                _ => {}
             }
         }
     }
@@ -185,12 +223,31 @@ fn run_launcher() -> io::Result<()> {
         let mut labels: Vec<String> = roms.iter().map(|rom| rom_label(rom)).collect();
         labels.push(BUTTON_TEST_LABEL.to_string());
         selected = selected.min(labels.len() - 1);
-        framebuffer.draw(&canvas::menu_screen(width, height, &labels, selected, roms.is_empty()))?;
+        let battery = read_battery(Path::new(BATTERY_DIR));
+        framebuffer.draw(&canvas::menu_screen(
+            width,
+            height,
+            &labels,
+            selected,
+            roms.is_empty(),
+            battery,
+        ))?;
 
-        let Ok(event) = events.recv() else {
-            return Ok(());
+        // Wait for input, redrawing only when the battery reading changes.
+        let event = loop {
+            match events.recv_timeout(BATTERY_REFRESH) {
+                Ok(event) => break Some(event),
+                Err(RecvTimeoutError::Timeout) => {
+                    if read_battery(Path::new(BATTERY_DIR)) != battery {
+                        break None;
+                    }
+                }
+                Err(RecvTimeoutError::Disconnected) => return Ok(()),
+            }
         };
+        let Some(event) = event else { continue };
         match event.pressed() {
+            Some(Button::Lid) => sleep_until_lid_opens(&events),
             Some(Button::Up) => selected = selected.checked_sub(1).unwrap_or(labels.len() - 1),
             Some(Button::Down) => selected = (selected + 1) % labels.len(),
             Some(button @ (Button::VolumeUp | Button::VolumeDown)) => change_volume(button),
@@ -225,7 +282,8 @@ fn write_menu_preview(path: &str) -> io::Result<()> {
     let labels: Vec<String> = ["FIRST GAME", "SECOND GAME (WITH A LONG NAME)", BUTTON_TEST_LABEL]
         .map(String::from)
         .to_vec();
-    write_ppm(&canvas::menu_screen(width, height, &labels, 1, false), path)
+    let battery = Some(Battery { percent: 95, charging: true });
+    write_ppm(&canvas::menu_screen(width, height, &labels, 1, false, battery), path)
 }
 
 /// Renders the button test to a PPM image. Up has been pressed and A is held, so the
@@ -325,6 +383,24 @@ mod tests {
         }
         let names: Vec<String> = find_roms(&dir).iter().map(|rom| rom_label(rom)).collect();
         assert_eq!(names, ["a", "b", "c"]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn the_battery_is_read_from_sysfs_files() {
+        let dir = std::env::temp_dir().join(format!("welcome-battery-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(read_battery(&dir), None);
+
+        std::fs::write(dir.join("capacity"), "95\n").unwrap();
+        std::fs::write(dir.join("status"), "Charging\n").unwrap();
+        assert_eq!(read_battery(&dir), Some(Battery { percent: 95, charging: true }));
+
+        std::fs::write(dir.join("status"), "Discharging\n").unwrap();
+        assert_eq!(read_battery(&dir), Some(Battery { percent: 95, charging: false }));
+
+        std::fs::write(dir.join("capacity"), "not a number\n").unwrap();
+        assert_eq!(read_battery(&dir), None);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

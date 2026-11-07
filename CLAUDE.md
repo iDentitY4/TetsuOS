@@ -4,7 +4,7 @@ A custom Linux OS for the Anbernic RG35XX SP (Allwinner H700), growing into a
 retro gaming OS. It is a Buildroot external tree with a Rust welcome screen.
 `README.md` covers building, flashing and failed-boot debugging.
 
-## Current state (2026-11-06)
+## Current state (2026-11-08)
 
 Working on the test unit, confirmed by the user:
 
@@ -37,12 +37,26 @@ Working on the test unit, confirmed by the user:
   The pet's whole state is saved once a minute, on leaving and at power-off, in
   `saves/tama.state`, and it pauses while the game is off
 
+- Lid sleep, using `s2idle` because TF-A has no deep sleep, from the menu and in games.
+  Sound stops in sleep (patch 0011) and resumes on opening. A power button press with the
+  lid closed doesn't shut down (patch 0010), and the device goes back to sleep. The
+  Tamagotchi carries on correctly after sleep
+- The battery level in the menu
+
+Built but not yet tested on the device:
+
+- The menu checks the battery every second and redraws when it changes. Before, charging
+  status only showed after moving in the menu, or after 30 seconds
+
 Not working yet:
+
+- The USB console stops working after sleep until the cable is re-plugged
+- A faint high-pitched noise with USB connected. VBUS read 4.42 V at a 2 A input limit on
+  a PC port, so it may be overloading the port. Not yet diagnosed
 
 - USB host mode is disabled, so USB accessories don't work
 - Wi-Fi: since the kernel trim, `4021000.mmc` probes and finds the SDIO card, which it
   didn't before (cause not verified). There is no Wi-Fi driver or firmware yet
-- Battery level: `CONFIG_AXP20X_POWER` is not enabled
 - Audio volume is fixed at boot by `S20audio`, because nothing uses the volume buttons yet
 
 The kernel is trimmed to the Allwinner platform with modules off, and the user confirmed
