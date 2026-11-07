@@ -57,6 +57,10 @@ CONFIG_SND=y
 CONFIG_SND_SOC=y
 CONFIG_SND_SUN4I_CODEC=y
 
+# CPU speed scaling, using the speeds rated for each chip. Without it, the CPU stays
+# at the 1008 MHz that U-Boot sets.
+CONFIG_ARM_ALLWINNER_SUN50I_CPUFREQ_NVMEM=y
+
 # GPU: Mali-G31, which can't probe without its power domain driver
 CONFIG_DRM_PANFROST=y
 CONFIG_SUN50I_H6_PRCM_PPU=y
