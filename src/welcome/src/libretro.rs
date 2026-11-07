@@ -393,6 +393,10 @@ impl SaveFile {
         file.write_all(save_ram)?;
         file.sync_all()?;
         std::fs::rename(&temporary, &self.path)?;
+        // The rename itself must reach the card too.
+        if let Some(directory) = self.path.parent() {
+            std::fs::File::open(directory)?.sync_all()?;
+        }
         self.written = save_ram.to_vec();
         Ok(())
     }

@@ -19,9 +19,9 @@ const FB_WAIT_SECONDS: u32 = 10;
 const PREVIEW_SIZE: (usize, usize) = (640, 480);
 
 const CORE_PATH: &str = "/usr/lib/libretro/mgba_libretro.so";
-/// `S15rgboot` mounts the card's FAT partition here.
-const ROM_DIR: &str = "/mnt/boot/roms";
-const SAVE_DIR: &str = "/mnt/boot/saves";
+/// `S15data` mounts the card's RGDATA partition here.
+const ROM_DIR: &str = "/mnt/data/roms";
+const SAVE_DIR: &str = "/mnt/data/saves";
 const ROM_EXTENSION: &str = "gba";
 const BUTTON_TEST_LABEL: &str = "BUTTON TEST";
 const VOLUME_STEP: u32 = 2;

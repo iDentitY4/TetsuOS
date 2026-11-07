@@ -33,14 +33,17 @@ tests, use `cargo test` in `src/welcome/`.
 
 ## Flash and boot
 
-Use a spare card. Flashing erases it.
+Use a spare card of at least 6 GiB. Flashing erases it, except for the RGDATA
+partition on a card flashed before, which keeps its games and saves.
 
 ```sh
 scripts/flash.sh            # lists disks
 scripts/flash.sh /dev/sdX   # checks the target, then asks you to confirm
 ```
 
-Put the card in the TF1 slot and power on.
+Put the card in the TF1 slot and power on. To add games, put the card in a PC and
+copy Game Boy Advance `.gba` files to the `roms` folder on RGDATA, creating it if
+it isn't there yet. Hold Menu + Start to leave a game.
 
 ## Debugging a failed boot
 

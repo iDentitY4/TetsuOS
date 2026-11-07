@@ -177,7 +177,7 @@ pub fn menu_screen(
     }
     if no_games {
         canvas.text("COPY GBA GAMES TO THE ROMS FOLDER", 340, 2, MUTED);
-        canvas.text("ON THE RGBOOT PARTITION", 366, 2, MUTED);
+        canvas.text("ON THE RGDATA PARTITION", 366, 2, MUTED);
     }
     canvas.text("A STARTS - HOLD MENU + START LEAVES A GAME", 448, 2, MUTED);
     canvas

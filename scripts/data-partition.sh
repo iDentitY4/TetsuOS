@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Adds the RGDATA partition, which holds games and saves, to a freshly written card.
+# Writing the image replaces the partition table but not the data past the image, so
+# the same entry finds the same filesystem again. It only formats an empty area.
+#
+# Usage: data-partition.sh TARGET
+# TARGET is a card, or an image file for testing.
+set -euo pipefail
+
+# Also checked by flash.sh, which keeps the image below this.
+START_SECTOR=8388608 # 4 GiB
+LABEL=RGDATA
+MKFS="$(dirname "$(readlink -f "$0")")/../output/host/sbin/mkfs.vfat"
+TARGET="$1"
+
+if [ -b "$TARGET" ]; then
+	TOTAL_SECTORS=$(($(blockdev --getsize64 "$TARGET") / 512))
+else
+	TOTAL_SECTORS=$(($(stat -c %s "$TARGET") / 512))
+fi
+SIZE_SECTORS=$((TOTAL_SECTORS - START_SECTOR))
+
+# Don't let sfdisk clear the signature of the filesystem being kept.
+echo "start=$START_SECTOR, size=$SIZE_SECTORS, type=c" |
+	sfdisk --quiet --no-reread --no-tell-kernel --wipe never --wipe-partitions never \
+		--append "$TARGET"
+
+OFFSET=$((START_SECTOR * 512))
+TYPE="$(blkid -p -O "$OFFSET" -o value -s TYPE "$TARGET" || true)"
+FOUND_LABEL="$(blkid -p -O "$OFFSET" -o value -s LABEL "$TARGET" || true)"
+
+if [ "$TYPE" = vfat ] && [ "$FOUND_LABEL" = "$LABEL" ]; then
+	echo "Kept the existing $LABEL partition, with its games and saves."
+elif [ -z "$TYPE" ]; then
+	echo "Creating the $LABEL partition..."
+	# -I allows a whole disk with partitions: --offset already places this one.
+	"$MKFS" -I -F 32 -n "$LABEL" --offset="$START_SECTOR" "$TARGET" "$((SIZE_SECTORS / 2))" >/dev/null
+	echo "Created $LABEL. Put games in its roms folder."
+else
+	echo "Found a $TYPE filesystem labelled '$FOUND_LABEL' where $LABEL belongs, so it" >&2
+	echo "was left alone. The device won't find games until that area is cleared." >&2
+	exit 1
+fi

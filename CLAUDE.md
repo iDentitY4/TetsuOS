@@ -22,13 +22,13 @@ Working on the test unit, confirmed by the user:
   no visible tearing. The GPU runs at a fixed 432 MHz, because there is no clock scaling
   table yet
 
-- A launcher in the welcome app lists games from `/mnt/boot/roms` (`roms` on RGBOOT), with
-  the button test as a menu entry and working volume buttons
+- A launcher in the welcome app lists games from `/mnt/data/roms`, with the button test as
+  a menu entry and working volume buttons
 - A libretro frontend in the same app, in `libretro.rs`, runs the mGBA core from
   `package/libretro-mgba`. Pokemon FireRed runs at 59.7 fps with clean sound and no tearing,
   at about 50 C. Holding Menu + Start leaves a game. `/var/log/welcome.log` has timings
-- Saves go to `saves` on RGBOOT, and survive leaving a game and rebooting
-- **Flashing wipes `roms` and `saves`,** so back them up first
+- Games and saves are in `roms` and `saves` on the RGDATA partition. They survive leaving a
+  game, rebooting and reflashing with `flash.sh`
 - CPU speed scaling, up to 1512 MHz on this chip. It was fixed at 1008 MHz before, which
   gave only 43 fps in the game
 
@@ -107,6 +107,9 @@ Proposed, not yet confirmed by the user:
   as one line, because lines pasted after it count as input.
 - **The GPU needs `CONFIG_SUN50I_H6_PRCM_PPU`.** It has no default, and without it
   Panfrost fails silently, with only `ignoring dependency` in the log.
+- **RGDATA starts at a fixed 4 GiB,** past the image, so writing the image can't reach it.
+  Writing the image does replace the partition table, so `flash.sh` adds the entry back.
+  A plain `dd` of the image leaves RGDATA unreachable until `data-partition.sh` is run.
 - **Panels:** ROCKNIX has a separate v2 panel device tree for the SP. This unit
   works with the mainline NV3052C driver, but another unit may not.
 - **The linux-sunxi wiki returns 403 to automated fetches.** Use U-Boot's
@@ -123,6 +126,7 @@ Proposed, not yet confirmed by the user:
 - `package/welcome/`, `package/libretro-mgba/`: Buildroot packages for the app and core
 - `src/welcome/`: Rust launcher and libretro frontend, with no crate dependencies
 - `scripts/flash.sh`: checked SD card flashing
+- `scripts/data-partition.sh`: adds RGDATA after flashing, keeping an existing one
 - Git-ignored: `buildroot-2026.08.1/`, `dl/`, `output/`
 
 ## Commands

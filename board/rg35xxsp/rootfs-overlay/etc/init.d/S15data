@@ -1,0 +1,19 @@
+#!/bin/sh
+# Mounts the card's RGDATA partition, which holds the games and saves.
+
+case "$1" in
+start)
+	dev="$(blkid | grep 'LABEL="RGDATA"' | head -n 1 | cut -d: -f1)"
+	[ -n "$dev" ] || exit 1
+	mkdir -p /mnt/data
+	mount -t vfat "$dev" /mnt/data || exit 1
+	mkdir -p /mnt/data/roms /mnt/data/saves
+	;;
+stop)
+	umount /mnt/data
+	;;
+*)
+	echo "Usage: $0 {start|stop}"
+	exit 1
+	;;
+esac
