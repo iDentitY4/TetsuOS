@@ -1,1 +1,2 @@
+source "$BR2_EXTERNAL_RG35XXSP_PATH/package/libretro-mgba/Config.in"
 source "$BR2_EXTERNAL_RG35XXSP_PATH/package/welcome/Config.in"

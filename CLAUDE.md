@@ -22,6 +22,16 @@ Working on the test unit, confirmed by the user:
   no visible tearing. The GPU runs at a fixed 432 MHz, because there is no clock scaling
   table yet
 
+- A launcher in the welcome app lists games from `/mnt/boot/roms` (`roms` on RGBOOT), with
+  the button test as a menu entry and working volume buttons
+- A libretro frontend in the same app, in `libretro.rs`, runs the mGBA core from
+  `package/libretro-mgba`. Pokemon FireRed runs at 59.7 fps with clean sound and no tearing,
+  at about 50 C. Holding Menu + Start leaves a game. `/var/log/welcome.log` has timings
+- Saves go to `saves` on RGBOOT, and survive leaving a game and rebooting
+- **Flashing wipes `roms` and `saves`,** so back them up first
+- CPU speed scaling, up to 1512 MHz on this chip. It was fixed at 1008 MHz before, which
+  gave only 43 fps in the game
+
 Not working yet:
 
 - USB host mode is disabled, so USB accessories don't work
@@ -42,12 +52,10 @@ messages on that port.
 
 Proposed, not yet confirmed by the user:
 
-1. Launcher and first emulator
-2. Slim the root filesystem (251 MB). `libclang` and `libclang-cpp` take 94 MB and aren't
+1. Slim the root filesystem (254 MB). `libclang` and `libclang-cpp` take 94 MB and aren't
    linked directly by Mesa's main library. Buildroot's Panfrost option requires LLVM, but
    the driver shouldn't need it on the device
-3. Make the volume buttons work
-4. Before any release: remove the U-Boot boot diagnostics and set a root password
+2. Before any release: remove the U-Boot boot diagnostics and set a root password
 
 ## Test hardware
 
@@ -112,8 +120,8 @@ Proposed, not yet confirmed by the user:
 - `board/rg35xxsp/patches/linux/`: kernel patches, with origins in `patches/README.md`
 - `board/rg35xxsp/rootfs-overlay/`: init scripts and the power button handler
 - `board/rg35xxsp/extlinux.conf`, `genimage.cfg`, `post-image.sh`: SD card image
-- `package/welcome/`: Buildroot package for the app
-- `src/welcome/`: Rust app, with no crate dependencies
+- `package/welcome/`, `package/libretro-mgba/`: Buildroot packages for the app and core
+- `src/welcome/`: Rust launcher and libretro frontend, with no crate dependencies
 - `scripts/flash.sh`: checked SD card flashing
 - Git-ignored: `buildroot-2026.08.1/`, `dl/`, `output/`
 
@@ -152,6 +160,9 @@ Claude can't test on hardware, so the user does these steps:
 - **Console:** with the device booted and the cable in the USB/OTG port, run
   `screen /dev/ttyACM0 115200`, press Enter and log in as `root` with no password.
   Quit with Ctrl-a, k, y.
+- **App only changes:** copy `output/target/usr/bin/welcome` to the mounted card's first
+  partition, then on the device run `/etc/init.d/S90welcome stop`, copy it to
+  `/usr/bin/welcome`, and start the script again. This avoids a reflash.
 - **Device tree only changes:** copying the new `.dtb` to the mounted `RGBOOT`
   partition avoids a reflash. Verify with `cmp` and `sync`.
 - **USB recovery check:** with no card and the cable connected, power on and look for

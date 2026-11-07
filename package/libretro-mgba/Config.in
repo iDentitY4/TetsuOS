@@ -1,0 +1,6 @@
+config BR2_PACKAGE_LIBRETRO_MGBA
+	bool "libretro-mgba"
+	help
+	  The mGBA Game Boy Advance emulator, as a libretro core.
+
+	  https://github.com/libretro/mgba

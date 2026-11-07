@@ -66,6 +66,9 @@ BR2_TARGET_UBOOT_CUSTOM_MAKEOPTS="SCP=/dev/null"
 BR2_PACKAGE_HOST_RUSTC=y
 BR2_PACKAGE_WELCOME=y
 
+# Game Boy Advance emulator, loaded by the welcome app
+BR2_PACKAGE_LIBRETRO_MGBA=y
+
 # GPU: OpenGL ES through Panfrost, which Buildroot only offers with LLVM.
 # kmscube is the test program.
 BR2_PACKAGE_MESA3D=y

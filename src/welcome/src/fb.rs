@@ -5,6 +5,7 @@ use std::ffi::{c_int, c_ulong};
 use std::fs::{File, OpenOptions};
 use std::io::{self, Seek, SeekFrom, Write};
 use std::os::fd::AsRawFd;
+use std::os::unix::fs::FileExt;
 
 extern "C" {
     fn ioctl(fd: c_int, request: c_ulong, ...) -> c_int;
@@ -12,6 +13,7 @@ extern "C" {
 
 const FBIOGET_VSCREENINFO: c_ulong = 0x4600;
 const FBIOGET_FSCREENINFO: c_ulong = 0x4602;
+const FBIO_WAITFORVSYNC: c_ulong = 0x4004_4620;
 const KDSETMODE: c_ulong = 0x4B3A;
 const KD_GRAPHICS: c_ulong = 1;
 
@@ -111,6 +113,57 @@ impl Framebuffer {
 
     pub fn size(&self) -> (usize, usize) {
         (self.var.xres as usize, self.var.yres as usize)
+    }
+
+    /// The byte offset of the visible screen in the framebuffer.
+    fn screen_offset(&self) -> u64 {
+        u64::from(self.var.yoffset) * self.line_length as u64
+    }
+
+    pub fn clear(&mut self) -> io::Result<()> {
+        let buffer = vec![0u8; self.line_length * self.var.yres as usize];
+        self.file.write_all_at(&buffer, self.screen_offset())
+    }
+
+    /// Writes XRGB8888 pixels to the middle of the screen, leaving the rest alone.
+    pub fn blit_centred(&mut self, pixels: &[u32], width: usize, height: usize) -> io::Result<()> {
+        let (screen_w, screen_h) = self.size();
+        let bytes_per_pixel = self.var.bits_per_pixel as usize / 8;
+        let left = screen_w.saturating_sub(width) / 2 * bytes_per_pixel;
+        let top = screen_h.saturating_sub(height) / 2;
+        let row_bytes = width.min(screen_w) * bytes_per_pixel;
+        let is_xrgb = bytes_per_pixel == 4
+            && (self.var.red.offset, self.var.green.offset, self.var.blue.offset) == (16, 8, 0);
+
+        let mut row_buffer = vec![0u8; if is_xrgb { 0 } else { row_bytes }];
+        for (y, row) in pixels.chunks_exact(width).take(screen_h - top).enumerate() {
+            let offset = self.screen_offset() + ((top + y) * self.line_length + left) as u64;
+            if is_xrgb {
+                // SAFETY: the bytes of a u32 are always valid, and row_bytes is within the
+                // row. The device's arm64 and this format are both little-endian.
+                let bytes = unsafe { std::slice::from_raw_parts(row.as_ptr() as *const u8, row_bytes) };
+                self.file.write_all_at(bytes, offset)?;
+            } else {
+                for (bytes, pixel) in row_buffer.chunks_exact_mut(bytes_per_pixel).zip(row) {
+                    let color = Rgb((pixel >> 16) as u8, (pixel >> 8) as u8, *pixel as u8);
+                    let value = pack(color, self.var.red, self.var.green, self.var.blue);
+                    bytes.copy_from_slice(&value.to_le_bytes()[..bytes_per_pixel]);
+                }
+                self.file.write_all_at(&row_buffer, offset)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Waits for the panel to finish a refresh. A full-screen write that starts right
+    /// after this stays ahead of the next refresh, so it doesn't tear.
+    pub fn wait_for_vsync(&self) -> io::Result<()> {
+        let crtc: u32 = 0;
+        // SAFETY: the request reads one u32, which outlives the call.
+        if unsafe { ioctl(self.file.as_raw_fd(), FBIO_WAITFORVSYNC, &crtc as *const u32) } != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
     }
 
     pub fn draw(&mut self, canvas: &Canvas) -> io::Result<()> {

@@ -117,10 +117,10 @@ const TILES: [Tile; 18] = [
     tile(Button::Lid, 526, 330, 88, 40),
 ];
 
-/// Lays out the welcome screen.
-pub fn welcome_screen(width: usize, height: usize, kernel: &str, controls: &Controls) -> Canvas {
+/// Lays out the button test.
+pub fn button_screen(width: usize, height: usize, controls: &Controls) -> Canvas {
     let mut canvas = Canvas::new(width, height);
-    canvas.text("WELCOME", 14, 5, TEXT);
+    canvas.text("BUTTON TEST", 20, 4, TEXT);
     canvas.text("RG35XX SP LINUX", 58, 2, ACCENT);
     for tile in &TILES {
         canvas.tile(tile, controls);
@@ -129,7 +129,57 @@ pub fn welcome_screen(width: usize, height: usize, kernel: &str, controls: &Cont
         Some(last) => canvas.text(last, 390, 4, ACCENT),
         None => canvas.text("PRESS ANY BUTTON", 394, 3, MUTED),
     }
-    canvas.text(&format!("LINUX {kernel}"), 448, 2, MUTED);
+    canvas.text("HOLD MENU + START TO LEAVE", 448, 2, MUTED);
+    canvas
+}
+
+const MENU_TOP: usize = 76;
+const MENU_ROW: usize = 30;
+const MENU_ROWS: usize = 12;
+const MENU_LEFT: usize = 16;
+const MENU_TEXT_SCALE: usize = 2;
+/// How many characters fit in a row, with a margin on both sides.
+const MENU_COLUMNS: usize = 49;
+
+// The rows must end above the hint line, and the text inside the side margins.
+const _: () = assert!(MENU_TOP + MENU_ROWS * MENU_ROW <= 448);
+const _: () = assert!(
+    MENU_LEFT + MENU_COLUMNS * (font::WIDTH + 1) * MENU_TEXT_SCALE <= 640 - MENU_LEFT + MENU_TEXT_SCALE
+);
+
+/// The first row to show, keeping the selection in view.
+fn first_visible(selected: usize) -> usize {
+    (selected + 1).saturating_sub(MENU_ROWS)
+}
+
+/// Lays out the list of games. `no_games` adds a note on where to put them.
+pub fn menu_screen(
+    width: usize,
+    height: usize,
+    labels: &[String],
+    selected: usize,
+    no_games: bool,
+) -> Canvas {
+    let mut canvas = Canvas::new(width, height);
+    canvas.text("RG35XX SP LINUX", 20, 4, TEXT);
+    let first = first_visible(selected);
+    for (row, (index, label)) in labels.iter().enumerate().skip(first).take(MENU_ROWS).enumerate() {
+        let y = MENU_TOP + row * MENU_ROW;
+        let color = if index == selected {
+            canvas.rect(0, y, width, MENU_ROW - 2, ACCENT);
+            BACKGROUND
+        } else {
+            TEXT
+        };
+        let visible: String = label.chars().take(MENU_COLUMNS).collect();
+        let text_y = y + (MENU_ROW - 2 - font::HEIGHT * MENU_TEXT_SCALE) / 2;
+        canvas.text_at(&visible, MENU_LEFT, text_y, MENU_TEXT_SCALE, color);
+    }
+    if no_games {
+        canvas.text("COPY GBA GAMES TO THE ROMS FOLDER", 340, 2, MUTED);
+        canvas.text("ON THE RGBOOT PARTITION", 366, 2, MUTED);
+    }
+    canvas.text("A STARTS - HOLD MENU + START LEAVES A GAME", 448, 2, MUTED);
     canvas
 }
 
@@ -144,10 +194,45 @@ mod tests {
 
     #[test]
     fn draws_on_the_native_panel_size() {
-        let canvas = welcome_screen(640, 480, "7.2.15", &Controls::new());
+        let canvas = button_screen(640, 480, &Controls::new());
         assert_eq!(canvas.pixels.len(), 640 * 480);
         assert!(count(&canvas, TEXT) > 0);
         assert!(count(&canvas, ACCENT) > 0);
+    }
+
+    fn labels(count: usize) -> Vec<String> {
+        (0..count).map(|i| format!("GAME {i}")).collect()
+    }
+
+    #[test]
+    fn the_selection_stays_in_view() {
+        assert_eq!(first_visible(0), 0);
+        assert_eq!(first_visible(MENU_ROWS - 1), 0);
+        assert_eq!(first_visible(MENU_ROWS), 1);
+        assert_eq!(first_visible(29), 29 + 1 - MENU_ROWS);
+    }
+
+    #[test]
+    fn the_selected_row_is_highlighted() {
+        let canvas = menu_screen(640, 480, &labels(3), 1, false);
+        let row = |index: usize| pixel(&canvas, 639, MENU_TOP + index * MENU_ROW + 2);
+        assert_eq!(row(0), BACKGROUND);
+        assert_eq!(row(1), ACCENT);
+        assert_eq!(row(2), BACKGROUND);
+    }
+
+    #[test]
+    fn a_very_long_name_and_list_are_safe() {
+        let mut names = labels(40);
+        names[39] = "X".repeat(500);
+        let canvas = menu_screen(640, 480, &names, 39, false);
+        assert_eq!(canvas.pixels.len(), 640 * 480);
+    }
+
+    #[test]
+    fn the_menu_survives_a_small_screen() {
+        let canvas = menu_screen(64, 48, &labels(3), 2, true);
+        assert_eq!(canvas.pixels.len(), 64 * 48);
     }
 
     fn pixel(canvas: &Canvas, x: usize, y: usize) -> Rgb {
@@ -196,15 +281,15 @@ mod tests {
         let a = TILES.iter().find(|t| t.button == Button::A).unwrap();
         let mut controls = Controls::new();
 
-        let idle = welcome_screen(640, 480, "", &controls);
+        let idle = button_screen(640, 480, &controls);
         assert_eq!(pixel(&idle, a.x, a.y), BODY);
 
         controls.apply(&Event::key(BTN_EAST, 1));
-        let held = welcome_screen(640, 480, "", &controls);
+        let held = button_screen(640, 480, &controls);
         assert_eq!(pixel(&held, a.x + 3, a.y + 3), ACCENT);
 
         controls.apply(&Event::key(BTN_EAST, 0));
-        let seen = welcome_screen(640, 480, "", &controls);
+        let seen = button_screen(640, 480, &controls);
         assert_eq!(pixel(&seen, a.x, a.y), ACCENT);
         assert_eq!(pixel(&seen, a.x + 3, a.y + 3), BODY);
     }
@@ -226,7 +311,7 @@ mod tests {
 
     #[test]
     fn survives_a_screen_smaller_than_the_layout() {
-        let canvas = welcome_screen(64, 48, "a-very-long-kernel-release-string", &Controls::new());
+        let canvas = button_screen(64, 48, &Controls::new());
         assert_eq!(canvas.pixels.len(), 64 * 48);
     }
 }

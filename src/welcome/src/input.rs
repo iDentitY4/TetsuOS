@@ -108,6 +108,14 @@ impl Event {
         Self { event_type: EV_KEY, code, value }
     }
 
+    /// The button this event pressed, if any. Repeats and releases don't count.
+    pub fn pressed(&self) -> Option<Button> {
+        if self.value == VALUE_RELEASED || self.value == VALUE_REPEAT {
+            return None;
+        }
+        Button::from_event(self.event_type, self.code)
+    }
+
     fn parse(bytes: &[u8; EVENT_SIZE]) -> Self {
         let field = &bytes[TIME_SIZE..];
         Self {
@@ -221,6 +229,14 @@ mod tests {
         bytes[TIME_SIZE + 2..TIME_SIZE + 4].copy_from_slice(&BTN_EAST.to_ne_bytes());
         bytes[TIME_SIZE + 4..].copy_from_slice(&1i32.to_ne_bytes());
         assert_eq!(Event::parse(&bytes), Event::key(BTN_EAST, 1));
+    }
+
+    #[test]
+    fn only_a_new_press_counts_as_pressed() {
+        assert_eq!(Event::key(BTN_EAST, 1).pressed(), Some(Button::A));
+        assert_eq!(Event::key(BTN_EAST, 0).pressed(), None);
+        assert_eq!(Event::key(BTN_EAST, VALUE_REPEAT).pressed(), None);
+        assert_eq!(Event::key(116, 1).pressed(), None);
     }
 
     #[test]
