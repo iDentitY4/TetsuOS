@@ -32,6 +32,11 @@ Working on the test unit, confirmed by the user:
 - CPU speed scaling, up to 1512 MHz on this chip. It was fixed at 1008 MHz before, which
   gave only 43 fps in the game
 
+- Tamagotchi P1 emulation through `package/libretro-tamalib`, using `tama.b` in `roms`, at
+  60 fps with the CPU at its lowest 480 MHz. The launcher picks a core by file extension.
+  The pet's whole state is saved once a minute, on leaving and at power-off, in
+  `saves/tama.state`, and it pauses while the game is off
+
 Not working yet:
 
 - USB host mode is disabled, so USB accessories don't work

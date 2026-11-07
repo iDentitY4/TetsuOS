@@ -8,6 +8,7 @@ use std::io::{self, Write};
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
@@ -16,6 +17,15 @@ extern "C" {
     fn dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void;
     fn dlerror() -> *const c_char;
     fn fcntl(fd: c_int, command: c_int, ...) -> c_int;
+    fn signal(number: c_int, handler: usize) -> usize;
+}
+
+const SIGTERM: c_int = 15;
+/// Set when the system asks the game to stop, as it does at power-off.
+static TERMINATING: AtomicBool = AtomicBool::new(false);
+
+extern "C" fn on_terminate(_: c_int) {
+    TERMINATING.store(true, Ordering::Relaxed);
 }
 
 const RTLD_NOW: c_int = 2;
@@ -31,8 +41,25 @@ const ENVIRONMENT_GET_SAVE_DIRECTORY: c_uint = 31;
 const DEVICE_JOYPAD: c_uint = 1;
 const MEMORY_SAVE_RAM: c_uint = 0;
 
-/// Without a final save, at most this much in-game saving can be lost on power-off.
-const AUTOSAVE_FRAMES: u64 = 120;
+/// How a game keeps its progress between runs.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Persistence {
+    /// The cartridge's battery-backed memory, which only changes when the game saves.
+    BatteryRam,
+    /// The whole machine, for hardware with no separate save memory.
+    FullState,
+}
+
+impl Persistence {
+    /// Frames between saves. A full state changes constantly, so it is saved less often.
+    fn autosave_frames(self) -> u64 {
+        match self {
+            Self::BatteryRam => 120,
+            Self::FullState => 3600,
+        }
+    }
+}
+
 const STATS_FRAMES: u64 = 600;
 const CPU_SPEED_PATH: &str = "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq";
 
@@ -275,6 +302,9 @@ struct Core {
     deinit: unsafe extern "C" fn(),
     memory_data: unsafe extern "C" fn(c_uint) -> *mut c_void,
     memory_size: unsafe extern "C" fn(c_uint) -> usize,
+    serialize_size: unsafe extern "C" fn() -> usize,
+    serialize: unsafe extern "C" fn(*mut c_void, usize) -> bool,
+    unserialize: unsafe extern "C" fn(*const c_void, usize) -> bool,
     av_info: AvInfo,
     /// The core may read from this for as long as the game is loaded.
     _rom: Vec<u8>,
@@ -348,6 +378,9 @@ impl Core {
                 deinit: function!(c"retro_deinit", unsafe extern "C" fn()),
                 memory_data: function!(c"retro_get_memory_data", unsafe extern "C" fn(c_uint) -> *mut c_void),
                 memory_size: function!(c"retro_get_memory_size", unsafe extern "C" fn(c_uint) -> usize),
+                serialize_size: function!(c"retro_serialize_size", unsafe extern "C" fn() -> usize),
+                serialize: function!(c"retro_serialize", unsafe extern "C" fn(*mut c_void, usize) -> bool),
+                unserialize: function!(c"retro_unserialize", unsafe extern "C" fn(*const c_void, usize) -> bool),
                 av_info,
                 _rom: rom,
             })
@@ -366,6 +399,64 @@ impl Core {
             std::slice::from_raw_parts_mut(data, size)
         }
     }
+
+    /// The progress to write to the save file.
+    fn snapshot(&mut self, persistence: Persistence) -> io::Result<Vec<u8>> {
+        match persistence {
+            Persistence::BatteryRam => Ok(self.save_ram().to_vec()),
+            Persistence::FullState => {
+                // SAFETY: the game is loaded, and the buffer has the size the core asked for.
+                unsafe {
+                    let mut state = vec![0u8; (self.serialize_size)()];
+                    if !(self.serialize)(state.as_mut_ptr() as *mut c_void, state.len()) {
+                        return Err(io::Error::other("the core could not save its state"));
+                    }
+                    Ok(state)
+                }
+            }
+        }
+    }
+
+    /// Restores progress read from the save file.
+    fn restore(&mut self, persistence: Persistence, saved: &[u8]) -> io::Result<()> {
+        match persistence {
+            Persistence::BatteryRam => {
+                let save_ram = self.save_ram();
+                let size = saved.len().min(save_ram.len());
+                save_ram[..size].copy_from_slice(&saved[..size]);
+                Ok(())
+            }
+            Persistence::FullState => {
+                // SAFETY: the game is loaded, and the size is checked against the core's.
+                unsafe {
+                    if saved.len() != (self.serialize_size)() {
+                        return Err(io::Error::other("the saved state has the wrong size"));
+                    }
+                    if !(self.unserialize)(saved.as_ptr() as *const c_void, saved.len()) {
+                        return Err(io::Error::other("the core could not load the saved state"));
+                    }
+                    Ok(())
+                }
+            }
+        }
+    }
+
+    /// Loads any save file, then returns a `SaveFile` to keep it up to date.
+    fn open_save(&mut self, path: &Path, persistence: Persistence) -> io::Result<SaveFile> {
+        match std::fs::read(path) {
+            Ok(saved) => {
+                if let Err(error) = self.restore(persistence, &saved) {
+                    // Keep the file, because the next autosave would replace it.
+                    let kept = path.with_extension("unreadable");
+                    eprintln!("warning: {error}. Keeping it as {}", kept.display());
+                    std::fs::rename(path, kept)?;
+                }
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+        Ok(SaveFile { path: path.to_path_buf(), written: self.snapshot(persistence)? })
+    }
 }
 
 /// Keeps a save file in step with the game's battery-backed memory.
@@ -375,29 +466,21 @@ struct SaveFile {
 }
 
 impl SaveFile {
-    fn load_into(path: PathBuf, save_ram: &mut [u8]) -> Self {
-        if let Ok(saved) = std::fs::read(&path) {
-            let size = saved.len().min(save_ram.len());
-            save_ram[..size].copy_from_slice(&saved[..size]);
-        }
-        Self { written: save_ram.to_vec(), path }
-    }
-
-    fn update(&mut self, save_ram: &[u8]) -> io::Result<()> {
-        if self.written == save_ram {
+    fn update(&mut self, progress: &[u8]) -> io::Result<()> {
+        if self.written == progress {
             return Ok(());
         }
         // The old save survives a power cut during the write.
         let temporary = self.path.with_extension("tmp");
         let mut file = std::fs::File::create(&temporary)?;
-        file.write_all(save_ram)?;
+        file.write_all(progress)?;
         file.sync_all()?;
         std::fs::rename(&temporary, &self.path)?;
         // The rename itself must reach the card too.
         if let Some(directory) = self.path.parent() {
             std::fs::File::open(directory)?.sync_all()?;
         }
-        self.written = save_ram.to_vec();
+        self.written = progress.to_vec();
         Ok(())
     }
 }
@@ -437,15 +520,24 @@ fn start_audio(sample_rate: f64) -> io::Result<Child> {
 }
 
 fn wants_to_leave(controls: &Controls) -> bool {
-    controls.is_held(Button::Menu) && controls.is_held(Button::Start)
+    TERMINATING.load(Ordering::Relaxed)
+        || (controls.is_held(Button::Menu) && controls.is_held(Button::Start))
 }
 
 /// Runs a game on the framebuffer until Menu and Start are held together.
-pub fn play(core_path: &Path, rom: &Path, save: &Path, framebuffer: &mut Framebuffer) -> io::Result<()> {
+pub fn play(
+    core_path: &Path,
+    rom: &Path,
+    save: &Path,
+    persistence: Persistence,
+    framebuffer: &mut Framebuffer,
+) -> io::Result<()> {
+    // SAFETY: the handler only stores to an atomic.
+    unsafe { signal(SIGTERM, on_terminate as extern "C" fn(c_int) as usize) };
     let directory = save.parent().unwrap_or(Path::new("."));
     set_host(directory, framebuffer.size())?;
     let mut core = Core::load(core_path, rom)?;
-    let mut save_file = SaveFile::load_into(save.to_path_buf(), core.save_ram());
+    let mut save_file = core.open_save(save, persistence)?;
     let (fps, sample_rate) = (core.av_info.timing.fps, core.av_info.timing.sample_rate);
     println!("playing {} at {fps:.2} fps, {sample_rate:.0} Hz", rom.display());
 
@@ -498,8 +590,9 @@ pub fn play(core_path: &Path, rom: &Path, save: &Path, framebuffer: &mut Framebu
         })?;
 
         frames += 1;
-        if frames.is_multiple_of(AUTOSAVE_FRAMES) {
-            if let Err(error) = save_file.update(core.save_ram()) {
+        if frames.is_multiple_of(persistence.autosave_frames()) {
+            let saved = core.snapshot(persistence).and_then(|progress| save_file.update(&progress));
+            if let Err(error) = saved {
                 eprintln!("warning: could not save: {error}");
             }
         }
@@ -538,7 +631,7 @@ pub fn play(core_path: &Path, rom: &Path, save: &Path, framebuffer: &mut Framebu
         }
     }
 
-    save_file.update(core.save_ram())?;
+    save_file.update(&core.snapshot(persistence)?)?;
     let audio = with_host(|host| host.audio.take());
     if let Some(mut audio) = audio {
         drop(audio.stdin.take());
@@ -554,17 +647,24 @@ pub fn play(core_path: &Path, rom: &Path, save: &Path, framebuffer: &mut Framebu
 
 /// Runs a game with no display, audio or pacing, to check a core away from the device.
 /// Writes the last frame as a PPM image.
-pub fn render(core_path: &Path, rom: &Path, save: &Path, frames: u64, output: &Path) -> io::Result<()> {
+pub fn render(
+    core_path: &Path,
+    rom: &Path,
+    save: &Path,
+    persistence: Persistence,
+    frames: u64,
+    output: &Path,
+) -> io::Result<()> {
     set_host(save.parent().unwrap_or(Path::new(".")), (640, 480))?;
     let mut core = Core::load(core_path, rom)?;
-    let mut save_file = SaveFile::load_into(save.to_path_buf(), core.save_ram());
+    let mut save_file = core.open_save(save, persistence)?;
     let start = Instant::now();
     for _ in 0..frames {
         // SAFETY: the game is loaded, and the callbacks run on this thread.
         unsafe { (core.run)() };
     }
     let elapsed = start.elapsed().as_secs_f64();
-    save_file.update(core.save_ram())?;
+    save_file.update(&core.snapshot(persistence)?)?;
 
     let (bytes, width, height, pixels) = with_host(|host| {
         (host.audio_bytes, host.frame_size.0, host.frame_size.1, std::mem::take(&mut host.frame))
@@ -632,23 +732,30 @@ mod tests {
     }
 
     #[test]
+    fn a_full_state_is_saved_less_often_than_battery_memory() {
+        assert_eq!(Persistence::BatteryRam.autosave_frames(), 120);
+        assert_eq!(Persistence::FullState.autosave_frames(), 3600);
+    }
+
+    #[test]
     fn a_save_is_only_written_when_it_changes() {
         let dir = std::env::temp_dir().join(format!("welcome-save-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("game.srm");
-        let mut ram = vec![1u8; 8];
+        let mut progress = vec![1u8; 8];
 
-        let mut save = SaveFile::load_into(path.clone(), &mut ram);
-        save.update(&ram).unwrap();
+        let mut save = SaveFile { path: path.clone(), written: progress.clone() };
+        save.update(&progress).unwrap();
         assert!(!path.exists());
 
-        ram[0] = 2;
-        save.update(&ram).unwrap();
-        assert_eq!(std::fs::read(&path).unwrap()[0], 2);
+        progress[0] = 2;
+        save.update(&progress).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), progress);
+        assert!(!path.with_extension("tmp").exists());
 
-        let mut fresh = vec![0u8; 8];
-        SaveFile::load_into(path, &mut fresh);
-        assert_eq!(fresh[0], 2);
+        progress[0] = 3;
+        save.update(&progress).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap()[0], 3);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

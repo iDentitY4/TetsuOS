@@ -68,6 +68,8 @@ BR2_PACKAGE_WELCOME=y
 
 # Game Boy Advance emulator, loaded by the welcome app
 BR2_PACKAGE_LIBRETRO_MGBA=y
+# First-generation Tamagotchi emulator, loaded the same way
+BR2_PACKAGE_LIBRETRO_TAMALIB=y
 
 # GPU: OpenGL ES through Panfrost, which Buildroot only offers with LLVM.
 # kmscube is the test program.

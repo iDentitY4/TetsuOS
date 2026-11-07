@@ -5,6 +5,7 @@ mod input;
 mod libretro;
 
 use input::{Button, Controls, Event};
+use libretro::Persistence;
 use std::ffi::OsString;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -18,11 +19,38 @@ const FB_PATH: &str = "/dev/fb0";
 const FB_WAIT_SECONDS: u32 = 10;
 const PREVIEW_SIZE: (usize, usize) = (640, 480);
 
-const CORE_PATH: &str = "/usr/lib/libretro/mgba_libretro.so";
 /// `S15data` mounts the card's RGDATA partition here.
 const ROM_DIR: &str = "/mnt/data/roms";
 const SAVE_DIR: &str = "/mnt/data/saves";
-const ROM_EXTENSION: &str = "gba";
+
+/// A kind of game the launcher can run.
+struct System {
+    /// A game's file extension.
+    extension: &'static str,
+    core: &'static str,
+    persistence: Persistence,
+    save_extension: &'static str,
+    /// Only for a core that trusts the file to be this size.
+    rom_size: Option<u64>,
+}
+
+const SYSTEMS: [System; 2] = [
+    System {
+        extension: "gba",
+        core: "/usr/lib/libretro/mgba_libretro.so",
+        persistence: Persistence::BatteryRam,
+        save_extension: "srm",
+        rom_size: None,
+    },
+    System {
+        extension: "b",
+        core: "/usr/lib/libretro/tamalibretro_libretro.so",
+        persistence: Persistence::FullState,
+        save_extension: "state",
+        rom_size: Some(12288),
+    },
+];
+
 const BUTTON_TEST_LABEL: &str = "BUTTON TEST";
 const VOLUME_STEP: u32 = 2;
 
@@ -39,6 +67,11 @@ fn open_framebuffer() -> io::Result<fb::Framebuffer> {
     }
 }
 
+fn system_for(rom: &Path) -> Option<&'static System> {
+    let extension = rom.extension()?;
+    SYSTEMS.iter().find(|system| extension.eq_ignore_ascii_case(system.extension))
+}
+
 /// The games in a folder, sorted by name.
 fn find_roms(directory: &Path) -> Vec<PathBuf> {
     let mut roms: Vec<PathBuf> = std::fs::read_dir(directory)
@@ -46,10 +79,7 @@ fn find_roms(directory: &Path) -> Vec<PathBuf> {
         .flatten()
         .flatten()
         .map(|entry| entry.path())
-        .filter(|path| {
-            path.extension()
-                .is_some_and(|extension| extension.eq_ignore_ascii_case(ROM_EXTENSION))
-        })
+        .filter(|path| system_for(path).is_some())
         .collect();
     roms.sort();
     roms
@@ -60,10 +90,26 @@ fn rom_label(rom: &Path) -> String {
 }
 
 /// The save file next to the others, named after the game.
-fn save_path(rom: &Path) -> PathBuf {
+fn save_path(rom: &Path, system: &System) -> PathBuf {
     let mut name = OsString::from(rom.file_stem().unwrap_or_default());
-    name.push(".srm");
+    name.push(".");
+    name.push(system.save_extension);
     Path::new(SAVE_DIR).join(name)
+}
+
+fn persistence_arg(persistence: Persistence) -> &'static str {
+    match persistence {
+        Persistence::BatteryRam => "battery",
+        Persistence::FullState => "state",
+    }
+}
+
+fn parse_persistence(arg: &str) -> io::Result<Persistence> {
+    match arg {
+        "battery" => Ok(Persistence::BatteryRam),
+        "state" => Ok(Persistence::FullState),
+        _ => Err(io::Error::other(format!("unknown save type: {arg}"))),
+    }
 }
 
 fn change_volume(button: Button) {
@@ -76,10 +122,18 @@ fn change_volume(button: Button) {
 
 /// Runs the game in its own process, so a core crash only ends the game.
 fn play_game(rom: &Path, events: &Receiver<Event>) -> io::Result<()> {
+    let system = system_for(rom).ok_or_else(|| io::Error::other("no core for this game"))?;
+    if let Some(size) = system.rom_size {
+        let actual = std::fs::metadata(rom)?.len();
+        if actual != size {
+            return Err(io::Error::other(format!("expected {size} bytes, found {actual}")));
+        }
+    }
     std::fs::create_dir_all(SAVE_DIR)?;
     let mut game = Command::new(std::env::current_exe()?)
         .arg("--play")
-        .args([Path::new(CORE_PATH), rom, &save_path(rom)])
+        .args([Path::new(system.core), rom, &save_path(rom, system)])
+        .arg(persistence_arg(system.persistence))
         .spawn()?;
     while game.try_wait()?.is_none() {
         if let Ok(event) = events.recv_timeout(Duration::from_millis(100)) {
@@ -152,8 +206,8 @@ fn run_launcher() -> io::Result<()> {
 }
 
 /// The separate process that `play_game` starts.
-fn run_game(core: &Path, rom: &Path, save: &Path) -> io::Result<()> {
-    libretro::play(core, rom, save, &mut open_framebuffer()?)
+fn run_game(core: &Path, rom: &Path, save: &Path, persistence: Persistence) -> io::Result<()> {
+    libretro::play(core, rom, save, persistence, &mut open_framebuffer()?)
 }
 
 fn write_ppm(canvas: &canvas::Canvas, path: &str) -> io::Result<()> {
@@ -193,23 +247,28 @@ fn main() -> ExitCode {
         [] => run_launcher(),
         [flag, path] if flag == "--preview" => write_menu_preview(path),
         [flag, path] if flag == "--preview-buttons" => write_button_preview(path),
-        [flag, core, rom, save] if flag == "--play" => {
-            run_game(Path::new(core), Path::new(rom), Path::new(save))
+        [flag, core, rom, save, persistence] if flag == "--play" => parse_persistence(persistence)
+            .and_then(|persistence| {
+                run_game(Path::new(core), Path::new(rom), Path::new(save), persistence)
+            }),
+        [flag, core, rom, save, persistence, frames, output] if flag == "--render" => {
+            parse_persistence(persistence).and_then(|persistence| {
+                let frames = frames.parse().map_err(io::Error::other)?;
+                libretro::render(
+                    Path::new(core),
+                    Path::new(rom),
+                    Path::new(save),
+                    persistence,
+                    frames,
+                    Path::new(output),
+                )
+            })
         }
-        [flag, core, rom, save, frames, output] if flag == "--render" => match frames.parse() {
-            Ok(frames) => libretro::render(
-                Path::new(core),
-                Path::new(rom),
-                Path::new(save),
-                frames,
-                Path::new(output),
-            ),
-            Err(error) => Err(io::Error::other(error)),
-        },
         _ => {
             eprintln!(
                 "usage: welcome [--preview FILE.ppm | --preview-buttons FILE.ppm\n\
-                 \x20              | --play CORE ROM SAVE | --render CORE ROM SAVE FRAMES FILE.ppm]"
+                 \x20              | --play CORE ROM SAVE battery|state\n\
+                 \x20              | --render CORE ROM SAVE battery|state FRAMES FILE.ppm]"
             );
             return ExitCode::from(2);
         }
@@ -229,19 +288,43 @@ mod tests {
 
     #[test]
     fn saves_are_named_after_the_game() {
-        let save = save_path(Path::new("/roms/My Game (Germany).gba"));
+        let rom = Path::new("/roms/My Game (Germany).gba");
+        let save = save_path(rom, system_for(rom).unwrap());
         assert_eq!(save, Path::new(SAVE_DIR).join("My Game (Germany).srm"));
+    }
+
+    #[test]
+    fn each_extension_picks_its_system() {
+        let tama = system_for(Path::new("/roms/tama.b")).unwrap();
+        assert!(tama.core.contains("tamalibretro"));
+        assert_eq!(tama.persistence, Persistence::FullState);
+        assert_eq!(save_path(Path::new("/roms/tama.b"), tama), Path::new(SAVE_DIR).join("tama.state"));
+
+        let gba = system_for(Path::new("/roms/GAME.GBA")).unwrap();
+        assert!(gba.core.contains("mgba"));
+        assert_eq!(gba.persistence, Persistence::BatteryRam);
+
+        assert!(system_for(Path::new("/roms/notes.txt")).is_none());
+        assert!(system_for(Path::new("/roms/no-extension")).is_none());
+    }
+
+    #[test]
+    fn the_save_type_survives_the_command_line() {
+        for persistence in [Persistence::BatteryRam, Persistence::FullState] {
+            assert_eq!(parse_persistence(persistence_arg(persistence)).unwrap(), persistence);
+        }
+        assert!(parse_persistence("other").is_err());
     }
 
     #[test]
     fn roms_are_found_sorted_and_by_extension() {
         let dir = std::env::temp_dir().join(format!("welcome-rom-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        for name in ["b.gba", "a.GBA", "notes.txt"] {
+        for name in ["b.gba", "a.GBA", "c.b", "notes.txt"] {
             std::fs::write(dir.join(name), []).unwrap();
         }
         let names: Vec<String> = find_roms(&dir).iter().map(|rom| rom_label(rom)).collect();
-        assert_eq!(names, ["a", "b"]);
+        assert_eq!(names, ["a", "b", "c"]);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

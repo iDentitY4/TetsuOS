@@ -1,0 +1,7 @@
+config BR2_PACKAGE_LIBRETRO_TAMALIB
+	bool "libretro-tamalib"
+	help
+	  TamaLIBretro, an emulator of the first Tamagotchi handheld, as a
+	  libretro core. It needs a ROM dump to run.
+
+	  https://github.com/celerizer/tamalibretro
