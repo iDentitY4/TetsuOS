@@ -1,0 +1,23 @@
+#!/bin/sh
+# Networking over the USB cable, next to the serial console. The device is
+# 10.35.35.1 and gives the PC 10.35.35.2. scripts/push.sh uses this link.
+
+case "$1" in
+start)
+	# The gadget may finish probing after init starts
+	for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+		[ -e /sys/class/net/usb0 ] && break
+		sleep 0.25
+	done
+	ifconfig usb0 10.35.35.1 netmask 255.255.255.0 up || exit 1
+	udhcpd /etc/udhcpd.conf
+	;;
+stop)
+	killall udhcpd 2>/dev/null
+	ifconfig usb0 down 2>/dev/null
+	;;
+*)
+	echo "Usage: $0 {start|stop}"
+	exit 1
+	;;
+esac

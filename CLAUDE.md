@@ -42,6 +42,10 @@ Working on the test unit, confirmed by the user:
   lid closed doesn't shut down (patch 0010), and the device goes back to sleep. The
   Tamagotchi carries on correctly after sleep
 - The battery level in the menu
+- Updating over USB. The gadget is `g_cdc`, serial plus CDC Ethernet, with fixed MACs set
+  in `extlinux.conf`. `S41usbnet` gives the device `10.35.35.1`, and `udhcpd` gives the
+  PC `10.35.35.2` with no router option. Dropbear runs with `-B` for root's empty
+  password. `scripts/push.sh {app|rootfs|boot|all}` copies output over SSH with rsync
 
 Built but not yet tested on the device:
 
@@ -103,6 +107,9 @@ Proposed, not yet confirmed by the user:
   disables them. USB host mode needs that reverted, plus a dual-role setup like
   ROCKNIX's `0151` and `0152` patches. Those also manage a 5V output on the port, so
   review them before use while the port is connected to a PC.
+- **The USB controller has 4 IN and 4 OUT endpoints,** besides the control endpoint.
+  Serial plus Ethernet (`g_cdc`) uses 4 IN and 2 OUT, so any further USB function,
+  like mass storage, needs another one dropped.
 - **USB power may start the device,** according to ROCKNIX's notes on the AXP717.
   Test shutdown with the cable unplugged.
 - **Kernel power-off:** `axp20x_power_off` writes register `0x32`, but the AXP717
@@ -145,6 +152,7 @@ Proposed, not yet confirmed by the user:
 - `package/welcome/`, `package/libretro-mgba/`: Buildroot packages for the app and core
 - `src/welcome/`: Rust launcher and libretro frontend, with no crate dependencies
 - `scripts/flash.sh`: checked SD card flashing
+- `scripts/push.sh`: copies build output to the running device over the USB network link
 - `scripts/data-partition.sh`: adds RGDATA after flashing, keeping an existing one
 - Git-ignored: `buildroot-2026.08.1/`, `dl/`, `output/`
 
@@ -174,7 +182,8 @@ changes just need `command make`.
 
 ## Testing on the device
 
-Claude can't test on hardware, so the user does these steps:
+Claude can push builds and run commands on the device over SSH, but can't see the
+screen or press buttons, so the user checks those:
 
 - **Flash:** the user runs `scripts/flash.sh /dev/sdX` in their own terminal, because
   it needs `sudo` and a typed confirmation. The card has been `/dev/sde`, but check
@@ -183,11 +192,17 @@ Claude can't test on hardware, so the user does these steps:
 - **Console:** with the device booted and the cable in the USB/OTG port, run
   `screen /dev/ttyACM0 115200`, press Enter and log in as `root` with no password.
   Quit with Ctrl-a, k, y.
-- **App only changes:** copy `output/target/usr/bin/welcome` to the mounted card's first
-  partition, then on the device run `/etc/init.d/S90welcome stop`, copy it to
-  `/usr/bin/welcome`, and start the script again. This avoids a reflash.
-- **Device tree only changes:** copying the new `.dtb` to the mounted `RGBOOT`
-  partition avoids a reflash. Verify with `cmp` and `sync`.
+- **Updates without the card reader:** after a build, Claude runs `scripts/push.sh app`,
+  `rootfs`, `boot` or `all`, as the user allowed on 2026-11-08. `boot` reboots the
+  device. U-Boot changes and a kernel that doesn't boot still need a flash by the user.
+  If `push.sh` can't connect, check the PC got `10.35.35.2` with `ip -br addr`, and
+  ask whether the device is awake with the cable in.
+- **Commands on the device:** `ssh -o StrictHostKeyChecking=no -o
+  UserKnownHostsFile=/dev/null root@10.35.35.1 '<command>'`, for logs, `dmesg` and sysfs.
+- **Without USB networking:** copy `output/target/usr/bin/welcome` to the mounted card's
+  first partition, then on the device run `/etc/init.d/S90welcome stop`, copy it to
+  `/usr/bin/welcome`, and start the script again. A new `.dtb` can be copied to the
+  mounted `RGBOOT` partition. Verify with `cmp` and `sync`.
 - **USB recovery check:** with no card and the cable connected, power on and look for
   `1f3a:efe8` in `lsusb`. This shows the cable and port work without any of our code.
 
@@ -204,8 +219,9 @@ The PC's kernel log is full of firewall messages, so filter them:
 
 ## Working agreements
 
-- Never write to a disk from Claude's side. This PC has several internal disks with
-  the user's data, and flashing stays with the user.
+- Never write to a disk on the PC from Claude's side. This PC has several internal disks
+  with the user's data, and flashing stays with the user. Writing to the device over SSH,
+  with `push.sh` or commands, is allowed.
 - Commit only when the user asks. Don't push: there is no remote yet.
 - Check that a patch applies with `support/scripts/apply-patches.sh`, because plain
   `patch` allows fuzz that Buildroot rejects.

@@ -45,6 +45,22 @@ Put the card in the TF1 slot and power on. To add games, put the card in a PC an
 copy Game Boy Advance `.gba` files to the `roms` folder on RGDATA, creating it if
 it isn't there yet. Hold Menu + Start to leave a game.
 
+## Updating over USB
+
+Once a card has been flashed, most changes can go over the USB cable instead. The
+USB/OTG port is also a network adapter: the device is `10.35.35.1` and gives the PC
+`10.35.35.2`, which NetworkManager picks up without setup. After `make`, run:
+
+```sh
+scripts/push.sh app      # the welcome app, restarted in about a second
+scripts/push.sh rootfs   # changed root filesystem files, without deleting any
+scripts/push.sh boot     # kernel, device tree and extlinux.conf, then a reboot
+scripts/push.sh all      # rootfs, then boot
+```
+
+`ssh root@10.35.35.1` gives a shell. U-Boot changes still need `flash.sh`, and so
+does a kernel that doesn't boot, because nothing can reach the device then.
+
 ## Debugging a failed boot
 
 This setup works without a serial adapter. Boot messages show on screen until
@@ -64,5 +80,5 @@ after, so wait before powering off.
 
 Once booted, the USB/OTG port also offers a root shell. On the PC, run
 `screen /dev/ttyACM0 115200`, press Enter, and log in as `root`. Quit with
-Ctrl-a, then k, then y. Root has no password, so this image is for development
-only.
+Ctrl-a, then k, then y. Root has no password, over serial or SSH, so this image
+is for development only.

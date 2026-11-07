@@ -70,10 +70,13 @@ CONFIG_ARM_ALLWINNER_SUN50I_CPUFREQ_NVMEM=y
 CONFIG_DRM_PANFROST=y
 CONFIG_SUN50I_H6_PRCM_PPU=y
 
-# USB-C serial console
+# USB-C serial console and network link, as one composite gadget. The
+# controller has 4 IN and 4 OUT endpoints, and serial plus Ethernet need
+# 4 IN and 2 OUT.
 CONFIG_USB=y
 CONFIG_USB_MUSB_HDRC=y
 CONFIG_USB_MUSB_SUNXI=y
 CONFIG_PHY_SUN4I_USB=y
 CONFIG_USB_GADGET=y
-CONFIG_USB_G_SERIAL=y
+# CONFIG_USB_G_SERIAL is not set
+CONFIG_USB_CDC_COMPOSITE=y

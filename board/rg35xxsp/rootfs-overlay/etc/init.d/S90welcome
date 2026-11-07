@@ -2,7 +2,8 @@
 
 case "$1" in
 start)
-	/usr/bin/welcome >/var/log/welcome.log 2>&1 &
+	# In its own session, so it keeps running after an SSH login that started it ends.
+	setsid /usr/bin/welcome </dev/null >/var/log/welcome.log 2>&1 &
 	;;
 stop)
 	killall welcome 2>/dev/null
@@ -12,8 +13,12 @@ stop)
 		sleep 0.1
 	done
 	;;
+restart)
+	"$0" stop
+	"$0" start
+	;;
 *)
-	echo "Usage: $0 {start|stop}"
+	echo "Usage: $0 {start|stop|restart}"
 	exit 1
 	;;
 esac

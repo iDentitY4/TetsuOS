@@ -1,2 +1,5 @@
 # acpid runs /etc/acpi/PWRF/00000080 when the power button is pressed
 CONFIG_ACPID=y
+
+# Gives the PC an address on the USB network link
+CONFIG_UDHCPD=y

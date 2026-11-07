@@ -1,0 +1,3 @@
+# Allows root's empty password, like the serial console. The SSH server is
+# only reachable over the USB cable. Set a root password before any release.
+DROPBEAR_ARGS="-B"
