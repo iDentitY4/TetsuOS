@@ -1,0 +1,19 @@
+Subject: [PATCH] usb: musb: sunxi: keep the session through system sleep
+
+musb_suspend() clears DEVCTL, ending the session, and only then saves the
+context, so the saved DEVCTL has no session bit. musb_resume() restores the
+session only in host mode, so a peripheral stays disconnected after waking
+until the cable is unplugged and plugged in again. Keep the session through
+sleep, as da8xx does.
+---
+--- a/drivers/usb/musb/sunxi.c
++++ b/drivers/usb/musb/sunxi.c
+@@ -605,7 +605,7 @@
+ }
+ 
+ static const struct musb_platform_ops sunxi_musb_ops = {
+-	.quirks		= MUSB_INDEXED_EP,
++	.quirks		= MUSB_INDEXED_EP | MUSB_PRESERVE_SESSION,
+ 	.init		= sunxi_musb_init,
+ 	.exit		= sunxi_musb_exit,
+ 	.enable		= sunxi_musb_enable,

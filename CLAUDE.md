@@ -46,6 +46,8 @@ Working on the test unit, confirmed by the user:
   in `extlinux.conf`. `S41usbnet` gives the device `10.35.35.1`, and `udhcpd` gives the
   PC `10.35.35.2` with no router option. Dropbear runs with `-B` for root's empty
   password. `scripts/push.sh {app|rootfs|boot|all}` copies output over SSH with rsync
+- USB stays connected through sleep, so SSH works after opening the lid (patch 0012).
+  Before, the device dropped off the bus until the cable was re-plugged
 
 Built but not yet tested on the device:
 
@@ -54,9 +56,9 @@ Built but not yet tested on the device:
 
 Not working yet:
 
-- The USB console stops working after sleep until the cable is re-plugged
 - A faint high-pitched noise with USB connected. VBUS read 4.42 V at a 2 A input limit on
-  a PC port, so it may be overloading the port. Not yet diagnosed
+  a PC port, so it may be overloading the port. Not heard as of 2026-11-08, so not
+  diagnosed. The user will say if it returns
 
 - USB host mode is disabled, so USB accessories don't work
 - Wi-Fi: since the kernel trim, `4021000.mmc` probes and finds the SDIO card, which it
