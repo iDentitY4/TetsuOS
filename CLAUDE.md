@@ -18,6 +18,9 @@ Working on the test unit, confirmed by the user:
   including during playback and when booting with headphones plugged in
 - USB console connects without `Login incorrect`, using `getty -w`, so the login prompt
   appears only after pressing Enter
+- GPU: OpenGL ES 3.1 through Panfrost on the Mali-G31. `kmscube` ran at 59.94 fps with
+  no visible tearing. The GPU runs at a fixed 432 MHz, because there is no clock scaling
+  table yet
 
 Not working yet:
 
@@ -25,9 +28,6 @@ Not working yet:
 - Wi-Fi: since the kernel trim, `4021000.mmc` probes and finds the SDIO card, which it
   didn't before (cause not verified). There is no Wi-Fi driver or firmware yet
 - Battery level: `CONFIG_AXP20X_POWER` is not enabled
-- GPU: Panfrost detects the Mali-G31 and manages its power, confirmed by the user, but
-  nothing uses it yet because Mesa isn't built. Not committed. `card0` is now the GPU and
-  `card1` the display, so name the display device explicitly
 - Audio volume is fixed at boot by `S20audio`, because nothing uses the volume buttons yet
 
 The kernel is trimmed to the Allwinner platform with modules off, and the user confirmed
@@ -42,9 +42,12 @@ messages on that port.
 
 Proposed, not yet confirmed by the user:
 
-1. Audio and GPU
-2. Launcher and first emulator
-3. Before any release: remove the U-Boot boot diagnostics and set a root password
+1. Launcher and first emulator
+2. Slim the root filesystem (251 MB). `libclang` and `libclang-cpp` take 94 MB and aren't
+   linked directly by Mesa's main library. Buildroot's Panfrost option requires LLVM, but
+   the driver shouldn't need it on the device
+3. Make the volume buttons work
+4. Before any release: remove the U-Boot boot diagnostics and set a root password
 
 ## Test hardware
 
@@ -89,6 +92,13 @@ Proposed, not yet confirmed by the user:
   `Line Out` at 50% total about -58 dB, which sounded silent. If the `DAC` switch is off,
   the DAC never runs and playback fails with error -5.
 - **Headphones are silent while the `Speaker` path is on,** so the two can't play at once.
+- **The display is `card1`,** because Panfrost now takes `card0`. Name it explicitly, as
+  in `kmscube -D /dev/dri/card1`, and stop the welcome app first with
+  `/etc/init.d/S90welcome stop`.
+- **`kmscube` quits on any waiting input,** printing `user interrupted!`. Paste its test
+  as one line, because lines pasted after it count as input.
+- **The GPU needs `CONFIG_SUN50I_H6_PRCM_PPU`.** It has no default, and without it
+  Panfrost fails silently, with only `ignoring dependency` in the log.
 - **Panels:** ROCKNIX has a separate v2 panel device tree for the SP. This unit
   works with the mainline NV3052C driver, but another unit may not.
 - **The linux-sunxi wiki returns 403 to automated fetches.** Use U-Boot's
