@@ -343,6 +343,7 @@ struct Settings {
     battery: BatteryDisplay,
     /// Minutes without a press in the menus before sleeping, one of `IDLE_SLEEP_MINUTES`.
     idle_minutes: u32,
+    menu_sounds: bool,
 }
 
 /// Reads the first value from `amixer cget` output, such as `  : values=25,25`.
@@ -388,6 +389,7 @@ fn parse(text: &str) -> Settings {
             "title_hidden" => settings.title_hidden = value == "yes",
             "title" => settings.title = clean_title(value),
             "covers" => settings.covers_hidden = value == "off",
+            "sounds" => settings.menu_sounds = value == "on",
             "idle" => {
                 if let Some(&minutes) = IDLE_SLEEP_MINUTES.iter().find(|&&choice| value.parse() == Ok(choice)) {
                     settings.idle_minutes = minutes;
@@ -448,6 +450,7 @@ fn format(settings: &Settings) -> String {
     text += &format!("covers={}\n", if settings.covers_hidden { "off" } else { "on" });
     text += &format!("battery={}\n", settings.battery.key());
     text += &format!("idle={}\n", settings.idle_minutes);
+    text += &format!("sounds={}\n", if settings.menu_sounds { "on" } else { "off" });
     if !settings.hidden_tiles.is_empty() {
         text += &format!("hidden_tiles={}\n", settings.hidden_tiles.join(","));
     }
@@ -579,6 +582,15 @@ pub fn set_title(text: &str) -> io::Result<()> {
     store(&Settings { title: clean_title(text), ..load() })
 }
 
+/// Whether presses in the menus make a sound.
+pub fn menu_sounds() -> bool {
+    load().menu_sounds
+}
+
+pub fn set_menu_sounds(on: bool) -> io::Result<()> {
+    store(&Settings { menu_sounds: on, ..load() })
+}
+
 /// Minutes without a press before the menus sleep, or 0 for never.
 pub fn idle_minutes() -> u32 {
     load().idle_minutes
@@ -699,6 +711,7 @@ mod tests {
             covers_hidden: true,
             battery: BatteryDisplay::WhenLow,
             idle_minutes: 10,
+            menu_sounds: true,
         };
         assert_eq!(parse(&format(&settings)), settings);
         // Files from before the time settings load with UTC and a 24 hour clock.
@@ -712,6 +725,7 @@ mod tests {
         assert!(!old.covers_hidden, "covers show until turned off");
         assert_eq!(old.battery, BatteryDisplay::Percent);
         assert_eq!(old.idle_minutes, 0, "no sleeping until chosen");
+        assert!(!old.menu_sounds, "quiet until turned on");
         assert_eq!(parse("idle=7\n").idle_minutes, 0, "only the offered choices");
         assert_eq!(cycle(&IDLE_SLEEP_MINUTES, 0, -1), 30);
         assert_eq!(idle_sleep_label(0), "OFF");

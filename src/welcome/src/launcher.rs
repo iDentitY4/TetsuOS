@@ -82,7 +82,7 @@ pub const GROUPS: [Group; 7] =
     [Group::General, Group::GameScreen, Group::Wifi, Group::BoxArt, Group::Theme, Group::Time, Group::System];
 
 /// The most settings a group has, which the settings screen makes room for.
-pub const MAX_GROUP_SETTINGS: usize = 5;
+pub const MAX_GROUP_SETTINGS: usize = 6;
 
 impl Group {
     pub fn label(self) -> &'static str {
@@ -100,7 +100,14 @@ impl Group {
     pub fn settings(self) -> &'static [Setting] {
         match self {
             Self::General =>
-                &[Setting::Volume, Setting::Brightness, Setting::StartScreen, Setting::GameNames, Setting::Battery],
+                &[
+                    Setting::Volume,
+                    Setting::Brightness,
+                    Setting::StartScreen,
+                    Setting::GameNames,
+                    Setting::Battery,
+                    Setting::MenuSounds,
+                ],
             Self::GameScreen => &[Setting::Scaling, Setting::Effect, Setting::Ghosting],
             Self::Wifi => &[],
             Self::BoxArt => &[Setting::ShowCovers, Setting::DownloadMissingArt, Setting::DownloadAllArt, Setting::DeleteArt],
@@ -120,6 +127,7 @@ pub enum Setting {
     StartScreen,
     GameNames,
     Battery,
+    MenuSounds,
     Scaling,
     Effect,
     Ghosting,
@@ -148,6 +156,7 @@ impl Setting {
             Self::StartScreen => "START SCREEN",
             Self::GameNames => "GAME NAMES",
             Self::Battery => "BATTERY",
+            Self::MenuSounds => "MENU SOUNDS",
             Self::Scaling => "SCALING",
             Self::Effect => "SCREEN EFFECT",
             Self::Ghosting => "LCD GHOSTING",
@@ -191,6 +200,7 @@ impl Setting {
                 | Self::StartScreen
                 | Self::GameNames
                 | Self::Battery
+                | Self::MenuSounds
                 | Self::IdleSleep
                 | Self::ShowCovers
                 | Self::Scaling
@@ -249,6 +259,8 @@ pub enum Command {
     StartScreen(i32),
     GameNames(i32),
     BatteryDisplay(i32),
+    /// Turns menu sounds on if they are off, or off.
+    ToggleSounds,
     IdleSleep(i32),
     Scaling(i32),
     Effect(i32),
@@ -548,6 +560,7 @@ impl Launcher {
                 Setting::StartScreen => return Command::StartScreen(step),
                 Setting::GameNames => return Command::GameNames(step),
                 Setting::Battery => return Command::BatteryDisplay(step),
+                Setting::MenuSounds => return Command::ToggleSounds,
                 Setting::IdleSleep => return Command::IdleSleep(step),
                 Setting::ShowCovers => return Command::ToggleCovers,
                 Setting::Scaling => return Command::Scaling(step),
@@ -578,6 +591,7 @@ impl Launcher {
                 | Setting::StartScreen
                 | Setting::GameNames
                 | Setting::Battery
+                | Setting::MenuSounds
                 | Setting::IdleSleep
                 | Setting::ShowCovers
                 | Setting::Scaling
@@ -814,6 +828,8 @@ mod tests {
         assert_eq!(launcher.press(Button::Left, &library), Command::GameNames(-1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Right, &library), Command::BatteryDisplay(1));
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::Left, &library), Command::ToggleSounds);
         press_all(&mut launcher, &library, &[Button::B, Button::Right, Button::A]);
         assert_eq!(launcher.press(Button::Right, &library), Command::Scaling(1));
         launcher.press(Button::Down, &library);

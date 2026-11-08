@@ -160,6 +160,14 @@ Built but not yet tested on the device:
   the title, the home grid starts at 36 instead of 84 pixels (`GRID_TOP_UNTITLED`, just
   below the clock), so 3 rows of tiles grow from 108 to 124 pixels, and each tile's icon
   and labels are centred in it
+- Menu sounds: Settings > GENERAL > MENU SOUNDS, ON or OFF (default). Directions and
+  volume keys tick, A, Start and Select make a rising blip, B a falling one, in the
+  launcher's own screens only (`menu_sound` in `main.rs`). `sounds.rs` makes them as
+  tones, 14 to 52 ms at 48 kHz, quiet next to games, and plays each through its own
+  aplay, which holds the card about 70 ms; a sound is skipped while the last still plays,
+  and `play_game` waits for it (`sounds::wait`), since the card takes one stream. Groups
+  now have room for 6 settings. Claude checked on the device that presses play without
+  errors; nobody has heard them yet. Left ON on the test unit for the user to try
 - Sleep when idle: Settings > SYSTEM > SLEEP WHEN IDLE: OFF (default), 2, 5, 10 or 30
   minutes without a press in the launcher's own screens (home, lists, settings), not in
   games, the Wi-Fi screen, the keyboard or a download (`Wake::Idle`, `sleep_until_woken`).

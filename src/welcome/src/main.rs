@@ -18,6 +18,7 @@ mod recent;
 mod repeat;
 mod screens;
 mod settings;
+mod sounds;
 mod storage;
 mod wifi;
 mod wifi_menu;
@@ -425,6 +426,22 @@ fn read_battery(directory: &Path) -> Option<Battery> {
     })
 }
 
+/// The sound for a press in the menus, if it makes one.
+fn menu_sound(wake: &Wake) -> Option<sounds::Sound> {
+    use sounds::Sound;
+    let button = match wake {
+        Wake::Event(event) => event.pressed()?,
+        Wake::Repeat(button, _) => *button,
+        _ => return None,
+    };
+    Some(match button {
+        Button::Up | Button::Down | Button::Left | Button::Right | Button::VolumeUp | Button::VolumeDown => Sound::Move,
+        Button::A | Button::Start | Button::Select => Sound::Select,
+        Button::B => Sound::Back,
+        _ => return None,
+    })
+}
+
 /// Sleeps until the lid opens. Anything else that wakes the device, like the power button
 /// being pressed in a bag, only leads to sleeping again.
 fn sleep_until_lid_opens(events: &Receiver<Event>) {
@@ -524,6 +541,8 @@ fn play_game(rom: &Path, events: &Receiver<Event>) -> io::Result<Ending> {
     if let Err(error) = storage::write_atomic(Path::new(PLAYING_PATH), rom.to_string_lossy().as_bytes()) {
         eprintln!("warning: could not note the game as running: {error}");
     }
+    // The sound card takes one stream, so a menu sound must end before the game's starts.
+    sounds::wait();
     let mut game = Command::new(std::env::current_exe()?)
         .arg("--play")
         .args([Path::new(system.core), rom, &save_path(rom, system)])
@@ -1161,6 +1180,7 @@ fn launcher_canvas(
                 game_names: settings::game_names().label(),
                 covers: if settings::covers_shown() { "ON" } else { "OFF" },
                 battery: settings::battery_display().label(),
+                menu_sounds: if settings::menu_sounds() { "ON" } else { "OFF" },
                 idle_sleep: &settings::idle_sleep_label(settings::idle_minutes()),
                 title_shown: if settings::title_hidden() { "HIDDEN" } else { "SHOWN" },
                 title_text: &settings::title(),
@@ -1294,6 +1314,16 @@ fn act(
         Action::Scaling(steps) => change_display(|display| display.scaling = display.scaling.cycle(steps)),
         Action::Effect(steps) => change_display(|display| display.effect = display.effect.cycle(steps)),
         Action::Ghosting(steps) => change_display(|display| display.ghosting = display.ghosting.cycle(steps)),
+        Action::ToggleSounds => {
+            let on = !settings::menu_sounds();
+            if let Err(error) = settings::set_menu_sounds(on) {
+                eprintln!("warning: could not save the menu sounds setting: {error}");
+            }
+            // Turning them on is heard straight away.
+            if on {
+                sounds::play(sounds::Sound::Select);
+            }
+        }
         Action::IdleSleep(steps) => {
             if let Err(error) = settings::change_idle_minutes(steps) {
                 eprintln!("warning: could not save the idle sleep setting: {error}");
@@ -1547,6 +1577,11 @@ fn run_launcher() -> io::Result<()> {
         };
         if matches!(wake, Wake::Event(_) | Wake::Repeat(..)) {
             last_press = Instant::now();
+        }
+        if let Some(sound) = menu_sound(&wake) {
+            if settings::menu_sounds() {
+                sounds::play(sound);
+            }
         }
         let action = match wake {
             Wake::Redraw => Action::Nothing,
