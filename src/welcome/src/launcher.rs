@@ -55,15 +55,21 @@ pub enum Screen {
 pub enum Setting {
     Volume,
     Brightness,
+    Scaling,
+    Effect,
+    Ghosting,
     ButtonTest,
     SystemInfo,
     Reboot,
     PowerOff,
 }
 
-pub const SETTINGS: [Setting; 6] = [
+pub const SETTINGS: [Setting; 9] = [
     Setting::Volume,
     Setting::Brightness,
+    Setting::Scaling,
+    Setting::Effect,
+    Setting::Ghosting,
     Setting::ButtonTest,
     Setting::SystemInfo,
     Setting::Reboot,
@@ -75,6 +81,9 @@ impl Setting {
         match self {
             Self::Volume => "VOLUME",
             Self::Brightness => "BRIGHTNESS",
+            Self::Scaling => "SCALING",
+            Self::Effect => "SCREEN EFFECT",
+            Self::Ghosting => "LCD GHOSTING",
             Self::ButtonTest => "BUTTON TEST",
             Self::SystemInfo => "SYSTEM INFO",
             Self::Reboot => "REBOOT",
@@ -91,6 +100,9 @@ pub enum Command {
     ButtonTest,
     Volume(i32),
     Brightness(i32),
+    Scaling(i32),
+    Effect(i32),
+    Ghosting(i32),
     Reboot,
     PowerOff,
 }
@@ -264,6 +276,9 @@ impl Launcher {
             Button::Left | Button::Right if setting == Setting::Brightness => {
                 return Command::Brightness(step)
             }
+            Button::Left | Button::Right if setting == Setting::Scaling => return Command::Scaling(step),
+            Button::Left | Button::Right if setting == Setting::Effect => return Command::Effect(step),
+            Button::Left | Button::Right if setting == Setting::Ghosting => return Command::Ghosting(step),
             Button::B | Button::Start => self.screen = self.before_settings,
             Button::A => match setting {
                 Setting::ButtonTest => return Command::ButtonTest,
@@ -272,7 +287,7 @@ impl Launcher {
                     return if setting == Setting::Reboot { Command::Reboot } else { Command::PowerOff };
                 }
                 Setting::Reboot | Setting::PowerOff => self.confirming = Some(setting),
-                Setting::Volume | Setting::Brightness => {}
+                Setting::Volume | Setting::Brightness | Setting::Scaling | Setting::Effect | Setting::Ghosting => {}
             },
             _ => {}
         }
@@ -403,6 +418,12 @@ mod tests {
         assert_eq!(launcher.press(Button::Right, &library), Command::Volume(1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Left, &library), Command::Brightness(-1));
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::Right, &library), Command::Scaling(1));
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::Left, &library), Command::Effect(-1));
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::Right, &library), Command::Ghosting(1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::A, &library), Command::ButtonTest);
         press_all(&mut launcher, &library, &[Button::Down, Button::A]);

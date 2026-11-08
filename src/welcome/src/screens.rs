@@ -4,6 +4,7 @@ use crate::canvas::{text_width, Battery, Canvas, Rgb, ACCENT, BACKGROUND, BODY, 
 use crate::font;
 use crate::icons::{self, Icon};
 use crate::launcher::{Setting, COLUMNS, PAGE, SETTINGS};
+use crate::settings::Display;
 
 const TEXT_SCALE: usize = 2;
 const HINT_Y: usize = 448;
@@ -24,7 +25,7 @@ const LIST_ICON_LEFT: usize = 16;
 const LIST_ICON_TEXT_LEFT: usize = 60;
 
 const SETTINGS_TOP: usize = 84;
-const SETTINGS_ROW: usize = 40;
+const SETTINGS_ROW: usize = 36;
 const SETTINGS_LEFT: usize = 40;
 const SETTINGS_RIGHT: usize = 40;
 const BAR_W: usize = 160;
@@ -50,6 +51,7 @@ pub struct SettingsView<'a> {
     pub selected: Setting,
     pub volume_percent: Option<u32>,
     pub brightness_percent: Option<u32>,
+    pub display: Display,
     pub message: Option<&'a str>,
 }
 
@@ -190,6 +192,15 @@ pub fn settings_screen(width: usize, height: usize, view: &SettingsView, battery
         match setting {
             Setting::Volume => bar(&mut canvas, right, y, SETTINGS_ROW - 4, view.volume_percent, on, off),
             Setting::Brightness => bar(&mut canvas, right, y, SETTINGS_ROW - 4, view.brightness_percent, on, off),
+            Setting::Scaling | Setting::Effect | Setting::Ghosting => {
+                let label = match setting {
+                    Setting::Scaling => view.display.scaling.label(),
+                    Setting::Effect => view.display.effect.label(),
+                    _ => view.display.ghosting.label(),
+                };
+                let value = if selected { format!("< {label} >") } else { label.to_string() };
+                canvas.text_at(&value, right - text_width(&value, TEXT_SCALE), text_y, TEXT_SCALE, text_color);
+            }
             Setting::ButtonTest | Setting::SystemInfo => {
                 canvas.text_at(">", right - text_width(">", TEXT_SCALE), text_y, TEXT_SCALE, text_color);
             }
@@ -362,6 +373,7 @@ mod tests {
             selected: Setting::PowerOff,
             volume_percent: Some(80),
             brightness_percent: Some(50),
+            display: Display::default(),
             message: Some("PRESS A AGAIN TO POWER OFF"),
         };
         let canvas = settings_screen(640, 480, &view, None);

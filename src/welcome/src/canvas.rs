@@ -4,6 +4,7 @@ use crate::font;
 use crate::icons::{self, Icon};
 use crate::input::{Button, Controls};
 use crate::pause::{Item, PauseMenu, ITEMS};
+use crate::settings::Display;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Rgb(pub u8, pub u8, pub u8);
@@ -176,11 +177,12 @@ pub struct PauseView<'a> {
     pub slot_used: bool,
     pub volume_percent: Option<u32>,
     pub brightness_percent: Option<u32>,
+    pub display: Display,
 }
 
-const PAUSE_PANEL: (usize, usize, usize, usize) = (110, 60, 420, 360);
-const PAUSE_TOP: usize = 126;
-const PAUSE_ROW: usize = 36;
+const PAUSE_PANEL: (usize, usize, usize, usize) = (110, 30, 420, 420);
+const PAUSE_TOP: usize = 96;
+const PAUSE_ROW: usize = 30;
 const PAUSE_TEXT_SCALE: usize = 2;
 const PAUSE_BAR_WIDTH: usize = 120;
 
@@ -246,6 +248,9 @@ pub fn pause_screen(
             continue;
         }
         let value = match item {
+            Item::Scaling => view.display.scaling.label().to_string(),
+            Item::Effect => view.display.effect.label().to_string(),
+            Item::Ghosting => view.display.ghosting.label().to_string(),
             Item::SaveState => format!("SLOT {}", menu.slot()),
             Item::LoadState if view.slot_used => format!("SLOT {}", menu.slot()),
             Item::LoadState => format!("SLOT {} EMPTY", menu.slot()),
@@ -356,7 +361,7 @@ mod tests {
     }
 
     fn pause_view(menu: &PauseMenu) -> PauseView<'_> {
-        PauseView { menu, slot_used: false, volume_percent: Some(80), brightness_percent: None }
+        PauseView { menu, slot_used: false, volume_percent: Some(80), brightness_percent: None, display: Display::default() }
     }
 
     #[test]

@@ -81,6 +81,25 @@ Working on the test unit, confirmed by the user:
 
 Built but not yet tested on the device:
 
+- Display options, in Settings and the in-game menu, saved in `settings.txt`, after
+  research into emulator shader techniques. Scaling is sharp-bilinear (`axis_weights` in
+  `libretro.rs`): a screen line across a game pixel boundary blends the two by coverage,
+  so pixels look even at non-whole FIT scales. SCALING INTEGER uses whole multiples: NES
+  512x480, SNES 512x448, Game Boy 480x432, GBA 480x320. SCREEN EFFECT CRT darkens the gap
+  between game rows by up to 75% for dark pixels and 25% for bright ones, brightened 1.25
+  times; LCD is a soft grid, brightened 1.12 times. Both use coverage of the pixel gap
+  (`gap_coverage`), so they stay smooth at any scale. LCD GHOSTING sets mGBA's interframe
+  blending: OFF, SMART (default, only flickering pixels) or FULL, applied live through
+  `GET_VARIABLE_UPDATE`. Always on: mGBA colour correction (`Auto`) and FCEUmm's measured
+  `smooth-v2-fbx` NES palette. The old `scanlines` and `grid` names load as CRT and LCD.
+  FireRed with CRT: scaling 4.6 ms per frame at 59.4 to 59.6 fps. Moving drawing to the
+  GPU would mean replacing fbdev with DRM, so it wasn't done. Claude checked each effect
+  in screenshots of FireRed run from copies of its saves, and the user confirmed they
+  look much better
+- The sound probe never lowers the samples per frame below the core's timing. Starting
+  games make less sound: LeafGreen measured 1065 against 1097, and lowering the rate made
+  it wait on the audio at 58.1 fps. FireRed now plays at its full 65536 Hz
+
 - Fast-forward: holding R2 runs extra frames in each panel refresh, within 6 ms and up
   to 8 frames, keeping only the last frame's picture and sound, so sound keeps flowing.
   A `>>` shows in the top-right corner, and the CPU is held at 1008 MHz meanwhile. A Game
@@ -145,11 +164,10 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
 
 Agreed with the user on 2026-11-08, in this order:
 
-1. Display options: integer scaling and screen effects
-2. Box art for the selected game, from the libretro-thumbnails collections
-3. Favourites, starred with Select, under their own tile
-4. A boot splash and a faster boot
-5. Rewind, moved to the end by the user
+1. Box art for the selected game, from the libretro-thumbnails collections
+2. Favourites, starred with Select, under their own tile
+3. A boot splash and a faster boot
+4. Rewind, moved to the end by the user
 
 Proposed, not yet confirmed by the user:
 

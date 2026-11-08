@@ -12,11 +12,23 @@ pub enum Item {
     LoadState,
     Volume,
     Brightness,
+    Scaling,
+    Effect,
+    Ghosting,
     Quit,
 }
 
-pub const ITEMS: [Item; 6] =
-    [Item::Resume, Item::SaveState, Item::LoadState, Item::Volume, Item::Brightness, Item::Quit];
+pub const ITEMS: [Item; 9] = [
+    Item::Resume,
+    Item::SaveState,
+    Item::LoadState,
+    Item::Volume,
+    Item::Brightness,
+    Item::Scaling,
+    Item::Effect,
+    Item::Ghosting,
+    Item::Quit,
+];
 
 impl Item {
     pub fn label(self) -> &'static str {
@@ -26,6 +38,9 @@ impl Item {
             Self::LoadState => "LOAD STATE",
             Self::Volume => "VOLUME",
             Self::Brightness => "BRIGHTNESS",
+            Self::Scaling => "SCALING",
+            Self::Effect => "SCREEN EFFECT",
+            Self::Ghosting => "LCD GHOSTING",
             Self::Quit => "QUIT",
         }
     }
@@ -41,6 +56,9 @@ pub enum Action {
     Load(usize),
     Volume(i32),
     Brightness(i32),
+    Scaling(i32),
+    Effect(i32),
+    Ghosting(i32),
 }
 
 pub struct PauseMenu {
@@ -91,6 +109,9 @@ impl PauseMenu {
                     }
                     Item::Volume => return Action::Volume(step),
                     Item::Brightness => return Action::Brightness(step),
+                    Item::Scaling => return Action::Scaling(step),
+                    Item::Effect => return Action::Effect(step),
+                    Item::Ghosting => return Action::Ghosting(step),
                     Item::Resume | Item::Quit => {}
                 }
             }
@@ -100,7 +121,9 @@ impl PauseMenu {
                     Item::SaveState => Action::Save(self.slot),
                     Item::LoadState => Action::Load(self.slot),
                     Item::Quit => Action::Quit,
-                    Item::Volume | Item::Brightness => Action::Nothing,
+                    Item::Volume | Item::Brightness | Item::Scaling | Item::Effect | Item::Ghosting => {
+                        Action::Nothing
+                    }
                 }
             }
             Button::B | Button::Menu => return Action::Resume,
@@ -178,6 +201,8 @@ mod tests {
         assert_eq!(menu_at(Item::Volume).press(Button::Left), Action::Volume(-1));
         assert_eq!(menu_at(Item::Brightness).press(Button::Right), Action::Brightness(1));
         assert_eq!(menu_at(Item::Volume).press(Button::A), Action::Nothing);
+        assert_eq!(menu_at(Item::Scaling).press(Button::Right), Action::Scaling(1));
+        assert_eq!(menu_at(Item::Effect).press(Button::Left), Action::Effect(-1));
     }
 
     #[test]

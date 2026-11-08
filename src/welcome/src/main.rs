@@ -498,6 +498,7 @@ fn launcher_canvas(
                 selected: launcher.settings_selected(),
                 volume_percent: settings::volume_percent(),
                 brightness_percent: settings::brightness_percent(),
+                display: settings::display(),
                 message: launcher.confirmation(),
             };
             screens::settings_screen(width, height, &view, battery)
@@ -511,6 +512,15 @@ enum Wake {
     Event(Event),
     Repeat(Button, usize),
     Redraw,
+}
+
+/// Changes how games are shown, and saves the choice.
+fn change_display(change: impl FnOnce(&mut settings::Display)) {
+    let mut display = settings::display();
+    change(&mut display);
+    if let Err(error) = settings::set_display(display) {
+        eprintln!("warning: could not save the display settings: {error}");
+    }
 }
 
 fn save_settings() {
@@ -545,6 +555,9 @@ fn act(
             settings::change_brightness(steps);
             save_settings();
         }
+        Action::Scaling(steps) => change_display(|display| display.scaling = display.scaling.cycle(steps)),
+        Action::Effect(steps) => change_display(|display| display.effect = display.effect.cycle(steps)),
+        Action::Ghosting(steps) => change_display(|display| display.ghosting = display.ghosting.cycle(steps)),
         Action::Reboot => shut_down(framebuffer, "REBOOTING", "reboot")?,
         Action::PowerOff => shut_down(framebuffer, "POWERING OFF", &power::poweroff_command())?,
     }
@@ -710,6 +723,7 @@ fn write_pause_preview(path: &str) -> io::Result<()> {
         slot_used: false,
         volume_percent: Some(80),
         brightness_percent: Some(50),
+        display: settings::Display::default(),
     };
     write_ppm(&canvas::pause_screen(width, height, &frame, frame_size, &view), path)
 }
