@@ -308,24 +308,18 @@ impl Drop for Control {
     }
 }
 
-extern "C" {
-    fn kill(pid: i32, signal: i32) -> i32;
-}
-
 /// Asks udhcpc for a new address at once: it releases the old one on SIGUSR2 and asks
 /// again on SIGUSR1. Otherwise it could wait up to 20 seconds, or keep the address
 /// from the network before.
 fn renew_address() {
-    const SIGUSR1: i32 = 10;
-    const SIGUSR2: i32 = 12;
     let Some(pid) = std::fs::read_to_string(DHCP_PID_PATH).ok().and_then(|text| text.trim().parse().ok()) else {
         eprintln!("warning: udhcpc isn't running for wlan0");
         return;
     };
     // SAFETY: kill only sends a signal to the process number udhcpc wrote.
     unsafe {
-        kill(pid, SIGUSR2);
-        kill(pid, SIGUSR1);
+        libc::kill(pid, libc::SIGUSR2);
+        libc::kill(pid, libc::SIGUSR1);
     }
 }
 

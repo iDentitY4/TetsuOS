@@ -6,8 +6,12 @@ license = "MIT"
 description = "Game launcher and libretro frontend for the RG35XX SP"
 
 [dependencies]
+evdev = "0.13.2"
 jiff = { version = "0.2.40", default-features = false, features = ["std"] }
+libc = "0.2.191"
+libloading = "0.9.0"
 png = "0.18.1"
+signal-hook = "0.4.6"
 
 [profile.release]
 opt-level = "s"

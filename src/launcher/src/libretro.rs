@@ -15,29 +15,13 @@ use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::thread::{sleep, spawn, JoinHandle};
 use std::time::{Duration, Instant};
 
-extern "C" {
-    fn dlopen(path: *const c_char, flags: c_int) -> *mut c_void;
-    fn dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void;
-    fn dlerror() -> *const c_char;
-    fn fcntl(fd: c_int, command: c_int, ...) -> c_int;
-    fn signal(number: c_int, handler: usize) -> usize;
-}
-
-const SIGTERM: c_int = 15;
-/// Set when the system asks the game to stop, as it does at power-off.
-static TERMINATING: AtomicBool = AtomicBool::new(false);
-
-extern "C" fn on_terminate(_: c_int) {
-    TERMINATING.store(true, Ordering::Relaxed);
-}
-
-const RTLD_NOW: c_int = 2;
-const F_SETPIPE_SZ: c_int = 1031;
+/// Set when the system asks the game to stop with SIGTERM, as it does at power-off.
+static TERMINATING: LazyLock<Arc<AtomicBool>> = LazyLock::new(|| Arc::new(AtomicBool::new(false)));
 
 const ENVIRONMENT_EXPERIMENTAL: c_uint = 0x10000;
 const ENVIRONMENT_GET_CAN_DUPE: c_uint = 3;
@@ -672,19 +656,6 @@ struct Core {
     _rom: Vec<u8>,
 }
 
-fn last_dl_error() -> io::Error {
-    // SAFETY: dlerror returns null or a valid C string.
-    let message = unsafe {
-        let error = dlerror();
-        if error.is_null() {
-            "unknown error".to_string()
-        } else {
-            CStr::from_ptr(error).to_string_lossy().into_owned()
-        }
-    };
-    io::Error::other(message)
-}
-
 fn c_path(path: &Path) -> io::Result<CString> {
     use std::os::unix::ffi::OsStrExt;
     CString::new(path.as_os_str().as_bytes()).map_err(io::Error::other)
@@ -692,23 +663,17 @@ fn c_path(path: &Path) -> io::Result<CString> {
 
 impl Core {
     fn load(core_path: &Path, rom_path: &Path) -> io::Result<Self> {
-        let core_name = c_path(core_path)?;
-        // SAFETY: the symbols are cast to the signatures in libretro.h.
+        use libloading::os::unix::{Library, RTLD_LOCAL, RTLD_NOW};
+        // SAFETY: loading a core runs its initialisers, which only set up the core.
+        let library = unsafe { Library::open(Some(core_path), RTLD_NOW | RTLD_LOCAL) }.map_err(io::Error::other)?;
+        // Never unloaded, as a core's threads, like PCSX ReARMed's GPU thread, can outlive
+        // retro_deinit. The game process ends soon after the game anyway.
+        let library: &'static Library = Box::leak(Box::new(library));
+        // SAFETY: the symbols have the signatures in libretro.h.
         unsafe {
-            let handle = dlopen(core_name.as_ptr(), RTLD_NOW);
-            if handle.is_null() {
-                return Err(last_dl_error());
-            }
-            let symbol = |name: &CStr| -> io::Result<*mut c_void> {
-                let address = dlsym(handle, name.as_ptr());
-                if address.is_null() {
-                    return Err(last_dl_error());
-                }
-                Ok(address)
-            };
             macro_rules! function {
                 ($name:literal, $type:ty) => {
-                    std::mem::transmute::<*mut c_void, $type>(symbol($name)?)
+                    *library.get::<$type>($name.to_bytes_with_nul()).map_err(io::Error::other)?
                 };
             }
             type SetCallback = unsafe extern "C" fn(*const c_void);
@@ -932,7 +897,7 @@ fn start_audio(sample_rate: f64) -> io::Result<Child> {
         .spawn()?;
     if let Some(stdin) = &child.stdin {
         // SAFETY: F_SETPIPE_SZ takes its size by value. A failure only adds latency.
-        unsafe { fcntl(stdin.as_raw_fd(), F_SETPIPE_SZ, 4096 as c_int) };
+        unsafe { libc::fcntl(stdin.as_raw_fd(), libc::F_SETPIPE_SZ, 4096) };
     }
     Ok(child)
 }
@@ -1171,8 +1136,9 @@ pub fn play(
     setup: CoreSetup,
     framebuffer: &mut Framebuffer,
 ) -> io::Result<Ending> {
-    // SAFETY: the handler only stores to an atomic.
-    unsafe { signal(SIGTERM, on_terminate as extern "C" fn(c_int) as usize) };
+    if let Err(error) = signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&TERMINATING)) {
+        eprintln!("warning: a power-off may not save the game: {error}");
+    }
     let directory = save.parent().unwrap_or(Path::new("."));
     set_host(directory, framebuffer.size(), setup)?;
     let mut core = Core::load(core_path, rom)?;

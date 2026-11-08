@@ -378,9 +378,8 @@ so files from older versions load (tested with the test unit's file from 2026-11
 
 Agreed with the user on 2026-11-08, in this order, each shown to the user before the next:
 
-1. Refactor, after renaming `welcome` to `launcher`, keeping settings in memory and
-   splitting `main.rs` into modules (all done): use `libc`, `libloading` and `evdev`
-   instead of hand-declared FFI and raw `input_event` decoding; replace the global
+1. Refactor, after renaming `welcome` to `launcher`, keeping settings in memory,
+   splitting `main.rs` into modules and using crates for system calls (all done): replace the global
    theme atomics with a `Theme` value and let `SettingsView` take the settings; move
    box art downloads into the app with `ureq` and `rustls` plus `serde_json`, dropping
    the curl, mbedTLS and CA-certificate packages
@@ -493,7 +492,12 @@ Proposed, not yet confirmed by the user:
   idle sleep in `sleep.rs`; the clock and battery corner in `corner.rs`; SYSTEM INFO and
   boot timing in `system_info.rs`; the Wi-Fi and box art screens' loops in
   `wifi_screen.rs` and `boxart_screen.rs`; PC previews in `previews.rs`. `main.rs`
-  re-exports these, and they `use crate::*` to reach each other
+  re-exports these, and they `use crate::*` to reach each other. System calls go through
+  crates, with no `extern` blocks of our own: `libc` (framebuffer ioctls, the audio pipe
+  size, signalling udhcpc), `signal-hook` (SIGTERM in a game), `libloading` (cores, kept
+  loaded until the process ends, as a core's threads may outlive `retro_deinit`) and
+  `evdev` (`RawDevice`, read as before without resyncing). The remaining `unsafe` is
+  mostly calls into the C cores
 - `scripts/flash.sh`: checked SD card flashing
 - `scripts/push.sh`: copies build output to the running device over the USB network link
 - `scripts/boxart.py`: fetches covers for the games on the device and copies them there

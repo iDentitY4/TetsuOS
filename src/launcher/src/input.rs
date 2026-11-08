@@ -1,9 +1,8 @@
 //! Reads the buttons from the Linux input devices.
 
+use evdev::raw_stream::RawDevice;
+use evdev::{EventType, KeyCode, SwitchCode};
 use std::collections::HashSet;
-use std::ffi::c_long;
-use std::fs::File;
-use std::io::Read;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::{sleep, spawn};
 use std::time::Duration;
@@ -12,13 +11,28 @@ const INPUT_DIR: &str = "/dev/input";
 /// Drivers can finish probing late, so new devices are picked up while running.
 const RESCAN_INTERVAL: Duration = Duration::from_secs(2);
 
-/// `struct input_event` from linux/input.h: a timeval, then type, code and value.
-const TIME_SIZE: usize = 2 * std::mem::size_of::<c_long>();
-const EVENT_SIZE: usize = TIME_SIZE + 8;
+const EV_KEY: u16 = EventType::KEY.0;
+const EV_SW: u16 = EventType::SWITCH.0;
+const SW_LID: u16 = SwitchCode::SW_LID.0;
 
-const EV_KEY: u16 = 0x01;
-const EV_SW: u16 = 0x05;
-const SW_LID: u16 = 0x00;
+// The codes the device tree gives each control.
+const KEY_VOLUMEDOWN: u16 = KeyCode::KEY_VOLUMEDOWN.0;
+const KEY_VOLUMEUP: u16 = KeyCode::KEY_VOLUMEUP.0;
+const BTN_SOUTH: u16 = KeyCode::BTN_SOUTH.0;
+const BTN_EAST: u16 = KeyCode::BTN_EAST.0;
+const BTN_NORTH: u16 = KeyCode::BTN_NORTH.0;
+const BTN_WEST: u16 = KeyCode::BTN_WEST.0;
+const BTN_TL: u16 = KeyCode::BTN_TL.0;
+const BTN_TR: u16 = KeyCode::BTN_TR.0;
+const BTN_TL2: u16 = KeyCode::BTN_TL2.0;
+const BTN_TR2: u16 = KeyCode::BTN_TR2.0;
+const BTN_SELECT: u16 = KeyCode::BTN_SELECT.0;
+const BTN_START: u16 = KeyCode::BTN_START.0;
+const BTN_MODE: u16 = KeyCode::BTN_MODE.0;
+const BTN_DPAD_UP: u16 = KeyCode::BTN_DPAD_UP.0;
+const BTN_DPAD_DOWN: u16 = KeyCode::BTN_DPAD_DOWN.0;
+const BTN_DPAD_LEFT: u16 = KeyCode::BTN_DPAD_LEFT.0;
+const BTN_DPAD_RIGHT: u16 = KeyCode::BTN_DPAD_RIGHT.0;
 const VALUE_RELEASED: i32 = 0;
 const VALUE_REPEAT: i32 = 2;
 
@@ -47,26 +61,27 @@ pub enum Button {
 const BUTTON_COUNT: usize = 18;
 
 impl Button {
-    /// Maps an event to the code the device tree assigns to each control.
+    /// Maps an event to the control the device tree gives that code. The face buttons are
+    /// named by position: south is B, east is A, north X and west Y.
     fn from_event(event_type: u16, code: u16) -> Option<Self> {
         match (event_type, code) {
-            (EV_KEY, 114) => Some(Self::VolumeDown),
-            (EV_KEY, 115) => Some(Self::VolumeUp),
-            (EV_KEY, 0x130) => Some(Self::B),
-            (EV_KEY, 0x131) => Some(Self::A),
-            (EV_KEY, 0x133) => Some(Self::X),
-            (EV_KEY, 0x134) => Some(Self::Y),
-            (EV_KEY, 0x136) => Some(Self::L1),
-            (EV_KEY, 0x137) => Some(Self::R1),
-            (EV_KEY, 0x138) => Some(Self::L2),
-            (EV_KEY, 0x139) => Some(Self::R2),
-            (EV_KEY, 0x13A) => Some(Self::Select),
-            (EV_KEY, 0x13B) => Some(Self::Start),
-            (EV_KEY, 0x13C) => Some(Self::Menu),
-            (EV_KEY, 0x220) => Some(Self::Up),
-            (EV_KEY, 0x221) => Some(Self::Down),
-            (EV_KEY, 0x222) => Some(Self::Left),
-            (EV_KEY, 0x223) => Some(Self::Right),
+            (EV_KEY, KEY_VOLUMEDOWN) => Some(Self::VolumeDown),
+            (EV_KEY, KEY_VOLUMEUP) => Some(Self::VolumeUp),
+            (EV_KEY, BTN_SOUTH) => Some(Self::B),
+            (EV_KEY, BTN_EAST) => Some(Self::A),
+            (EV_KEY, BTN_NORTH) => Some(Self::X),
+            (EV_KEY, BTN_WEST) => Some(Self::Y),
+            (EV_KEY, BTN_TL) => Some(Self::L1),
+            (EV_KEY, BTN_TR) => Some(Self::R1),
+            (EV_KEY, BTN_TL2) => Some(Self::L2),
+            (EV_KEY, BTN_TR2) => Some(Self::R2),
+            (EV_KEY, BTN_SELECT) => Some(Self::Select),
+            (EV_KEY, BTN_START) => Some(Self::Start),
+            (EV_KEY, BTN_MODE) => Some(Self::Menu),
+            (EV_KEY, BTN_DPAD_UP) => Some(Self::Up),
+            (EV_KEY, BTN_DPAD_DOWN) => Some(Self::Down),
+            (EV_KEY, BTN_DPAD_LEFT) => Some(Self::Left),
+            (EV_KEY, BTN_DPAD_RIGHT) => Some(Self::Right),
             (EV_SW, SW_LID) => Some(Self::Lid),
             _ => None,
         }
@@ -128,14 +143,11 @@ impl Event {
         }
         Button::from_event(self.event_type, self.code)
     }
+}
 
-    fn parse(bytes: &[u8; EVENT_SIZE]) -> Self {
-        let field = &bytes[TIME_SIZE..];
-        Self {
-            event_type: u16::from_ne_bytes([field[0], field[1]]),
-            code: u16::from_ne_bytes([field[2], field[3]]),
-            value: i32::from_ne_bytes([field[4], field[5], field[6], field[7]]),
-        }
+impl From<evdev::InputEvent> for Event {
+    fn from(event: evdev::InputEvent) -> Self {
+        Self { event_type: event.event_type().0, code: event.code(), value: event.value() }
     }
 }
 
@@ -199,11 +211,13 @@ impl Controls {
     }
 }
 
-fn read_events(mut device: File, events: Sender<Event>) {
-    let mut buffer = [0u8; EVENT_SIZE];
-    while device.read_exact(&mut buffer).is_ok() {
-        if events.send(Event::parse(&buffer)).is_err() {
-            return;
+fn read_events(mut device: RawDevice, events: Sender<Event>) {
+    // Ends when the device goes, or nothing listens any more.
+    while let Ok(batch) = device.fetch_events() {
+        for event in batch {
+            if events.send(event.into()).is_err() {
+                return;
+            }
         }
     }
 }
@@ -220,7 +234,7 @@ pub fn spawn_readers() -> Receiver<Event> {
                 if !name.to_string_lossy().starts_with("event") || opened.contains(&name) {
                     continue;
                 }
-                match File::open(entry.path()) {
+                match RawDevice::open(entry.path()) {
                     Ok(device) => {
                         let events = sender.clone();
                         spawn(move || read_events(device, events));
@@ -239,15 +253,12 @@ pub fn spawn_readers() -> Receiver<Event> {
 mod tests {
     use super::*;
 
-    const BTN_EAST: u16 = 0x131;
-
     #[test]
-    fn parses_the_kernel_event_layout() {
-        let mut bytes = [0xAAu8; EVENT_SIZE];
-        bytes[TIME_SIZE..TIME_SIZE + 2].copy_from_slice(&EV_KEY.to_ne_bytes());
-        bytes[TIME_SIZE + 2..TIME_SIZE + 4].copy_from_slice(&BTN_EAST.to_ne_bytes());
-        bytes[TIME_SIZE + 4..].copy_from_slice(&1i32.to_ne_bytes());
-        assert_eq!(Event::parse(&bytes), Event::key(BTN_EAST, 1));
+    fn the_codes_are_the_ones_the_device_tree_uses() {
+        assert_eq!((KEY_VOLUMEDOWN, KEY_VOLUMEUP, BTN_SOUTH, BTN_EAST), (114, 115, 0x130, 0x131));
+        assert_eq!((BTN_MODE, BTN_DPAD_UP, BTN_DPAD_RIGHT, EV_SW, SW_LID), (0x13C, 0x220, 0x223, 5, 0));
+        let event = evdev::InputEvent::new(EventType::KEY.0, BTN_EAST, 1);
+        assert_eq!(Event::from(event), Event::key(BTN_EAST, 1));
     }
 
     #[test]

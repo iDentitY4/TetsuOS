@@ -1,20 +1,18 @@
-//! Minimal Linux framebuffer access, using the libc that std already links.
+//! Minimal Linux framebuffer access, through its ioctls.
 
 use crate::canvas::{Canvas, Rgb};
-use std::ffi::{c_int, c_ulong};
 use std::fs::{File, OpenOptions};
 use std::io::{self, Seek, SeekFrom, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::FileExt;
 
-extern "C" {
-    fn ioctl(fd: c_int, request: c_ulong, ...) -> c_int;
-}
+use libc::{c_ulong, ioctl, Ioctl};
 
-const FBIOGET_VSCREENINFO: c_ulong = 0x4600;
-const FBIOGET_FSCREENINFO: c_ulong = 0x4602;
-const FBIO_WAITFORVSYNC: c_ulong = 0x4004_4620;
-const KDSETMODE: c_ulong = 0x4B3A;
+// From linux/fb.h and linux/kd.h, which the libc crate doesn't have.
+const FBIOGET_VSCREENINFO: Ioctl = 0x4600;
+const FBIOGET_FSCREENINFO: Ioctl = 0x4602;
+const FBIO_WAITFORVSYNC: Ioctl = 0x4004_4620;
+const KDSETMODE: Ioctl = 0x4B3A;
 const KD_GRAPHICS: c_ulong = 1;
 
 #[repr(C)]
