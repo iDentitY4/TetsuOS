@@ -61,8 +61,9 @@ Working on the test unit, confirmed by the user:
   non-commercial use only), and Game Boy and Game Boy Color through mGBA. Consoles
   appear in release order, set by the order of `SYSTEMS` in `main.rs`. New systems name saves with the full file name, such as `Tetris.gb.srm`;
   GBA and Tamagotchi keep `<name>.srm` and `tama.state`, so existing saves still load.
-  Cores faster than the panel's 59.94 Hz, like NES and SNES at 60.10, play sound at a
-  matching lower rate (`playback_rate`), or they would underrun every few seconds. The
+  Cores that make less sound per panel refresh than their sample rate, like NES and SNES
+  at 60.10 fps, play it at a matching lower rate, or they would underrun every few
+  seconds. The
   user confirmed all of their games play well. Headless, Yoshi's Island, Chrono Trigger
   and A Link to the Past emulate at 134 to 143 fps
 - The launcher redesign. The home screen is a grid of tiles with pixel-art pictograms
@@ -79,6 +80,17 @@ Working on the test unit, confirmed by the user:
   yet seen by the user
 
 Built but not yet tested on the device:
+
+- Fast-forward: holding R2 runs extra frames in each panel refresh, within 6 ms and up
+  to 8 frames, keeping only the last frame's picture and sound, so sound keeps flowing.
+  A `>>` shows in the top-right corner, and the CPU is held at 1008 MHz meanwhile. A Game
+  Boy game reached about 5x with no underruns; at an 8 ms budget it missed refreshes and
+  the sound ran out. The welcome log's statistics show the speed. The user confirmed it
+  works; the sound is very choppy, especially on NES, which the user accepts
+- Sound rate from measured samples. The first 30 frames run silent while the frontend
+  counts samples per frame, then aplay starts at the matching rate (`playback_rate`).
+  mGBA reports 61.17 fps for Super Game Boy games but makes sound as at 59.73, so the
+  rate from its timing made them wait on the audio at 58.48 fps. They now run at 59.5
 
 - Resuming at boot. Starting a game writes its path to `/mnt/data/playing.txt`; quitting
   or a crash removes it, but shutting down mid-game stops the launcher before it can, and
@@ -130,6 +142,14 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
 59.94 fps on Panfrost. The rootfs partition is still a fixed 1 GiB.
 
 ## Next steps
+
+Agreed with the user on 2026-11-08, in this order:
+
+1. Display options: integer scaling and screen effects
+2. Box art for the selected game, from the libretro-thumbnails collections
+3. Favourites, starred with Select, under their own tile
+4. A boot splash and a faster boot
+5. Rewind, moved to the end by the user
 
 Proposed, not yet confirmed by the user:
 

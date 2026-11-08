@@ -225,6 +225,17 @@ pub fn battery_warning(percent: u32) -> Canvas {
     canvas
 }
 
+/// The fast-forward sign, or black to clear it, small enough for a game's border.
+pub fn fast_forward_sign(on: bool) -> Canvas {
+    let text = ">>";
+    let mut canvas = Canvas::new(text_width(text, TEXT_SCALE) + 4, font::HEIGHT * TEXT_SCALE + 4);
+    canvas.pixels.fill(Rgb(0, 0, 0));
+    if on {
+        canvas.text_at(text, 2, 2, TEXT_SCALE, ACCENT);
+    }
+    canvas
+}
+
 /// The game the launcher is about to resume after starting up.
 pub fn resume_screen(width: usize, height: usize, icon: &Icon, name: &str) -> Canvas {
     let mut canvas = Canvas::new(width, height);
@@ -327,6 +338,14 @@ mod tests {
         assert!(6 + warning.height <= 27, "shorter than the GBA border");
         assert!(6 + warning.width <= 46, "narrower than the SNES border");
         assert!(warning.pixels.contains(&LOW));
+    }
+
+    #[test]
+    fn the_fast_forward_sign_fits_inside_every_border() {
+        let sign = fast_forward_sign(true);
+        assert!(6 + sign.height <= 27 && 6 + sign.width <= 46);
+        assert!(sign.pixels.contains(&ACCENT));
+        assert!(!fast_forward_sign(false).pixels.contains(&ACCENT));
     }
 
     #[test]

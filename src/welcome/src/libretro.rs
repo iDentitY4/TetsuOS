@@ -164,6 +164,8 @@ struct Host {
     controls: Controls,
     scale_time: Duration,
     audio_time: Duration,
+    /// Set for the extra frames that fast-forward runs, whose picture and sound are dropped.
+    skip_output: bool,
 }
 
 thread_local! {
@@ -229,6 +231,9 @@ unsafe extern "C" fn video_refresh(
     }
     let (width, height) = (width as usize, height as usize);
     with_host(|host| {
+        if host.skip_output {
+            return;
+        }
         let start = Instant::now();
         let bytes_per_pixel = if host.format == PixelFormat::Xrgb8888 { 4 } else { 2 };
         // SAFETY: the core guarantees `height` rows of `pitch` bytes.
@@ -246,6 +251,9 @@ unsafe extern "C" fn video_refresh(
 }
 
 fn write_audio(host: &mut Host, bytes: &[u8]) {
+    if host.skip_output {
+        return;
+    }
     host.audio_bytes += bytes.len() as u64;
     let start = Instant::now();
     if let Some(stdin) = host.audio.as_mut().and_then(|child| child.stdin.as_mut()) {
@@ -583,6 +591,7 @@ fn set_host(directory: &Path, target: (usize, usize)) -> io::Result<()> {
         controls: Controls::new(),
         scale_time: Duration::ZERO,
         audio_time: Duration::ZERO,
+        skip_output: false,
     };
     HOST.with(|slot| *slot.borrow_mut() = Some(host));
     Ok(())
@@ -591,14 +600,19 @@ fn set_host(directory: &Path, target: (usize, usize)) -> io::Result<()> {
 /// The panel's refresh rate, which paces the game. Measured with kmscube.
 const PANEL_HZ: f64 = 59.94;
 
-/// The rate to play a core's sound at. A core made for more frames per second than the
-/// panel shows runs slightly slow here, so it produces sound slower than its sample rate,
-/// and would run out every few seconds. It plays at a matching lower rate, a little below
-/// what it produces, so the game waits on the audio now and then instead. A slower core,
-/// like the Game Boy Advance at 59.73, already produces more than it plays.
-fn playback_rate(sample_rate: f64, fps: f64) -> f64 {
+/// Frames run before the sound starts, to measure how much sound a frame makes.
+const AUDIO_PROBE_FRAMES: u64 = 30;
+
+/// The rate to play a core's sound at, from the samples it makes per frame. Paced by the
+/// panel, a core that makes less than its sample rate's worth per panel refresh, like NES
+/// and SNES made for 60.10 fps, would run out every few seconds. It plays at a matching
+/// lower rate, a little below what it makes, so the game waits on the audio now and then
+/// instead. A core that makes more, like the Game Boy Advance, plays at its own rate.
+/// The samples are measured, not worked out from the core's frame rate, because mGBA
+/// reports 61.17 fps for Super Game Boy games but makes sound as at 59.73.
+fn playback_rate(sample_rate: f64, samples_per_frame: f64) -> f64 {
     const MARGIN: f64 = 0.999;
-    sample_rate * (PANEL_HZ * MARGIN / fps).min(1.0)
+    sample_rate.min(samples_per_frame * PANEL_HZ * MARGIN)
 }
 
 /// Plays through aplay. A small pipe keeps latency low, and paces the game to the
@@ -671,6 +685,28 @@ pub enum Ending {
 
 /// Where the battery warning goes: a corner that is border for every system's picture.
 const WARNING_POSITION: (usize, usize) = (6, 6);
+/// Holding this runs the game faster. No supported system uses it.
+const FAST_FORWARD_BUTTON: Button = Button::R2;
+/// How long each panel refresh may spend on extra frames while fast-forwarding. With the
+/// frame that is shown, this stays inside one refresh, so sound keeps flowing: at 8 ms,
+/// some refreshes were missed, and the sound ran out.
+const FAST_FORWARD_BUDGET: Duration = Duration::from_millis(6);
+/// The most frames per refresh, so a light core doesn't race ahead uncontrollably.
+const FAST_FORWARD_MAX: u32 = 8;
+
+/// Shows or clears the fast-forward sign in the top right corner, which is border for
+/// every system's picture, like the battery warning's corner.
+fn draw_fast_forward(framebuffer: &mut Framebuffer, on: bool) -> io::Result<()> {
+    let canvas = screens::fast_forward_sign(on);
+    let pixels: Vec<u32> = canvas
+        .pixels
+        .iter()
+        .map(|color| u32::from(color.0) << 16 | u32::from(color.1) << 8 | u32::from(color.2))
+        .collect();
+    let (width, _) = framebuffer.size();
+    let x = width.saturating_sub(canvas.width + WARNING_POSITION.0);
+    framebuffer.blit(&pixels, canvas.width, canvas.height, x, WARNING_POSITION.1)
+}
 
 /// Shows the charge level in the corner while the battery is low.
 fn draw_battery_warning(framebuffer: &mut Framebuffer, percent: u32) -> io::Result<()> {
@@ -825,10 +861,6 @@ pub fn play(
     let (fps, sample_rate) = (core.av_info.timing.fps, core.av_info.timing.sample_rate);
     println!("playing {} at {fps:.2} fps, {sample_rate:.0} Hz", rom.display());
 
-    match start_audio(playback_rate(sample_rate, fps)) {
-        Ok(audio) => with_host(|host| host.audio = Some(audio)),
-        Err(error) => eprintln!("warning: no audio: {error}"),
-    }
     let frame_time = Duration::from_secs_f64(1.0 / fps);
     let events = input::spawn_readers();
     framebuffer.clear()?;
@@ -844,6 +876,9 @@ pub fn play(
     let mut trigger = MenuTrigger::new();
     let mut release_at = None;
     let mut battery = power::Monitor::new();
+    let mut fast_forwarding = false;
+    // Extra frames run by fast-forward since the last statistics line.
+    let mut fast_frames = 0u64;
     let mut ending = Ending::Quit;
     loop {
         let (leave, open_menu, lid_closed) = with_host(|host| {
@@ -894,8 +929,30 @@ pub fn play(
                 host.audio_time = Duration::ZERO;
             });
         }
+        let fast = with_host(|host| host.controls.is_held(FAST_FORWARD_BUTTON));
+        if fast != fast_forwarding {
+            draw_fast_forward(framebuffer, fast)?;
+            fast_forwarding = fast;
+            // From idle, the governor is too slow to keep up with the first extra frames.
+            if fast {
+                hold_cpu_speed();
+            } else if release_at.is_none() {
+                release_cpu_speed();
+            }
+        }
         // SAFETY: the game is loaded, and the callbacks run on this thread.
         let run_start = Instant::now();
+        if fast {
+            // Extra frames, with only the last one's picture and sound kept.
+            with_host(|host| host.skip_output = true);
+            let mut extra = 0;
+            while extra + 1 < FAST_FORWARD_MAX && run_start.elapsed() < FAST_FORWARD_BUDGET {
+                unsafe { (core.run)() };
+                extra += 1;
+            }
+            with_host(|host| host.skip_output = false);
+            fast_frames += u64::from(extra);
+        }
         unsafe { (core.run)() };
         run_time += run_start.elapsed();
         with_host(|host| -> io::Result<()> {
@@ -918,8 +975,26 @@ pub fn play(
         })?;
 
         frames += 1;
+        if frames == AUDIO_PROBE_FRAMES && with_host(|host| host.audio.is_none()) {
+            let bytes = with_host(|host| host.audio_bytes);
+            // Without sound yet, fall back to what the core's timing says.
+            let samples_per_frame = if bytes > 0 {
+                bytes as f64 / 4.0 / AUDIO_PROBE_FRAMES as f64
+            } else {
+                sample_rate / fps
+            };
+            let rate = playback_rate(sample_rate, samples_per_frame);
+            println!("{samples_per_frame:.1} samples per frame: playing sound at {rate:.0} Hz");
+            match start_audio(rate) {
+                Ok(audio) => with_host(|host| host.audio = Some(audio)),
+                Err(error) => eprintln!("warning: no audio: {error}"),
+            }
+        }
         if release_at == Some(frames) {
-            release_cpu_speed();
+            // Fast-forward keeps holding it until the button is let go.
+            if !fast_forwarding {
+                release_cpu_speed();
+            }
             release_at = None;
         }
         if frames.is_multiple_of(persistence.autosave_frames()) {
@@ -937,14 +1012,16 @@ pub fn play(
             let emulate = run_time.saturating_sub(scale + audio);
             let speed = std::fs::read_to_string(CPU_SPEED_PATH).unwrap_or_default();
             println!(
-                "{fps:.2} fps, ms per frame: emulate {:.1}, scale {:.1}, screen {:.1}, audio wait {:.1}, vsync wait {:.1}, cpu {} kHz",
+                "{fps:.2} fps, ms per frame: emulate {:.1}, scale {:.1}, screen {:.1}, audio wait {:.1}, vsync wait {:.1}, cpu {} kHz, speed {:.1}x",
                 per_frame(emulate),
                 per_frame(scale),
                 per_frame(screen_time),
                 per_frame(audio),
                 per_frame(vsync_time),
                 speed.trim(),
+                (STATS_FRAMES + fast_frames) as f64 / STATS_FRAMES as f64,
             );
+            fast_frames = 0;
             run_time = Duration::ZERO;
             screen_time = Duration::ZERO;
             vsync_time = Duration::ZERO;
@@ -963,7 +1040,7 @@ pub fn play(
         }
     }
 
-    if release_at.is_some() {
+    if release_at.is_some() || fast_forwarding {
         release_cpu_speed();
     }
     save_progress(&mut core, persistence, &mut save_file, resume.as_deref())?;
@@ -1067,9 +1144,12 @@ mod tests {
     }
 
     #[test]
-    fn sound_plays_slower_only_for_cores_faster_than_the_panel() {
-        assert_eq!(playback_rate(65536.0, 59.73), 65536.0);
-        let nes = playback_rate(48000.0, 60.0988);
+    fn sound_plays_slower_only_for_cores_making_less_than_the_panel_plays() {
+        // GBA at 59.73 fps, and a Super Game Boy game, which makes the same per frame.
+        assert_eq!(playback_rate(65536.0, 65536.0 / 59.73), 65536.0);
+        assert_eq!(playback_rate(131072.0, 131072.0 / 59.73), 131072.0);
+        // NES at 60.10 fps.
+        let nes = playback_rate(48000.0, 48000.0 / 60.0988);
         let produced = 48000.0 * PANEL_HZ / 60.0988;
         assert!(nes < produced && nes > produced * 0.998, "{nes} vs {produced}");
     }
