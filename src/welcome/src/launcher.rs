@@ -102,7 +102,7 @@ impl Group {
             Self::General => &[Setting::Volume, Setting::Brightness, Setting::StartScreen, Setting::GameNames],
             Self::GameScreen => &[Setting::Scaling, Setting::Effect, Setting::Ghosting],
             Self::Wifi => &[],
-            Self::BoxArt => &[Setting::DownloadMissingArt, Setting::DownloadAllArt, Setting::DeleteArt],
+            Self::BoxArt => &[Setting::ShowCovers, Setting::DownloadMissingArt, Setting::DownloadAllArt, Setting::DeleteArt],
             Self::Theme => &[Setting::AccentColor, Setting::ShowTitle, Setting::TitleText, Setting::HomeTiles],
             Self::Time => &[Setting::TimeZone, Setting::ClockFormat],
             Self::System => &[Setting::ButtonTest, Setting::SystemInfo, Setting::Reboot, Setting::PowerOff],
@@ -119,6 +119,7 @@ pub enum Setting {
     Scaling,
     Effect,
     Ghosting,
+    ShowCovers,
     DownloadMissingArt,
     DownloadAllArt,
     DeleteArt,
@@ -144,6 +145,7 @@ impl Setting {
             Self::Scaling => "SCALING",
             Self::Effect => "SCREEN EFFECT",
             Self::Ghosting => "LCD GHOSTING",
+            Self::ShowCovers => "COVERS IN LISTS",
             Self::DownloadMissingArt => "DOWNLOAD MISSING COVERS",
             Self::DownloadAllArt => "DOWNLOAD ALL COVERS AGAIN",
             Self::DeleteArt => "DELETE ALL COVERS",
@@ -181,6 +183,7 @@ impl Setting {
                 | Self::Brightness
                 | Self::StartScreen
                 | Self::GameNames
+                | Self::ShowCovers
                 | Self::Scaling
                 | Self::Effect
                 | Self::Ghosting
@@ -228,6 +231,8 @@ pub enum Command {
     ToggleFavorite(PathBuf),
     ButtonTest,
     Wifi,
+    /// Shows covers in game lists if they are hidden, or hides them.
+    ToggleCovers,
     DownloadBoxArt(ArtDownload),
     DeleteBoxArt,
     Volume(i32),
@@ -531,6 +536,7 @@ impl Launcher {
                 Setting::Brightness => return Command::Brightness(step),
                 Setting::StartScreen => return Command::StartScreen(step),
                 Setting::GameNames => return Command::GameNames(step),
+                Setting::ShowCovers => return Command::ToggleCovers,
                 Setting::Scaling => return Command::Scaling(step),
                 Setting::Effect => return Command::Effect(step),
                 Setting::Ghosting => return Command::Ghosting(step),
@@ -558,6 +564,7 @@ impl Launcher {
                 | Setting::Brightness
                 | Setting::StartScreen
                 | Setting::GameNames
+                | Setting::ShowCovers
                 | Setting::Scaling
                 | Setting::Effect
                 | Setting::Ghosting
@@ -800,6 +807,8 @@ mod tests {
         assert_eq!(press_all(&mut launcher, &library, &[Button::B, Button::Right, Button::A]), Command::Wifi);
         assert_eq!(launcher.screen(), Screen::Settings);
         press_all(&mut launcher, &library, &[Button::Right, Button::A]);
+        assert_eq!(launcher.press(Button::Right, &library), Command::ToggleCovers);
+        launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::A, &library), Command::DownloadBoxArt(ArtDownload::Missing));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::A, &library), Command::DownloadBoxArt(ArtDownload::All));

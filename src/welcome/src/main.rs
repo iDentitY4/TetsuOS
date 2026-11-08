@@ -1079,8 +1079,11 @@ fn launcher_canvas(
                 .collect();
             let selected = launcher.list_selected(library, list);
             let game = library.games(list).get(selected);
-            let cover = game.and_then(|game| art.get(&game.path));
+            // Without covers, the list leaves out the panel and names have the whole width.
+            let shown = settings::covers_shown();
+            let cover = game.filter(|_| shown).and_then(|game| art.get(&game.path));
             let art = match (&cover, game) {
+                _ if !shown => None,
                 (Some(image), _) => Some(screens::Art::Cover(image)),
                 (None, Some(game)) => Some(screens::Art::Placeholder(SYSTEMS[game.system].icon)),
                 (None, None) => None,
@@ -1117,6 +1120,7 @@ fn launcher_canvas(
                 accent: settings::accent().label(),
                 start_screen: settings::start_screen().label(),
                 game_names: settings::game_names().label(),
+                covers: if settings::covers_shown() { "ON" } else { "OFF" },
                 title_shown: if settings::title_hidden() { "HIDDEN" } else { "SHOWN" },
                 title_text: &settings::title(),
                 message: launcher.confirmation(),
@@ -1247,6 +1251,11 @@ fn act(
         Action::Scaling(steps) => change_display(|display| display.scaling = display.scaling.cycle(steps)),
         Action::Effect(steps) => change_display(|display| display.effect = display.effect.cycle(steps)),
         Action::Ghosting(steps) => change_display(|display| display.ghosting = display.ghosting.cycle(steps)),
+        Action::ToggleCovers => {
+            if let Err(error) = settings::set_covers_shown(!settings::covers_shown()) {
+                eprintln!("warning: could not save the covers setting: {error}");
+            }
+        }
         Action::GameNames(steps) => {
             if let Err(error) = settings::set_game_names(settings::game_names().cycle(steps)) {
                 eprintln!("warning: could not save the game names: {error}");
