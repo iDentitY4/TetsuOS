@@ -7,7 +7,7 @@ mod pause;
 mod settings;
 mod storage;
 
-use canvas::Battery;
+use canvas::{Battery, MenuRow};
 use input::{Button, Controls, Event};
 use libretro::Persistence;
 use std::ffi::OsString;
@@ -29,33 +29,83 @@ const SAVE_DIR: &str = "/mnt/data/saves";
 
 /// A kind of game the launcher can run.
 struct System {
-    /// A game's file extension.
-    extension: &'static str,
+    /// The heading the launcher lists its games under.
+    console: &'static str,
+    /// Game file extensions, without the dot.
+    extensions: &'static [&'static str],
     core: &'static str,
     persistence: Persistence,
     save_extension: &'static str,
     /// Only for a core that trusts the file to be this size.
     rom_size: Option<u64>,
+    /// Names saves after the game without its extension. The first systems keep this, so
+    /// their existing saves still load. Later ones keep the extension, so games with the
+    /// same name on two consoles get separate saves.
+    short_save_names: bool,
 }
 
-const SYSTEMS: [System; 2] = [
+const MGBA: &str = "/usr/lib/libretro/mgba_libretro.so";
+
+/// In the order the launcher lists them, which is by the console's release.
+const SYSTEMS: [System; 6] = [
     System {
-        extension: "gba",
-        core: "/usr/lib/libretro/mgba_libretro.so",
+        console: "NES",
+        extensions: &["nes"],
+        core: "/usr/lib/libretro/fceumm_libretro.so",
         persistence: Persistence::BatteryRam,
         save_extension: "srm",
         rom_size: None,
+        short_save_names: false,
     },
     System {
-        extension: "b",
+        console: "GAME BOY",
+        extensions: &["gb"],
+        core: MGBA,
+        persistence: Persistence::BatteryRam,
+        save_extension: "srm",
+        rom_size: None,
+        short_save_names: false,
+    },
+    System {
+        console: "SNES",
+        extensions: &["sfc", "smc"],
+        core: "/usr/lib/libretro/snes9x_libretro.so",
+        persistence: Persistence::BatteryRam,
+        save_extension: "srm",
+        rom_size: None,
+        short_save_names: false,
+    },
+    System {
+        console: "TAMAGOTCHI",
+        extensions: &["b"],
         core: "/usr/lib/libretro/tamalibretro_libretro.so",
         persistence: Persistence::FullState,
         save_extension: "state",
         rom_size: Some(12288),
+        short_save_names: true,
+    },
+    System {
+        console: "GAME BOY COLOR",
+        extensions: &["gbc"],
+        core: MGBA,
+        persistence: Persistence::BatteryRam,
+        save_extension: "srm",
+        rom_size: None,
+        short_save_names: false,
+    },
+    System {
+        console: "GAME BOY ADVANCE",
+        extensions: &["gba"],
+        core: MGBA,
+        persistence: Persistence::BatteryRam,
+        save_extension: "srm",
+        rom_size: None,
+        short_save_names: true,
     },
 ];
 
 const BUTTON_TEST_LABEL: &str = "BUTTON TEST";
+const TOOLS_HEADING: &str = "TOOLS";
 const BATTERY_DIR: &str = "/sys/class/power_supply/axp20x-battery";
 /// How often the menu checks the battery, so plugging in a charger shows promptly.
 const BATTERY_REFRESH: Duration = Duration::from_secs(1);
@@ -78,7 +128,7 @@ fn open_framebuffer() -> io::Result<fb::Framebuffer> {
 
 fn system_for(rom: &Path) -> Option<&'static System> {
     let extension = rom.extension()?;
-    SYSTEMS.iter().find(|system| extension.eq_ignore_ascii_case(system.extension))
+    SYSTEMS.iter().find(|system| system.extensions.iter().any(|known| extension.eq_ignore_ascii_case(known)))
 }
 
 /// The games in a folder, sorted by name.
@@ -98,9 +148,62 @@ fn rom_label(rom: &Path) -> String {
     rom.file_stem().unwrap_or_default().to_string_lossy().into_owned()
 }
 
+/// A row in the launcher.
+#[derive(Clone, PartialEq, Debug)]
+enum Entry {
+    Heading(&'static str),
+    Game(PathBuf),
+    ButtonTest,
+}
+
+impl Entry {
+    fn row(&self) -> MenuRow {
+        match self {
+            Self::Heading(name) => MenuRow { label: name.to_string(), heading: true },
+            Self::Game(rom) => MenuRow { label: rom_label(rom), heading: false },
+            Self::ButtonTest => MenuRow { label: BUTTON_TEST_LABEL.to_string(), heading: false },
+        }
+    }
+}
+
+/// The games under a heading for each console that has any, then the tools.
+fn launcher_entries(roms: &[PathBuf]) -> Vec<Entry> {
+    let mut entries = Vec::new();
+    for system in &SYSTEMS {
+        let mut games = roms
+            .iter()
+            .filter(|rom| system_for(rom).is_some_and(|found| std::ptr::eq(found, system)))
+            .peekable();
+        if games.peek().is_some() {
+            entries.push(Entry::Heading(system.console));
+            entries.extend(games.map(|rom| Entry::Game(rom.clone())));
+        }
+    }
+    entries.push(Entry::Heading(TOOLS_HEADING));
+    entries.push(Entry::ButtonTest);
+    entries
+}
+
+/// The first row that isn't a heading, starting `step` rows from `from` and carrying on
+/// in that direction, wrapping around. A `step` of 0 checks `from` itself first.
+fn selectable(entries: &[Entry], from: usize, step: isize) -> usize {
+    let count = entries.len() as isize;
+    let direction = if step < 0 { -1 } else { 1 };
+    let mut index = from as isize + step;
+    for _ in 0..count {
+        let wrapped = index.rem_euclid(count) as usize;
+        if !matches!(entries[wrapped], Entry::Heading(_)) {
+            return wrapped;
+        }
+        index += direction;
+    }
+    from
+}
+
 /// The save file next to the others, named after the game.
 fn save_path(rom: &Path, system: &System) -> PathBuf {
-    let mut name = OsString::from(rom.file_stem().unwrap_or_default());
+    let base = if system.short_save_names { rom.file_stem() } else { rom.file_name() };
+    let mut name = OsString::from(base.unwrap_or_default());
     name.push(".");
     name.push(system.save_extension);
     Path::new(SAVE_DIR).join(name)
@@ -225,14 +328,15 @@ fn run_launcher() -> io::Result<()> {
 
     loop {
         let roms = find_roms(Path::new(ROM_DIR));
-        let mut labels: Vec<String> = roms.iter().map(|rom| rom_label(rom)).collect();
-        labels.push(BUTTON_TEST_LABEL.to_string());
-        selected = selected.min(labels.len() - 1);
+        let entries = launcher_entries(&roms);
+        // The list may have changed since the last visit.
+        selected = selectable(&entries, selected.min(entries.len() - 1), 0);
+        let rows: Vec<MenuRow> = entries.iter().map(Entry::row).collect();
         let battery = read_battery(Path::new(BATTERY_DIR));
         framebuffer.draw(&canvas::menu_screen(
             width,
             height,
-            &labels,
+            &rows,
             selected,
             roms.is_empty(),
             battery,
@@ -253,15 +357,18 @@ fn run_launcher() -> io::Result<()> {
         let Some(event) = event else { continue };
         match event.pressed() {
             Some(Button::Lid) => sleep_until_lid_opens(&events),
-            Some(Button::Up) => selected = selected.checked_sub(1).unwrap_or(labels.len() - 1),
-            Some(Button::Down) => selected = (selected + 1) % labels.len(),
+            Some(Button::Up) => selected = selectable(&entries, selected, -1),
+            Some(Button::Down) => selected = selectable(&entries, selected, 1),
             Some(button @ (Button::VolumeUp | Button::VolumeDown)) => change_volume(button),
-            Some(Button::A) if selected == roms.len() => button_test(&mut framebuffer, &events)?,
-            Some(Button::A) => {
-                if let Err(error) = play_game(&roms[selected], &events) {
-                    eprintln!("welcome: could not start the game: {error}");
+            Some(Button::A) => match &entries[selected] {
+                Entry::Game(rom) => {
+                    if let Err(error) = play_game(rom, &events) {
+                        eprintln!("welcome: could not start the game: {error}");
+                    }
                 }
-            }
+                Entry::ButtonTest => button_test(&mut framebuffer, &events)?,
+                Entry::Heading(_) => {}
+            },
             _ => {}
         }
     }
@@ -284,11 +391,12 @@ fn write_ppm(canvas: &canvas::Canvas, path: &str) -> io::Result<()> {
 /// Renders the menu to a PPM image, to check the layout without the device.
 fn write_menu_preview(path: &str) -> io::Result<()> {
     let (width, height) = PREVIEW_SIZE;
-    let labels: Vec<String> = ["FIRST GAME", "SECOND GAME (WITH A LONG NAME)", BUTTON_TEST_LABEL]
-        .map(String::from)
+    let roms = ["FIRST GAME.nes", "SECOND GAME (WITH A LONG NAME).gba", "THIRD GAME.gba"]
+        .map(PathBuf::from)
         .to_vec();
+    let rows: Vec<MenuRow> = launcher_entries(&roms).iter().map(Entry::row).collect();
     let battery = Some(Battery { percent: 95, charging: true });
-    write_ppm(&canvas::menu_screen(width, height, &labels, 1, false, battery), path)
+    write_ppm(&canvas::menu_screen(width, height, &rows, 4, false, battery), path)
 }
 
 /// Renders the in-game menu over a test pattern to a PPM image, on Load State with an
@@ -394,8 +502,79 @@ mod tests {
         assert!(gba.core.contains("mgba"));
         assert_eq!(gba.persistence, Persistence::BatteryRam);
 
+        for (name, core) in [
+            ("a.nes", "fceumm"),
+            ("a.gb", "mgba"),
+            ("a.GBC", "mgba"),
+            ("a.sfc", "snes9x"),
+            ("a.smc", "snes9x"),
+        ] {
+            assert!(system_for(Path::new(name)).unwrap().core.contains(core), "{name}");
+        }
         assert!(system_for(Path::new("/roms/notes.txt")).is_none());
         assert!(system_for(Path::new("/roms/no-extension")).is_none());
+    }
+
+    #[test]
+    fn newer_systems_keep_the_extension_in_save_names() {
+        let save = |name: &str| save_path(Path::new(name), system_for(Path::new(name)).unwrap());
+        assert_eq!(save("/roms/Tetris.gb"), Path::new(SAVE_DIR).join("Tetris.gb.srm"));
+        assert_eq!(save("/roms/Tetris.nes"), Path::new(SAVE_DIR).join("Tetris.nes.srm"));
+        assert_eq!(save("/roms/Tetris.gba"), Path::new(SAVE_DIR).join("Tetris.srm"));
+    }
+
+    #[test]
+    fn every_extension_belongs_to_one_system() {
+        let mut seen = Vec::new();
+        for system in &SYSTEMS {
+            for extension in system.extensions {
+                assert!(!seen.contains(extension), "{extension}");
+                seen.push(extension);
+            }
+        }
+    }
+
+    fn entries_for(names: &[&str]) -> Vec<Entry> {
+        launcher_entries(&names.iter().map(PathBuf::from).collect::<Vec<_>>())
+    }
+
+    #[test]
+    fn games_are_grouped_by_console_in_release_order() {
+        let entries = entries_for(&["/r/a.gba", "/r/b.nes", "/r/c.gba", "/r/d.sfc"]);
+        let game = |name: &str| Entry::Game(PathBuf::from(name));
+        assert_eq!(
+            entries,
+            [
+                Entry::Heading("NES"),
+                game("/r/b.nes"),
+                Entry::Heading("SNES"),
+                game("/r/d.sfc"),
+                Entry::Heading("GAME BOY ADVANCE"),
+                game("/r/a.gba"),
+                game("/r/c.gba"),
+                Entry::Heading(TOOLS_HEADING),
+                Entry::ButtonTest,
+            ]
+        );
+    }
+
+    #[test]
+    fn without_games_only_the_tools_are_listed() {
+        assert_eq!(entries_for(&[]), [Entry::Heading(TOOLS_HEADING), Entry::ButtonTest]);
+    }
+
+    #[test]
+    fn the_selection_skips_headings_and_wraps() {
+        // NES, game, SNES, game, TOOLS, button test
+        let entries = entries_for(&["/r/b.nes", "/r/d.sfc"]);
+        assert_eq!(selectable(&entries, 0, 0), 1);
+        assert_eq!(selectable(&entries, 1, 1), 3);
+        assert_eq!(selectable(&entries, 3, 1), 5);
+        assert_eq!(selectable(&entries, 5, 1), 1);
+        assert_eq!(selectable(&entries, 1, -1), 5);
+        assert_eq!(selectable(&entries, 5, -1), 3);
+        // The last game removed while selected: the next row is a heading.
+        assert_eq!(selectable(&entries, 4, 0), 5);
     }
 
     #[test]

@@ -57,8 +57,21 @@ Working on the test unit, confirmed by the user:
   the device over SSH with injected presses and screenshots: saving, loading, levels,
   quitting, resuming and Menu + Start. The user tried it with FireRed
   on 2026-11-08 and confirmed it feels right
+- NES through `package/libretro-fceumm`, SNES through `package/libretro-snes9x` (free for
+  non-commercial use only), and Game Boy and Game Boy Color through mGBA. The launcher
+  lists games under console headings in release order, set by the order of `SYSTEMS` in
+  `main.rs`. New systems name saves with the full file name, such as `Tetris.gb.srm`;
+  GBA and Tamagotchi keep `<name>.srm` and `tama.state`, so existing saves still load.
+  Cores faster than the panel's 59.94 Hz, like NES and SNES at 60.10, play sound at a
+  matching lower rate (`playback_rate`), or they would underrun every few seconds. The
+  user confirmed all of their games play well. Headless, Yoshi's Island, Chrono Trigger
+  and A Link to the Past emulate at 134 to 143 fps
+- Game Boy games fill the screen height. `CORE_OPTIONS` in `libretro.rs` turns off
+  mGBA's Super Game Boy border, which shrank SGB-enhanced games to half the screen. Not
+  yet seen by the user
 
 Built but not yet tested on the device:
+
 
 - The menu checks the battery every second and redraws when it changes. Before, charging
   status only showed after moving in the menu, or after 30 seconds
@@ -94,8 +107,7 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
 
 Proposed, not yet confirmed by the user:
 
-1. More systems, such as Game Boy / Game Boy Color, NES and SNES
-2. Before any release: remove the U-Boot boot diagnostics and set a root password, which
+1. Before any release: remove the U-Boot boot diagnostics and set a root password, which
    SSH now also accepts empty
 
 ## Test hardware
@@ -128,6 +140,9 @@ Proposed, not yet confirmed by the user:
 - **The USB controller has 4 IN and 4 OUT endpoints,** besides the control endpoint.
   Serial plus Ethernet (`g_cdc`) uses 4 IN and 2 OUT, so any further USB function,
   like mass storage, needs another one dropped.
+- **Save states keep mGBA's Super Game Boy border mode.** A state saved with the border
+  on loads into the borderless frame offset and cut off, so such states can't be used
+  since the border was turned off. Red's were deleted on 2026-11-08.
 - **The CPU governor raises the speed slowly from idle while a game runs,** because a
   game waits for the panel between frames. After a pause, games ran at 30 fps with audio
   underruns for about a second, so the menu holds `scaling_min_freq` at 1008 MHz until
@@ -174,7 +189,7 @@ Proposed, not yet confirmed by the user:
 - `board/rg35xxsp/extlinux.conf`, `genimage.cfg`, `post-image.sh`: SD card image
 - `board/rg35xxsp/post-build.sh`: removes unused Mesa build dependencies from the rootfs
 - `external.mk`: includes the packages, and builds Mesa without LLVM
-- `package/welcome/`, `package/libretro-mgba/`: Buildroot packages for the app and core
+- `package/welcome/`, `package/libretro-*/`: Buildroot packages for the app and the cores
 - `src/welcome/`: Rust launcher and libretro frontend, with no crate dependencies
 - `scripts/flash.sh`: checked SD card flashing
 - `scripts/push.sh`: copies build output to the running device over the USB network link

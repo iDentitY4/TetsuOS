@@ -71,6 +71,9 @@ BR2_PACKAGE_WELCOME=y
 BR2_PACKAGE_LIBRETRO_MGBA=y
 # First-generation Tamagotchi emulator, loaded the same way
 BR2_PACKAGE_LIBRETRO_TAMALIB=y
+# NES and SNES emulators. mGBA also runs Game Boy and Game Boy Color games
+BR2_PACKAGE_LIBRETRO_FCEUMM=y
+BR2_PACKAGE_LIBRETRO_SNES9X=y
 
 # GPU: OpenGL ES through Panfrost, which Buildroot only offers with LLVM. Mesa
 # itself is built without it (external.mk), and post-build.sh removes the rest.

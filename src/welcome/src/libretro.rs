@@ -41,6 +41,7 @@ const ENVIRONMENT_EXPERIMENTAL: c_uint = 0x10000;
 const ENVIRONMENT_GET_CAN_DUPE: c_uint = 3;
 const ENVIRONMENT_GET_SYSTEM_DIRECTORY: c_uint = 9;
 const ENVIRONMENT_SET_PIXEL_FORMAT: c_uint = 10;
+const ENVIRONMENT_GET_VARIABLE: c_uint = 15;
 const ENVIRONMENT_GET_VARIABLE_UPDATE: c_uint = 17;
 const ENVIRONMENT_GET_SAVE_DIRECTORY: c_uint = 31;
 
@@ -97,6 +98,23 @@ enum PixelFormat {
     Rgb1555,
     Xrgb8888,
     Rgb565,
+}
+
+/// `struct retro_variable`: a core option the core asks for by name.
+#[repr(C)]
+struct Variable {
+    key: *const c_char,
+    value: *const c_char,
+}
+
+/// Core options that differ from the cores' defaults. Any other option keeps its default.
+const CORE_OPTIONS: [(&CStr, &CStr); 1] = [
+    // Super Game Boy games would otherwise fill only half the screen, inside a border.
+    (c"mgba_sgb_borders", c"OFF"),
+];
+
+fn core_option(key: &CStr) -> Option<&'static CStr> {
+    CORE_OPTIONS.iter().find(|(name, _)| *name == key).map(|(_, value)| *value)
 }
 
 #[repr(C)]
@@ -174,6 +192,19 @@ unsafe extern "C" fn environment(command: c_uint, data: *mut c_void) -> bool {
             };
             with_host(|host| host.format = format);
             true
+        }
+        ENVIRONMENT_GET_VARIABLE => {
+            let variable = &mut *(data as *mut Variable);
+            if variable.key.is_null() {
+                return false;
+            }
+            match core_option(CStr::from_ptr(variable.key)) {
+                Some(value) => {
+                    variable.value = value.as_ptr();
+                    true
+                }
+                None => false,
+            }
         }
         ENVIRONMENT_GET_VARIABLE_UPDATE => {
             *(data as *mut bool) = false;
@@ -555,6 +586,19 @@ fn set_host(directory: &Path, target: (usize, usize)) -> io::Result<()> {
     Ok(())
 }
 
+/// The panel's refresh rate, which paces the game. Measured with kmscube.
+const PANEL_HZ: f64 = 59.94;
+
+/// The rate to play a core's sound at. A core made for more frames per second than the
+/// panel shows runs slightly slow here, so it produces sound slower than its sample rate,
+/// and would run out every few seconds. It plays at a matching lower rate, a little below
+/// what it produces, so the game waits on the audio now and then instead. A slower core,
+/// like the Game Boy Advance at 59.73, already produces more than it plays.
+fn playback_rate(sample_rate: f64, fps: f64) -> f64 {
+    const MARGIN: f64 = 0.999;
+    sample_rate * (PANEL_HZ * MARGIN / fps).min(1.0)
+}
+
 /// Plays through aplay. A small pipe keeps latency low, and paces the game to the
 /// audio hardware, because writes wait while the pipe is full.
 fn start_audio(sample_rate: f64) -> io::Result<Child> {
@@ -741,7 +785,7 @@ pub fn play(
     let (fps, sample_rate) = (core.av_info.timing.fps, core.av_info.timing.sample_rate);
     println!("playing {} at {fps:.2} fps, {sample_rate:.0} Hz", rom.display());
 
-    match start_audio(sample_rate) {
+    match start_audio(playback_rate(sample_rate, fps)) {
         Ok(audio) => with_host(|host| host.audio = Some(audio)),
         Err(error) => eprintln!("warning: no audio: {error}"),
     }
@@ -962,6 +1006,20 @@ mod tests {
         assert_eq!(joypad_button(10), Some(Button::L1));
         assert_eq!(joypad_button(11), Some(Button::R1));
         assert_eq!(joypad_button(99), None);
+    }
+
+    #[test]
+    fn sound_plays_slower_only_for_cores_faster_than_the_panel() {
+        assert_eq!(playback_rate(65536.0, 59.73), 65536.0);
+        let nes = playback_rate(48000.0, 60.0988);
+        let produced = 48000.0 * PANEL_HZ / 60.0988;
+        assert!(nes < produced && nes > produced * 0.998, "{nes} vs {produced}");
+    }
+
+    #[test]
+    fn super_game_boy_borders_are_off_and_other_options_default() {
+        assert_eq!(core_option(c"mgba_sgb_borders"), Some(c"OFF"));
+        assert_eq!(core_option(c"mgba_skip_bios"), None);
     }
 
     #[test]

@@ -139,15 +139,24 @@ const MENU_TOP: usize = 76;
 const MENU_ROW: usize = 30;
 const MENU_ROWS: usize = 12;
 const MENU_LEFT: usize = 16;
+/// Games sit this far in from their console's heading.
+const MENU_INDENT: usize = 24;
 const MENU_TEXT_SCALE: usize = 2;
-/// How many characters fit in a row, with a margin on both sides.
-const MENU_COLUMNS: usize = 49;
+/// How many characters of a game's name fit in a row, with a margin on both sides.
+const MENU_COLUMNS: usize = 47;
 
 // The rows must end above the hint line, and the text inside the side margins.
 const _: () = assert!(MENU_TOP + MENU_ROWS * MENU_ROW <= 448);
 const _: () = assert!(
-    MENU_LEFT + MENU_COLUMNS * (font::WIDTH + 1) * MENU_TEXT_SCALE <= 640 - MENU_LEFT + MENU_TEXT_SCALE
+    MENU_LEFT + MENU_INDENT + MENU_COLUMNS * (font::WIDTH + 1) * MENU_TEXT_SCALE
+        <= 640 - MENU_LEFT + MENU_TEXT_SCALE
 );
+
+/// A line in the launcher: a console heading, or something to pick.
+pub struct MenuRow {
+    pub label: String,
+    pub heading: bool,
+}
 
 /// The first row to show, keeping the selection in view.
 fn first_visible(selected: usize) -> usize {
@@ -170,7 +179,7 @@ const BATTERY_TEXT_SCALE: usize = 2;
 pub fn menu_screen(
     width: usize,
     height: usize,
-    labels: &[String],
+    rows: &[MenuRow],
     selected: usize,
     no_games: bool,
     battery: Option<Battery>,
@@ -184,17 +193,21 @@ pub fn menu_screen(
         canvas.text_at(&label, x, BATTERY_TOP, BATTERY_TEXT_SCALE, color);
     }
     let first = first_visible(selected);
-    for (row, (index, label)) in labels.iter().enumerate().skip(first).take(MENU_ROWS).enumerate() {
-        let y = MENU_TOP + row * MENU_ROW;
+    for (line, (index, row)) in rows.iter().enumerate().skip(first).take(MENU_ROWS).enumerate() {
+        let y = MENU_TOP + line * MENU_ROW;
+        let text_y = y + (MENU_ROW - 2 - font::HEIGHT * MENU_TEXT_SCALE) / 2;
+        if row.heading {
+            canvas.text_at(&row.label, MENU_LEFT, text_y, MENU_TEXT_SCALE, ACCENT);
+            continue;
+        }
         let color = if index == selected {
             canvas.rect(0, y, width, MENU_ROW - 2, ACCENT);
             BACKGROUND
         } else {
             TEXT
         };
-        let visible: String = label.chars().take(MENU_COLUMNS).collect();
-        let text_y = y + (MENU_ROW - 2 - font::HEIGHT * MENU_TEXT_SCALE) / 2;
-        canvas.text_at(&visible, MENU_LEFT, text_y, MENU_TEXT_SCALE, color);
+        let visible: String = row.label.chars().take(MENU_COLUMNS).collect();
+        canvas.text_at(&visible, MENU_LEFT + MENU_INDENT, text_y, MENU_TEXT_SCALE, color);
     }
     if no_games {
         canvas.text("COPY GAMES TO THE ROMS FOLDER", 340, 2, MUTED);
@@ -316,8 +329,8 @@ mod tests {
         assert!(count(&canvas, ACCENT) > 0);
     }
 
-    fn labels(count: usize) -> Vec<String> {
-        (0..count).map(|i| format!("GAME {i}")).collect()
+    fn labels(count: usize) -> Vec<MenuRow> {
+        (0..count).map(|i| MenuRow { label: format!("GAME {i}"), heading: false }).collect()
     }
 
     #[test]
@@ -338,9 +351,25 @@ mod tests {
     }
 
     #[test]
+    fn headings_are_not_highlighted_and_games_are_indented() {
+        let mut rows = labels(3);
+        rows[0] = MenuRow { label: "NES".into(), heading: true };
+        let canvas = menu_screen(640, 480, &rows, 1, false, None);
+        let row_y = |index: usize| MENU_TOP + index * MENU_ROW;
+        assert_eq!(pixel(&canvas, 639, row_y(0) + 2), BACKGROUND);
+        assert_eq!(pixel(&canvas, 639, row_y(1) + 2), ACCENT);
+        // A heading's text starts at the margin, a game's further in.
+        let first_text = |index: usize, color: Rgb| {
+            (0..640).find(|&x| (row_y(index)..row_y(index) + MENU_ROW - 2).any(|y| pixel(&canvas, x, y) == color))
+        };
+        assert_eq!(first_text(0, ACCENT), Some(MENU_LEFT));
+        assert_eq!(first_text(2, TEXT), Some(MENU_LEFT + MENU_INDENT));
+    }
+
+    #[test]
     fn a_very_long_name_and_list_are_safe() {
         let mut names = labels(40);
-        names[39] = "X".repeat(500);
+        names[39].label = "X".repeat(500);
         let canvas = menu_screen(640, 480, &names, 39, false, None);
         assert_eq!(canvas.pixels.len(), 640 * 480);
     }

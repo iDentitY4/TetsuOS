@@ -42,8 +42,10 @@ scripts/flash.sh /dev/sdX   # checks the target, then asks you to confirm
 ```
 
 Put the card in the TF1 slot and power on. To add games, put the card in a PC and
-copy Game Boy Advance `.gba` files to the `roms` folder on RGDATA, creating it if
-it isn't there yet. In a game, tap Menu for save states, volume, brightness and
+copy them to the `roms` folder on RGDATA, creating it if it isn't there yet. The
+launcher lists them by console: NES (`.nes`), Game Boy (`.gb`), SNES (`.sfc`,
+`.smc`), Tamagotchi (`tama.b`), Game Boy Color (`.gbc`) and Game Boy Advance
+(`.gba`). Zipped games aren't supported. In a game, tap Menu for save states, volume, brightness and
 quit, or hold Menu + Start to leave straight away.
 
 ## Updating over USB
