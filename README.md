@@ -49,6 +49,10 @@ Advance (`.gba`). Zipped games aren't supported. In a list, hold Up or Down to
 scroll, and use Left and Right to page. Start opens the settings. In a game, tap Menu for save states, volume, brightness and
 quit, or hold Menu + Start to leave straight away. Hold R2 to fast-forward.
 
+For box art in the game lists, run `scripts/boxart.py` with the device connected. It
+fetches covers for the games on the device from the libretro-thumbnails collections
+and copies them there. Run it again after adding games. It needs Pillow.
+
 ## Updating over USB
 
 Once a card has been flashed, most changes can go over the USB cable instead. The

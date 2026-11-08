@@ -248,12 +248,48 @@ pub const SETTINGS: Icon = [
     "................................",
 ];
 
+pub const FAVORITES: Icon = [
+    "................................",
+    "...............K................",
+    "...............K................",
+    "..............KYK...............",
+    "..............KYK...............",
+    ".............KYYYK..............",
+    ".............KYYYK..............",
+    "............KYYYYYK.............",
+    "..........KKYYYYYYYKK...........",
+    ".....KKKKKYYYYYYYYYYYKKKKK......",
+    "......KYYYYYYYYYYYYYYYYYK.......",
+    ".......KYYYYYYYYYYYYYYYK........",
+    "........KYYYYYYYYYYYYYK.........",
+    ".........KYYYYYYYYYYYK..........",
+    "..........KYYYYYYYYYK...........",
+    "..........KYYYYYYYYYK...........",
+    "..........KYYYYYYYYYK...........",
+    "..........KYYYYYYYYYK...........",
+    ".........KYYYYKKKYYYYK..........",
+    ".........KYYKK...KKYYK..........",
+    ".........KKK.......KKK..........",
+    ".........K...........K..........",
+    "................................",
+    "................................",
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const ALL: [&Icon; 8] =
-        [&NES, &GAME_BOY, &SNES, &TAMAGOTCHI, &GAME_BOY_COLOR, &GAME_BOY_ADVANCE, &RECENT, &SETTINGS];
+    const ALL: [&Icon; 9] = [
+        &NES,
+        &GAME_BOY,
+        &SNES,
+        &TAMAGOTCHI,
+        &GAME_BOY_COLOR,
+        &GAME_BOY_ADVANCE,
+        &RECENT,
+        &FAVORITES,
+        &SETTINGS,
+    ];
 
     #[test]
     fn every_icon_has_the_full_size_and_known_colours() {

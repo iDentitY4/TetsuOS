@@ -192,6 +192,23 @@ impl Framebuffer {
         self.file.seek(SeekFrom::Start(offset))?;
         self.file.write_all(&buffer)
     }
+
+    /// Draws only part of a full-screen canvas, for small changes like a scrolling name.
+    pub fn draw_area(&mut self, canvas: &Canvas, (x, y, w, h): (usize, usize, usize, usize)) -> io::Result<()> {
+        let bytes_per_pixel = self.var.bits_per_pixel as usize / 8;
+        let w = w.min(canvas.width.saturating_sub(x));
+        let mut buffer = vec![0u8; w * bytes_per_pixel];
+        for row in y..(y + h).min(canvas.height) {
+            let start = row * canvas.width + x;
+            for (bytes, color) in buffer.chunks_exact_mut(bytes_per_pixel).zip(&canvas.pixels[start..start + w]) {
+                let value = pack(*color, self.var.red, self.var.green, self.var.blue);
+                bytes.copy_from_slice(&value.to_le_bytes()[..bytes_per_pixel]);
+            }
+            let offset = self.screen_offset() + (row * self.line_length + x * bytes_per_pixel) as u64;
+            self.file.write_all_at(&buffer, offset)?;
+        }
+        Ok(())
+    }
 }
 
 /// Stops the text console drawing over the screen. Lasts while the returned file is open.

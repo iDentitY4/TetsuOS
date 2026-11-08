@@ -26,12 +26,15 @@ pub struct Shelf {
 /// Everything the launcher can show, read from the card.
 pub struct Library {
     pub recent: Vec<Game>,
+    /// Starred games, sorted by name.
+    pub favorites: Vec<Game>,
     pub shelves: Vec<Shelf>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum List {
     Recent,
+    Favorites,
     /// A system's games, by system index, so it survives games being added.
     System(usize),
 }
@@ -39,6 +42,7 @@ pub enum List {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Tile {
     Recent,
+    Favorites,
     System(usize),
     Settings,
 }
@@ -97,6 +101,8 @@ impl Setting {
 pub enum Command {
     Nothing,
     Play(PathBuf),
+    /// Star the game, or unstar it if it is starred.
+    ToggleFavorite(PathBuf),
     ButtonTest,
     Volume(i32),
     Brightness(i32),
@@ -124,20 +130,29 @@ pub struct Launcher {
 }
 
 impl Library {
-    /// The home screen's tiles: recent games if any, each console with games, settings.
+    /// The home screen's tiles: recent and starred games if any, each console with games,
+    /// and settings.
     pub fn tiles(&self) -> Vec<Tile> {
         let mut tiles = Vec::new();
         if !self.recent.is_empty() {
             tiles.push(Tile::Recent);
+        }
+        if !self.favorites.is_empty() {
+            tiles.push(Tile::Favorites);
         }
         tiles.extend(self.shelves.iter().map(|shelf| Tile::System(shelf.system)));
         tiles.push(Tile::Settings);
         tiles
     }
 
+    pub fn is_favorite(&self, game: &Game) -> bool {
+        self.favorites.iter().any(|favorite| favorite.path == game.path)
+    }
+
     pub fn games(&self, list: List) -> &[Game] {
         match list {
             List::Recent => &self.recent,
+            List::Favorites => &self.favorites,
             List::System(system) => self
                 .shelves
                 .iter()
@@ -162,6 +177,16 @@ impl Launcher {
 
     pub fn screen(&self) -> Screen {
         self.screen
+    }
+
+    /// Goes home from a list that has no games any more, such as favorites after the last
+    /// one is unstarred.
+    pub fn leave_empty_list(&mut self, library: &Library) {
+        if let Screen::Games(list) = self.screen {
+            if library.games(list).is_empty() {
+                self.screen = Screen::Home;
+            }
+        }
     }
 
     /// The position of the selected tile among the tiles there are now.
@@ -235,6 +260,7 @@ impl Launcher {
         if button == Button::A {
             match tiles[selected] {
                 Tile::Recent => self.screen = Screen::Games(List::Recent),
+                Tile::Favorites => self.screen = Screen::Games(List::Favorites),
                 Tile::System(system) => self.screen = Screen::Games(List::System(system)),
                 Tile::Settings => self.open_settings(),
             }
@@ -256,6 +282,7 @@ impl Launcher {
             Button::Left => selected.saturating_sub(PAGE),
             Button::Right => (selected + PAGE).min(last),
             Button::A => return Command::Play(games[selected].path.clone()),
+            Button::Select => return Command::ToggleFavorite(games[selected].path.clone()),
             _ => selected,
         };
         self.lists.insert(list, moved);
@@ -307,6 +334,7 @@ mod tests {
     fn library() -> Library {
         Library {
             recent: vec![game("r", 2)],
+            favorites: vec![],
             shelves: vec![
                 Shelf { system: 0, games: vec![game("a", 0)] },
                 Shelf { system: 2, games: (0..20).map(|i| game(&format!("g{i}"), 2)).collect() },
@@ -327,8 +355,28 @@ mod tests {
     fn tiles_are_recent_then_consoles_then_settings() {
         let tiles = library().tiles();
         assert_eq!(tiles, [Tile::Recent, Tile::System(0), Tile::System(2), Tile::System(5), Tile::Settings]);
-        let empty = Library { recent: vec![], shelves: vec![] };
+        let empty = Library { recent: vec![], favorites: vec![], shelves: vec![] };
         assert_eq!(empty.tiles(), [Tile::Settings]);
+    }
+
+    #[test]
+    fn favorites_get_a_tile_after_recent_games() {
+        let mut library = library();
+        library.favorites.push(game("f", 0));
+        assert_eq!(&library.tiles()[..2], [Tile::Recent, Tile::Favorites]);
+        let mut launcher = Launcher::new();
+        press_all(&mut launcher, &library, &[Button::Right, Button::A]);
+        assert_eq!(launcher.screen(), Screen::Games(List::Favorites));
+        assert!(library.is_favorite(&library.favorites[0]));
+        assert!(!library.is_favorite(&library.recent[0]));
+    }
+
+    #[test]
+    fn select_stars_the_selected_game() {
+        let library = library();
+        let mut launcher = Launcher::new();
+        press_all(&mut launcher, &library, &[Button::Right, Button::A]);
+        assert_eq!(launcher.press(Button::Select, &library), Command::ToggleFavorite(PathBuf::from("/roms/a")));
     }
 
     #[test]
@@ -453,8 +501,21 @@ mod tests {
     }
 
     #[test]
+    fn a_list_that_empties_goes_home_at_once() {
+        let mut library = library();
+        library.favorites.push(game("f", 0));
+        let mut launcher = Launcher::new();
+        press_all(&mut launcher, &library, &[Button::Right, Button::A]);
+        launcher.leave_empty_list(&library);
+        assert_eq!(launcher.screen(), Screen::Games(List::Favorites));
+        library.favorites.clear();
+        launcher.leave_empty_list(&library);
+        assert_eq!(launcher.screen(), Screen::Home);
+    }
+
+    #[test]
     fn an_empty_list_goes_back_home() {
-        let library = Library { recent: vec![], shelves: vec![] };
+        let library = Library { recent: vec![], favorites: vec![], shelves: vec![] };
         let mut launcher = Launcher::new();
         launcher.screen = Screen::Games(List::System(3));
         launcher.press(Button::Down, &library);

@@ -1,5 +1,7 @@
+mod boxart;
 mod canvas;
 mod fb;
+mod favorites;
 mod font;
 mod icons;
 mod input;
@@ -131,6 +133,8 @@ const SYSTEMS: [System; 6] = [
 
 /// How often the menu checks the battery, so plugging in a charger shows promptly.
 const BATTERY_REFRESH: Duration = Duration::from_secs(1);
+/// How often a long name moves while it scrolls.
+const SCROLL_TICK: Duration = Duration::from_millis(50);
 const SLEEP_CONTROL: &str = "/sys/power/state";
 /// The exit code of a game process that stopped because the battery ran out.
 const BATTERY_EMPTY_EXIT: u8 = 3;
@@ -187,7 +191,7 @@ fn system_index(rom: &Path) -> Option<usize> {
 
 /// Sorts games into a shelf per system, in the order of `SYSTEMS`, with readable names.
 /// Recent games only count while they are still among the games.
-fn build_library(roms: &[PathBuf], recent: &[PathBuf]) -> Library {
+fn build_library(roms: &[PathBuf], recent: &[PathBuf], favorites: &[PathBuf]) -> Library {
     let mut shelves = Vec::new();
     for system in 0..SYSTEMS.len() {
         let paths: Vec<&PathBuf> = roms.iter().filter(|rom| system_index(rom) == Some(system)).collect();
@@ -203,21 +207,31 @@ fn build_library(roms: &[PathBuf], recent: &[PathBuf]) -> Library {
         games.sort_by_key(|game| game.name.to_ascii_lowercase());
         shelves.push(Shelf { system, games });
     }
-    let recent = recent
-        .iter()
-        .filter_map(|path| {
-            shelves.iter().flat_map(|shelf| &shelf.games).find(|game| &game.path == path).map(|game| Game {
-                path: game.path.clone(),
-                name: game.name.clone(),
-                system: game.system,
+    // Games from the shelves, in the order of `paths`, for those still on the card.
+    let pick = |paths: &[PathBuf]| -> Vec<Game> {
+        paths
+            .iter()
+            .filter_map(|path| {
+                shelves.iter().flat_map(|shelf| &shelf.games).find(|game| &game.path == path).map(|game| Game {
+                    path: game.path.clone(),
+                    name: game.name.clone(),
+                    system: game.system,
+                })
             })
-        })
-        .collect();
-    Library { recent, shelves }
+            .collect()
+    };
+    let recent = pick(recent);
+    let mut favorites = pick(favorites);
+    favorites.sort_by_key(|game| game.name.to_ascii_lowercase());
+    Library { recent, favorites, shelves }
 }
 
 fn load_library() -> Library {
-    build_library(&find_roms(Path::new(ROM_DIR)), &recent::load(Path::new(recent::RECENT_PATH)))
+    build_library(
+        &find_roms(Path::new(ROM_DIR)),
+        &recent::load(Path::new(recent::RECENT_PATH)),
+        &favorites::load(Path::new(favorites::FAVORITES_PATH)),
+    )
 }
 
 /// Reads free and total space from `df -k` output, in kilobytes.
@@ -454,19 +468,30 @@ fn button_test(
 }
 
 /// Lays out the launcher's current screen.
+/// Also returns the area of the selected row when its name is too long and scrolls, which
+/// is all that needs drawing again as it moves. `scrolled` is how long the selection has
+/// stayed where it is.
 fn launcher_canvas(
     (width, height): (usize, usize),
     launcher: &Launcher,
     library: &Library,
+    art: &mut boxart::BoxArt,
     battery: Option<Battery>,
-) -> canvas::Canvas {
-    match launcher.screen() {
+    scrolled: Duration,
+) -> (canvas::Canvas, Option<(usize, usize, usize, usize)>) {
+    let mut scrolling = None;
+    let canvas = match launcher.screen() {
         Screen::Home => {
             let tiles: Vec<screens::TileView> = library
                 .tiles()
                 .iter()
                 .map(|tile| match *tile {
                     Tile::Recent => screens::TileView { icon: &icons::RECENT, label: "RECENT", count: None },
+                    Tile::Favorites => screens::TileView {
+                        icon: &icons::FAVORITES,
+                        label: "FAVORITES",
+                        count: Some(library.favorites.len()),
+                    },
                     Tile::System(system) => screens::TileView {
                         icon: SYSTEMS[system].icon,
                         label: SYSTEMS[system].label,
@@ -480,6 +505,7 @@ fn launcher_canvas(
         Screen::Games(list) => {
             let (icon, title) = match list {
                 List::Recent => (&icons::RECENT, "RECENT"),
+                List::Favorites => (&icons::FAVORITES, "FAVORITES"),
                 List::System(system) => (SYSTEMS[system].icon, SYSTEMS[system].console),
             };
             let rows: Vec<screens::RowView> = library
@@ -487,11 +513,26 @@ fn launcher_canvas(
                 .iter()
                 .map(|game| screens::RowView {
                     name: &game.name,
-                    icon: (list == List::Recent).then_some(SYSTEMS[game.system].icon),
+                    // Lists of games from several consoles show each one's console.
+                    icon: matches!(list, List::Recent | List::Favorites).then_some(SYSTEMS[game.system].icon),
+                    starred: library.is_favorite(game),
                 })
                 .collect();
             let selected = launcher.list_selected(library, list);
-            screens::list_screen(width, height, icon, title, &rows, selected, battery)
+            let game = library.games(list).get(selected);
+            let cover = game.and_then(|game| art.get(&game.path));
+            let art = match (&cover, game) {
+                (Some(image), _) => Some(screens::Art::Cover(image)),
+                (None, Some(game)) => Some(screens::Art::Placeholder(SYSTEMS[game.system].icon)),
+                (None, None) => None,
+            };
+            let overflow = screens::name_overflow(width, &rows, selected, art.is_some());
+            if overflow > 0 {
+                scrolling = Some(screens::selected_row_area(width, &rows, selected, art.is_some()));
+            }
+            let scroll = screens::scroll_offset(scrolled, overflow);
+            let view = screens::ListView { icon, title, rows: &rows, selected, art, scroll };
+            screens::list_screen(width, height, &view, battery)
         }
         Screen::Settings => {
             let view = screens::SettingsView {
@@ -504,7 +545,8 @@ fn launcher_canvas(
             screens::settings_screen(width, height, &view, battery)
         }
         Screen::Info => screens::info_screen(width, height, &system_info(battery), battery),
-    }
+    };
+    (canvas, scrolling)
 }
 
 /// What woke the launcher up.
@@ -546,6 +588,12 @@ fn act(
             }
             return Ok(true);
         }
+        Action::ToggleFavorite(rom) => {
+            if let Err(error) = favorites::toggle(Path::new(favorites::FAVORITES_PATH), &rom) {
+                eprintln!("warning: could not change the favorites: {error}");
+            }
+            return Ok(true);
+        }
         Action::ButtonTest => button_test(framebuffer, events)?,
         Action::Volume(steps) => {
             settings::change_volume(steps * settings::VOLUME_STEP);
@@ -575,6 +623,7 @@ fn run_launcher() -> io::Result<()> {
     let mut repeater = Repeater::new();
     let mut library = load_library();
     let mut monitor = power::Monitor::new();
+    let mut art = boxart::BoxArt::new();
 
     let noted = std::fs::read_to_string(PLAYING_PATH).unwrap_or_default();
     if let Some(game) = interrupted_game(&library, &noted) {
@@ -591,26 +640,66 @@ fn run_launcher() -> io::Result<()> {
         forget_running_game();
     }
 
+    // The selection a long name scrolls for, and since when.
+    let mut scroll_for = None;
+    let mut scroll_start = Instant::now();
+    // Set when only the scrolling name needs drawing again.
+    let mut scroll_tick = false;
+    let mut battery = read_battery(&power::battery_dir());
+    let mut battery_read = Instant::now();
+
     loop {
         if monitor.check(Instant::now()) == Some(power::Level::Critical) {
             eprintln!("the battery is empty: powering off");
             shut_down(&mut framebuffer, "BATTERY EMPTY", &power::poweroff_command())?;
         }
-        let battery = read_battery(&power::battery_dir());
-        framebuffer.draw(&launcher_canvas(framebuffer.size(), &launcher, &library, battery))?;
+        // Covers copied since the home screen was last shown appear on the way back in.
+        if launcher.screen() == Screen::Home {
+            art.clear();
+        }
+        let selection = match launcher.screen() {
+            Screen::Games(list) => (launcher.screen(), launcher.list_selected(&library, list)),
+            screen => (screen, 0),
+        };
+        if scroll_for != Some(selection) {
+            scroll_for = Some(selection);
+            scroll_start = Instant::now();
+        }
+        let size = framebuffer.size();
+        let (canvas, scrolling) =
+            launcher_canvas(size, &launcher, &library, &mut art, battery, scroll_start.elapsed());
+        match scrolling {
+            Some(area) if scroll_tick => framebuffer.draw_area(&canvas, area)?,
+            _ => framebuffer.draw(&canvas)?,
+        }
+        scroll_tick = false;
 
-        // Wait for input or a held button's repeat, redrawing when the battery changes.
+        // Wait for input or a held button's repeat, redrawing when the battery changes and
+        // a few times a second while a long name scrolls.
         let wake = loop {
             let now = Instant::now();
             if let Some((button, count)) = repeater.due(now) {
                 break Wake::Repeat(button, count);
             }
-            let timeout = repeater.wait(now).map_or(BATTERY_REFRESH, |wait| wait.min(BATTERY_REFRESH));
+            let battery_due = (battery_read + BATTERY_REFRESH).saturating_duration_since(now);
+            let mut timeout = repeater.wait(now).map_or(battery_due, |wait| wait.min(battery_due));
+            if scrolling.is_some() {
+                timeout = timeout.min(SCROLL_TICK);
+            }
             match events.recv_timeout(timeout) {
                 Ok(event) => break Wake::Event(event),
                 Err(RecvTimeoutError::Timeout) if repeater.wait(Instant::now()).is_some() => {}
                 Err(RecvTimeoutError::Timeout) => {
-                    if read_battery(&power::battery_dir()) != battery {
+                    if battery_read.elapsed() >= BATTERY_REFRESH {
+                        battery_read = Instant::now();
+                        let reading = read_battery(&power::battery_dir());
+                        if reading != battery {
+                            battery = reading;
+                            break Wake::Redraw;
+                        }
+                    }
+                    if scrolling.is_some() {
+                        scroll_tick = true;
                         break Wake::Redraw;
                     }
                 }
@@ -658,6 +747,7 @@ fn run_launcher() -> io::Result<()> {
         }
         if act(action, &mut framebuffer, &events)? {
             library = load_library();
+            launcher.leave_empty_list(&library);
         }
     }
 }
@@ -693,13 +783,16 @@ fn write_launcher_preview(path: &str, buttons: &[Button]) -> io::Result<()> {
     .to_vec();
     roms.extend((1..=14).map(|i| PathBuf::from(format!("Game Boy Game {i:02} (USA).gb"))));
     let recent = [&roms[3], &roms[2], &roms[6]].map(PathBuf::clone);
-    let library = build_library(&roms, &recent);
+    let favorites = [&roms[1], &roms[3]].map(PathBuf::clone);
+    let library = build_library(&roms, &recent, &favorites);
     let mut launcher = Launcher::new();
     for &button in buttons {
         launcher.press(button, &library);
     }
     let battery = Some(Battery { percent: 95, charging: true });
-    write_ppm(&launcher_canvas(PREVIEW_SIZE, &launcher, &library, battery), path)
+    let mut art = boxart::BoxArt::new();
+    let (canvas, _) = launcher_canvas(PREVIEW_SIZE, &launcher, &library, &mut art, battery, Duration::ZERO);
+    write_ppm(&canvas, path)
 }
 
 /// Renders the in-game menu over a test pattern to a PPM image, on Load State with an
@@ -855,7 +948,7 @@ mod tests {
     fn library_for(names: &[&str], recent: &[&str]) -> Library {
         let roms: Vec<PathBuf> = names.iter().map(PathBuf::from).collect();
         let recent: Vec<PathBuf> = recent.iter().map(PathBuf::from).collect();
-        build_library(&roms, &recent)
+        build_library(&roms, &recent, &[])
     }
 
     #[test]
@@ -880,6 +973,15 @@ mod tests {
         let recent: Vec<&str> = library.recent.iter().map(|game| game.name.as_str()).collect();
         assert_eq!(recent, ["b", "a"]);
         assert_eq!(SYSTEMS[library.recent[0].system].console, "NES");
+    }
+
+    #[test]
+    fn favorites_are_sorted_by_name_and_drop_missing_games() {
+        let roms: Vec<PathBuf> = ["/r/b.nes", "/r/a.gb"].iter().map(PathBuf::from).collect();
+        let favorites: Vec<PathBuf> = ["/r/b.nes", "/r/gone.gba", "/r/a.gb"].iter().map(PathBuf::from).collect();
+        let library = build_library(&roms, &[], &favorites);
+        let names: Vec<&str> = library.favorites.iter().map(|game| game.name.as_str()).collect();
+        assert_eq!(names, ["a", "b"]);
     }
 
     #[test]

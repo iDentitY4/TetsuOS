@@ -1,6 +1,7 @@
 //! Device-independent drawing, which keeps the screen testable away from the hardware.
 
 use crate::font;
+use crate::boxart::Image;
 use crate::icons::{self, Icon};
 use crate::input::{Button, Controls};
 use crate::pause::{Item, PauseMenu, ITEMS};
@@ -60,12 +61,64 @@ impl Canvas {
         }
     }
 
+    /// Draws one line of text starting at `x`, which may be left of the clip, showing only
+    /// the part between `clip_left` and `clip_right`. Scrolling names use this.
+    pub(crate) fn text_clipped(
+        &mut self,
+        text: &str,
+        x: isize,
+        y: usize,
+        scale: usize,
+        color: Rgb,
+        (clip_left, clip_right): (usize, usize),
+    ) {
+        let advance = ((font::WIDTH + 1) * scale) as isize;
+        for (index, c) in text.chars().enumerate() {
+            let glyph_x = x + index as isize * advance;
+            if glyph_x >= clip_right as isize {
+                break;
+            }
+            if glyph_x + advance <= clip_left as isize {
+                continue;
+            }
+            for (row, bits) in font::glyph(c).iter().enumerate() {
+                for col in 0..font::WIDTH {
+                    if bits & (1 << (font::WIDTH - 1 - col)) == 0 {
+                        continue;
+                    }
+                    for dx in 0..scale {
+                        let px = glyph_x + (col * scale + dx) as isize;
+                        if px >= clip_left as isize && px < clip_right as isize {
+                            self.rect(px as usize, y + row * scale, 1, scale, color);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Draws a pictogram with its top left corner at `x`, `y`.
     pub(crate) fn icon(&mut self, icon: &Icon, x: usize, y: usize, scale: usize) {
         for (row, line) in icon.iter().enumerate() {
             for (col, c) in line.chars().enumerate() {
                 if let Some(color) = icons::color(c) {
                     self.rect(x + col * scale, y + row * scale, scale, scale, color);
+                }
+            }
+        }
+    }
+
+    /// Draws an image with its top left corner at `x`, `y`, clipped to the canvas.
+    pub(crate) fn image(&mut self, image: &Image, x: usize, y: usize) {
+        for (row, line) in image.pixels.chunks_exact(image.width.max(1)).enumerate() {
+            let target_y = y + row;
+            if target_y >= self.height {
+                break;
+            }
+            for (col, &color) in line.iter().enumerate() {
+                let target_x = x + col;
+                if target_x < self.width {
+                    self.pixels[target_y * self.width + target_x] = color;
                 }
             }
         }

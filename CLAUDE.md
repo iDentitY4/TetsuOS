@@ -81,6 +81,28 @@ Working on the test unit, confirmed by the user:
 
 Built but not yet tested on the device:
 
+- Scrolling names: a selected name too long for its row pauses 1.2 s, scrolls at 48
+  pixels a second to its end, pauses, and starts over (`screens::scroll_offset`). Only
+  that row is redrawn, 20 times a second (`fb::draw_area`), which kept the launcher at 2%
+  CPU. The battery is now read once a second rather than on every redraw
+- Favorites: Select stars or unstars the selected game in any list, kept in
+  `/mnt/data/favorites.txt` (`favorites.rs`). Starred games show a yellow `*` before
+  their name, and a FAVORITES tile with a star icon follows RECENT on the home screen,
+  listing them by name with their console's icon. A list that empties, as favorites do
+  when the last is unstarred, goes home at once. Claude tested starring, the tile, the
+  list and unstarring on the device
+
+- Box art. `scripts/boxart.py` lists the games on the device over SSH, fetches covers
+  from the libretro-thumbnails collections on GitHub (following their symlink stubs, and
+  falling back to the closest name, such as one with `(GB Compatible)`), shrinks them to
+  at most 200x300 with Pillow, and copies them as PPM files to `/mnt/data/boxart`.
+  Downloads are cached in `~/.cache/rg35xxsp-boxart`, never in the project, because the
+  covers are copyrighted. All 35 games got a cover. Game lists show the selected game's
+  cover in a panel on the right (`boxart.rs`, `screens::list_screen`), or the console's
+  icon without one, which leaves about 31 characters for names. Run the script again
+  after adding games. Claude checked the GBA and SNES lists in screenshots, and the user
+  said the covers look fine
+
 - Display options, in Settings and the in-game menu, saved in `settings.txt`, after
   research into emulator shader techniques. Scaling is sharp-bilinear (`axis_weights` in
   `libretro.rs`): a screen line across a game pixel boundary blends the two by coverage,
@@ -164,10 +186,9 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
 
 Agreed with the user on 2026-11-08, in this order:
 
-1. Box art for the selected game, from the libretro-thumbnails collections
-2. Favourites, starred with Select, under their own tile
-3. A boot splash and a faster boot
-4. Rewind, moved to the end by the user
+1. A boot splash and a faster boot
+2. Wi-Fi, then downloading box art on the device instead of with `scripts/boxart.py`
+3. Rewind, moved to the end by the user
 
 Proposed, not yet confirmed by the user:
 
@@ -257,6 +278,8 @@ Proposed, not yet confirmed by the user:
 - `src/welcome/`: Rust launcher and libretro frontend, with no crate dependencies
 - `scripts/flash.sh`: checked SD card flashing
 - `scripts/push.sh`: copies build output to the running device over the USB network link
+- `scripts/boxart.py`: fetches covers for the games on the device and copies them there
+- `scripts/press.py`, `scripts/screenshot.py`: press buttons and capture the screen over SSH
 - `scripts/data-partition.sh`: adds RGDATA after flashing, keeping an existing one
 - Git-ignored: `buildroot-2026.08.1/`, `dl/`, `output/`
 
