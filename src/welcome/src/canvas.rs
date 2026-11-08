@@ -47,10 +47,27 @@ impl Canvas {
         self.text_at(text, x, y, scale, color);
     }
 
-    pub(crate) fn text_at(&mut self, text: &str, mut x: usize, y: usize, scale: usize, color: Rgb) {
+    pub(crate) fn text_at(&mut self, text: &str, x: usize, y: usize, scale: usize, color: Rgb) {
+        self.glyphs_at(text, x, y, scale, color, font::glyph);
+    }
+
+    /// Like `text_at`, but showing lowercase letters as lowercase.
+    pub(crate) fn text_cased_at(&mut self, text: &str, x: usize, y: usize, scale: usize, color: Rgb) {
+        self.glyphs_at(text, x, y, scale, color, font::glyph_cased);
+    }
+
+    fn glyphs_at(
+        &mut self,
+        text: &str,
+        mut x: usize,
+        y: usize,
+        scale: usize,
+        color: Rgb,
+        glyph: fn(char) -> [u8; font::HEIGHT],
+    ) {
         let advance = (font::WIDTH + 1) * scale;
         for c in text.chars() {
-            for (row, bits) in font::glyph(c).iter().enumerate() {
+            for (row, bits) in glyph(c).iter().enumerate() {
                 for col in 0..font::WIDTH {
                     if bits & (1 << (font::WIDTH - 1 - col)) != 0 {
                         self.rect(x + col * scale, y + row * scale, scale, scale, color);

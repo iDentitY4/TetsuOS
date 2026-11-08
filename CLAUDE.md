@@ -177,6 +177,27 @@ Built but not yet tested on the device:
 - The menu checks the battery every second and redraws when it changes. Before, charging
   status only showed after moving in the menu, or after 30 seconds
 
+- Wi-Fi, set up from Settings > WI-FI. The chip is a Realtek RTL8821CS on SDIO
+  (`024C:C821`, `mmc1`), driven by `rtw88` with `rtw8821c_fw.bin` and the regulatory
+  database built into the kernel, because the driver probes at 0.5 s, before the root
+  filesystem. `external.mk` points `CONFIG_EXTRA_FIRMWARE_DIR` at the target, so
+  `post-build.sh` keeps that one firmware file there. `S42wifi` starts `wpa_supplicant`
+  and `udhcpc` in the background, with networks in `/mnt/data/wpa_supplicant.conf`. The
+  launcher talks to wpa_supplicant's control socket (`wifi.rs`): the screen
+  (`wifi_menu.rs`) lists networks in range by signal, with saved ones out of range
+  last, scans every 10 s and on Y, joins with A, and forgets with X pressed twice. A
+  password is typed on an on-screen keyboard (`keyboard.rs`) with lowercase and every
+  printable symbol (`font::glyph_cased`, used only where case matters). A new network
+  is saved only once it connects, and `udhcpc` is then signalled for a fresh address.
+  WPA3-only, enterprise and WEP networks show as NOT SUPPORTED, since WPA3 would need
+  OpenSSL. Claude saw the list of 9 real networks and the keyboard on the device. Sleep
+  works with Wi-Fi (patch 0013), checked with an RTC wake alarm
+  (`echo +8 > /sys/class/rtc/rtc0/wakealarm; echo freeze > /sys/power/state`). The user
+  joined their network on 2026-11-08, and it came back after a reboot. Lid sleep while
+  connected hung the device until the launcher started disconnecting first; with that,
+  an RTC-timed sleep woke and rejoined within 8 s, and the user confirmed lid sleep
+  works and Wi-Fi reconnects
+
 Not working yet:
 
 - A faint high-pitched noise with USB connected. VBUS read 4.42 V at a 2 A input limit on
@@ -184,8 +205,7 @@ Not working yet:
   diagnosed. The user will say if it returns
 
 - USB host mode is disabled, so USB accessories don't work
-- Wi-Fi: since the kernel trim, `4021000.mmc` probes and finds the SDIO card, which it
-  didn't before (cause not verified). There is no Wi-Fi driver or firmware yet
+- The wrong-password message over Wi-Fi is untested
 - An occasional single audio underrun during play, sometimes at the start, seen in
   `/var/log/welcome.log`. It was there without the menu. Not yet investigated
 
@@ -208,7 +228,7 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
 
 Agreed with the user on 2026-11-08, in this order:
 
-1. Wi-Fi, then downloading box art on the device instead of with `scripts/boxart.py`
+1. Downloading box art on the device instead of with `scripts/boxart.py`
 2. Rewind, moved to the end by the user
 
 Proposed, not yet confirmed by the user:
@@ -283,6 +303,18 @@ Proposed, not yet confirmed by the user:
   A plain `dd` of the image leaves RGDATA unreachable until `data-partition.sh` is run.
 - **Panels:** ROCKNIX has a separate v2 panel device tree for the SP. This unit
   works with the mainline NV3052C driver, but another unit may not.
+- **Wi-Fi blocks sleep without `keep-power-in-suspend`.** rtw88 fails its SDIO
+  suspend with `-EINVAL` ("Failed to host PM flag MMC_PM_KEEP_POWER"), which aborts
+  the whole suspend, so lid sleep stops working. Patch 0013 adds the property to `mmc1`.
+- **Sleeping while connected to Wi-Fi hangs the device for good.** The kernel logs
+  `PM: suspend entry` and never finishes suspending: programs stay frozen, so SSH and
+  the console don't answer, but ping still does, and only holding the power button
+  helps. Not connected, it sleeps fine. `sleep_until_lid_opens` therefore sends
+  `DISCONNECT` before sleeping and `RECONNECT` after. The hanging driver call wasn't
+  found: programs are frozen by then, and kernel messages go nowhere (`ttynull`), so
+  finding it would need netconsole over `usb0`.
+- **This `wpa_supplicant` has no syslog support:** `-s` prints the usage and exits
+  with status 0, so a script can't tell it failed.
 - **The linux-sunxi wiki returns 403 to automated fetches.** Use U-Boot's
   `doc/board/allwinner/sunxi.rst`, the ROCKNIX tree and the source code instead.
 

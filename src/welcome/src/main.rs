@@ -5,6 +5,7 @@ mod favorites;
 mod font;
 mod icons;
 mod input;
+mod keyboard;
 mod launcher;
 mod libretro;
 mod names;
@@ -15,6 +16,8 @@ mod repeat;
 mod screens;
 mod settings;
 mod storage;
+mod wifi;
+mod wifi_menu;
 
 use canvas::Battery;
 use icons::Icon;
@@ -275,6 +278,7 @@ fn system_info(battery: Option<Battery>) -> Vec<(String, String)> {
     let storage = parse_df(&command_output("df", &["-k", "/mnt/data"]))
         .map_or_else(unknown, |(free, total)| format!("{} FREE OF {}", gigabytes(free), gigabytes(total)));
     let address = parse_ifconfig(&command_output("ifconfig", &["usb0"])).unwrap_or_else(unknown);
+    let wifi = parse_ifconfig(&command_output("ifconfig", &["wlan0"])).unwrap_or_else(|| "NOT CONNECTED".into());
     let temperature = std::fs::read_to_string("/sys/class/thermal/thermal_zone0/temp")
         .ok()
         .and_then(|text| text.trim().parse::<i64>().ok())
@@ -287,6 +291,7 @@ fn system_info(battery: Option<Battery>) -> Vec<(String, String)> {
         ("BATTERY".to_string(), battery),
         ("GAME STORAGE".to_string(), storage),
         ("SSH OVER USB".to_string(), address),
+        ("WI-FI".to_string(), wifi),
         ("CPU TEMPERATURE".to_string(), temperature),
         ("KERNEL BUILT".to_string(), kernel),
         ("APP VERSION".to_string(), env!("CARGO_PKG_VERSION").to_string()),
@@ -329,6 +334,23 @@ fn read_battery(directory: &Path) -> Option<Battery> {
 /// Sleeps until the lid opens. Anything else that wakes the device, like the power button
 /// being pressed in a bag, only leads to sleeping again.
 fn sleep_until_lid_opens(events: &Receiver<Event>) {
+    // Wi-Fi must be disconnected first, or the device hangs going to sleep. Without
+    // wpa_supplicant there is nothing to disconnect.
+    let wifi = wifi::Control::open(Path::new(wifi::CONTROL_PATH)).ok();
+    if let Some(control) = &wifi {
+        if let Err(error) = control.disconnect() {
+            eprintln!("warning: could not leave the Wi-Fi network before sleep: {error}");
+        }
+    }
+    sleep_until_lid_opens_inner(events);
+    if let Some(control) = &wifi {
+        if let Err(error) = control.reconnect() {
+            eprintln!("warning: could not rejoin the Wi-Fi network: {error}");
+        }
+    }
+}
+
+fn sleep_until_lid_opens_inner(events: &Receiver<Event>) {
     loop {
         if let Err(error) = std::fs::write(SLEEP_CONTROL, "freeze") {
             eprintln!("warning: could not sleep: {error}");
@@ -467,6 +489,221 @@ fn button_test(
     Ok(())
 }
 
+/// How often the Wi-Fi screen reads the connection and the networks in range.
+const WIFI_POLL: Duration = Duration::from_secs(1);
+/// How often it scans again while open.
+const WIFI_SCAN_EVERY: Duration = Duration::from_secs(10);
+const PASSWORD_NOTE: &str = "8 TO 63 CHARACTERS";
+
+/// `prefix`, the network's name and `suffix` on one line of at most `columns`
+/// characters, shortening the name to fit.
+fn wifi_status_text(prefix: &str, name: &str, suffix: &str, columns: usize) -> String {
+    let room = columns.saturating_sub(prefix.chars().count() + suffix.chars().count());
+    let name: String = name.chars().take(room).collect();
+    format!("{prefix}{name}{suffix}")
+}
+
+/// The line under the Wi-Fi screen's title.
+fn wifi_status_line(running: bool, status: &wifi::Status, attempt: Option<&wifi_menu::Attempt>) -> String {
+    const COLUMNS: usize = 49;
+    if !running {
+        return "WI-FI IS NOT RUNNING".into();
+    }
+    if let Some(attempt) = attempt {
+        return wifi_status_text("CONNECTING TO ", &wifi::display_name(&attempt.ssid), "...", COLUMNS);
+    }
+    if !status.connected() {
+        return "NOT CONNECTED".into();
+    }
+    let name = wifi::display_name(status.ssid.as_deref().unwrap_or_default());
+    let suffix = match &status.address {
+        Some(address) => format!(" - {address}"),
+        None => " - GETTING AN ADDRESS".into(),
+    };
+    wifi_status_text("CONNECTED TO ", &name, &suffix, COLUMNS)
+}
+
+/// Starts joining a network. Returns the attempt, or why it couldn't start.
+fn start_connecting(
+    control: &wifi::Control,
+    ssid: Vec<u8>,
+    saved: Option<u32>,
+    password: Option<String>,
+) -> io::Result<wifi_menu::Attempt> {
+    let (id, added) = match saved {
+        Some(id) => (id, false),
+        None => (control.add(&ssid, password.as_deref())?, true),
+    };
+    if let Err(error) = control.select(id) {
+        let _ = control.give_up(id, added);
+        return Err(error);
+    }
+    Ok(wifi_menu::Attempt { id, ssid, added, started: Instant::now() })
+}
+
+/// The Wi-Fi screen, from Settings: networks in range, joining them with a password typed
+/// on an on-screen keyboard, and forgetting them. Returns when B is pressed.
+fn wifi_settings(framebuffer: &mut fb::Framebuffer, events: &Receiver<Event>) -> io::Result<()> {
+    use wifi_menu::{Progress, Request};
+    let size = framebuffer.size();
+    let mut menu = wifi_menu::WifiMenu::new();
+    let mut repeater = Repeater::new();
+    let mut control: Option<wifi::Control> = None;
+    let mut status = wifi::Status::default();
+    let mut attempt: Option<wifi_menu::Attempt> = None;
+    let mut last_poll: Option<Instant> = None;
+    let mut last_scan: Option<Instant> = None;
+    let mut battery = read_battery(&power::battery_dir());
+
+    loop {
+        let now = Instant::now();
+        if last_poll.is_none_or(|time| now.duration_since(time) >= WIFI_POLL) {
+            last_poll = Some(now);
+            battery = read_battery(&power::battery_dir());
+            if control.is_none() {
+                control = wifi::Control::open(Path::new(wifi::CONTROL_PATH))
+                    .inspect_err(|error| eprintln!("wifi: no control socket: {error}"))
+                    .ok();
+            }
+            if let Some(wpa) = &control {
+                if last_scan.is_none_or(|time| now.duration_since(time) >= WIFI_SCAN_EVERY) {
+                    wpa.scan();
+                    last_scan = Some(now);
+                }
+                match (wpa.status(), wpa.saved(), wpa.scan_results()) {
+                    (Ok(reading), Ok(mut saved), Ok(networks)) => {
+                        status = reading;
+                        let progress = attempt.as_ref().map(|current| current.progress(&status, &saved, now));
+                        match (progress, attempt.take()) {
+                            (Some(Progress::Connected), Some(_)) => {
+                                if let Err(error) = wpa.keep() {
+                                    eprintln!("wifi: could not save the network: {error}");
+                                }
+                                menu.message = None;
+                            }
+                            (Some(Progress::Failed(reason)), Some(failed)) => {
+                                eprintln!("wifi: {reason}");
+                                if let Err(error) = wpa.give_up(failed.id, failed.added) {
+                                    eprintln!("wifi: {error}");
+                                }
+                                menu.message = Some(reason.into());
+                            }
+                            (_, current) => attempt = current,
+                        }
+                        if attempt.is_none() {
+                            saved = wpa.saved().unwrap_or(saved);
+                        }
+                        menu.set_entries(wifi_menu::entries(&networks, &saved, &status));
+                    }
+                    _ => {
+                        // wpa_supplicant stopped; try again on the next poll.
+                        control = None;
+                        attempt = None;
+                    }
+                }
+            }
+        }
+
+        let canvas = match &menu.keyboard {
+            Some((ssid, keyboard)) => {
+                screens::keyboard_screen(size.0, size.1, &wifi::display_name(ssid), keyboard, PASSWORD_NOTE, battery)
+            }
+            None => {
+                let line = wifi_status_line(control.is_some(), &status, attempt.as_ref());
+                let view = screens::WifiView {
+                    entries: &menu.entries,
+                    selected: menu.selected(),
+                    status: &line,
+                    connected: attempt.is_none() && status.connected(),
+                    message: menu.message.as_deref(),
+                };
+                screens::wifi_screen(size.0, size.1, &view, battery)
+            }
+        };
+        framebuffer.draw(&canvas)?;
+
+        let poll_due = last_poll.map_or(Duration::ZERO, |time| (time + WIFI_POLL).saturating_duration_since(Instant::now()));
+        let timeout = repeater.wait(Instant::now()).map_or(poll_due, |wait| wait.min(poll_due));
+        let buttons: Vec<Button> = match events.recv_timeout(timeout) {
+            Ok(event) => {
+                if let Some(button) = event.released() {
+                    repeater.release(button);
+                }
+                match event.pressed() {
+                    Some(Button::Lid) => {
+                        repeater.stop();
+                        sleep_until_lid_opens(events);
+                        last_poll = None;
+                        vec![]
+                    }
+                    Some(button @ (Button::VolumeUp | Button::VolumeDown)) => {
+                        change_volume(button);
+                        vec![]
+                    }
+                    Some(button) => {
+                        repeater.press(button, Instant::now());
+                        vec![button]
+                    }
+                    None => vec![],
+                }
+            }
+            Err(RecvTimeoutError::Timeout) => match repeater.due(Instant::now()) {
+                Some((button, count)) => vec![button; count],
+                None => vec![],
+            },
+            Err(RecvTimeoutError::Disconnected) => return Ok(()),
+        };
+
+        for button in buttons {
+            match menu.press(button) {
+                Request::Nothing => {}
+                Request::Back => {
+                    if let (Some(wpa), Some(current)) = (&control, attempt.take()) {
+                        let _ = wpa.give_up(current.id, current.added);
+                    }
+                    events.try_iter().for_each(drop);
+                    return Ok(());
+                }
+                Request::Scan => {
+                    if let Some(wpa) = &control {
+                        wpa.scan();
+                        last_scan = Some(Instant::now());
+                    }
+                }
+                Request::Connect { ssid, saved, password } => {
+                    let Some(wpa) = &control else { continue };
+                    if let Some(current) = attempt.take() {
+                        let _ = wpa.give_up(current.id, current.added);
+                    }
+                    match start_connecting(wpa, ssid, saved, password) {
+                        Ok(started) => {
+                            attempt = Some(started);
+                            menu.message = None;
+                        }
+                        Err(error) => {
+                            eprintln!("wifi: could not connect: {error}");
+                            menu.message = Some("COULD NOT CONNECT".into());
+                        }
+                    }
+                    last_poll = None;
+                }
+                Request::Forget(id) => {
+                    if let Some(wpa) = &control {
+                        menu.message = Some(match wpa.forget(id) {
+                            Ok(()) => "NETWORK FORGOTTEN".into(),
+                            Err(error) => {
+                                eprintln!("wifi: could not forget: {error}");
+                                "COULD NOT FORGET THE NETWORK".into()
+                            }
+                        });
+                    }
+                    last_poll = None;
+                }
+            }
+        }
+    }
+}
+
 /// Lays out the launcher's current screen.
 /// Also returns the area of the selected row when its name is too long and scrolls, which
 /// is all that needs drawing again as it moves. `scrolled` is how long the selection has
@@ -595,6 +832,7 @@ fn act(
             return Ok(true);
         }
         Action::ButtonTest => button_test(framebuffer, events)?,
+        Action::Wifi => wifi_settings(framebuffer, events)?,
         Action::Volume(steps) => {
             settings::change_volume(steps * settings::VOLUME_STEP);
             save_settings();
@@ -872,6 +1110,54 @@ fn write_pause_preview(path: &str) -> io::Result<()> {
     write_ppm(&canvas::pause_screen(width, height, &frame, frame_size, &view), path)
 }
 
+/// Renders the Wi-Fi screen with sample networks, connected to one of them.
+fn write_wifi_preview(path: &str) -> io::Result<()> {
+    use wifi::{Network, Saved, Security, Status};
+    let network = |name: &str, signal, security| Network { ssid: name.as_bytes().to_vec(), signal, security };
+    let networks = [
+        network("Home Network", -48, Security::Password),
+        network("FRITZ!Box 7590 XY", -58, Security::Password),
+        network("Cafe Guest", -71, Security::Open),
+        network("Neighbour 5G", -79, Security::Password),
+        network("WPA3 Only", -66, Security::Unsupported),
+    ];
+    let saved = [
+        Saved { id: 0, ssid: b"Home Network".to_vec(), failed: false },
+        Saved { id: 1, ssid: b"Holiday Flat".to_vec(), failed: false },
+    ];
+    let status = Status {
+        state: "COMPLETED".into(),
+        id: Some(0),
+        ssid: Some(b"Home Network".to_vec()),
+        address: Some("192.168.178.42".into()),
+    };
+    let mut menu = wifi_menu::WifiMenu::new();
+    menu.set_entries(wifi_menu::entries(&networks, &saved, &status));
+    menu.press(Button::Down);
+    let line = wifi_status_line(true, &status, None);
+    let view = screens::WifiView {
+        entries: &menu.entries,
+        selected: menu.selected(),
+        status: &line,
+        connected: true,
+        message: Some("SCANNING"),
+    };
+    let (width, height) = PREVIEW_SIZE;
+    let battery = Some(Battery { percent: 95, charging: true });
+    write_ppm(&screens::wifi_screen(width, height, &view, battery), path)
+}
+
+/// Renders the password keyboard partway through typing.
+fn write_keyboard_preview(path: &str) -> io::Result<()> {
+    let mut keyboard = keyboard::Keyboard::new(64, wifi::valid_password);
+    keyboard.text = "Hunter2!".into();
+    keyboard.press(Button::Down);
+    keyboard.press(Button::Right);
+    let (width, height) = PREVIEW_SIZE;
+    let battery = Some(Battery { percent: 95, charging: true });
+    write_ppm(&screens::keyboard_screen(width, height, "FRITZ!Box 7590 XY", &keyboard, PASSWORD_NOTE, battery), path)
+}
+
 /// Renders the button test to a PPM image. Up has been pressed and A is held, so the
 /// image shows each look a button can have.
 fn write_button_preview(path: &str) -> io::Result<()> {
@@ -898,6 +1184,8 @@ fn main() -> ExitCode {
             write_launcher_preview(path, &[Button::Start, Button::Up, Button::A])
         }
         [flag, path] if flag == "--preview-buttons" => write_button_preview(path),
+        [flag, path] if flag == "--preview-wifi" => write_wifi_preview(path),
+        [flag, path] if flag == "--preview-keyboard" => write_keyboard_preview(path),
         [flag, path] if flag == "--preview-pause" => write_pause_preview(path),
         [flag, path] if flag == "--preview-splash" => write_plain_ppm(&screens::splash(), path),
         [flag, core, rom, save, persistence] if flag == "--play" => {
@@ -926,7 +1214,7 @@ fn main() -> ExitCode {
         _ => {
             eprintln!(
                 "usage: welcome [--preview | --preview-list | --preview-recent | --preview-settings FILE.ppm\n\
-                 \x20              | --preview-buttons FILE.ppm\n\
+                 \x20              | --preview-buttons | --preview-wifi | --preview-keyboard FILE.ppm\n\
                  \x20              | --preview-pause FILE.ppm | --preview-splash FILE.ppm\n\
                  \x20              | --play CORE ROM SAVE battery|state\n\
                  \x20              | --render CORE ROM SAVE battery|state FRAMES FILE.ppm]"
@@ -1042,6 +1330,23 @@ mod tests {
         assert_eq!(interrupted_game(&library, "/r/b.nes\n").map(|game| game.name.as_str()), Some("b"));
         assert!(interrupted_game(&library, "/r/gone.gba").is_none());
         assert!(interrupted_game(&library, "").is_none());
+    }
+
+    #[test]
+    fn wifi_status_lines_fit_and_shorten_long_names() {
+        let status = wifi::Status {
+            state: "COMPLETED".into(),
+            id: Some(0),
+            ssid: Some("N".repeat(32).into_bytes()),
+            address: Some("192.168.178.142".into()),
+        };
+        let line = wifi_status_line(true, &status, None);
+        assert_eq!(line.chars().count(), 49);
+        assert!(line.starts_with("CONNECTED TO N") && line.ends_with(" - 192.168.178.142"));
+        assert_eq!(wifi_status_line(false, &status, None), "WI-FI IS NOT RUNNING");
+        assert_eq!(wifi_status_line(true, &wifi::Status::default(), None), "NOT CONNECTED");
+        let unaddressed = wifi::Status { address: None, ssid: Some(b"Home".to_vec()), ..status };
+        assert_eq!(wifi_status_line(true, &unaddressed, None), "CONNECTED TO Home - GETTING AN ADDRESS");
     }
 
     #[test]

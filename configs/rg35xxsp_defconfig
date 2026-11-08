@@ -96,3 +96,14 @@ BR2_PACKAGE_DROPBEAR=y
 # BR2_PACKAGE_DROPBEAR_CLIENT is not set
 BR2_PACKAGE_DROPBEAR_DISABLE_REVERSEDNS=y
 BR2_PACKAGE_RSYNC=y
+
+# Wi-Fi: the Realtek RTL8821CS on SDIO. Its firmware and the regulatory database
+# are built into the kernel (linux.fragment, external.mk), because the driver
+# starts before the root filesystem is mounted. WPA3 would need OpenSSL.
+BR2_PACKAGE_LINUX_FIRMWARE=y
+BR2_PACKAGE_LINUX_FIRMWARE_RTL_RTW88=y
+BR2_PACKAGE_WIRELESS_REGDB=y
+BR2_PACKAGE_WPA_SUPPLICANT=y
+BR2_PACKAGE_WPA_SUPPLICANT_CLI=y
+BR2_PACKAGE_WPA_SUPPLICANT_PASSPHRASE=y
+BR2_PACKAGE_IW=y

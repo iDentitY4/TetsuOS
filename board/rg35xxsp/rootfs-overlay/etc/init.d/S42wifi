@@ -1,0 +1,44 @@
+#!/bin/sh
+# Wi-Fi through the RTL8821CS. Networks are kept on RGDATA, so they survive
+# reflashing. Add one over SSH with:
+#   wpa_passphrase 'name' 'password' >> /mnt/data/wpa_supplicant.conf
+# then restart this script. wpa_cli can also add networks; update_config saves them.
+
+CONF=/mnt/data/wpa_supplicant.conf
+
+start_wifi() {
+	# The driver may finish probing after init starts
+	for _ in $(seq 20); do
+		[ -e /sys/class/net/wlan0 ] && break
+		sleep 0.25
+	done
+	[ -e /sys/class/net/wlan0 ] || { echo "S42wifi: no wlan0" >&2; return 1; }
+	if [ ! -e "$CONF" ]; then
+		printf 'ctrl_interface=/run/wpa_supplicant\nupdate_config=1\n' > "$CONF"
+	fi
+	wpa_supplicant -B -i wlan0 -c "$CONF" -P /run/wpa_supplicant.pid || return 1
+	# Keeps trying in the background until a network gives it an address
+	udhcpc -b -S -i wlan0 -p /run/udhcpc.wlan0.pid -x hostname:"$(hostname)"
+}
+
+case "$1" in
+start)
+	# Boot doesn't wait for the driver or for DHCP
+	start_wifi </dev/null >/dev/null 2>&1 &
+	;;
+stop)
+	[ -e /run/udhcpc.wlan0.pid ] && kill "$(cat /run/udhcpc.wlan0.pid)" 2>/dev/null
+	[ -e /run/wpa_supplicant.pid ] && kill "$(cat /run/wpa_supplicant.pid)" 2>/dev/null
+	rm -f /run/udhcpc.wlan0.pid /run/wpa_supplicant.pid
+	ip link set wlan0 down 2>/dev/null
+	;;
+restart)
+	"$0" stop
+	sleep 1
+	"$0" start
+	;;
+*)
+	echo "Usage: $0 {start|stop|restart}"
+	exit 1
+	;;
+esac

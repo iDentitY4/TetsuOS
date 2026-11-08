@@ -84,3 +84,13 @@ CONFIG_PHY_SUN4I_USB=y
 CONFIG_USB_GADGET=y
 # CONFIG_USB_G_SERIAL is not set
 CONFIG_USB_CDC_COMPOSITE=y
+
+# Wi-Fi: Realtek RTL8821CS on SDIO, ID 024C:C821. The firmware and the regulatory
+# database are built in, because the driver probes before the root filesystem is
+# mounted. external.mk points CONFIG_EXTRA_FIRMWARE_DIR at the target's firmware.
+CONFIG_CFG80211=y
+CONFIG_MAC80211=y
+CONFIG_WLAN_VENDOR_REALTEK=y
+CONFIG_RTW88=y
+CONFIG_RTW88_8821CS=y
+CONFIG_EXTRA_FIRMWARE="rtw88/rtw8821c_fw.bin regulatory.db regulatory.db.p7s"

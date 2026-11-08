@@ -12,3 +12,11 @@ define RG35XXSP_LINUX_BOOT_LOGO
 		$(LINUX_DIR)/drivers/video/logo/logo_linux_clut224.ppm
 endef
 LINUX_PRE_BUILD_HOOKS += RG35XXSP_LINUX_BOOT_LOGO
+
+# Wi-Fi firmware and the regulatory database are built into the kernel (see
+# linux.fragment). Buildroot installs both before it builds the kernel.
+define RG35XXSP_LINUX_FIRMWARE_DIR
+
+	$(call KCONFIG_SET_OPT,CONFIG_EXTRA_FIRMWARE_DIR,"$(TARGET_DIR)/lib/firmware")
+endef
+LINUX_KCONFIG_FIXUP_CMDS += $(RG35XXSP_LINUX_FIRMWARE_DIR)

@@ -27,6 +27,10 @@ for pattern in "${REMOVE[@]}"; do
 	done
 done
 
+# linux-firmware's rtw88 option installs every Realtek chip's firmware. Only the
+# RTL8821CS's is kept, because the kernel build reads it from here to build it in.
+find lib/firmware/rtw88 -type f ! -name rtw8821c_fw.bin -delete 2>/dev/null || true
+
 # Fail the build if anything links to a library that isn't on the device.
 missing=0
 while IFS= read -r -d '' file; do

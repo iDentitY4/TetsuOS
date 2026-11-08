@@ -62,18 +62,20 @@ pub enum Setting {
     Scaling,
     Effect,
     Ghosting,
+    Wifi,
     ButtonTest,
     SystemInfo,
     Reboot,
     PowerOff,
 }
 
-pub const SETTINGS: [Setting; 9] = [
+pub const SETTINGS: [Setting; 10] = [
     Setting::Volume,
     Setting::Brightness,
     Setting::Scaling,
     Setting::Effect,
     Setting::Ghosting,
+    Setting::Wifi,
     Setting::ButtonTest,
     Setting::SystemInfo,
     Setting::Reboot,
@@ -88,6 +90,7 @@ impl Setting {
             Self::Scaling => "SCALING",
             Self::Effect => "SCREEN EFFECT",
             Self::Ghosting => "LCD GHOSTING",
+            Self::Wifi => "WI-FI",
             Self::ButtonTest => "BUTTON TEST",
             Self::SystemInfo => "SYSTEM INFO",
             Self::Reboot => "REBOOT",
@@ -104,6 +107,7 @@ pub enum Command {
     /// Star the game, or unstar it if it is starred.
     ToggleFavorite(PathBuf),
     ButtonTest,
+    Wifi,
     Volume(i32),
     Brightness(i32),
     Scaling(i32),
@@ -308,6 +312,7 @@ impl Launcher {
             Button::Left | Button::Right if setting == Setting::Ghosting => return Command::Ghosting(step),
             Button::B | Button::Start => self.screen = self.before_settings,
             Button::A => match setting {
+                Setting::Wifi => return Command::Wifi,
                 Setting::ButtonTest => return Command::ButtonTest,
                 Setting::SystemInfo => self.screen = Screen::Info,
                 Setting::Reboot | Setting::PowerOff if confirming == Some(setting) => {
@@ -472,6 +477,8 @@ mod tests {
         assert_eq!(launcher.press(Button::Left, &library), Command::Effect(-1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Right, &library), Command::Ghosting(1));
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::A, &library), Command::Wifi);
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::A, &library), Command::ButtonTest);
         press_all(&mut launcher, &library, &[Button::Down, Button::A]);

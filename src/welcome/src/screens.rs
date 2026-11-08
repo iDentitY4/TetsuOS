@@ -4,7 +4,10 @@ use crate::boxart::Image;
 use crate::canvas::{text_width, Battery, Canvas, Rgb, ACCENT, BACKGROUND, BODY, LOW, MUTED, TEXT};
 use crate::font;
 use crate::icons::{self, Icon};
+use crate::keyboard::{self, Key, Keyboard};
 use crate::launcher::{Setting, COLUMNS, PAGE, SETTINGS};
+use crate::wifi::Security;
+use crate::wifi_menu::{self, Entry};
 use std::time::Duration;
 use crate::settings::Display;
 
@@ -32,8 +35,8 @@ const STAR: Rgb = Rgb(0xF0, 0xC0, 0x30);
 /// at most 200 by 300.
 const ART_PANEL: (usize, usize, usize, usize) = (420, LIST_TOP, 204, PAGE * LIST_ROW - 2);
 
-const SETTINGS_TOP: usize = 84;
-const SETTINGS_ROW: usize = 36;
+const SETTINGS_TOP: usize = 80;
+const SETTINGS_ROW: usize = 32;
 const SETTINGS_LEFT: usize = 40;
 const SETTINGS_RIGHT: usize = 40;
 const BAR_W: usize = 160;
@@ -289,7 +292,7 @@ pub fn settings_screen(width: usize, height: usize, view: &SettingsView, battery
                 let value = if selected { format!("< {label} >") } else { label.to_string() };
                 canvas.text_at(&value, right - text_width(&value, TEXT_SCALE), text_y, TEXT_SCALE, text_color);
             }
-            Setting::ButtonTest | Setting::SystemInfo => {
+            Setting::Wifi | Setting::ButtonTest | Setting::SystemInfo => {
                 canvas.text_at(">", right - text_width(">", TEXT_SCALE), text_y, TEXT_SCALE, text_color);
             }
             Setting::Reboot | Setting::PowerOff => {}
@@ -312,6 +315,161 @@ pub fn info_screen(width: usize, height: usize, lines: &[(String, String)], batt
         canvas.text_at(value, right.saturating_sub(text_width(value, TEXT_SCALE)), y, TEXT_SCALE, TEXT);
     }
     hint(&mut canvas, "B BACK");
+    canvas
+}
+
+const WIFI_TOP: usize = 108;
+const WIFI_ROW: usize = 30;
+const WIFI_RIGHT: usize = 24;
+const _: () = assert!(WIFI_TOP + wifi_menu::PAGE * WIFI_ROW + 40 <= HINT_Y);
+
+/// The Wi-Fi list, as `wifi_screen` shows it.
+pub struct WifiView<'a> {
+    pub entries: &'a [Entry],
+    pub selected: usize,
+    /// The connection, or why there is none.
+    pub status: &'a str,
+    pub connected: bool,
+    pub message: Option<&'a str>,
+}
+
+/// Signal bars, bottom-aligned, with their right edge at `right`.
+fn signal_bars(canvas: &mut Canvas, right: usize, bottom: usize, bars: usize, on: Rgb, off: Rgb) {
+    for bar in 0..4 {
+        let height = 4 + bar * 4;
+        let x = right - (4 - bar) * 6 + 2;
+        canvas.rect(x, bottom - height, 4, height, if bar < bars { on } else { off });
+    }
+}
+
+/// A padlock 10 pixels wide, for networks that need a password.
+fn padlock(canvas: &mut Canvas, x: usize, top: usize, color: Rgb) {
+    canvas.rect(x + 2, top, 6, 2, color);
+    canvas.rect(x + 2, top, 2, 6, color);
+    canvas.rect(x + 6, top, 2, 6, color);
+    canvas.rect(x, top + 6, 10, 8, color);
+}
+
+pub fn wifi_screen(width: usize, height: usize, view: &WifiView, battery: Option<Battery>) -> Canvas {
+    let mut canvas = Canvas::new(width, height);
+    header(&mut canvas, &icons::WIFI, "WI-FI", battery);
+    let status_color = if view.connected { ACCENT } else { MUTED };
+    canvas.text_cased_at(view.status, LIST_LEFT, 76, TEXT_SCALE, status_color);
+    if view.entries.is_empty() {
+        canvas.text("NO NETWORKS FOUND YET", WIFI_TOP + 60, TEXT_SCALE, MUTED);
+    }
+    let advance = (font::WIDTH + 1) * TEXT_SCALE;
+    let first = view.selected / wifi_menu::PAGE * wifi_menu::PAGE;
+    for (line, (index, entry)) in view.entries.iter().enumerate().skip(first).take(wifi_menu::PAGE).enumerate() {
+        let y = WIFI_TOP + line * WIFI_ROW;
+        let row_h = WIFI_ROW - 2;
+        let selected = index == view.selected;
+        let (color, muted, off) = if selected {
+            canvas.rect(0, y, width, row_h, ACCENT);
+            (BACKGROUND, BACKGROUND, RAISED)
+        } else {
+            (if entry.signal.is_some() { TEXT } else { MUTED }, MUTED, BODY)
+        };
+        let bars_right = width.saturating_sub(WIFI_RIGHT);
+        if let Some(signal) = entry.signal {
+            signal_bars(&mut canvas, bars_right, y + row_h - 6, wifi_menu::bars(signal), color, off);
+        }
+        let lock_x = bars_right.saturating_sub(24 + 18);
+        if entry.security != Security::Open {
+            padlock(&mut canvas, lock_x, y + (row_h - 14) / 2, muted);
+        }
+        let label = if entry.connected {
+            "CONNECTED"
+        } else if entry.saved.is_some() {
+            "SAVED"
+        } else if entry.security == Security::Unsupported {
+            "NOT SUPPORTED"
+        } else {
+            ""
+        };
+        let text_y = row_text_y(y, row_h);
+        let label_x = lock_x.saturating_sub(12 + text_width(label, TEXT_SCALE));
+        canvas.text_at(label, label_x, text_y, TEXT_SCALE, if entry.connected && !selected { ACCENT } else { muted });
+        let columns = label_x.saturating_sub(LIST_LEFT + 12) / advance;
+        let name: String = entry.name.chars().take(columns).collect();
+        canvas.text_cased_at(&name, LIST_LEFT, text_y, TEXT_SCALE, color);
+    }
+    if let Some(message) = view.message {
+        canvas.text(message, WIFI_TOP + wifi_menu::PAGE * WIFI_ROW + 14, TEXT_SCALE, ACCENT);
+    }
+    hint(&mut canvas, "A CONNECTS - X FORGETS - Y SCANS - B BACK");
+    canvas
+}
+
+const KEY_W: usize = 56;
+const KEY_H: usize = 44;
+const KEY_GAP: usize = 4;
+const KEYS_TOP: usize = 162;
+const KEY_SCALE: usize = 3;
+const _: () = assert!(KEYS_TOP + 5 * (KEY_H + KEY_GAP) + 20 <= HINT_Y);
+
+/// The password keyboard for the network `name`. `valid_note` explains what a valid
+/// password is while the text isn't one.
+pub fn keyboard_screen(
+    width: usize,
+    height: usize,
+    name: &str,
+    keyboard: &Keyboard,
+    valid_note: &str,
+    battery: Option<Battery>,
+) -> Canvas {
+    let mut canvas = Canvas::new(width, height);
+    header(&mut canvas, &icons::WIFI, "PASSWORD", battery);
+    let grid_w = keyboard::COLUMNS * KEY_W + (keyboard::COLUMNS - 1) * KEY_GAP;
+    let left = width.saturating_sub(grid_w) / 2;
+    let advance = (font::WIDTH + 1) * TEXT_SCALE;
+    let for_name = format!("FOR {name}");
+    let shown: String = for_name.chars().take(grid_w / advance).collect();
+    canvas.text_cased_at(&shown, left, 76, TEXT_SCALE, MUTED);
+
+    // The field shows the end of the text, where typing happens.
+    let (field_y, field_h) = (100, 44);
+    canvas.rect(left, field_y, grid_w, field_h, BODY);
+    let field_advance = (font::WIDTH + 1) * KEY_SCALE;
+    let fits = (grid_w - 24) / field_advance;
+    let count = keyboard.text.chars().count();
+    let visible: String = keyboard.text.chars().skip(count.saturating_sub(fits)).collect();
+    let text_y = field_y + (field_h - font::HEIGHT * KEY_SCALE) / 2;
+    canvas.text_cased_at(&visible, left + 10, text_y, KEY_SCALE, TEXT);
+    let cursor_x = left + 10 + visible.chars().count() * field_advance;
+    canvas.rect(cursor_x, text_y - 2, 3, font::HEIGHT * KEY_SCALE + 4, ACCENT);
+    let counter = format!("{count}");
+    canvas.text_at(&counter, left + grid_w - 8 - text_width(&counter, TEXT_SCALE), field_y + field_h + 4, TEXT_SCALE, MUTED);
+
+    for row in 0..5 {
+        let y = KEYS_TOP + row * (KEY_H + KEY_GAP);
+        let (keys, span) = if row == 4 {
+            (keyboard::WIDE_KEYS.len(), keyboard::WIDE_SPAN)
+        } else {
+            (keyboard.layer.rows()[row].chars().count(), 1)
+        };
+        for index in 0..keys {
+            let key = keyboard.key_at(row, index);
+            let x = left + index * span * (KEY_W + KEY_GAP);
+            let w = span * KEY_W + (span - 1) * KEY_GAP;
+            let selected = row == keyboard.row && index == keyboard.selected_index();
+            let disabled = key == Key::Done && !keyboard.can_finish();
+            let (fill, color) = match (selected, disabled) {
+                (true, _) => (ACCENT, BACKGROUND),
+                (false, true) => (BODY, MUTED),
+                (false, false) => (BODY, if row == 4 { ACCENT } else { TEXT }),
+            };
+            canvas.rect(x, y, w, KEY_H, fill);
+            let label = key.label(keyboard.layer);
+            let scale = if row == 4 { TEXT_SCALE } else { KEY_SCALE };
+            let label_x = x + w.saturating_sub(text_width(&label, scale)) / 2;
+            canvas.text_cased_at(&label, label_x, y + (KEY_H - font::HEIGHT * scale) / 2, scale, color);
+        }
+    }
+    if !keyboard.can_finish() {
+        canvas.text(valid_note, KEYS_TOP + 5 * (KEY_H + KEY_GAP) + 4, TEXT_SCALE, MUTED);
+    }
+    hint(&mut canvas, "A TYPES - B DELETES - X CASE - Y SPACE - START OK");
     canvas
 }
 
@@ -514,6 +672,50 @@ mod tests {
     #[test]
     fn the_list_hint_fits() {
         assert!(text_width("A STARTS - B BACK - SELECT STARS - LEFT RIGHT PAGE", TEXT_SCALE) <= 640 - 16);
+        assert!(text_width("A TYPES - B DELETES - X CASE - Y SPACE - START OK", TEXT_SCALE) <= 640 - 16);
+        assert!(text_width("PRESS X AGAIN TO FORGET THIS NETWORK", TEXT_SCALE) <= 640 - 16);
+        assert!(text_width("COULD NOT CONNECT - CHECK THE PASSWORD", TEXT_SCALE) <= 640 - 16);
+    }
+
+    fn entry(name: &str, signal: Option<i32>, security: Security, saved: bool, connected: bool) -> Entry {
+        Entry { ssid: name.as_bytes().to_vec(), name: name.into(), signal, security, saved: saved.then_some(0), connected }
+    }
+
+    #[test]
+    fn the_wifi_list_fits_long_names_and_many_networks() {
+        let long = "W".repeat(80);
+        let mut entries = vec![
+            entry(&long, Some(-40), Security::Password, true, true),
+            entry("Cafe", Some(-80), Security::Open, false, false),
+            entry("New", Some(-50), Security::Unsupported, false, false),
+            entry("Away", None, Security::Password, true, false),
+        ];
+        entries.extend((0..20).map(|i| entry(&format!("Net {i}"), Some(-60), Security::Password, false, false)));
+        for selected in [0, 12] {
+            let view = WifiView { entries: &entries, selected, status: "CONNECTED TO x", connected: true, message: Some("SCANNING") };
+            assert_eq!(wifi_screen(640, 480, &view, None).pixels.len(), 640 * 480);
+            assert_eq!(wifi_screen(64, 48, &view, None).pixels.len(), 64 * 48);
+        }
+        // The long name stops before the CONNECTED label.
+        let view = WifiView { entries: &entries, selected: 1, status: "", connected: false, message: None };
+        let canvas = wifi_screen(640, 480, &view, None);
+        let label_x = 640 - WIFI_RIGHT - 24 - 18 - 12 - text_width("CONNECTED", TEXT_SCALE);
+        let row = WIFI_TOP..WIFI_TOP + WIFI_ROW - 2;
+        assert!((label_x - 12..label_x - 1).all(|x| row.clone().all(|y| pixel(&canvas, x, y) != TEXT)));
+    }
+
+    #[test]
+    fn the_keyboard_fits_and_highlights_its_key() {
+        let mut keyboard = Keyboard::new(64, |text| text.len() >= 8);
+        keyboard.text = "x".repeat(64);
+        let canvas = keyboard_screen(640, 480, "Home", &keyboard, "8 TO 63 CHARACTERS", None);
+        let grid_w = keyboard::COLUMNS * KEY_W + (keyboard::COLUMNS - 1) * KEY_GAP;
+        assert!(grid_w <= 640 - 16);
+        let left = (640 - grid_w) / 2;
+        // q, on the second row, starts selected.
+        assert_eq!(pixel(&canvas, left + 1, KEYS_TOP + KEY_H + KEY_GAP + 1), ACCENT);
+        assert_eq!(pixel(&canvas, left + 1, KEYS_TOP + 1), BODY);
+        assert_eq!(keyboard_screen(64, 48, &"y".repeat(99), &keyboard, "", None).pixels.len(), 64 * 48);
     }
 
     #[test]
