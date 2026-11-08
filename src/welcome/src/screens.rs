@@ -335,6 +335,18 @@ pub fn fast_forward_sign(on: bool) -> Canvas {
     canvas
 }
 
+/// The kernel's boot logo, shown centred on black until the launcher starts. It is made
+/// with `welcome --preview-splash` and kept as `board/rg35xxsp/logo.ppm`.
+pub fn splash() -> Canvas {
+    let (title, subtitle) = ("RG35XX SP", "LINUX");
+    let width = text_width(title, 6) + 16;
+    let mut canvas = Canvas::new(width, font::HEIGHT * 6 + 12 + font::HEIGHT * 3 + 16);
+    canvas.pixels.fill(Rgb(0, 0, 0));
+    canvas.text(title, 8, 6, ACCENT);
+    canvas.text(subtitle, 8 + font::HEIGHT * 6 + 12, 3, TEXT);
+    canvas
+}
+
 /// The game the launcher is about to resume after starting up.
 pub fn resume_screen(width: usize, height: usize, icon: &Icon, name: &str) -> Canvas {
     let mut canvas = Canvas::new(width, height);

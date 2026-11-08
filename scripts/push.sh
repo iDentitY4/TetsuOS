@@ -5,8 +5,9 @@
 #   rootfs  files in the root filesystem that changed, then restarts the app
 #   boot    the kernel, device tree and extlinux.conf, then reboots
 #   all     rootfs, then boot
+#   uboot   U-Boot, into the card's boot area, checked by reading it back
 #
-# U-Boot changes and a device that doesn't boot still need scripts/flash.sh.
+# A device that doesn't boot, which a bad U-Boot causes, still needs scripts/flash.sh.
 set -euo pipefail
 
 cd "$(dirname "$(readlink -f "$0")")/.."
@@ -70,13 +71,36 @@ push_boot() {
 	on_device reboot
 }
 
+push_uboot() {
+	echo "Writing U-Boot to the card's boot area"
+	copy "$IMAGES/u-boot-sunxi-with-spl.bin" "$DEVICE:/tmp/u-boot.bin"
+	on_device sh -es <<-'EOF'
+		part="$(blkid | grep 'LABEL="RGBOOT"' | head -n 1 | cut -d: -f1)"
+		[ -n "$part" ] || { echo "No RGBOOT partition found" >&2; exit 1; }
+		disk="/dev/$(basename "$(readlink -f "/sys/class/block/$(basename "$part")/..")")"
+		[ -b "$disk" ] || { echo "No disk found for $part" >&2; exit 1; }
+		size=$(wc -c < /tmp/u-boot.bin)
+		# The boot ROM loads it from 8 KiB, and the first partition starts at 1 MiB.
+		[ "$size" -le $((1016 * 1024)) ] || { echo "U-Boot is too large" >&2; exit 1; }
+		dd if=/tmp/u-boot.bin of="$disk" bs=1024 seek=8 conv=fsync 2>/dev/null
+		sync
+		echo 3 > /proc/sys/vm/drop_caches
+		dd if="$disk" bs=1024 skip=8 count=$(( (size + 1023) / 1024 )) 2>/dev/null \
+			| head -c "$size" | cmp - /tmp/u-boot.bin
+		rm /tmp/u-boot.bin
+		echo "Written to $disk at 8 KiB, $size bytes"
+	EOF
+	echo "Verified. It takes effect at the next boot."
+}
+
 case "${1:-}" in
 app) push_app ;;
 rootfs) push_rootfs ;;
 boot) push_boot ;;
 all) push_rootfs; push_boot ;;
+uboot) push_uboot ;;
 *)
-	echo "usage: $0 {app|rootfs|boot|all}" >&2
+	echo "usage: $0 {app|rootfs|boot|all|uboot}" >&2
 	exit 2
 	;;
 esac

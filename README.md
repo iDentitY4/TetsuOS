@@ -71,20 +71,17 @@ does a kernel that doesn't boot, because nothing can reach the device then.
 
 ## Debugging a failed boot
 
-This setup works without a serial adapter. Boot messages show on screen until
-the welcome app starts.
+This setup works without a serial adapter. The screen shows a logo while Linux
+starts, and kernel messages go to `ttynull`, so they stay off the screen; read them
+with `dmesg`. For a boot that fails
+before the logo, check the flash and the slot, then the board's RAM type.
 
-After a boot attempt, check the card's `RGBOOT` partition on a PC:
-
-| What is on the card | What it suggests | What to do |
-| --- | --- | --- |
-| No `bootcount.txt` | Failed before U-Boot finished starting: bootloader, RAM setup or SD access | Check the flash and the slot, then the board's RAM type |
-| `bootcount.txt` above 1 after one power-on | The device is in a reboot loop | Check how far each boot gets from the other files |
-| `bootcount.txt` and `uboot-env.txt`, no `bootlog.txt` | U-Boot worked; Linux failed or didn't finish | A USB-serial adapter on the UART is the next step |
-| `bootlog.txt` | Linux booted | Read it: it has connector, backlight, deferred probe, app and `dmesg` output |
-
-The log is written about 15 seconds after init starts, and again about a minute
-after, so wait before powering off.
+Once Linux boots, it writes `bootlog.txt` to the card's `RGBOOT` partition about 15
+seconds after init starts, and again about a minute after, so wait before powering
+off. It has connector, backlight, deferred probe, app and `dmesg` output. Without a
+`bootlog.txt`, Linux failed or didn't finish, and a USB-serial adapter on the UART is
+the next step. U-Boot no longer writes `bootcount.txt` and `uboot-env.txt`, which
+cost 0.3 seconds a boot.
 
 Once booted, the USB/OTG port also offers a root shell. On the PC, run
 `screen /dev/ttyACM0 115200`, press Enter, and log in as `root`. Quit with

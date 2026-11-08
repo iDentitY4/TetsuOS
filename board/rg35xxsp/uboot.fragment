@@ -1,15 +1,6 @@
-# Boot diagnostics, for debugging without a serial adapter. Before each boot,
-# U-Boot counts the boot in bootcount.txt on the FAT partition, and dumps its
-# environment to uboot-env.txt. If these files appear, the boot ROM, SPL, RAM
-# setup, TF-A, U-Boot and SD access all worked. The count shows reboot loops.
-CONFIG_FS_FAT=y
-CONFIG_CMD_FAT=y
-CONFIG_FAT_WRITE=y
-CONFIG_CMD_SETEXPR=y
-CONFIG_CMD_EXPORTENV=y
-CONFIG_CMD_IMPORTENV=y
-CONFIG_USE_PREBOOT=y
-CONFIG_PREBOOT="setenv bootcount 0; if fatload mmc 0:1 ${scriptaddr} bootcount.txt; then env import -t ${scriptaddr} ${filesize}; fi; setexpr bootcount ${bootcount} + 1; env export -t ${scriptaddr} bootcount; fatwrite mmc 0:1 ${scriptaddr} bootcount.txt ${filesize}; env export -t ${scriptaddr}; fatwrite mmc 0:1 ${scriptaddr} uboot-env.txt ${filesize}"
+# Boot straight away. The default waits 2 seconds for a key on the serial console,
+# which this unit has no adapter for.
+CONFIG_BOOTDELAY=0
 
 # RAM setup for this unit, which has LPDDR3 rather than the LPDDR4 assumed by
 # anbernic_rg35xx_h700_defconfig. Values read from the boot0 that works on this

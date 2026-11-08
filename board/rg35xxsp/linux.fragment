@@ -28,6 +28,10 @@ CONFIG_FB_DEVICE=y
 CONFIG_FRAMEBUFFER_CONSOLE=y
 CONFIG_VT=y
 CONFIG_VT_CONSOLE=y
+# console=ttynull: kernel messages stay off the screen at any loglevel. With
+# console=tty3 they still landed on tty1, over the boot logo, because tty3 isn't
+# allocated that early.
+CONFIG_NULL_TTY=y
 
 # Power: AXP717 PMIC supplies the panel and pin banks
 CONFIG_I2C=y

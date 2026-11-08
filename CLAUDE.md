@@ -81,6 +81,28 @@ Working on the test unit, confirmed by the user:
 
 Built but not yet tested on the device:
 
+- Faster boot with a logo. The launcher logs when it is drawn after the kernel started
+  and after power on, from the system counter (`since_power_on` in `main.rs`), which
+  gives the time before the kernel exactly. U-Boot's `CONFIG_BOOTDELAY` is 0 instead of
+  2, and its diagnostic writes of `bootcount.txt` and `uboot-env.txt` are gone, which
+  cost 0.30 s. The launcher now draws 3.61 s after power on, 2.53 of them before the
+  kernel. U-Boot reads the card at about 24 MB/s, measured with a kernel padded by
+  10 MiB, so the 21 MB kernel takes 0.87 s to load. An LZ4 kernel (10.6 MB, in the
+  frame format `booti` unpacks, made with Buildroot's `host-lz4`) was tried on
+  2026-11-08 and was 0.11 s slower over three boots each (3.73 s against 3.62 s), so
+  unpacking costs about 0.55 s; the plain `Image` stays. Kernel messages go to
+  `ttynull` (`CONFIG_NULL_TTY`) at `loglevel=5`: the boot logo needs a level above
+  `CONFIG_CONSOLE_LOGLEVEL_QUIET` (4), and at 3 it didn't show. With `console=tty3`,
+  warnings such as `4021000.mmc: card claims to support voltages below defined range`
+  still printed over the logo, as the user saw, because tty3 isn't allocated that
+  early and the kernel falls back to the visible tty1. The
+  logo is `board/rg35xxsp/logo.ppm`, a plain PPM made with `welcome --preview-splash`,
+  copied over the kernel's by a hook in `external.mk`, and shown centred from about
+  0.44 s after the kernel starts. The init scripts take 0.01 to 0.04 s each.
+  `scripts/push.sh uboot` writes U-Boot at 8 KiB on the card over SSH and checks it by
+  reading it back. The user saw the logo with a kernel warning over it; with `ttynull`
+  it should be clean, which the user hasn't seen yet
+
 - Scrolling names: a selected name too long for its row pauses 1.2 s, scrolls at 48
   pixels a second to its end, pauses, and starts over (`screens::scroll_offset`). Only
   that row is redrawn, 20 times a second (`fb::draw_area`), which kept the launcher at 2%
@@ -186,21 +208,21 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
 
 Agreed with the user on 2026-11-08, in this order:
 
-1. A boot splash and a faster boot
-2. Wi-Fi, then downloading box art on the device instead of with `scripts/boxart.py`
-3. Rewind, moved to the end by the user
+1. Wi-Fi, then downloading box art on the device instead of with `scripts/boxart.py`
+2. Rewind, moved to the end by the user
 
 Proposed, not yet confirmed by the user:
 
-1. Before any release: remove the U-Boot boot diagnostics and set a root password, which
+1. Before any release: set a root password, which
    SSH now also accepts empty
 
 ## Test hardware
 
 - The user has one RG35XX SP, a USB-A to USB-C cable and a card reader. The device
   has a single USB-C port, labelled USB/OTG.
-- There is **no USB-serial adapter**. Failures before Linux prints anything leave
-  no output, so use the boot diagnostics below.
+- There is **no USB-serial adapter**. Failures before Linux starts leave no output:
+  U-Boot's diagnostic files were removed on 2026-11-08 to save boot time. Once Linux
+  boots, `bootlog.txt` and SSH show what happened.
 - A muOS card boots fine on this unit, and is the reference for working hardware
   settings. Its boot0 dump is at `muos-boot0.bin` (root-owned, git-ignored).
 
@@ -324,7 +346,8 @@ anything physical like the lid:
   Quit with Ctrl-a, k, y.
 - **Updates without the card reader:** after a build, Claude runs `scripts/push.sh app`,
   `rootfs`, `boot` or `all`, as the user allowed on 2026-11-08. `boot` reboots the
-  device. U-Boot changes and a kernel that doesn't boot still need a flash by the user.
+  device. `uboot` writes U-Boot, which the user agreed to on 2026-11-08 for each case; a
+  bad U-Boot or a kernel that doesn't boot needs a flash by the user.
   If `push.sh` can't connect, check the PC got `10.35.35.2` with `ip -br addr`, and
   ask whether the device is awake with the cable in.
 - **Commands on the device:** `ssh -o StrictHostKeyChecking=no -o
@@ -341,7 +364,6 @@ anything physical like the lid:
 These are on the card's `RGBOOT` partition, mounted at `/run/media/user/RGBOOT/` on
 the PC:
 
-- `bootcount.txt`, `uboot-env.txt`: written by U-Boot before it starts Linux
 - `bootlog.txt`: written by `S99bootlog` at about 15 and 60 seconds after init starts
 
 The PC's kernel log is full of firewall messages, so filter them:

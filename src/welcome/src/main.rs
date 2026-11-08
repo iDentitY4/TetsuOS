@@ -612,7 +612,42 @@ fn act(
     Ok(false)
 }
 
+/// Seconds since the kernel started, for timing the boot in the log.
+fn uptime() -> String {
+    std::fs::read_to_string("/proc/uptime")
+        .ok()
+        .and_then(|text| text.split_whitespace().next().map(String::from))
+        .unwrap_or_default()
+}
+
+/// Seconds since power on, from the system counter, which starts at reset and keeps
+/// running into Linux. Less the uptime, it gives the time spent before the kernel.
+#[cfg(target_arch = "aarch64")]
+fn since_power_on() -> Option<f64> {
+    let (count, frequency): (u64, u64);
+    // SAFETY: Linux lets user space read the virtual counter and its frequency.
+    unsafe {
+        std::arch::asm!("mrs {}, cntvct_el0", out(reg) count);
+        std::arch::asm!("mrs {}, cntfrq_el0", out(reg) frequency);
+    }
+    (frequency > 0).then(|| count as f64 / frequency as f64)
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+fn since_power_on() -> Option<f64> {
+    None
+}
+
+/// When something happened, after the kernel started and after power on.
+fn boot_time() -> String {
+    match since_power_on() {
+        Some(seconds) => format!("{} s after the kernel started, {seconds:.2} s after power on", uptime()),
+        None => format!("{} s after the kernel started", uptime()),
+    }
+}
+
 fn run_launcher() -> io::Result<()> {
+    println!("launcher started {}", boot_time());
     settings::restore();
     let mut framebuffer = open_framebuffer()?;
     // Non-fatal: at worst, console text could appear over the screen.
@@ -640,6 +675,7 @@ fn run_launcher() -> io::Result<()> {
         forget_running_game();
     }
 
+    let mut first_draw = true;
     // The selection a long name scrolls for, and since when.
     let mut scroll_for = None;
     let mut scroll_start = Instant::now();
@@ -673,6 +709,10 @@ fn run_launcher() -> io::Result<()> {
             _ => framebuffer.draw(&canvas)?,
         }
         scroll_tick = false;
+        if first_draw {
+            println!("launcher drawn {}", boot_time());
+            first_draw = false;
+        }
 
         // Wait for input or a held button's repeat, redrawing when the battery changes and
         // a few times a second while a long name scrolls.
@@ -766,6 +806,17 @@ fn write_ppm(canvas: &canvas::Canvas, path: &str) -> io::Result<()> {
     file.flush()
 }
 
+/// Writes a plain-text PPM, the only kind the kernel's boot logo converter reads.
+fn write_plain_ppm(canvas: &canvas::Canvas, path: &str) -> io::Result<()> {
+    let mut file = io::BufWriter::new(std::fs::File::create(path)?);
+    writeln!(file, "P3\n{} {}\n255", canvas.width, canvas.height)?;
+    for row in canvas.pixels.chunks_exact(canvas.width) {
+        let line: Vec<String> = row.iter().map(|p| format!("{} {} {}", p.0, p.1, p.2)).collect();
+        writeln!(file, "{}", line.join(" "))?;
+    }
+    file.flush()
+}
+
 /// Renders a launcher screen to a PPM image, to check the layout without the device.
 /// The screen is the one reached by pressing `buttons` from the start, with a sample
 /// set of games.
@@ -848,6 +899,7 @@ fn main() -> ExitCode {
         }
         [flag, path] if flag == "--preview-buttons" => write_button_preview(path),
         [flag, path] if flag == "--preview-pause" => write_pause_preview(path),
+        [flag, path] if flag == "--preview-splash" => write_plain_ppm(&screens::splash(), path),
         [flag, core, rom, save, persistence] if flag == "--play" => {
             let ending = parse_persistence(persistence).and_then(|persistence| {
                 run_game(Path::new(core), Path::new(rom), Path::new(save), persistence)
@@ -875,7 +927,7 @@ fn main() -> ExitCode {
             eprintln!(
                 "usage: welcome [--preview | --preview-list | --preview-recent | --preview-settings FILE.ppm\n\
                  \x20              | --preview-buttons FILE.ppm\n\
-                 \x20              | --preview-pause FILE.ppm\n\
+                 \x20              | --preview-pause FILE.ppm | --preview-splash FILE.ppm\n\
                  \x20              | --play CORE ROM SAVE battery|state\n\
                  \x20              | --render CORE ROM SAVE battery|state FRAMES FILE.ppm]"
             );
