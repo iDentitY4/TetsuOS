@@ -44,6 +44,7 @@ const ENVIRONMENT_GET_CAN_DUPE: c_uint = 3;
 const ENVIRONMENT_GET_SYSTEM_DIRECTORY: c_uint = 9;
 const ENVIRONMENT_SET_PIXEL_FORMAT: c_uint = 10;
 const ENVIRONMENT_GET_VARIABLE: c_uint = 15;
+const ENVIRONMENT_SET_VARIABLES: c_uint = 16;
 const ENVIRONMENT_GET_VARIABLE_UPDATE: c_uint = 17;
 const ENVIRONMENT_GET_SAVE_DIRECTORY: c_uint = 31;
 
@@ -110,7 +111,7 @@ struct Variable {
 }
 
 /// Core options that differ from the cores' defaults. Any other option keeps its default.
-const CORE_OPTIONS: [(&CStr, &CStr); 3] = [
+const CORE_OPTIONS: [(&CStr, &CStr); 4] = [
     // Super Game Boy games would otherwise fill only half the screen, inside a border.
     (c"mgba_sgb_borders", c"OFF"),
     // The original screens were dim and washed out, so games chose strong colours to make
@@ -118,9 +119,33 @@ const CORE_OPTIONS: [(&CStr, &CStr); 3] = [
     (c"mgba_color_correction", c"Auto"),
     // A palette measured from real consoles, where the default is a rough guess.
     (c"fceumm_palette", c"smooth-v2-fbx"),
+    // The PlayStation's second memory card would be a file shared by all games, which
+    // nothing uses. The first is the game's save memory, in its `.srm` file.
+    (c"pcsx_rearmed_memcard2", c"none"),
 ];
 
 const GHOSTING_OPTION: &CStr = c"mgba_interframe_blending";
+
+/// How the frontend sets up a core for one console.
+#[derive(Clone, Copy, Default, Debug)]
+pub struct CoreSetup {
+    /// The shape the game is shown at, for consoles whose pixels aren't square.
+    pub aspect: Option<(usize, usize)>,
+    /// Answers the core's own defaults for options not in `CORE_OPTIONS`. Without, a core
+    /// keeps whatever it set up internally, which for PCSX ReARMed means no memory card
+    /// and no disc read-ahead. The first cores were set up and checked without this, so
+    /// they keep that.
+    pub declared_defaults: bool,
+}
+
+/// The default in a `retro_variable` value, "Description; default|other|...".
+fn declared_default(value: &CStr) -> Option<CString> {
+    let value = value.to_bytes();
+    let start = value.windows(2).position(|pair| pair == b"; ")? + 2;
+    let choices = &value[start..];
+    let end = choices.iter().position(|&byte| byte == b'|').unwrap_or(choices.len());
+    CString::new(&choices[..end]).ok()
+}
 
 fn core_option(key: &CStr, display: Display) -> Option<&'static CStr> {
     if key == GHOSTING_OPTION {
@@ -131,6 +156,17 @@ fn core_option(key: &CStr, display: Display) -> Option<&'static CStr> {
         });
     }
     CORE_OPTIONS.iter().find(|(name, _)| *name == key).map(|(_, value)| *value)
+}
+
+/// `struct retro_system_info`.
+#[repr(C)]
+struct SystemInfo {
+    library_name: *const c_char,
+    library_version: *const c_char,
+    valid_extensions: *const c_char,
+    /// The core opens the game file itself, so it isn't read into memory for it.
+    need_fullpath: bool,
+    block_extract: bool,
 }
 
 #[repr(C)]
@@ -171,7 +207,12 @@ struct Host {
     directory: CString,
     frame: Vec<u32>,
     frame_size: (usize, usize),
+    /// The size of the core's last picture, before scaling.
+    source_size: (usize, usize),
     target: (usize, usize),
+    setup: CoreSetup,
+    /// Each option the core declared, with its default.
+    defaults: Vec<(CString, CString)>,
     frame_ready: bool,
     audio: Option<Child>,
     audio_bytes: u64,
@@ -219,14 +260,39 @@ unsafe extern "C" fn environment(command: c_uint, data: *mut c_void) -> bool {
             if variable.key.is_null() {
                 return false;
             }
+            let key = CStr::from_ptr(variable.key);
             let display = with_host(|host| host.display);
-            match core_option(CStr::from_ptr(variable.key), display) {
+            if let Some(value) = core_option(key, display) {
+                variable.value = value.as_ptr();
+                return true;
+            }
+            // The defaults live as long as the host, which outlives the core.
+            let default = with_host(|host| {
+                host.defaults.iter().find(|(name, _)| name.as_c_str() == key).map(|(_, value)| value.as_ptr())
+            });
+            match default {
                 Some(value) => {
-                    variable.value = value.as_ptr();
+                    variable.value = value;
                     true
                 }
                 None => false,
             }
+        }
+        ENVIRONMENT_SET_VARIABLES => {
+            if !with_host(|host| host.setup.declared_defaults) {
+                return false;
+            }
+            let mut defaults = Vec::new();
+            let mut variable = data as *const Variable;
+            while !(*variable).key.is_null() {
+                let (key, value) = (CStr::from_ptr((*variable).key), (*variable).value);
+                if let Some(default) = (!value.is_null()).then(|| declared_default(CStr::from_ptr(value))).flatten() {
+                    defaults.push((key.to_owned(), default));
+                }
+                variable = variable.add(1);
+            }
+            with_host(|host| host.defaults = defaults);
+            true
         }
         ENVIRONMENT_GET_VARIABLE_UPDATE => {
             *(data as *mut bool) = with_host(|host| std::mem::take(&mut host.options_changed));
@@ -259,9 +325,10 @@ unsafe extern "C" fn video_refresh(
             data as *const u8,
             pitch * (height - 1) + width * bytes_per_pixel,
         );
-        let size = picture_size((width, height), host.target, host.display.scaling);
+        let size = picture_size((width, height), host.target, host.display.scaling, host.setup.aspect);
         host.frame.resize(size.0 * size.1, 0);
         host.frame_size = size;
+        host.source_size = (width, height);
         scale_frame(source, pitch, host.format, (width, height), &mut host.frame, size, host.display.effect);
         host.frame_ready = true;
         host.scale_time += start.elapsed();
@@ -336,17 +403,22 @@ fn fit(source_w: usize, source_h: usize, target_w: usize, target_h: usize) -> (u
     }
 }
 
-/// The size to show a picture at on the panel.
+/// The size to show a picture at on the panel. With an `aspect`, the picture takes that
+/// shape whatever its size in pixels, as a PlayStation's 256 to 640 pixel wide modes all
+/// filled the same 4:3 television.
 fn picture_size(
     (source_w, source_h): (usize, usize),
     (target_w, target_h): (usize, usize),
     scaling: Scaling,
+    aspect: Option<(usize, usize)>,
 ) -> (usize, usize) {
+    let (shape_w, shape_h) = aspect.unwrap_or((source_w, source_h));
     let multiple = (target_w / source_w.max(1)).min(target_h / source_h.max(1));
     match scaling {
-        // A picture larger than the panel has no whole multiple, so it fits instead.
-        Scaling::Integer if multiple >= 1 => (source_w * multiple, source_h * multiple),
-        _ => fit(source_w, source_h, target_w, target_h),
+        // A picture larger than the panel has no whole multiple, so it fits instead. So
+        // does one whose pixels aren't square, since whole multiples can't change shape.
+        Scaling::Integer if multiple >= 1 && source_w * shape_h == source_h * shape_w => (source_w * multiple, source_h * multiple),
+        _ => fit(shape_w.max(1), shape_h.max(1), target_w, target_h),
     }
 }
 
@@ -409,14 +481,20 @@ fn crt_table() -> [[u32; 16]; 17] {
     table
 }
 
-/// Lays a screen effect over the scaled picture.
-fn apply_effect(frame: &mut [u32], (width, height): (usize, usize), (source_w, source_h): (usize, usize), effect: Effect) {
+/// Lays a screen effect over the scaled picture, or over the band of it from `first_line`.
+fn apply_effect(
+    frame: &mut [u32],
+    (width, height): (usize, usize),
+    (source_w, source_h): (usize, usize),
+    effect: Effect,
+    first_line: usize,
+) {
     match effect {
         Effect::None => {}
         Effect::Crt => {
             let table = crt_table();
             let rows = gap_coverage(source_h, height, CRT_GAP);
-            for (line, &coverage) in frame.chunks_exact_mut(width).zip(&rows) {
+            for (line, &coverage) in frame.chunks_exact_mut(width).zip(&rows[first_line..]) {
                 let multipliers = &table[(coverage as usize * 16 + 128) / 256];
                 for pixel in line {
                     *pixel = brighten(*pixel, multipliers[brightness_level(*pixel)]);
@@ -429,7 +507,7 @@ fn apply_effect(frame: &mut [u32], (width, height): (usize, usize), (source_w, s
             let keep = |coverage: &u32| 256 - 115 * coverage / 256;
             let columns: Vec<u32> = gap_coverage(source_w, width, LCD_GAP).iter().map(keep).collect();
             let rows: Vec<u32> = gap_coverage(source_h, height, LCD_GAP).iter().map(keep).collect();
-            for (line, &row) in frame.chunks_exact_mut(width).zip(&rows) {
+            for (line, &row) in frame.chunks_exact_mut(width).zip(&rows[first_line..]) {
                 let row = row * GAIN / 256;
                 for (pixel, &column) in line.iter_mut().zip(&columns) {
                     *pixel = brighten(*pixel, row * column / 256);
@@ -503,46 +581,81 @@ fn scale_row(source: &[u8], format: PixelFormat, columns: &[(usize, u32)], conve
 }
 
 /// Converts to XRGB8888 and scales, keeping game pixels the same apparent size.
+/// Pictures with at least this many lines are scaled in two bands at once, on two cores.
+/// A PlayStation frame took 8.7 ms on one, of the 20 ms a 50 Hz frame has.
+const BAND_MIN_LINES: usize = 64;
+
 fn scale_frame(
     source: &[u8],
     pitch: usize,
     format: PixelFormat,
-    (source_w, source_h): (usize, usize),
+    source_size: (usize, usize),
     dest: &mut [u32],
-    (dest_w, dest_h): (usize, usize),
+    dest_size: (usize, usize),
     effect: Effect,
 ) {
-    let columns = axis_weights(source_w, dest_w);
-    let rows = axis_weights(source_h, dest_h);
-    let mut converted = vec![0u32; source_w];
-    // The two game rows scaled across most recently, with which rows they are.
-    let mut scaled = [vec![0u32; dest_w], vec![0u32; dest_w]];
-    let mut scaled_rows = [usize::MAX; 2];
-    let row_bytes = |row: usize| &source[row * pitch..];
-    for (y, out) in dest.chunks_exact_mut(dest_w).enumerate() {
-        let (first, weight) = rows[y];
-        let needed = if weight == 256 { 1 } else { 2 };
-        for (slot, row) in (first..first + needed).enumerate() {
-            if scaled_rows[slot] != row {
-                // The row may already be in the other slot, from the line before.
-                if scaled_rows[1 - slot] == row {
-                    scaled.swap(0, 1);
-                    scaled_rows.swap(0, 1);
-                } else {
-                    scale_row(row_bytes(row), format, &columns, &mut converted, &mut scaled[slot]);
-                    scaled_rows[slot] = row;
+    let (dest_w, dest_h) = dest_size;
+    let columns = axis_weights(source_size.0, dest_w);
+    let rows = axis_weights(source_size.1, dest_h);
+    let band = Band { source, pitch, format, source_size, dest_size, columns: &columns, rows: &rows, effect };
+    if dest_h < 2 * BAND_MIN_LINES {
+        band.scale(0, dest);
+        return;
+    }
+    let split = dest_h / 2;
+    let (top, bottom) = dest.split_at_mut(split * dest_w);
+    std::thread::scope(|scope| {
+        scope.spawn(|| band.scale(split, bottom));
+        band.scale(0, top);
+    });
+}
+
+/// What every band of a picture is scaled with.
+#[derive(Clone, Copy)]
+struct Band<'a> {
+    source: &'a [u8],
+    pitch: usize,
+    format: PixelFormat,
+    source_size: (usize, usize),
+    dest_size: (usize, usize),
+    columns: &'a [(usize, u32)],
+    rows: &'a [(usize, u32)],
+    effect: Effect,
+}
+
+impl Band<'_> {
+    /// Scales the lines from `first_line` into `out`, which holds whole lines.
+    fn scale(&self, first_line: usize, out: &mut [u32]) {
+        let dest_w = self.dest_size.0;
+        let mut converted = vec![0u32; self.source_size.0];
+        // The two game rows scaled across most recently, with which rows they are.
+        let mut scaled = [vec![0u32; dest_w], vec![0u32; dest_w]];
+        let mut scaled_rows = [usize::MAX; 2];
+        let row_bytes = |row: usize| &self.source[row * self.pitch..];
+        for (line, &(first, weight)) in out.chunks_exact_mut(dest_w).zip(&self.rows[first_line..]) {
+            let needed = if weight == 256 { 1 } else { 2 };
+            for (slot, row) in (first..first + needed).enumerate() {
+                if scaled_rows[slot] != row {
+                    // The row may already be in the other slot, from the line before.
+                    if scaled_rows[1 - slot] == row {
+                        scaled.swap(0, 1);
+                        scaled_rows.swap(0, 1);
+                    } else {
+                        scale_row(row_bytes(row), self.format, self.columns, &mut converted, &mut scaled[slot]);
+                        scaled_rows[slot] = row;
+                    }
+                }
+            }
+            if weight == 256 {
+                line.copy_from_slice(&scaled[0]);
+            } else {
+                for ((pixel, &a), &b) in line.iter_mut().zip(&scaled[0]).zip(&scaled[1]) {
+                    *pixel = mix(a, b, weight);
                 }
             }
         }
-        if weight == 256 {
-            out.copy_from_slice(&scaled[0]);
-        } else {
-            for ((pixel, &a), &b) in out.iter_mut().zip(&scaled[0]).zip(&scaled[1]) {
-                *pixel = mix(a, b, weight);
-            }
-        }
+        apply_effect(out, self.dest_size, self.source_size, self.effect, first_line);
     }
-    apply_effect(dest, (dest_w, dest_h), (source_w, source_h), effect);
 }
 
 struct Core {
@@ -608,11 +721,20 @@ impl Core {
             function!(c"retro_set_input_state", SetCallback)(input_state as *const c_void);
             function!(c"retro_init", unsafe extern "C" fn())();
 
-            let rom = std::fs::read(rom_path)?;
+            let mut info = SystemInfo {
+                library_name: std::ptr::null(),
+                library_version: std::ptr::null(),
+                valid_extensions: std::ptr::null(),
+                need_fullpath: false,
+                block_extract: false,
+            };
+            function!(c"retro_get_system_info", unsafe extern "C" fn(*mut SystemInfo))(&mut info);
+            // A disc image can be hundreds of megabytes, and such cores read it themselves.
+            let rom = if info.need_fullpath { Vec::new() } else { std::fs::read(rom_path)? };
             let rom_name = c_path(rom_path)?;
             let game = GameInfo {
                 path: rom_name.as_ptr(),
-                data: rom.as_ptr() as *const c_void,
+                data: if rom.is_empty() { std::ptr::null() } else { rom.as_ptr() as *const c_void },
                 size: rom.len(),
                 meta: std::ptr::null(),
             };
@@ -757,13 +879,16 @@ fn load_resume(core: &mut Core, path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn set_host(directory: &Path, target: (usize, usize)) -> io::Result<()> {
+fn set_host(directory: &Path, target: (usize, usize), setup: CoreSetup) -> io::Result<()> {
     let host = Host {
         format: PixelFormat::Rgb1555,
         directory: c_path(directory)?,
         frame: Vec::new(),
         frame_size: (0, 0),
+        source_size: (0, 0),
         target,
+        setup,
+        defaults: Vec::new(),
         frame_ready: false,
         audio: None,
         audio_bytes: 0,
@@ -1043,12 +1168,13 @@ pub fn play(
     rom: &Path,
     save: &Path,
     persistence: Persistence,
+    setup: CoreSetup,
     framebuffer: &mut Framebuffer,
 ) -> io::Result<Ending> {
     // SAFETY: the handler only stores to an atomic.
     unsafe { signal(SIGTERM, on_terminate as extern "C" fn(c_int) as usize) };
     let directory = save.parent().unwrap_or(Path::new("."));
-    set_host(directory, framebuffer.size())?;
+    set_host(directory, framebuffer.size(), setup)?;
     let mut core = Core::load(core_path, rom)?;
     let mut save_file = core.open_save(save, persistence)?;
     let resume = resume_path(save, persistence);
@@ -1260,10 +1386,11 @@ pub fn render(
     rom: &Path,
     save: &Path,
     persistence: Persistence,
+    setup: CoreSetup,
     frames: u64,
     output: &Path,
 ) -> io::Result<()> {
-    set_host(save.parent().unwrap_or(Path::new(".")), (640, 480))?;
+    set_host(save.parent().unwrap_or(Path::new(".")), (640, 480), setup)?;
     let mut core = Core::load(core_path, rom)?;
     let mut save_file = core.open_save(save, persistence)?;
     let start = Instant::now();
@@ -1274,12 +1401,14 @@ pub fn render(
     let elapsed = start.elapsed().as_secs_f64();
     save_file.update(&core.snapshot(persistence)?)?;
 
-    let (bytes, width, height, pixels) = with_host(|host| {
-        (host.audio_bytes, host.frame_size.0, host.frame_size.1, std::mem::take(&mut host.frame))
+    let (bytes, width, height, pixels, source) = with_host(|host| {
+        let (width, height) = host.frame_size;
+        (host.audio_bytes, width, height, std::mem::take(&mut host.frame), host.source_size)
     });
     println!("{frames} frames in {elapsed:.2} s: {:.0} fps", frames as f64 / elapsed);
     println!("core timing: {:.2} fps, {:.0} Hz", core.av_info.timing.fps, core.av_info.timing.sample_rate);
     println!("audio: {bytes} bytes, save RAM: {} bytes", core.save_ram().len());
+    println!("last frame: {}x{} from the core, shown at {width}x{height}", source.0, source.1);
 
     let mut file = io::BufWriter::new(std::fs::File::create(output)?);
     write!(file, "P6\n{width} {height}\n255\n")?;
@@ -1301,13 +1430,66 @@ mod tests {
     #[test]
     fn integer_scaling_uses_the_largest_whole_multiple() {
         let panel = (640, 480);
-        assert_eq!(picture_size((240, 160), panel, Scaling::Integer), (480, 320));
-        assert_eq!(picture_size((256, 224), panel, Scaling::Integer), (512, 448));
-        assert_eq!(picture_size((160, 144), panel, Scaling::Integer), (480, 432));
-        assert_eq!(picture_size((256, 240), panel, Scaling::Integer), (512, 480));
-        assert_eq!(picture_size((240, 160), panel, Scaling::Fit), (640, 426));
+        assert_eq!(picture_size((240, 160), panel, Scaling::Integer, None), (480, 320));
+        assert_eq!(picture_size((256, 224), panel, Scaling::Integer, None), (512, 448));
+        assert_eq!(picture_size((160, 144), panel, Scaling::Integer, None), (480, 432));
+        assert_eq!(picture_size((256, 240), panel, Scaling::Integer, None), (512, 480));
+        assert_eq!(picture_size((240, 160), panel, Scaling::Fit, None), (640, 426));
         // Larger than the panel: no whole multiple, so it fits.
-        assert_eq!(picture_size((800, 600), panel, Scaling::Integer), (640, 480));
+        assert_eq!(picture_size((800, 600), panel, Scaling::Integer, None), (640, 480));
+    }
+
+    #[test]
+    fn the_default_is_the_first_choice() {
+        assert_eq!(declared_default(c"CD read-ahead; 12|0|1|2").as_deref(), Some(c"12"));
+        assert_eq!(declared_default(c"Memory card; libretro").as_deref(), Some(c"libretro"));
+        assert_eq!(declared_default(c"No choices"), None);
+    }
+
+    #[test]
+    fn playstation_modes_all_fill_a_4_3_picture() {
+        let panel = (640, 480);
+        let four_three = Some((4, 3));
+        for scaling in [Scaling::Fit, Scaling::Integer] {
+            for mode in [(256, 240), (320, 240), (368, 240), (512, 240), (640, 480)] {
+                assert_eq!(picture_size(mode, panel, scaling, four_three), (640, 480), "{mode:?}");
+            }
+        }
+        // European games have 256 lines.
+        assert_eq!(picture_size((320, 256), panel, Scaling::Fit, four_three), (640, 480));
+        assert_eq!(picture_size((320, 224), panel, Scaling::Integer, four_three), (640, 480));
+    }
+
+    #[test]
+    fn two_bands_scale_exactly_like_one() {
+        let (source_w, source_h) = (368, 240);
+        let mut seed = 1u32;
+        let source: Vec<u8> = (0..source_w * source_h * 2)
+            .map(|_| {
+                seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+                (seed >> 16) as u8
+            })
+            .collect();
+        let size = (640, 480);
+        for effect in [Effect::None, Effect::Crt, Effect::Lcd] {
+            let mut split = vec![0u32; size.0 * size.1];
+            scale_frame(&source, source_w * 2, PixelFormat::Rgb565, (source_w, source_h), &mut split, size, effect);
+            let columns = axis_weights(source_w, size.0);
+            let rows = axis_weights(source_h, size.1);
+            let band = Band {
+                source: &source,
+                pitch: source_w * 2,
+                format: PixelFormat::Rgb565,
+                source_size: (source_w, source_h),
+                dest_size: size,
+                columns: &columns,
+                rows: &rows,
+                effect,
+            };
+            let mut whole = vec![0u32; size.0 * size.1];
+            band.scale(0, &mut whole);
+            assert!(split == whole, "{effect:?}");
+        }
     }
 
     #[test]

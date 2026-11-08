@@ -194,6 +194,33 @@ pub const GAME_BOY_ADVANCE: Icon = [
     "................................",
 ];
 
+pub const PLAYSTATION: Icon = [
+    "................................",
+    "................................",
+    "................................",
+    "..KKKKKKKKKKKKKKKKKKKKKKKKKKKK..",
+    ".KLLLLLLLLLLLLLLLLLLLLLLLLLLLLK.",
+    ".KLLLLLLLLLKKKKKKKKLLLLLLLLLLLK.",
+    ".KLLLLLLLKKGGGGGGGGKKLLLLLLLLLK.",
+    ".KLLLLLLKGGGGGGGGGGGGKLLLLLLLLK.",
+    ".KLLLLLKGGGGGGGGGGGGGGKLLLLLLLK.",
+    ".KLLLLLKGGGGGGDDGGGGGGKLLLDDDLK.",
+    ".KLLLLKGGGGGGDLLDGGGGGGKLLDBDLK.",
+    ".KLLLLKGGGGGGDLLDGGGGGGKLLDDDLK.",
+    ".KLLLLLKGGGGGGDDGGGGGGKLLLLLLLK.",
+    ".KLLLLLKGGGGGGGGGGGGGGKLLLDDDLK.",
+    ".KLLLLLLKGGGGGGGGGGGGKLLLLDRDLK.",
+    ".KLLLLLLLKKGGGGGGGGKKLLLLLDDDLK.",
+    ".KLLLLLLLLLKKKKKKKKLLLLLLLLLLLK.",
+    ".KGGGGGGGGGGGGGGGGGGGGGGGGGGGGK.",
+    ".KGGGDDDDDGGGGGGGGGGGGDDDDDGGGK.",
+    "..KKKKKKKKKKKKKKKKKKKKKKKKKKKK..",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+];
+
 pub const RECENT: Icon = [
     "................................",
     "................................",
@@ -307,10 +334,11 @@ pub const FAVORITES: Icon = [
 mod tests {
     use super::*;
 
-    const ALL: [&Icon; 10] = [
+    const ALL: [&Icon; 11] = [
         &NES,
         &GAME_BOY,
         &SNES,
+        &PLAYSTATION,
         &TAMAGOTCHI,
         &GAME_BOY_COLOR,
         &GAME_BOY_ADVANCE,

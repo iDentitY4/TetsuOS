@@ -79,6 +79,24 @@ Working on the test unit, confirmed by the user:
   mGBA's Super Game Boy border, which shrank SGB-enhanced games to half the screen. Not
   yet seen by the user
 
+- PlayStation through `package/libretro-pcsx-rearmed` (PCSX ReARMed, ari64 recompiler and
+  NEON renderer, built with the makefile's `h5` platform, the same Cortex-A53). Games are
+  `.cue` files with their `.bin` beside them in `roms` (also `.chd` and `.pbp`); the
+  launcher lists only the `.cue`. No BIOS file is needed, because the core has its own
+  replacement. The first memory card is the save memory, in `saves/<game>.cue.srm`; the
+  second is off. The frontend skips reading a game into memory when a core sets
+  `need_fullpath`, and for this core alone answers the option defaults it declares through
+  `SET_VARIABLES` (`CoreSetup::declared_defaults`): unanswered, it kept no memory card and
+  read nothing ahead from the disc, which caused 33 ms underruns while FF7 loaded. Pictures
+  are shown at 4:3 (`CoreSetup::aspect`), since its modes run from 256 to 640 pixels wide.
+  Frames of 128 lines or more are scaled in two bands on two cores (`Band` in
+  `libretro.rs`), the same output as one pass, which took FF7 from 8.7 to 4.1 ms per frame
+  of the 20 ms that 50 Hz European games have. Claude ran Final Fantasy VII, Metal Slug X
+  and Star Wars Episode I (all European) on the device: 50 fps, Metal Slug X in play at
+  the lowest 480 MHz and 44 C with no underruns, FF7 sees a formatted card, and save
+  states (4.4 MB) save and load. 50 Hz games can't match the 59.94 Hz panel, so some
+  frames show twice. The user hasn't tried it yet, so sound and feel are unchecked
+
 Built but not yet tested on the device:
 
 - Faster boot with a logo. The launcher logs when it is drawn after the kernel started

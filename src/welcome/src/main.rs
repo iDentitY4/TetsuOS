@@ -24,7 +24,7 @@ use icons::Icon;
 use launcher::{Command as Action, Game, Launcher, Library, List, Screen, Shelf, Tile};
 use repeat::Repeater;
 use input::{Button, Controls, Event};
-use libretro::{Ending, Persistence};
+use libretro::{CoreSetup, Ending, Persistence};
 use std::ffi::OsString;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -60,12 +60,13 @@ struct System {
     /// their existing saves still load. Later ones keep the extension, so games with the
     /// same name on two consoles get separate saves.
     short_save_names: bool,
+    setup: CoreSetup,
 }
 
 const MGBA: &str = "/usr/lib/libretro/mgba_libretro.so";
 
 /// In the order the launcher lists them, which is by the console's release.
-const SYSTEMS: [System; 6] = [
+const SYSTEMS: [System; 7] = [
     System {
         console: "NES",
         label: "NES",
@@ -76,6 +77,7 @@ const SYSTEMS: [System; 6] = [
         save_extension: "srm",
         rom_size: None,
         short_save_names: false,
+        setup: CoreSetup { aspect: None, declared_defaults: false },
     },
     System {
         console: "GAME BOY",
@@ -87,6 +89,7 @@ const SYSTEMS: [System; 6] = [
         save_extension: "srm",
         rom_size: None,
         short_save_names: false,
+        setup: CoreSetup { aspect: None, declared_defaults: false },
     },
     System {
         console: "SNES",
@@ -98,6 +101,22 @@ const SYSTEMS: [System; 6] = [
         save_extension: "srm",
         rom_size: None,
         short_save_names: false,
+        setup: CoreSetup { aspect: None, declared_defaults: false },
+    },
+    System {
+        console: "PLAYSTATION",
+        label: "PLAYSTATION",
+        icon: &icons::PLAYSTATION,
+        // A `.cue` names the disc's `.bin` files, which sit beside it and aren't listed.
+        extensions: &["cue", "chd", "pbp"],
+        core: "/usr/lib/libretro/pcsx_rearmed_libretro.so",
+        // The memory card, which the core keeps as its save memory.
+        persistence: Persistence::BatteryRam,
+        save_extension: "srm",
+        rom_size: None,
+        short_save_names: false,
+        // Its 256 to 640 pixel wide modes all filled the same 4:3 television.
+        setup: CoreSetup { aspect: Some((4, 3)), declared_defaults: true },
     },
     System {
         console: "TAMAGOTCHI",
@@ -109,6 +128,7 @@ const SYSTEMS: [System; 6] = [
         save_extension: "state",
         rom_size: Some(12288),
         short_save_names: true,
+        setup: CoreSetup { aspect: None, declared_defaults: false },
     },
     System {
         console: "GAME BOY COLOR",
@@ -120,6 +140,7 @@ const SYSTEMS: [System; 6] = [
         save_extension: "srm",
         rom_size: None,
         short_save_names: false,
+        setup: CoreSetup { aspect: None, declared_defaults: false },
     },
     System {
         console: "GAME BOY ADVANCE",
@@ -131,6 +152,7 @@ const SYSTEMS: [System; 6] = [
         save_extension: "srm",
         rom_size: None,
         short_save_names: true,
+        setup: CoreSetup { aspect: None, declared_defaults: false },
     },
 ];
 
@@ -1032,7 +1054,8 @@ fn run_launcher() -> io::Result<()> {
 
 /// The separate process that `play_game` starts.
 fn run_game(core: &Path, rom: &Path, save: &Path, persistence: Persistence) -> io::Result<Ending> {
-    libretro::play(core, rom, save, persistence, &mut open_framebuffer()?)
+    let setup = system_for(rom).map(|system| system.setup).unwrap_or_default();
+    libretro::play(core, rom, save, persistence, setup, &mut open_framebuffer()?)
 }
 
 fn write_ppm(canvas: &canvas::Canvas, path: &str) -> io::Result<()> {
@@ -1206,6 +1229,7 @@ fn main() -> ExitCode {
                     Path::new(rom),
                     Path::new(save),
                     persistence,
+                    system_for(Path::new(rom)).map(|system| system.setup).unwrap_or_default(),
                     frames,
                     Path::new(output),
                 )

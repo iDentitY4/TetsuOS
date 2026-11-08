@@ -1,0 +1,8 @@
+config BR2_PACKAGE_LIBRETRO_PCSX_REARMED
+	bool "libretro-pcsx-rearmed"
+	help
+	  The PCSX ReARMed PlayStation emulator, as a libretro core,
+	  with a dynamic recompiler for ARM. It runs games without a
+	  BIOS file through its own BIOS replacement.
+
+	  https://github.com/libretro/pcsx_rearmed

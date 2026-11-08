@@ -37,6 +37,9 @@ COLLECTIONS = {
     "gbc": "Nintendo_-_Game_Boy_Color",
     "gba": "Nintendo_-_Game_Boy_Advance",
     "sfc": "Nintendo_-_Super_Nintendo_Entertainment_System",
+    "cue": "Sony_-_PlayStation",
+    "chd": "Sony_-_PlayStation",
+    "pbp": "Sony_-_PlayStation",
     "smc": "Nintendo_-_Super_Nintendo_Entertainment_System",
 }
 URL = "https://raw.githubusercontent.com/libretro-thumbnails/{}/master/Named_Boxarts/{}.png"
