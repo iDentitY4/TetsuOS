@@ -5,7 +5,7 @@ use crate::boxart::Image;
 use crate::icons::{self, Icon};
 use crate::input::{Button, Controls};
 use crate::pause::{Item, PauseMenu, ITEMS};
-use crate::settings::{Background, BatteryDisplay, Display};
+use crate::settings::{Background, BatteryDisplay, GameDisplay};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -312,7 +312,7 @@ pub struct PauseView<'a> {
     pub slot_used: bool,
     pub volume_percent: Option<u32>,
     pub brightness_percent: Option<u32>,
-    pub display: Display,
+    pub display: GameDisplay,
 }
 
 const PAUSE_PANEL: (usize, usize, usize, usize) = (110, 30, 420, 420);
@@ -511,7 +511,7 @@ mod tests {
     }
 
     fn pause_view(menu: &PauseMenu) -> PauseView<'_> {
-        PauseView { menu, slot_used: false, volume_percent: Some(80), brightness_percent: None, display: Display::default() }
+        PauseView { menu, slot_used: false, volume_percent: Some(80), brightness_percent: None, display: GameDisplay::default() }
     }
 
     #[test]

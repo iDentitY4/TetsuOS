@@ -360,13 +360,26 @@ precompiled on the PC. `external.mk` builds Mesa with `-Dllvm=disabled`, and
 links to a missing library. Claude checked over SSH that `kmscube` still runs at
 59.94 fps on Panfrost. The rootfs partition is still a fixed 1 GiB.
 
+## How settings work
+
+`settings.rs` reads `/mnt/data/settings.txt` once per process and keeps it in memory:
+`settings::get()` returns a copy of the `Settings` struct, and `settings::update(|s| ...)`
+changes it and saves the file (`change_settings` in `main.rs` also logs a failure). A
+game runs in its own process and its menu can change the display and the levels, so
+`play_game` calls `settings::reload()` afterwards; without it, the launcher's next save
+would undo the game's change. Volume and brightness live in the hardware (`amixer`,
+backlight sysfs) and are only copied to the file by `save_levels`. A setting with fixed
+choices is declared with the `choices!` macro, which gives `ALL`, `key`, `label`, `cycle`,
+`from_key` and the default; a new one also needs a line in `parse` and `format`. The file
+keeps `key=value` lines in any order, and unknown or missing lines fall back to defaults,
+so files from older versions load (tested with the test unit's file from 2026-11-08).
+
 ## Next steps
 
 Agreed with the user on 2026-11-08, in this order, each shown to the user before the next:
 
-1. Refactor, after renaming `welcome` to `launcher` (done): keep settings in memory
-   instead of re-reading `settings.txt` about 15 times per redraw, with less per-option
-   boilerplate; split `main.rs` into modules; use `libc`, `libloading` and `evdev`
+1. Refactor, after renaming `welcome` to `launcher` (done) and keeping settings in memory
+   (done, see below): split `main.rs` into modules; use `libc`, `libloading` and `evdev`
    instead of hand-declared FFI and raw `input_event` decoding; replace the global
    theme atomics with a `Theme` value and let `SettingsView` take the settings; move
    box art downloads into the app with `ureq` and `rustls` plus `serde_json`, dropping

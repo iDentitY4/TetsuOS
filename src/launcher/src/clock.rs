@@ -81,35 +81,7 @@ pub const ZONES: &[Zone] = &[
 
 pub const UTC: &Zone = &ZONES[14];
 
-/// How the clock in the corner shows the time.
-#[derive(Clone, Copy, PartialEq, Debug, Default)]
-pub enum ClockFormat {
-    #[default]
-    Hours24,
-    Hours12,
-    Off,
-}
-
-impl ClockFormat {
-    pub const ALL: [Self; 3] = [Self::Hours24, Self::Hours12, Self::Off];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Hours24 => "24 HOUR",
-            Self::Hours12 => "12 HOUR",
-            Self::Off => "OFF",
-        }
-    }
-
-    /// The name in the settings file.
-    pub fn key(self) -> &'static str {
-        match self {
-            Self::Hours24 => "24h",
-            Self::Hours12 => "12h",
-            Self::Off => "off",
-        }
-    }
-}
+pub use crate::settings::ClockFormat;
 
 pub fn zone_named(name: &str) -> Option<&'static Zone> {
     ZONES.iter().find(|zone| zone.name == name)

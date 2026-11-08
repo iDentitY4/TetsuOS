@@ -1,12 +1,19 @@
-//! Volume, screen brightness, how games are shown and the time zone, kept on the RGDATA
-//! partition across reboots.
+//! Everything chosen in Settings, kept in `/mnt/data/settings.txt` on the RGDATA partition
+//! across reboots, plus the volume and brightness, which live in the hardware.
+//!
+//! The settings are read from the file once and kept in memory: `get` returns them, and
+//! `update` changes them and saves the file. A game runs in its own process and may change
+//! some, such as the display or the volume, so the launcher calls `reload` after one.
+//! The file is lines of `key=value`; unknown lines are ignored, and missing ones keep their
+//! defaults, so files from older versions still load.
 
 use crate::canvas::Rgb;
-use crate::clock::{self, ClockFormat, Zone};
+use crate::clock::{self, Zone};
 use crate::storage::write_atomic;
 use std::io;
 use std::path::Path;
 use std::process::Command;
+use std::sync::Mutex;
 
 const SETTINGS_PATH: &str = "/mnt/data/settings.txt";
 const VOLUME_CONTROL: &str = "name=Line Out Playback Volume";
@@ -18,167 +25,112 @@ const BACKLIGHT: &str = "/sys/class/backlight/backlight";
 /// screen can't be turned fully dark from a menu that needs the screen to undo it.
 const BRIGHTNESS_STEPS: u32 = 10;
 
-/// How a game's picture is sized to the panel.
-#[derive(Clone, Copy, PartialEq, Debug, Default)]
-pub enum Scaling {
-    /// As large as fits, which leaves some pixels a screen line wider than others.
-    #[default]
-    Fit,
-    /// The largest whole multiple that fits, so every pixel is the same size.
-    Integer,
-}
-
-/// A look laid over a game's picture.
-#[derive(Clone, Copy, PartialEq, Debug, Default)]
-pub enum Effect {
-    #[default]
-    None,
-    /// Scanlines like a CRT's, which bright pixels fill in more than dark ones.
-    Crt,
-    /// A soft grid between pixels, like a handheld's LCD.
-    Lcd,
-}
-
-/// How slow the handheld screens look: blending a frame with the ones before it, like their
-/// LCDs did. Some games flicker sprites every other frame to fake transparency, and only
-/// look right blended. Only mGBA, for the Game Boy systems, has it.
-#[derive(Clone, Copy, PartialEq, Debug, Default)]
-pub enum Ghosting {
-    Off,
-    /// Blends only pixels that flicker.
-    #[default]
-    Smart,
-    /// Blends everything, like the original screens' slow response.
-    Full,
-}
-
 /// Moves through a list of choices, wrapping around.
-fn cycle<T: Copy + PartialEq>(choices: &[T], current: T, steps: i32) -> T {
+pub fn cycle<T: Copy + PartialEq>(choices: &[T], current: T, steps: i32) -> T {
     let index = choices.iter().position(|&choice| choice == current).unwrap_or(0) as i32;
     choices[(index + steps).rem_euclid(choices.len() as i32) as usize]
 }
 
-impl Scaling {
-    const ALL: [Self; 2] = [Self::Fit, Self::Integer];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Fit => "FIT",
-            Self::Integer => "INTEGER",
+/// A setting with a fixed list of choices: its variants, each with the name the settings
+/// file keeps and the label Settings shows, and which is the default. It gives `ALL`,
+/// `key`, `label`, `cycle` and `from_key`.
+macro_rules! choices {
+    (
+        $(#[$meta:meta])*
+        pub enum $name:ident (default $default:ident) {
+            $( $(#[$variant_meta:meta])* $variant:ident => $key:literal, $label:literal; )+
         }
-    }
-
-    pub fn cycle(self, steps: i32) -> Self {
-        cycle(&Self::ALL, self, steps)
-    }
-
-    fn key(self) -> &'static str {
-        match self {
-            Self::Fit => "fit",
-            Self::Integer => "integer",
+    ) => {
+        $(#[$meta])*
+        #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+        pub enum $name {
+            $( $(#[$variant_meta])* $variant, )+
         }
+
+        impl Default for $name {
+            fn default() -> Self {
+                Self::$default
+            }
+        }
+
+        #[allow(dead_code)]
+        impl $name {
+            pub const ALL: &'static [Self] = &[$(Self::$variant),+];
+
+            /// The name in the settings file.
+            pub fn key(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $key,)+
+                }
+            }
+
+            pub fn label(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $label,)+
+                }
+            }
+
+            pub fn cycle(self, steps: i32) -> Self {
+                $crate::settings::cycle(Self::ALL, self, steps)
+            }
+
+            pub fn from_key(key: &str) -> Option<Self> {
+                Self::ALL.iter().copied().find(|choice| choice.key() == key)
+            }
+        }
+    };
+}
+
+choices! {
+    /// How a game's picture is sized to the panel.
+    pub enum Scaling (default Fit) {
+        /// As large as fits, which leaves some pixels a screen line wider than others.
+        Fit => "fit", "FIT";
+        /// The largest whole multiple that fits, so every pixel is the same size.
+        Integer => "integer", "INTEGER";
     }
 }
 
-impl Effect {
-    const ALL: [Self; 3] = [Self::None, Self::Crt, Self::Lcd];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::None => "NONE",
-            Self::Crt => "CRT",
-            Self::Lcd => "LCD",
-        }
-    }
-
-    pub fn cycle(self, steps: i32) -> Self {
-        cycle(&Self::ALL, self, steps)
-    }
-
-    fn key(self) -> &'static str {
-        match self {
-            Self::None => "none",
-            Self::Crt => "crt",
-            Self::Lcd => "lcd",
-        }
+choices! {
+    /// A look laid over a game's picture.
+    pub enum Effect (default None) {
+        None => "none", "NONE";
+        /// Scanlines like a CRT's, which bright pixels fill in more than dark ones.
+        Crt => "crt", "CRT";
+        /// A soft grid between pixels, like a handheld's LCD.
+        Lcd => "lcd", "LCD";
     }
 }
 
-impl Ghosting {
-    const ALL: [Self; 3] = [Self::Off, Self::Smart, Self::Full];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Off => "OFF",
-            Self::Smart => "SMART",
-            Self::Full => "FULL",
-        }
-    }
-
-    pub fn cycle(self, steps: i32) -> Self {
-        cycle(&Self::ALL, self, steps)
-    }
-
-    fn key(self) -> &'static str {
-        match self {
-            Self::Off => "off",
-            Self::Smart => "smart",
-            Self::Full => "full",
-        }
+choices! {
+    /// How slow the handheld screens look: blending a frame with the ones before it, like
+    /// their LCDs did. Some games flicker sprites every other frame to fake transparency,
+    /// and only look right blended. Only mGBA, for the Game Boy systems, has it.
+    pub enum Ghosting (default Smart) {
+        Off => "off", "OFF";
+        /// Blends only pixels that flicker.
+        Smart => "smart", "SMART";
+        /// Blends everything, like the original screens' slow response.
+        Full => "full", "FULL";
     }
 }
 
-/// The theme colour. Each is bright enough for the dark text on a selected row.
-#[derive(Clone, Copy, PartialEq, Debug, Default)]
-pub enum Accent {
-    #[default]
-    Teal,
-    Blue,
-    Purple,
-    Pink,
-    Red,
-    Orange,
-    Yellow,
-    Green,
-    White,
+choices! {
+    /// The theme colour. Each is bright enough for the dark text on a selected row.
+    pub enum Accent (default Teal) {
+        Teal => "teal", "TEAL";
+        Blue => "blue", "BLUE";
+        Purple => "purple", "PURPLE";
+        Pink => "pink", "PINK";
+        Red => "red", "RED";
+        Orange => "orange", "ORANGE";
+        Yellow => "yellow", "YELLOW";
+        Green => "green", "GREEN";
+        White => "white", "WHITE";
+    }
 }
 
 impl Accent {
-    pub const ALL: [Self; 9] =
-        [Self::Teal, Self::Blue, Self::Purple, Self::Pink, Self::Red, Self::Orange, Self::Yellow, Self::Green, Self::White];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Teal => "TEAL",
-            Self::Blue => "BLUE",
-            Self::Purple => "PURPLE",
-            Self::Pink => "PINK",
-            Self::Red => "RED",
-            Self::Orange => "ORANGE",
-            Self::Yellow => "YELLOW",
-            Self::Green => "GREEN",
-            Self::White => "WHITE",
-        }
-    }
-
-    pub fn cycle(self, steps: i32) -> Self {
-        cycle(&Self::ALL, self, steps)
-    }
-
-    fn key(self) -> &'static str {
-        match self {
-            Self::Teal => "teal",
-            Self::Blue => "blue",
-            Self::Purple => "purple",
-            Self::Pink => "pink",
-            Self::Red => "red",
-            Self::Orange => "orange",
-            Self::Yellow => "yellow",
-            Self::Green => "green",
-            Self::White => "white",
-        }
-    }
-
     pub fn rgb(self) -> Rgb {
         match self {
             Self::Teal => Rgb(0x4F, 0xD1, 0xC5),
@@ -194,123 +146,18 @@ impl Accent {
     }
 }
 
-/// What the launcher shows when it starts.
-#[derive(Clone, Copy, PartialEq, Debug, Default)]
-pub enum StartScreen {
-    #[default]
-    Home,
-    Recent,
-    Favorites,
-    /// The list of the last game's console, with that game selected.
-    LastGame,
-}
-
-impl StartScreen {
-    pub const ALL: [Self; 4] = [Self::Home, Self::Recent, Self::Favorites, Self::LastGame];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Home => "HOME",
-            Self::Recent => "RECENT",
-            Self::Favorites => "FAVORITES",
-            Self::LastGame => "LAST GAME",
-        }
+choices! {
+    /// The menus' background.
+    pub enum Background (default Dark) {
+        /// A dark blue-grey, the first background.
+        Dark => "dark", "DARK";
+        Black => "black", "BLACK";
+        /// A dark shade of the theme colour.
+        Tint => "tint", "TINT";
     }
-
-    pub fn cycle(self, steps: i32) -> Self {
-        cycle(&Self::ALL, self, steps)
-    }
-
-    fn key(self) -> &'static str {
-        match self {
-            Self::Home => "home",
-            Self::Recent => "recent",
-            Self::Favorites => "favorites",
-            Self::LastGame => "last",
-        }
-    }
-}
-
-/// When the menus show the battery level in the top-right corner. A game still warns
-/// when the battery runs low, whichever is chosen.
-#[derive(Clone, Copy, PartialEq, Debug, Default)]
-pub enum BatteryDisplay {
-    #[default]
-    Percent,
-    /// Only once it is low and not charging, when it shows in red.
-    WhenLow,
-    Hidden,
-}
-
-impl BatteryDisplay {
-    pub const ALL: [Self; 3] = [Self::Percent, Self::WhenLow, Self::Hidden];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Percent => "PERCENT",
-            Self::WhenLow => "WHEN LOW",
-            Self::Hidden => "HIDDEN",
-        }
-    }
-
-    pub fn cycle(self, steps: i32) -> Self {
-        cycle(&Self::ALL, self, steps)
-    }
-
-    fn key(self) -> &'static str {
-        match self {
-            Self::Percent => "percent",
-            Self::WhenLow => "low",
-            Self::Hidden => "hidden",
-        }
-    }
-}
-
-/// The choices for sleeping when idle, in minutes without a press. 0 is off.
-pub const IDLE_SLEEP_MINUTES: [u32; 5] = [0, 2, 5, 10, 30];
-
-pub fn idle_sleep_label(minutes: u32) -> String {
-    if minutes == 0 {
-        "OFF".into()
-    } else {
-        format!("{minutes} MIN")
-    }
-}
-
-/// The menus' background.
-#[derive(Clone, Copy, PartialEq, Debug, Default)]
-pub enum Background {
-    /// A dark blue-grey, the first background.
-    #[default]
-    Dark,
-    Black,
-    /// A dark shade of the theme colour.
-    Tint,
 }
 
 impl Background {
-    pub const ALL: [Self; 3] = [Self::Dark, Self::Black, Self::Tint];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Dark => "DARK",
-            Self::Black => "BLACK",
-            Self::Tint => "TINT",
-        }
-    }
-
-    pub fn cycle(self, steps: i32) -> Self {
-        cycle(&Self::ALL, self, steps)
-    }
-
-    fn key(self) -> &'static str {
-        match self {
-            Self::Dark => "dark",
-            Self::Black => "black",
-            Self::Tint => "tint",
-        }
-    }
-
     /// The colour, for a tint from the theme colour `accent`: an eighth of it over a near
     /// black, dark enough for light text and the tiles to stand out.
     pub fn rgb(self, accent: Rgb) -> Rgb {
@@ -325,37 +172,17 @@ impl Background {
     }
 }
 
-/// How large the home screen's tiles are.
-#[derive(Clone, Copy, PartialEq, Debug, Default)]
-pub enum GridSize {
-    /// 4 to a row, with every row on the screen.
-    #[default]
-    Normal,
-    /// 3 to a row, with bigger icons, two rows at a time.
-    Large,
+choices! {
+    /// How large the home screen's tiles are.
+    pub enum GridSize (default Normal) {
+        /// 4 to a row, with every row on the screen.
+        Normal => "normal", "NORMAL";
+        /// 3 to a row, with bigger icons, two rows at a time.
+        Large => "large", "LARGE";
+    }
 }
 
 impl GridSize {
-    pub const ALL: [Self; 2] = [Self::Normal, Self::Large];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Normal => "NORMAL",
-            Self::Large => "LARGE",
-        }
-    }
-
-    pub fn cycle(self, steps: i32) -> Self {
-        cycle(&Self::ALL, self, steps)
-    }
-
-    fn key(self) -> &'static str {
-        match self {
-            Self::Normal => "normal",
-            Self::Large => "large",
-        }
-    }
-
     pub fn columns(self) -> usize {
         match self {
             Self::Normal => 4,
@@ -372,35 +199,55 @@ impl GridSize {
     }
 }
 
-/// How games are named in lists.
-#[derive(Clone, Copy, PartialEq, Debug, Default)]
-pub enum GameNames {
-    /// Readable names, without tags like the region, as `names::short_name` makes them.
-    #[default]
-    Short,
-    /// The file name as it is, without the extension.
-    Full,
+choices! {
+    /// What the launcher shows when it starts.
+    pub enum StartScreen (default Home) {
+        Home => "home", "HOME";
+        Recent => "recent", "RECENT";
+        Favorites => "favorites", "FAVORITES";
+        /// The list of the last game's console, with that game selected.
+        LastGame => "last", "LAST GAME";
+    }
 }
 
-impl GameNames {
-    pub const ALL: [Self; 2] = [Self::Short, Self::Full];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Short => "SHORT",
-            Self::Full => "FULL",
-        }
+choices! {
+    /// How games are named in lists.
+    pub enum GameNames (default Short) {
+        /// Readable names, without tags like the region, as `names::short_name` makes them.
+        Short => "short", "SHORT";
+        /// The file name as it is, without the extension.
+        Full => "full", "FULL";
     }
+}
 
-    pub fn cycle(self, steps: i32) -> Self {
-        cycle(&Self::ALL, self, steps)
+choices! {
+    /// When the menus show the battery level in the top-right corner. A game still warns
+    /// when the battery runs low, whichever is chosen.
+    pub enum BatteryDisplay (default Percent) {
+        Percent => "percent", "PERCENT";
+        /// Only once it is low and not charging, when it shows in red.
+        WhenLow => "low", "WHEN LOW";
+        Hidden => "hidden", "HIDDEN";
     }
+}
 
-    fn key(self) -> &'static str {
-        match self {
-            Self::Short => "short",
-            Self::Full => "full",
-        }
+choices! {
+    /// How the clock in the corner shows the time.
+    pub enum ClockFormat (default Hours24) {
+        Hours24 => "24h", "24 HOUR";
+        Hours12 => "12h", "12 HOUR";
+        Off => "off", "OFF";
+    }
+}
+
+/// The choices for sleeping when idle, in minutes without a press. 0 is off.
+pub const IDLE_SLEEP_MINUTES: [u32; 5] = [0, 2, 5, 10, 30];
+
+pub fn idle_sleep_label(minutes: u32) -> String {
+    if minutes == 0 {
+        "OFF".into()
+    } else {
+        format!("{minutes} MIN")
     }
 }
 
@@ -411,42 +258,74 @@ pub const MAX_TITLE_LENGTH: usize = 24;
 
 /// How games are shown.
 #[derive(Clone, Copy, PartialEq, Debug, Default)]
-pub struct Display {
+pub struct GameDisplay {
     pub scaling: Scaling,
     pub effect: Effect,
     pub ghosting: Ghosting,
 }
 
+/// Everything in the settings file.
 #[derive(Clone, PartialEq, Debug, Default)]
-struct Settings {
-    volume: Option<u32>,
-    brightness: Option<u32>,
-    display: Display,
-    /// The time zone's IANA name, one of `clock::ZONES`.
-    zone: Option<&'static str>,
-    clock: ClockFormat,
-    accent: Accent,
-    title_hidden: bool,
+pub struct Settings {
+    /// The levels saved last, applied at start. The live levels are in the hardware.
+    pub volume: Option<u32>,
+    pub brightness: Option<u32>,
+    pub display: GameDisplay,
+    /// The time zone's IANA name, one of `clock::ZONES`. UTC until chosen.
+    pub zone: Option<&'static str>,
+    pub clock: ClockFormat,
+    pub accent: Accent,
+    pub background: Background,
+    pub title_hidden: bool,
     /// The home screen's title, if one was typed.
-    title: Option<String>,
+    pub title: Option<String>,
+    pub grid: GridSize,
     /// Home screen tiles turned off, by key, such as `recent` or `gba`.
-    hidden_tiles: Vec<String>,
-    start_screen: StartScreen,
-    game_names: GameNames,
+    pub hidden_tiles: Vec<String>,
+    pub start_screen: StartScreen,
+    pub game_names: GameNames,
     /// Lists leave out the cover panel, so names have the whole width.
-    covers_hidden: bool,
-    battery: BatteryDisplay,
+    pub covers_hidden: bool,
+    pub battery: BatteryDisplay,
     /// Minutes without a press in the menus before sleeping, one of `IDLE_SLEEP_MINUTES`.
-    idle_minutes: u32,
-    menu_sounds: bool,
-    grid: GridSize,
-    background: Background,
+    pub idle_minutes: u32,
+    pub menu_sounds: bool,
 }
 
-/// Reads the first value from `amixer cget` output, such as `  : values=25,25`.
-fn parse_amixer(output: &str) -> Option<u32> {
-    let values = output.lines().find_map(|line| line.trim().strip_prefix(": values="))?;
-    values.split(',').next()?.trim().parse().ok()
+impl Settings {
+    pub fn time_zone(&self) -> &'static Zone {
+        self.zone.and_then(clock::zone_named).unwrap_or(clock::UTC)
+    }
+
+    /// The title, shown or not.
+    pub fn title(&self) -> &str {
+        self.title.as_deref().unwrap_or(DEFAULT_TITLE)
+    }
+
+    /// The home screen's title, or None when it is hidden.
+    pub fn shown_title(&self) -> Option<&str> {
+        (!self.title_hidden).then(|| self.title())
+    }
+
+    pub fn tile_hidden(&self, key: &str) -> bool {
+        self.hidden_tiles.iter().any(|other| other == key)
+    }
+
+    /// Turns a home screen tile off, or on again.
+    pub fn toggle_tile(&mut self, key: &str) {
+        if self.tile_hidden(key) {
+            self.hidden_tiles.retain(|other| other != key);
+        } else {
+            self.hidden_tiles.push(key.to_string());
+        }
+    }
+}
+
+/// Sets a choice from its key in the file, keeping the default for an unknown one.
+fn choose<T>(slot: &mut T, choice: Option<T>) {
+    if let Some(choice) = choice {
+        *slot = choice;
+    }
 }
 
 fn parse(text: &str) -> Settings {
@@ -457,11 +336,7 @@ fn parse(text: &str) -> Settings {
         match key.trim() {
             "volume" => settings.volume = value.parse().ok(),
             "brightness" => settings.brightness = value.parse().ok(),
-            "scaling" => {
-                if let Some(&scaling) = Scaling::ALL.iter().find(|choice| choice.key() == value) {
-                    settings.display.scaling = scaling;
-                }
-            }
+            "scaling" => choose(&mut settings.display.scaling, Scaling::from_key(value)),
             "effect" => {
                 // The first effects were called scanlines and grid; these replace them.
                 let value = match value {
@@ -469,63 +344,26 @@ fn parse(text: &str) -> Settings {
                     "grid" => "lcd",
                     other => other,
                 };
-                if let Some(&effect) = Effect::ALL.iter().find(|choice| choice.key() == value) {
-                    settings.display.effect = effect;
-                }
+                choose(&mut settings.display.effect, Effect::from_key(value));
             }
-            "ghosting" => {
-                if let Some(&ghosting) = Ghosting::ALL.iter().find(|choice| choice.key() == value) {
-                    settings.display.ghosting = ghosting;
-                }
-            }
-            "accent" => {
-                if let Some(&accent) = Accent::ALL.iter().find(|choice| choice.key() == value) {
-                    settings.accent = accent;
-                }
-            }
+            "ghosting" => choose(&mut settings.display.ghosting, Ghosting::from_key(value)),
+            "timezone" => settings.zone = clock::zone_named(value).map(|zone| zone.name),
+            "clock" => choose(&mut settings.clock, ClockFormat::from_key(value)),
+            "accent" => choose(&mut settings.accent, Accent::from_key(value)),
+            "background" => choose(&mut settings.background, Background::from_key(value)),
             "title_hidden" => settings.title_hidden = value == "yes",
             "title" => settings.title = clean_title(value),
-            "covers" => settings.covers_hidden = value == "off",
-            "sounds" => settings.menu_sounds = value == "on",
-            "background" => {
-                if let Some(&background) = Background::ALL.iter().find(|choice| choice.key() == value) {
-                    settings.background = background;
-                }
-            }
-            "grid" => {
-                if let Some(&grid) = GridSize::ALL.iter().find(|choice| choice.key() == value) {
-                    settings.grid = grid;
-                }
-            }
-            "idle" => {
-                if let Some(&minutes) = IDLE_SLEEP_MINUTES.iter().find(|&&choice| value.parse() == Ok(choice)) {
-                    settings.idle_minutes = minutes;
-                }
-            }
-            "battery" => {
-                if let Some(&battery) = BatteryDisplay::ALL.iter().find(|choice| choice.key() == value) {
-                    settings.battery = battery;
-                }
-            }
-            "names" => {
-                if let Some(&names) = GameNames::ALL.iter().find(|choice| choice.key() == value) {
-                    settings.game_names = names;
-                }
-            }
-            "start" => {
-                if let Some(&start) = StartScreen::ALL.iter().find(|choice| choice.key() == value) {
-                    settings.start_screen = start;
-                }
-            }
+            "grid" => choose(&mut settings.grid, GridSize::from_key(value)),
             "hidden_tiles" => {
-                settings.hidden_tiles = value.split(',').map(str::trim).filter(|key| !key.is_empty()).map(String::from).collect();
+                settings.hidden_tiles =
+                    value.split(',').map(str::trim).filter(|key| !key.is_empty()).map(String::from).collect();
             }
-            "timezone" => settings.zone = clock::zone_named(value).map(|zone| zone.name),
-            "clock" => {
-                if let Some(&format) = ClockFormat::ALL.iter().find(|choice| choice.key() == value) {
-                    settings.clock = format;
-                }
-            }
+            "start" => choose(&mut settings.start_screen, StartScreen::from_key(value)),
+            "names" => choose(&mut settings.game_names, GameNames::from_key(value)),
+            "covers" => settings.covers_hidden = value == "off",
+            "battery" => choose(&mut settings.battery, BatteryDisplay::from_key(value)),
+            "idle" => choose(&mut settings.idle_minutes, IDLE_SLEEP_MINUTES.into_iter().find(|&m| value.parse() == Ok(m))),
+            "sounds" => settings.menu_sounds = value == "on",
             _ => {}
         }
     }
@@ -533,37 +371,38 @@ fn parse(text: &str) -> Settings {
 }
 
 fn format(settings: &Settings) -> String {
-    let mut text = String::new();
+    let on_off = |on: bool| if on { "on" } else { "off" };
+    let mut lines = Vec::new();
     if let Some(volume) = settings.volume {
-        text += &format!("volume={volume}\n");
+        lines.push(format!("volume={volume}"));
     }
     if let Some(brightness) = settings.brightness {
-        text += &format!("brightness={brightness}\n");
+        lines.push(format!("brightness={brightness}"));
     }
-    text += &format!("scaling={}\n", settings.display.scaling.key());
-    text += &format!("effect={}\n", settings.display.effect.key());
-    text += &format!("ghosting={}\n", settings.display.ghosting.key());
+    lines.push(format!("scaling={}", settings.display.scaling.key()));
+    lines.push(format!("effect={}", settings.display.effect.key()));
+    lines.push(format!("ghosting={}", settings.display.ghosting.key()));
     if let Some(zone) = settings.zone {
-        text += &format!("timezone={zone}\n");
+        lines.push(format!("timezone={zone}"));
     }
-    text += &format!("clock={}\n", settings.clock.key());
-    text += &format!("accent={}\n", settings.accent.key());
-    text += &format!("title_hidden={}\n", if settings.title_hidden { "yes" } else { "no" });
+    lines.push(format!("clock={}", settings.clock.key()));
+    lines.push(format!("accent={}", settings.accent.key()));
+    lines.push(format!("background={}", settings.background.key()));
+    lines.push(format!("title_hidden={}", if settings.title_hidden { "yes" } else { "no" }));
     if let Some(title) = &settings.title {
-        text += &format!("title={title}\n");
+        lines.push(format!("title={title}"));
     }
-    text += &format!("start={}\n", settings.start_screen.key());
-    text += &format!("names={}\n", settings.game_names.key());
-    text += &format!("covers={}\n", if settings.covers_hidden { "off" } else { "on" });
-    text += &format!("battery={}\n", settings.battery.key());
-    text += &format!("idle={}\n", settings.idle_minutes);
-    text += &format!("sounds={}\n", if settings.menu_sounds { "on" } else { "off" });
-    text += &format!("grid={}\n", settings.grid.key());
-    text += &format!("background={}\n", settings.background.key());
+    lines.push(format!("grid={}", settings.grid.key()));
     if !settings.hidden_tiles.is_empty() {
-        text += &format!("hidden_tiles={}\n", settings.hidden_tiles.join(","));
+        lines.push(format!("hidden_tiles={}", settings.hidden_tiles.join(",")));
     }
-    text
+    lines.push(format!("start={}", settings.start_screen.key()));
+    lines.push(format!("names={}", settings.game_names.key()));
+    lines.push(format!("covers={}", on_off(!settings.covers_hidden)));
+    lines.push(format!("battery={}", settings.battery.key()));
+    lines.push(format!("idle={}", settings.idle_minutes));
+    lines.push(format!("sounds={}", on_off(settings.menu_sounds)));
+    lines.iter().map(|line| format!("{line}\n")).collect()
 }
 
 /// A typed title as it is kept: printable ASCII the font has, trimmed, and short enough to
@@ -574,8 +413,42 @@ pub fn clean_title(text: &str) -> Option<String> {
     (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
-fn load() -> Settings {
+/// The settings as last read or changed, read from the file on first use.
+static CURRENT: Mutex<Option<Settings>> = Mutex::new(None);
+
+fn read_file() -> Settings {
     std::fs::read_to_string(SETTINGS_PATH).map(|text| parse(&text)).unwrap_or_default()
+}
+
+fn with_current<T>(action: impl FnOnce(&mut Settings) -> T) -> T {
+    let mut current = CURRENT.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    action(current.get_or_insert_with(read_file))
+}
+
+/// The current settings.
+pub fn get() -> Settings {
+    with_current(|settings| settings.clone())
+}
+
+/// Changes the settings and saves them.
+pub fn update(change: impl FnOnce(&mut Settings)) -> io::Result<()> {
+    let text = with_current(|settings| {
+        change(settings);
+        format(settings)
+    });
+    write_atomic(Path::new(SETTINGS_PATH), text.as_bytes())
+}
+
+/// Reads the file again, for changes another process made, such as a game's menu.
+pub fn reload() {
+    let settings = read_file();
+    with_current(|current| *current = settings);
+}
+
+/// Reads the first value from `amixer cget` output, such as `  : values=25,25`.
+fn parse_amixer(output: &str) -> Option<u32> {
+    let values = output.lines().find_map(|line| line.trim().strip_prefix(": values="))?;
+    values.split(',').next()?.trim().parse().ok()
 }
 
 /// Moves `value` by `steps` of `size`, staying within `min..=max`.
@@ -639,165 +512,17 @@ pub fn change_brightness(steps: i32) {
 }
 
 /// Saves the current volume and brightness, as set by any process.
-pub fn save() -> io::Result<()> {
-    let settings = Settings { volume: volume(), brightness: brightness().map(|(value, _)| value), ..load() };
-    write_atomic(Path::new(SETTINGS_PATH), format(&settings).as_bytes())
+pub fn save_levels() -> io::Result<()> {
+    let (volume, brightness) = (volume(), brightness().map(|(value, _)| value));
+    update(|settings| {
+        settings.volume = volume;
+        settings.brightness = brightness;
+    })
 }
 
-/// How games are shown, as last saved.
-pub fn display() -> Display {
-    load().display
-}
-
-/// Saves how games are shown, keeping the other settings.
-pub fn set_display(display: Display) -> io::Result<()> {
-    let settings = Settings { display, ..load() };
-    write_atomic(Path::new(SETTINGS_PATH), format(&settings).as_bytes())
-}
-
-fn store(settings: &Settings) -> io::Result<()> {
-    write_atomic(Path::new(SETTINGS_PATH), format(settings).as_bytes())
-}
-
-pub fn accent() -> Accent {
-    load().accent
-}
-
-pub fn set_accent(accent: Accent) -> io::Result<()> {
-    store(&Settings { accent, ..load() })
-}
-
-/// The home screen's title, or None when it is hidden.
-pub fn shown_title() -> Option<String> {
-    let settings = load();
-    (!settings.title_hidden).then(|| settings.title.unwrap_or_else(|| DEFAULT_TITLE.to_string()))
-}
-
-/// The title, shown or not.
-pub fn title() -> String {
-    load().title.unwrap_or_else(|| DEFAULT_TITLE.to_string())
-}
-
-pub fn title_hidden() -> bool {
-    load().title_hidden
-}
-
-pub fn set_title_hidden(hidden: bool) -> io::Result<()> {
-    store(&Settings { title_hidden: hidden, ..load() })
-}
-
-/// Saves a typed title. Nothing brings back the default.
-pub fn set_title(text: &str) -> io::Result<()> {
-    store(&Settings { title: clean_title(text), ..load() })
-}
-
-pub fn background() -> Background {
-    load().background
-}
-
-pub fn set_background(background: Background) -> io::Result<()> {
-    store(&Settings { background, ..load() })
-}
-
-pub fn grid_size() -> GridSize {
-    load().grid
-}
-
-pub fn set_grid_size(grid: GridSize) -> io::Result<()> {
-    store(&Settings { grid, ..load() })
-}
-
-/// Whether presses in the menus make a sound.
-pub fn menu_sounds() -> bool {
-    load().menu_sounds
-}
-
-pub fn set_menu_sounds(on: bool) -> io::Result<()> {
-    store(&Settings { menu_sounds: on, ..load() })
-}
-
-/// Minutes without a press before the menus sleep, or 0 for never.
-pub fn idle_minutes() -> u32 {
-    load().idle_minutes
-}
-
-/// Moves along `IDLE_SLEEP_MINUTES` and saves the choice.
-pub fn change_idle_minutes(steps: i32) -> io::Result<()> {
-    let settings = load();
-    let idle_minutes = cycle(&IDLE_SLEEP_MINUTES, settings.idle_minutes, steps);
-    store(&Settings { idle_minutes, ..settings })
-}
-
-pub fn battery_display() -> BatteryDisplay {
-    load().battery
-}
-
-pub fn set_battery_display(battery: BatteryDisplay) -> io::Result<()> {
-    store(&Settings { battery, ..load() })
-}
-
-/// Whether game lists show the selected game's cover.
-pub fn covers_shown() -> bool {
-    !load().covers_hidden
-}
-
-pub fn set_covers_shown(shown: bool) -> io::Result<()> {
-    store(&Settings { covers_hidden: !shown, ..load() })
-}
-
-pub fn game_names() -> GameNames {
-    load().game_names
-}
-
-pub fn set_game_names(game_names: GameNames) -> io::Result<()> {
-    store(&Settings { game_names, ..load() })
-}
-
-pub fn start_screen() -> StartScreen {
-    load().start_screen
-}
-
-pub fn set_start_screen(start_screen: StartScreen) -> io::Result<()> {
-    store(&Settings { start_screen, ..load() })
-}
-
-/// The keys of the home screen tiles turned off.
-pub fn hidden_tiles() -> Vec<String> {
-    load().hidden_tiles
-}
-
-/// Turns a home screen tile off or on again, by its key.
-pub fn set_tile_hidden(key: &str, hidden: bool) -> io::Result<()> {
-    let mut settings = load();
-    settings.hidden_tiles.retain(|other| other != key);
-    if hidden {
-        settings.hidden_tiles.push(key.to_string());
-    }
-    store(&settings)
-}
-
-/// The chosen time zone, UTC until one is chosen.
-pub fn time_zone() -> &'static Zone {
-    load().zone.and_then(clock::zone_named).unwrap_or(clock::UTC)
-}
-
-pub fn clock_format() -> ClockFormat {
-    load().clock
-}
-
-pub fn set_time_zone(zone: &'static Zone) -> io::Result<()> {
-    let settings = Settings { zone: Some(zone.name), ..load() };
-    write_atomic(Path::new(SETTINGS_PATH), format(&settings).as_bytes())
-}
-
-pub fn set_clock_format(format_choice: ClockFormat) -> io::Result<()> {
-    let settings = Settings { clock: format_choice, ..load() };
-    write_atomic(Path::new(SETTINGS_PATH), format(&settings).as_bytes())
-}
-
-/// Applies the saved settings. Without a file, the levels set at boot stay.
-pub fn restore() {
-    let settings = load();
+/// Applies the saved levels. Without a file, the levels set at boot stay.
+pub fn restore_levels() {
+    let settings = get();
     if let Some(volume) = settings.volume {
         set_volume(volume);
     }
@@ -820,7 +545,7 @@ mod tests {
 
     #[test]
     fn settings_survive_a_round_trip() {
-        let display = Display { scaling: Scaling::Integer, effect: Effect::Lcd, ghosting: Ghosting::Full };
+        let display = GameDisplay { scaling: Scaling::Integer, effect: Effect::Lcd, ghosting: Ghosting::Full };
         let settings = Settings {
             volume: Some(25),
             brightness: Some(1250),
@@ -828,8 +553,10 @@ mod tests {
             zone: Some("Europe/Berlin"),
             clock: ClockFormat::Hours12,
             accent: Accent::Pink,
+            background: Background::Tint,
             title_hidden: true,
             title: Some("Game = Fun & more".into()),
+            grid: GridSize::Large,
             hidden_tiles: vec!["recent".into(), "gba".into()],
             start_screen: StartScreen::LastGame,
             game_names: GameNames::Full,
@@ -837,43 +564,46 @@ mod tests {
             battery: BatteryDisplay::WhenLow,
             idle_minutes: 10,
             menu_sounds: true,
-            grid: GridSize::Large,
-            background: Background::Tint,
         };
         assert_eq!(parse(&format(&settings)), settings);
-        // Files from before the time settings load with UTC and a 24 hour clock.
+    }
+
+    #[test]
+    fn a_file_from_before_any_setting_loads_its_defaults() {
         let old = parse("volume=25\nscaling=fit\n");
+        assert_eq!(old, Settings { volume: Some(25), ..Settings::default() });
         assert_eq!((old.zone, old.clock), (None, ClockFormat::Hours24));
-        assert_eq!(parse("timezone=Mars/Olympus\n").zone, None);
-        assert_eq!((old.accent, old.title_hidden, old.title), (Accent::Teal, false, None));
-        assert!(old.hidden_tiles.is_empty());
-        assert_eq!(old.start_screen, StartScreen::Home);
-        assert_eq!(old.game_names, GameNames::Short);
-        assert!(!old.covers_hidden, "covers show until turned off");
-        assert_eq!(old.battery, BatteryDisplay::Percent);
-        assert_eq!(old.idle_minutes, 0, "no sleeping until chosen");
-        assert!(!old.menu_sounds, "quiet until turned on");
-        assert_eq!(old.grid, GridSize::Normal);
-        assert_eq!(old.background, Background::Dark);
-        assert_eq!(Background::Dark.rgb(Accent::Teal.rgb()), Rgb(0x12, 0x14, 0x1C), "the first background");
-        // Every tint is dark, below the tiles' grey, and differs by colour.
-        for accent in Accent::ALL {
-            let Rgb(r, g, b) = Background::Tint.rgb(accent.rgb());
-            assert!(r.max(g).max(b) < 0x2B, "{accent:?}");
-        }
-        assert_ne!(Background::Tint.rgb(Accent::Red.rgb()), Background::Tint.rgb(Accent::Blue.rgb()));
-        assert_eq!(parse("idle=7\n").idle_minutes, 0, "only the offered choices");
-        assert_eq!(cycle(&IDLE_SLEEP_MINUTES, 0, -1), 30);
-        assert_eq!(idle_sleep_label(0), "OFF");
-        assert_eq!(idle_sleep_label(5), "5 MIN");
-        assert_eq!(StartScreen::Home.cycle(-1), StartScreen::LastGame);
-        assert_eq!(parse("hidden_tiles=nes,, snes ,\n").hidden_tiles, ["nes", "snes"]);
+        assert_eq!(old.time_zone().name, "Etc/UTC");
+        assert_eq!((old.accent, old.title_hidden, old.title()), (Accent::Teal, false, DEFAULT_TITLE));
+        assert_eq!(old.display.ghosting, Ghosting::Smart);
+        assert!(!old.covers_hidden && !old.menu_sounds && old.idle_minutes == 0);
+        assert_eq!((old.grid, old.background, old.battery), (GridSize::Normal, Background::Dark, BatteryDisplay::Percent));
+        assert_eq!((old.start_screen, old.game_names), (StartScreen::Home, GameNames::Short));
+    }
+
+    #[test]
+    fn the_file_the_device_has_now_still_loads() {
+        // The test unit's settings.txt on 2026-11-08, before the settings were kept in
+        // memory.
+        let text = "volume=20\nbrightness=1503\nscaling=fit\neffect=crt\nghosting=off\ntimezone=Europe/Berlin\n\
+                    clock=24h\naccent=blue\ntitle_hidden=yes\ntitle=RG35XX SP LINUX\nstart=home\nnames=short\n\
+                    covers=on\nbattery=percent\nidle=0\nsounds=on\ngrid=normal\nbackground=dark\n";
+        let settings = parse(text);
+        assert_eq!((settings.volume, settings.brightness), (Some(20), Some(1503)));
+        assert_eq!(settings.accent, Accent::Blue);
+        assert_eq!(settings.time_zone().label, "BERLIN");
+        assert_eq!(settings.shown_title(), None);
+        assert!(settings.menu_sounds && !settings.covers_hidden);
+        assert_eq!(parse(&format(&settings)), settings, "and saves the same");
     }
 
     #[test]
     fn unknown_or_broken_lines_are_ignored() {
         let settings = parse("volume=abc\ncolour=blue\nbrightness = 900\nnonsense\neffect=sparkles\n");
         assert_eq!(settings, Settings { brightness: Some(900), ..Settings::default() });
+        assert_eq!(parse("timezone=Mars/Olympus\n").zone, None);
+        assert_eq!(parse("idle=7\n").idle_minutes, 0, "only the offered choices");
+        assert_eq!(parse("hidden_tiles=nes,, snes ,\n").hidden_tiles, ["nes", "snes"]);
     }
 
     #[test]
@@ -883,7 +613,7 @@ mod tests {
     }
 
     #[test]
-    fn choices_cycle_both_ways() {
+    fn choices_cycle_both_ways_and_know_their_keys() {
         assert_eq!(Scaling::Fit.cycle(1), Scaling::Integer);
         assert_eq!(Scaling::Fit.cycle(-1), Scaling::Integer);
         assert_eq!(Effect::None.cycle(-1), Effect::Lcd);
@@ -891,6 +621,25 @@ mod tests {
         assert_eq!(Effect::None.cycle(2), Effect::Lcd);
         assert_eq!(Ghosting::default(), Ghosting::Smart);
         assert_eq!(Ghosting::Smart.cycle(1), Ghosting::Full);
+        assert_eq!(Accent::Teal.cycle(-1), Accent::White);
+        assert_eq!(StartScreen::Home.cycle(-1), StartScreen::LastGame);
+        assert_eq!(cycle(&IDLE_SLEEP_MINUTES, 0, -1), 30);
+        assert_eq!(BatteryDisplay::from_key("low"), Some(BatteryDisplay::WhenLow));
+        assert_eq!(StartScreen::LastGame.label(), "LAST GAME");
+        assert_eq!(idle_sleep_label(0), "OFF");
+        assert_eq!(idle_sleep_label(5), "5 MIN");
+    }
+
+    #[test]
+    fn colours_and_backgrounds() {
+        assert_eq!(Accent::Teal.rgb(), Rgb(0x4F, 0xD1, 0xC5), "the first theme colour");
+        assert_eq!(Background::Dark.rgb(Accent::Teal.rgb()), Rgb(0x12, 0x14, 0x1C), "the first background");
+        // Every tint is dark, below the tiles' grey, and differs by colour.
+        for &accent in Accent::ALL {
+            let Rgb(r, g, b) = Background::Tint.rgb(accent.rgb());
+            assert!(r.max(g).max(b) < 0x2B, "{accent:?}");
+        }
+        assert_ne!(Background::Tint.rgb(Accent::Red.rgb()), Background::Tint.rgb(Accent::Blue.rgb()));
     }
 
     #[test]
@@ -899,8 +648,16 @@ mod tests {
         assert_eq!(clean_title("   "), None);
         assert_eq!(clean_title("tab\there é"), Some("tabhere".into()));
         assert_eq!(clean_title(&"X".repeat(40)).map(|t| t.len()), Some(MAX_TITLE_LENGTH));
-        assert_eq!(Accent::Teal.cycle(-1), Accent::White);
-        assert_eq!(Accent::Teal.rgb(), Rgb(0x4F, 0xD1, 0xC5), "the first theme colour");
+    }
+
+    #[test]
+    fn tiles_toggle_by_key() {
+        let mut settings = Settings::default();
+        settings.toggle_tile("gba");
+        settings.toggle_tile("nes");
+        assert!(settings.tile_hidden("gba") && settings.tile_hidden("nes"));
+        settings.toggle_tile("gba");
+        assert_eq!(settings.hidden_tiles, ["nes"]);
     }
 
     #[test]

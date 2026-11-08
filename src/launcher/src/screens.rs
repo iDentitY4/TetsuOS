@@ -10,7 +10,7 @@ use crate::settings::GridSize;
 use crate::wifi::Security;
 use crate::wifi_menu::{self, Entry};
 use std::time::Duration;
-use crate::settings::Display;
+use crate::settings::GameDisplay;
 
 const TEXT_SCALE: usize = 2;
 const HINT_Y: usize = 448;
@@ -69,7 +69,7 @@ pub struct SettingsView<'a> {
     pub selected: Setting,
     pub volume_percent: Option<u32>,
     pub brightness_percent: Option<u32>,
-    pub display: Display,
+    pub display: GameDisplay,
     pub time_zone: &'a str,
     pub clock_format: &'a str,
     pub accent: &'a str,
@@ -1081,7 +1081,7 @@ mod tests {
             selected: Setting::PowerOff,
             volume_percent: Some(80),
             brightness_percent: Some(50),
-            display: Display::default(),
+            display: GameDisplay::default(),
             time_zone: "UTC",
             clock_format: "24 HOUR",
             accent: "TEAL",
@@ -1124,7 +1124,7 @@ mod tests {
                 selected: group.settings().first().copied().unwrap_or(Setting::Volume),
                 volume_percent: None,
                 brightness_percent: None,
-                display: Display::default(),
+                display: GameDisplay::default(),
                 time_zone: "BUENOS AIRES",
                 clock_format: "24 HOUR",
                 accent: "PURPLE",

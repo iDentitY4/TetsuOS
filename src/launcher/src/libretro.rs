@@ -6,7 +6,7 @@ use crate::input::{self, Button, Controls, Event};
 use crate::pause::{Action, MenuTrigger, PauseMenu};
 use crate::power::{self, Level};
 use crate::screens;
-use crate::settings::{self, Display, Effect, Ghosting, Scaling};
+use crate::settings::{self, Effect, GameDisplay, Ghosting, Scaling};
 use crate::storage::write_atomic;
 use std::cell::RefCell;
 use std::ffi::{c_char, c_int, c_uint, c_void, CStr, CString};
@@ -147,7 +147,7 @@ fn declared_default(value: &CStr) -> Option<CString> {
     CString::new(&choices[..end]).ok()
 }
 
-fn core_option(key: &CStr, display: Display) -> Option<&'static CStr> {
+fn core_option(key: &CStr, display: GameDisplay) -> Option<&'static CStr> {
     if key == GHOSTING_OPTION {
         return Some(match display.ghosting {
             Ghosting::Off => c"OFF",
@@ -221,7 +221,7 @@ struct Host {
     audio_time: Duration,
     /// Set for the extra frames that fast-forward runs, whose picture and sound are dropped.
     skip_output: bool,
-    display: Display,
+    display: GameDisplay,
     /// Set when a core option changed, until the core asks and reads them again.
     options_changed: bool,
 }
@@ -896,7 +896,7 @@ fn set_host(directory: &Path, target: (usize, usize), setup: CoreSetup) -> io::R
         scale_time: Duration::ZERO,
         audio_time: Duration::ZERO,
         skip_output: false,
-        display: settings::display(),
+        display: settings::get().display,
         options_changed: false,
     };
     HOST.with(|slot| *slot.borrow_mut() = Some(host));
@@ -1041,13 +1041,13 @@ fn save_progress(
 }
 
 /// Changes how the game is shown, from its next frame, and saves the choice.
-fn change_display(change: impl FnOnce(&mut Display)) {
+fn change_display(change: impl FnOnce(&mut GameDisplay)) {
     let display = with_host(|host| {
         change(&mut host.display);
         host.options_changed = true;
         host.display
     });
-    if let Err(error) = settings::set_display(display) {
+    if let Err(error) = settings::update(|settings| settings.display = display) {
         eprintln!("warning: could not save the display settings: {error}");
     }
 }
@@ -1139,7 +1139,7 @@ fn pause(
         }
     };
     if settings_changed {
-        if let Err(error) = settings::save() {
+        if let Err(error) = settings::save_levels() {
             eprintln!("warning: could not save the settings: {error}");
         }
     }
@@ -1619,7 +1619,7 @@ mod tests {
 
     #[test]
     fn super_game_boy_borders_are_off_and_other_options_default() {
-        let display = Display::default();
+        let display = GameDisplay::default();
         assert_eq!(core_option(c"mgba_sgb_borders", display), Some(c"OFF"));
         assert_eq!(core_option(c"mgba_color_correction", display), Some(c"Auto"));
         assert_eq!(core_option(c"mgba_skip_bios", display), None);
@@ -1627,7 +1627,7 @@ mod tests {
 
     #[test]
     fn ghosting_follows_the_setting() {
-        let mut display = Display::default();
+        let mut display = GameDisplay::default();
         assert_eq!(core_option(GHOSTING_OPTION, display), Some(c"mix_smart"));
         display.ghosting = Ghosting::Off;
         assert_eq!(core_option(GHOSTING_OPTION, display), Some(c"OFF"));

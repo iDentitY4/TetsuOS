@@ -274,13 +274,13 @@ fn build_library(roms: &[PathBuf], recent: &[PathBuf], favorites: &[PathBuf], na
     let recent = pick(recent);
     let mut favorites = pick(favorites);
     favorites.sort_by_key(|game| game.name.to_ascii_lowercase());
-    Library { recent, favorites, shelves, systems: SYSTEMS.len(), hidden: hidden_tiles(), grid: settings::grid_size() }
+    Library { recent, favorites, shelves, systems: SYSTEMS.len(), hidden: hidden_tiles(), grid: settings::get().grid }
 }
 
 /// Opens the screen chosen in Settings > GENERAL > START SCREEN. A game resumed at boot
 /// comes back to it.
 fn open_start_screen(launcher: &mut Launcher, library: &Library) {
-    match settings::start_screen() {
+    match settings::get().start_screen {
         settings::StartScreen::Home => {}
         settings::StartScreen::Recent => launcher.start_in(library, List::Recent, None),
         settings::StartScreen::Favorites => launcher.start_in(library, List::Favorites, None),
@@ -305,11 +305,11 @@ fn tile_key(tile: Tile) -> &'static str {
 
 /// The tiles turned off in the settings.
 fn hidden_tiles() -> Vec<Tile> {
-    let keys = settings::hidden_tiles();
+    let settings = settings::get();
     Library { systems: SYSTEMS.len(), ..Library::default() }
         .every_tile()
         .into_iter()
-        .filter(|&tile| keys.iter().any(|key| key == tile_key(tile)))
+        .filter(|&tile| settings.tile_hidden(tile_key(tile)))
         .collect()
 }
 
@@ -328,7 +328,7 @@ fn load_library() -> Library {
         &find_roms(Path::new(ROM_DIR)),
         &recent::load(Path::new(recent::RECENT_PATH)),
         &favorites::load(Path::new(favorites::FAVORITES_PATH)),
-        settings::game_names(),
+        settings::get().game_names,
     )
 }
 
@@ -452,7 +452,7 @@ fn keyboard_sound(button: Button) {
         Button::X | Button::Y => Some(sounds::Sound::Select),
         other => button_sound(other),
     };
-    if let Some(sound) = sound.filter(|_| settings::menu_sounds()) {
+    if let Some(sound) = sound.filter(|_| settings::get().menu_sounds) {
         sounds::play(sound);
     }
 }
@@ -535,7 +535,7 @@ fn sleep_until_lid_opens_inner(events: &Receiver<Event>) {
 fn change_volume(button: Button) {
     let direction = if button == Button::VolumeUp { 1 } else { -1 };
     settings::change_volume(direction * settings::VOLUME_STEP);
-    if let Err(error) = settings::save() {
+    if let Err(error) = settings::save_levels() {
         eprintln!("warning: could not save the settings: {error}");
     }
 }
@@ -563,7 +563,7 @@ fn play_game(rom: &Path, events: &Receiver<Event>) -> io::Result<Ending> {
         .args([Path::new(system.core), rom, &save_path(rom, system)])
         .arg(persistence_arg(system.persistence))
         // Cores read local time for games' clocks, such as Pokemon's, through glibc.
-        .env("TZ", settings::time_zone().posix)
+        .env("TZ", settings::get().time_zone().posix)
         .spawn()?;
     let status = loop {
         if let Some(status) = game.try_wait()? {
@@ -583,6 +583,8 @@ fn play_game(rom: &Path, events: &Receiver<Event>) -> io::Result<Ending> {
     };
     // In case the game ended while it held the CPU speed for its menu.
     libretro::release_cpu_speed();
+    // The game's menu may have changed the display settings or the levels.
+    settings::reload();
     // Presses made during the game shouldn't act on the menu.
     events.try_iter().for_each(drop);
     if status.code() == Some(i32::from(BATTERY_EMPTY_EXIT)) {
@@ -1133,9 +1135,9 @@ fn launcher_canvas(
                     Tile::Settings => screens::TileView { icon: &icons::SETTINGS, label: "SETTINGS", count: None },
                 })
                 .collect();
-            let title = settings::shown_title();
+            let settings = settings::get();
             let selected = launcher.home_selected(library);
-            screens::home_screen(width, height, title.as_deref(), library.grid, &tiles, selected, battery)
+            screens::home_screen(width, height, settings.shown_title(), library.grid, &tiles, selected, battery)
         }
         Screen::Games(list) => {
             let (icon, title) = match list {
@@ -1156,7 +1158,7 @@ fn launcher_canvas(
             let selected = launcher.list_selected(library, list);
             let game = library.games(list).get(selected);
             // Without covers, the list leaves out the panel and names have the whole width.
-            let shown = settings::covers_shown();
+            let shown = !settings::get().covers_hidden;
             let cover = game.filter(|_| shown).and_then(|game| art.get(&game.path));
             let art = match (&cover, game) {
                 _ if !shown => None,
@@ -1177,13 +1179,14 @@ fn launcher_canvas(
             screens::settings_grid(width, height, &GROUPS, selected, battery)
         }
         Screen::SettingsGroup(group) => {
+            let current = settings::get();
             let note = match group {
                 Group::BoxArt => {
                     let (covered, total) = art_counts();
                     Some(format!("{covered} OF {total} GAMES HAVE A COVER"))
                 }
                 Group::Time => Some(time_note()),
-                Group::System if settings::idle_minutes() > 0 => Some("THE POWER BUTTON WAKES IT FROM SLEEP".into()),
+                Group::System if current.idle_minutes > 0 => Some("THE POWER BUTTON WAKES IT FROM SLEEP".into()),
                 _ => None,
             };
             let view = screens::SettingsView {
@@ -1191,20 +1194,20 @@ fn launcher_canvas(
                 selected: launcher.setting_selected(group).unwrap_or(launcher::Setting::Volume),
                 volume_percent: settings::volume_percent(),
                 brightness_percent: settings::brightness_percent(),
-                display: settings::display(),
-                time_zone: settings::time_zone().label,
-                clock_format: settings::clock_format().label(),
-                accent: settings::accent().label(),
-                background: settings::background().label(),
-                start_screen: settings::start_screen().label(),
-                game_names: settings::game_names().label(),
-                covers: if settings::covers_shown() { "ON" } else { "OFF" },
-                battery: settings::battery_display().label(),
-                menu_sounds: if settings::menu_sounds() { "ON" } else { "OFF" },
-                idle_sleep: &settings::idle_sleep_label(settings::idle_minutes()),
-                title_shown: if settings::title_hidden() { "HIDDEN" } else { "SHOWN" },
-                grid_size: settings::grid_size().label(),
-                title_text: &settings::title(),
+                display: current.display,
+                time_zone: current.time_zone().label,
+                clock_format: current.clock.label(),
+                accent: current.accent.label(),
+                background: current.background.label(),
+                start_screen: current.start_screen.label(),
+                game_names: current.game_names.label(),
+                covers: if current.covers_hidden { "OFF" } else { "ON" },
+                battery: current.battery.label(),
+                menu_sounds: if current.menu_sounds { "ON" } else { "OFF" },
+                idle_sleep: &settings::idle_sleep_label(current.idle_minutes),
+                title_shown: if current.title_hidden { "HIDDEN" } else { "SHOWN" },
+                grid_size: current.grid.label(),
+                title_text: current.title(),
                 message: launcher.confirmation(),
                 note: note.as_deref(),
             };
@@ -1241,7 +1244,8 @@ const NTP_LOG: &str = "/var/log/ntp.log";
 
 /// The clock for the top-right corner, unless it is turned off.
 fn corner_clock() -> Option<String> {
-    clock::corner_text(jiff::Timestamp::now(), settings::time_zone(), settings::clock_format())
+    let settings = settings::get();
+    clock::corner_text(jiff::Timestamp::now(), settings.time_zone(), settings.clock)
 }
 
 fn add_clock(canvas: &mut canvas::Canvas, battery: Option<Battery>) {
@@ -1252,7 +1256,8 @@ fn add_clock(canvas: &mut canvas::Canvas, battery: Option<Battery>) {
 
 /// The time settings' note: the date and time there, and when the network last set it.
 fn time_note() -> String {
-    let (zone, format) = (settings::time_zone(), settings::clock_format());
+    let settings = settings::get();
+    let (zone, format) = (settings.time_zone(), settings.clock);
     let format = if format == clock::ClockFormat::Off { clock::ClockFormat::Hours24 } else { format };
     let now = clock::date_text(&clock::local(jiff::Timestamp::now(), zone), format);
     let synced = std::fs::read_to_string(NTP_LOG).ok().and_then(|log| clock::last_sync(&log));
@@ -1272,18 +1277,16 @@ enum Wake {
     Idle,
 }
 
-/// Changes how games are shown, and saves the choice.
-fn change_display(change: impl FnOnce(&mut settings::Display)) {
-    let mut display = settings::display();
-    change(&mut display);
-    if let Err(error) = settings::set_display(display) {
-        eprintln!("warning: could not save the display settings: {error}");
+/// Changes the settings and saves them, warning if they can't be saved.
+fn change_settings(change: impl FnOnce(&mut settings::Settings)) {
+    if let Err(error) = settings::update(change) {
+        eprintln!("warning: could not save the settings: {error}");
     }
 }
 
-fn save_settings() {
-    if let Err(error) = settings::save() {
-        eprintln!("warning: could not save the settings: {error}");
+fn save_levels() {
+    if let Err(error) = settings::save_levels() {
+        eprintln!("warning: could not save the volume and brightness: {error}");
     }
 }
 
@@ -1326,102 +1329,60 @@ fn act(
         }
         Action::Volume(steps) => {
             settings::change_volume(steps * settings::VOLUME_STEP);
-            save_settings();
+            save_levels();
         }
         Action::Brightness(steps) => {
             settings::change_brightness(steps);
-            save_settings();
+            save_levels();
         }
-        Action::Scaling(steps) => change_display(|display| display.scaling = display.scaling.cycle(steps)),
-        Action::Effect(steps) => change_display(|display| display.effect = display.effect.cycle(steps)),
-        Action::Ghosting(steps) => change_display(|display| display.ghosting = display.ghosting.cycle(steps)),
+        Action::Scaling(steps) => change_settings(|s| s.display.scaling = s.display.scaling.cycle(steps)),
+        Action::Effect(steps) => change_settings(|s| s.display.effect = s.display.effect.cycle(steps)),
+        Action::Ghosting(steps) => change_settings(|s| s.display.ghosting = s.display.ghosting.cycle(steps)),
         Action::ToggleSounds => {
-            let on = !settings::menu_sounds();
-            if let Err(error) = settings::set_menu_sounds(on) {
-                eprintln!("warning: could not save the menu sounds setting: {error}");
-            }
+            change_settings(|s| s.menu_sounds = !s.menu_sounds);
             // Turning them on is heard straight away.
-            if on {
+            if settings::get().menu_sounds {
                 sounds::play(sounds::Sound::Select);
             }
         }
         Action::IdleSleep(steps) => {
-            if let Err(error) = settings::change_idle_minutes(steps) {
-                eprintln!("warning: could not save the idle sleep setting: {error}");
-            }
+            change_settings(|s| s.idle_minutes = settings::cycle(&settings::IDLE_SLEEP_MINUTES, s.idle_minutes, steps));
         }
         Action::BatteryDisplay(steps) => {
-            let display = settings::battery_display().cycle(steps);
-            canvas::set_battery_display(display);
-            if let Err(error) = settings::set_battery_display(display) {
-                eprintln!("warning: could not save the battery setting: {error}");
-            }
+            change_settings(|s| s.battery = s.battery.cycle(steps));
+            canvas::set_battery_display(settings::get().battery);
         }
-        Action::ToggleCovers => {
-            if let Err(error) = settings::set_covers_shown(!settings::covers_shown()) {
-                eprintln!("warning: could not save the covers setting: {error}");
-            }
-        }
+        Action::ToggleCovers => change_settings(|s| s.covers_hidden = !s.covers_hidden),
         Action::GameNames(steps) => {
-            if let Err(error) = settings::set_game_names(settings::game_names().cycle(steps)) {
-                eprintln!("warning: could not save the game names: {error}");
-            }
+            change_settings(|s| s.game_names = s.game_names.cycle(steps));
             // The lists are made again with the new names.
             return Ok(true);
         }
-        Action::StartScreen(steps) => {
-            if let Err(error) = settings::set_start_screen(settings::start_screen().cycle(steps)) {
-                eprintln!("warning: could not save the start screen: {error}");
-            }
-        }
+        Action::StartScreen(steps) => change_settings(|s| s.start_screen = s.start_screen.cycle(steps)),
         Action::Accent(steps) => {
-            let accent = settings::accent().cycle(steps);
-            canvas::set_accent(accent.rgb());
-            if let Err(error) = settings::set_accent(accent) {
-                eprintln!("warning: could not save the colour: {error}");
-            }
+            change_settings(|s| s.accent = s.accent.cycle(steps));
+            canvas::set_accent(settings::get().accent.rgb());
         }
         Action::GridSize(steps) => {
-            if let Err(error) = settings::set_grid_size(settings::grid_size().cycle(steps)) {
-                eprintln!("warning: could not save the grid size: {error}");
-            }
+            change_settings(|s| s.grid = s.grid.cycle(steps));
             // The home screen's tiles are laid out again.
             return Ok(true);
         }
         Action::Background(steps) => {
-            let background = settings::background().cycle(steps);
-            canvas::set_background(background);
-            if let Err(error) = settings::set_background(background) {
-                eprintln!("warning: could not save the background: {error}");
-            }
+            change_settings(|s| s.background = s.background.cycle(steps));
+            canvas::set_background(settings::get().background);
         }
-        Action::ToggleTitle => {
-            if let Err(error) = settings::set_title_hidden(!settings::title_hidden()) {
-                eprintln!("warning: could not save the title setting: {error}");
-            }
-        }
+        Action::ToggleTitle => change_settings(|s| s.title_hidden = !s.title_hidden),
         Action::EditTitle => edit_title(framebuffer, events)?,
         Action::ToggleTile(tile) => {
-            let hidden = settings::hidden_tiles().iter().any(|key| key == tile_key(tile));
-            if let Err(error) = settings::set_tile_hidden(tile_key(tile), !hidden) {
-                eprintln!("warning: could not save the home screen tiles: {error}");
-            }
+            change_settings(|s| s.toggle_tile(tile_key(tile)));
             // The home screen's tiles are read again.
             return Ok(true);
         }
         Action::TimeZone(steps) => {
-            if let Err(error) = settings::set_time_zone(clock::cycle_zone(settings::time_zone(), steps)) {
-                eprintln!("warning: could not save the time zone: {error}");
-            }
+            change_settings(|s| s.zone = Some(clock::cycle_zone(s.time_zone(), steps).name));
         }
-        Action::ClockFormat(steps) => {
-            let formats = clock::ClockFormat::ALL;
-            let index = formats.iter().position(|&format| format == settings::clock_format()).unwrap_or(0) as i32;
-            let format = formats[(index + steps).rem_euclid(formats.len() as i32) as usize];
-            if let Err(error) = settings::set_clock_format(format) {
-                eprintln!("warning: could not save the clock format: {error}");
-            }
-        }
+        Action::ClockFormat(steps) => change_settings(|s| s.clock = s.clock.cycle(steps)),
         Action::Reboot => shut_down(framebuffer, "REBOOTING", "reboot")?,
         Action::PowerOff => shut_down(framebuffer, "POWERING OFF", &power::poweroff_command())?,
     }
@@ -1433,7 +1394,7 @@ fn act(
 fn edit_title(framebuffer: &mut fb::Framebuffer, events: &Receiver<Event>) -> io::Result<()> {
     let (width, height) = framebuffer.size();
     let mut keyboard = keyboard::Keyboard::new(settings::MAX_TITLE_LENGTH, |_| true);
-    keyboard.text = settings::title();
+    keyboard.text = settings::get().title().to_string();
     let subtitle = format!("EMPTY BRINGS BACK {}", settings::DEFAULT_TITLE);
     let view = screens::KeyboardView { icon: &icons::THEME, title: "TITLE", subtitle: &subtitle, valid_note: "" };
     let battery = read_battery(&power::battery_dir());
@@ -1450,9 +1411,7 @@ fn edit_title(framebuffer: &mut fb::Framebuffer, events: &Receiver<Event>) -> io
                 match keyboard.press(button) {
                     keyboard::Outcome::Typing => {}
                     keyboard::Outcome::Done(text) => {
-                        if let Err(error) = settings::set_title(&text) {
-                            eprintln!("warning: could not save the title: {error}");
-                        }
+                        change_settings(|s| s.title = settings::clean_title(&text));
                         break;
                     }
                     keyboard::Outcome::Cancel => break,
@@ -1501,7 +1460,7 @@ fn boot_time() -> String {
 
 fn run_launcher() -> io::Result<()> {
     println!("launcher started {}", boot_time());
-    settings::restore();
+    settings::restore_levels();
     let mut framebuffer = open_framebuffer()?;
     // Non-fatal: at worst, console text could appear over the screen.
     let _console = fb::claim_console()
@@ -1575,7 +1534,7 @@ fn run_launcher() -> io::Result<()> {
 
         // Wait for input or a held button's repeat, redrawing when the battery changes and
         // a few times a second while a long name scrolls.
-        let idle_after = Duration::from_secs(u64::from(settings::idle_minutes()) * 60);
+        let idle_after = Duration::from_secs(u64::from(settings::get().idle_minutes) * 60);
         let wake = loop {
             let now = Instant::now();
             if let Some((button, count)) = repeater.due(now) {
@@ -1617,7 +1576,7 @@ fn run_launcher() -> io::Result<()> {
             last_press = Instant::now();
         }
         if let Some(sound) = menu_sound(&wake) {
-            if settings::menu_sounds() {
+            if settings::get().menu_sounds {
                 sounds::play(sound);
             }
         }
@@ -1752,7 +1711,7 @@ fn write_pause_preview(path: &str) -> io::Result<()> {
         slot_used: false,
         volume_percent: Some(80),
         brightness_percent: Some(50),
-        display: settings::Display::default(),
+        display: settings::GameDisplay::default(),
     };
     write_ppm(&canvas::pause_screen(width, height, &frame, frame_size, &view), path)
 }
@@ -1826,9 +1785,10 @@ fn write_button_preview(path: &str) -> io::Result<()> {
 
 fn main() -> ExitCode {
     // The theme colour, for the launcher and a game's menu alike.
-    canvas::set_accent(settings::accent().rgb());
-    canvas::set_battery_display(settings::battery_display());
-    canvas::set_background(settings::background());
+    let current = settings::get();
+    canvas::set_accent(current.accent.rgb());
+    canvas::set_battery_display(current.battery);
+    canvas::set_background(current.background);
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.as_slice() {
         [] => run_launcher(),
