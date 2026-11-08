@@ -1,0 +1,10 @@
+#!/bin/sh
+# Run by ntpd with the event: step and stratum on the first sync, periodic about
+# every 11 minutes after, unsync when it loses its servers.
+
+case "$1" in
+step|stratum|periodic)
+	hwclock -w -u
+	echo "$(date -u '+%Y-%m-%d %H:%M:%S') $1, offset ${offset:-?} s" >> /var/log/ntp.log
+	;;
+esac

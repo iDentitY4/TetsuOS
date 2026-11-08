@@ -442,11 +442,40 @@ pub const SYSTEM: Icon = [
     "................................",
 ];
 
+/// Time settings: an alarm clock.
+pub const TIME: Icon = [
+    "................................",
+    "................................",
+    "..........KK........KK..........",
+    ".........KYYK......KYYK.........",
+    "........KYYKKKKKKKKKKYYK........",
+    "........KYKKLLLLLLLLKKYK........",
+    ".........KKLLLLLLLLLLKK.........",
+    "........KLLLLLLKLLLLLLLK........",
+    "........KLLLLLLKLLLLLLLK........",
+    ".......KLLLLLLLKLLLLLLLLK.......",
+    ".......KLLLLLLLKLLLLLLLLK.......",
+    ".......KLLLLLLLKKKKKLLLLK.......",
+    ".......KLLLLLLLLLLLLLLLLK.......",
+    ".......KLLLLLLLLLLLLLLLLK.......",
+    "........KLLLLLLLLLLLLLLK........",
+    "........KLLLLLLLLLLLLLLK........",
+    ".........KKLLLLLLLLLLKK.........",
+    "..........KKKKKKKKKKKK..........",
+    ".........KDK........KDK.........",
+    "........KDK..........KDK........",
+    "........KK............KK........",
+    "................................",
+    "................................",
+    "................................",
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const ALL: [&Icon; 15] = [
+    const ALL: [&Icon; 16] = [
+        &TIME,
         &GENERAL,
         &GAME_SCREEN,
         &BOX_ART,

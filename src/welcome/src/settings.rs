@@ -1,6 +1,7 @@
-//! Volume, screen brightness and how games are shown, kept on the RGDATA partition across
-//! reboots.
+//! Volume, screen brightness, how games are shown and the time zone, kept on the RGDATA
+//! partition across reboots.
 
+use crate::clock::{self, ClockFormat, Zone};
 use crate::storage::write_atomic;
 use std::io;
 use std::path::Path;
@@ -139,6 +140,9 @@ struct Settings {
     volume: Option<u32>,
     brightness: Option<u32>,
     display: Display,
+    /// The time zone's IANA name, one of `clock::ZONES`.
+    zone: Option<&'static str>,
+    clock: ClockFormat,
 }
 
 /// Reads the first value from `amixer cget` output, such as `  : values=25,25`.
@@ -176,6 +180,12 @@ fn parse(text: &str) -> Settings {
                     settings.display.ghosting = ghosting;
                 }
             }
+            "timezone" => settings.zone = clock::zone_named(value).map(|zone| zone.name),
+            "clock" => {
+                if let Some(&format) = ClockFormat::ALL.iter().find(|choice| choice.key() == value) {
+                    settings.clock = format;
+                }
+            }
             _ => {}
         }
     }
@@ -193,6 +203,10 @@ fn format(settings: &Settings) -> String {
     text += &format!("scaling={}\n", settings.display.scaling.key());
     text += &format!("effect={}\n", settings.display.effect.key());
     text += &format!("ghosting={}\n", settings.display.ghosting.key());
+    if let Some(zone) = settings.zone {
+        text += &format!("timezone={zone}\n");
+    }
+    text += &format!("clock={}\n", settings.clock.key());
     text
 }
 
@@ -262,11 +276,7 @@ pub fn change_brightness(steps: i32) {
 
 /// Saves the current volume and brightness, as set by any process.
 pub fn save() -> io::Result<()> {
-    let settings = Settings {
-        volume: volume(),
-        brightness: brightness().map(|(value, _)| value),
-        display: load().display,
-    };
+    let settings = Settings { volume: volume(), brightness: brightness().map(|(value, _)| value), ..load() };
     write_atomic(Path::new(SETTINGS_PATH), format(&settings).as_bytes())
 }
 
@@ -278,6 +288,25 @@ pub fn display() -> Display {
 /// Saves how games are shown, keeping the other settings.
 pub fn set_display(display: Display) -> io::Result<()> {
     let settings = Settings { display, ..load() };
+    write_atomic(Path::new(SETTINGS_PATH), format(&settings).as_bytes())
+}
+
+/// The chosen time zone, UTC until one is chosen.
+pub fn time_zone() -> &'static Zone {
+    load().zone.and_then(clock::zone_named).unwrap_or(clock::UTC)
+}
+
+pub fn clock_format() -> ClockFormat {
+    load().clock
+}
+
+pub fn set_time_zone(zone: &'static Zone) -> io::Result<()> {
+    let settings = Settings { zone: Some(zone.name), ..load() };
+    write_atomic(Path::new(SETTINGS_PATH), format(&settings).as_bytes())
+}
+
+pub fn set_clock_format(format_choice: ClockFormat) -> io::Result<()> {
+    let settings = Settings { clock: format_choice, ..load() };
     write_atomic(Path::new(SETTINGS_PATH), format(&settings).as_bytes())
 }
 
@@ -307,14 +336,24 @@ mod tests {
     #[test]
     fn settings_survive_a_round_trip() {
         let display = Display { scaling: Scaling::Integer, effect: Effect::Lcd, ghosting: Ghosting::Full };
-        let settings = Settings { volume: Some(25), brightness: Some(1250), display };
+        let settings = Settings {
+            volume: Some(25),
+            brightness: Some(1250),
+            display,
+            zone: Some("Europe/Berlin"),
+            clock: ClockFormat::Hours12,
+        };
         assert_eq!(parse(&format(&settings)), settings);
+        // Files from before the time settings load with UTC and a 24 hour clock.
+        let old = parse("volume=25\nscaling=fit\n");
+        assert_eq!((old.zone, old.clock), (None, ClockFormat::Hours24));
+        assert_eq!(parse("timezone=Mars/Olympus\n").zone, None);
     }
 
     #[test]
     fn unknown_or_broken_lines_are_ignored() {
         let settings = parse("volume=abc\ncolour=blue\nbrightness = 900\nnonsense\neffect=sparkles\n");
-        assert_eq!(settings, Settings { volume: None, brightness: Some(900), display: Display::default() });
+        assert_eq!(settings, Settings { brightness: Some(900), ..Settings::default() });
     }
 
     #[test]

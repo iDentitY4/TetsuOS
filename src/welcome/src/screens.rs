@@ -67,9 +67,11 @@ pub struct SettingsView<'a> {
     pub volume_percent: Option<u32>,
     pub brightness_percent: Option<u32>,
     pub display: Display,
+    pub time_zone: &'a str,
+    pub clock_format: &'a str,
     /// A question waiting for a second press, in the accent colour.
     pub message: Option<&'a str>,
-    /// A line about the group, such as how many games have covers.
+    /// Lines about the group, such as how many games have covers, split at newlines.
     pub note: Option<&'a str>,
 }
 
@@ -127,6 +129,7 @@ pub fn group_icon(group: Group) -> &'static Icon {
         Group::GameScreen => &icons::GAME_SCREEN,
         Group::Wifi => &icons::WIFI,
         Group::BoxArt => &icons::BOX_ART,
+        Group::Time => &icons::TIME,
         Group::System => &icons::SYSTEM,
     }
 }
@@ -316,11 +319,13 @@ pub fn settings_screen(width: usize, height: usize, view: &SettingsView, battery
         match setting {
             Setting::Volume => bar(&mut canvas, right, y, SETTINGS_ROW - 4, view.volume_percent, on, off),
             Setting::Brightness => bar(&mut canvas, right, y, SETTINGS_ROW - 4, view.brightness_percent, on, off),
-            Setting::Scaling | Setting::Effect | Setting::Ghosting => {
+            Setting::Scaling | Setting::Effect | Setting::Ghosting | Setting::TimeZone | Setting::ClockFormat => {
                 let label = match setting {
                     Setting::Scaling => view.display.scaling.label(),
                     Setting::Effect => view.display.effect.label(),
-                    _ => view.display.ghosting.label(),
+                    Setting::Ghosting => view.display.ghosting.label(),
+                    Setting::TimeZone => view.time_zone,
+                    _ => view.clock_format,
                 };
                 let value = if selected { format!("< {label} >") } else { label.to_string() };
                 canvas.text_at(&value, right - text_width(&value, TEXT_SCALE), text_y, TEXT_SCALE, text_color);
@@ -331,16 +336,15 @@ pub fn settings_screen(width: usize, height: usize, view: &SettingsView, battery
             _ => {}
         }
     }
-    let below = SETTINGS_TOP + settings.len() * SETTINGS_ROW + 12;
-    if let Some(note) = view.note {
-        canvas.text(note, below, TEXT_SCALE, MUTED);
+    let mut below = SETTINGS_TOP + settings.len() * SETTINGS_ROW + 12;
+    for line in view.note.into_iter().flat_map(str::lines) {
+        canvas.text(line, below, TEXT_SCALE, MUTED);
+        below += SETTINGS_ROW;
     }
     if let Some(message) = view.message {
-        canvas.text(message, below + 32, TEXT_SCALE, ACCENT);
+        canvas.text(message, below, TEXT_SCALE, ACCENT);
     }
-    let changes = settings.iter().any(|setting| {
-        matches!(setting, Setting::Volume | Setting::Brightness | Setting::Scaling | Setting::Effect | Setting::Ghosting)
-    });
+    let changes = settings.iter().any(|setting| setting.changes_with_left_right());
     hint(&mut canvas, if changes { "A SELECTS - LEFT RIGHT CHANGES - B BACK" } else { "A SELECTS - B BACK" });
     canvas
 }
@@ -870,6 +874,8 @@ mod tests {
             volume_percent: Some(80),
             brightness_percent: Some(50),
             display: Display::default(),
+            time_zone: "UTC",
+            clock_format: "24 HOUR",
             message: Some("PRESS A AGAIN TO POWER OFF"),
             note: None,
         };
@@ -888,14 +894,22 @@ mod tests {
                 // The label and a value or bar on the right don't meet.
                 assert!(SETTINGS_LEFT + text_width(setting.label(), TEXT_SCALE) + 16 + BAR_W <= 640 - SETTINGS_RIGHT, "{setting:?}");
             }
+            for zone in crate::clock::ZONES {
+                let value = format!("< {} >", zone.label);
+                assert!(SETTINGS_LEFT + text_width("TIME ZONE", TEXT_SCALE) + 16 + text_width(&value, TEXT_SCALE) <= 640 - SETTINGS_RIGHT);
+            }
+            // Two note lines and a message fit above the hint.
+            assert!(SETTINGS_TOP + group.settings().len() * SETTINGS_ROW + 12 + 3 * SETTINGS_ROW <= HINT_Y);
             let view = SettingsView {
                 group,
                 selected: group.settings().first().copied().unwrap_or(Setting::Volume),
                 volume_percent: None,
                 brightness_percent: None,
                 display: Display::default(),
+                time_zone: "BUENOS AIRES",
+                clock_format: "24 HOUR",
                 message: Some("PRESS A AGAIN TO DELETE ALL COVERS"),
-                note: Some("35 OF 38 GAMES HAVE A COVER"),
+                note: Some("WEDNESDAY 30 SEPTEMBER 2026, 12:30 PM\nWAITING FOR THE TIME FROM THE NETWORK"),
             };
             assert_eq!(settings_screen(640, 480, &view, None).pixels.len(), 640 * 480);
         }

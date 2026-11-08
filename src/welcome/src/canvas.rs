@@ -150,6 +150,15 @@ impl Canvas {
         self.text_at(&label, x, BATTERY_TOP, BATTERY_TEXT_SCALE, color);
     }
 
+    /// The clock, to the left of the battery level.
+    pub(crate) fn clock(&mut self, text: &str, battery: Option<Battery>) {
+        let battery_w = battery.map_or(0, |Battery { percent, charging }| {
+            text_width(&format!("{percent}%{}", if charging { "+" } else { "" }), BATTERY_TEXT_SCALE) + CLOCK_GAP
+        });
+        let x = self.width.saturating_sub(text_width(text, BATTERY_TEXT_SCALE) + battery_w + BATTERY_RIGHT);
+        self.text_at(text, x, BATTERY_TOP, BATTERY_TEXT_SCALE, MUTED);
+    }
+
     /// One control: filled while held, outlined once it has been seen working.
     fn tile(&mut self, tile: &Tile, controls: &Controls) {
         let Tile { button, x, y, w, h } = *tile;
@@ -238,6 +247,8 @@ pub struct Battery {
 const LOW_BATTERY_PERCENT: u32 = 15;
 const BATTERY_TOP: usize = 8;
 const BATTERY_RIGHT: usize = 16;
+/// Between the clock and the battery level.
+const CLOCK_GAP: usize = 16;
 const BATTERY_TEXT_SCALE: usize = 2;
 
 /// What the in-game menu shows besides its choices.

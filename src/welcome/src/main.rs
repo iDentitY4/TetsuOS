@@ -1,6 +1,7 @@
 mod boxart;
 mod boxart_fetch;
 mod canvas;
+mod clock;
 mod fb;
 mod favorites;
 mod font;
@@ -429,6 +430,8 @@ fn play_game(rom: &Path, events: &Receiver<Event>) -> io::Result<Ending> {
         .arg("--play")
         .args([Path::new(system.core), rom, &save_path(rom, system)])
         .arg(persistence_arg(system.persistence))
+        // Cores read local time for games' clocks, such as Pokemon's, through glibc.
+        .env("TZ", settings::time_zone().posix)
         .spawn()?;
     let status = loop {
         if let Some(status) = game.try_wait()? {
@@ -670,6 +673,7 @@ fn download_box_art(framebuffer: &mut fb::Framebuffer, events: &Receiver<Event>,
     let (width, height) = framebuffer.size();
     let mut download = Download::start(mode);
     let mut stopping = false;
+    let mut shown_clock = corner_clock();
     let mut battery = read_battery(&power::battery_dir());
     let mut battery_read = Instant::now();
     let mut redraw = true;
@@ -679,6 +683,9 @@ fn download_box_art(framebuffer: &mut fb::Framebuffer, events: &Receiver<Event>,
             let reading = read_battery(&power::battery_dir());
             redraw |= reading != battery;
             battery = reading;
+            let time = corner_clock();
+            redraw |= time != shown_clock;
+            shown_clock = time;
         }
         if redraw {
             let hint = if stopping {
@@ -695,7 +702,9 @@ fn download_box_art(framebuffer: &mut fb::Framebuffer, events: &Receiver<Event>,
                 missing: &download.missing,
                 hint,
             };
-            framebuffer.draw(&screens::boxart_screen(width, height, &view, battery))?;
+            let mut canvas = screens::boxart_screen(width, height, &view, battery);
+            add_clock(&mut canvas, battery);
+            framebuffer.draw(&canvas)?;
             redraw = false;
         }
         if stopping && !download.running() {
@@ -848,7 +857,7 @@ fn wifi_settings(framebuffer: &mut fb::Framebuffer, events: &Receiver<Event>) ->
             }
         }
 
-        let canvas = match &menu.keyboard {
+        let mut canvas = match &menu.keyboard {
             Some((ssid, keyboard)) => {
                 screens::keyboard_screen(size.0, size.1, &wifi::display_name(ssid), keyboard, PASSWORD_NOTE, battery)
             }
@@ -864,6 +873,7 @@ fn wifi_settings(framebuffer: &mut fb::Framebuffer, events: &Receiver<Event>) ->
                 screens::wifi_screen(size.0, size.1, &view, battery)
             }
         };
+        add_clock(&mut canvas, battery);
         framebuffer.draw(&canvas)?;
 
         let poll_due = last_poll.map_or(Duration::ZERO, |time| (time + WIFI_POLL).saturating_duration_since(Instant::now()));
@@ -961,7 +971,7 @@ fn launcher_canvas(
     scrolled: Duration,
 ) -> (canvas::Canvas, Option<(usize, usize, usize, usize)>) {
     let mut scrolling = None;
-    let canvas = match launcher.screen() {
+    let mut canvas = match launcher.screen() {
         Screen::Home => {
             let tiles: Vec<screens::TileView> = library
                 .tiles()
@@ -1020,16 +1030,22 @@ fn launcher_canvas(
             screens::settings_grid(width, height, &GROUPS, selected, battery)
         }
         Screen::SettingsGroup(group) => {
-            let note = (group == Group::BoxArt).then(|| {
-                let (covered, total) = art_counts();
-                format!("{covered} OF {total} GAMES HAVE A COVER")
-            });
+            let note = match group {
+                Group::BoxArt => {
+                    let (covered, total) = art_counts();
+                    Some(format!("{covered} OF {total} GAMES HAVE A COVER"))
+                }
+                Group::Time => Some(time_note()),
+                _ => None,
+            };
             let view = screens::SettingsView {
                 group,
                 selected: launcher.setting_selected(group).unwrap_or(launcher::Setting::Volume),
                 volume_percent: settings::volume_percent(),
                 brightness_percent: settings::brightness_percent(),
                 display: settings::display(),
+                time_zone: settings::time_zone().label,
+                clock_format: settings::clock_format().label(),
                 message: launcher.confirmation(),
                 note: note.as_deref(),
             };
@@ -1037,7 +1053,44 @@ fn launcher_canvas(
         }
         Screen::Info => screens::info_screen(width, height, &system_info(battery), battery),
     };
+    add_clock(&mut canvas, battery);
     (canvas, scrolling)
+}
+
+/// The minute the launcher's screen shows, in the corner or in the time settings, so it is
+/// drawn again when it changes.
+fn clock_minute(launcher: &Launcher) -> Option<String> {
+    match launcher.screen() {
+        Screen::SettingsGroup(Group::Time) => Some(time_note()),
+        _ => corner_clock(),
+    }
+}
+
+/// What `/usr/libexec/ntp-synced` logs each time ntpd sets the clock.
+const NTP_LOG: &str = "/var/log/ntp.log";
+
+/// The clock for the top-right corner, unless it is turned off.
+fn corner_clock() -> Option<String> {
+    clock::corner_text(jiff::Timestamp::now(), settings::time_zone(), settings::clock_format())
+}
+
+fn add_clock(canvas: &mut canvas::Canvas, battery: Option<Battery>) {
+    if let Some(text) = corner_clock() {
+        canvas.clock(&text, battery);
+    }
+}
+
+/// The time settings' note: the date and time there, and when the network last set it.
+fn time_note() -> String {
+    let (zone, format) = (settings::time_zone(), settings::clock_format());
+    let format = if format == clock::ClockFormat::Off { clock::ClockFormat::Hours24 } else { format };
+    let now = clock::date_text(&clock::local(jiff::Timestamp::now(), zone), format);
+    let synced = std::fs::read_to_string(NTP_LOG).ok().and_then(|log| clock::last_sync(&log));
+    let network = match synced {
+        Some(time) => format!("SET FROM THE NETWORK AT {}", clock::time_text(&clock::local(time, zone), format)),
+        None => "WAITING FOR THE TIME FROM THE NETWORK".into(),
+    };
+    format!("{now}\n{network}")
 }
 
 /// What woke the launcher up.
@@ -1110,6 +1163,19 @@ fn act(
         Action::Scaling(steps) => change_display(|display| display.scaling = display.scaling.cycle(steps)),
         Action::Effect(steps) => change_display(|display| display.effect = display.effect.cycle(steps)),
         Action::Ghosting(steps) => change_display(|display| display.ghosting = display.ghosting.cycle(steps)),
+        Action::TimeZone(steps) => {
+            if let Err(error) = settings::set_time_zone(clock::cycle_zone(settings::time_zone(), steps)) {
+                eprintln!("warning: could not save the time zone: {error}");
+            }
+        }
+        Action::ClockFormat(steps) => {
+            let formats = clock::ClockFormat::ALL;
+            let index = formats.iter().position(|&format| format == settings::clock_format()).unwrap_or(0) as i32;
+            let format = formats[(index + steps).rem_euclid(formats.len() as i32) as usize];
+            if let Err(error) = settings::set_clock_format(format) {
+                eprintln!("warning: could not save the clock format: {error}");
+            }
+        }
         Action::Reboot => shut_down(framebuffer, "REBOOTING", "reboot")?,
         Action::PowerOff => shut_down(framebuffer, "POWERING OFF", &power::poweroff_command())?,
     }
@@ -1187,6 +1253,8 @@ fn run_launcher() -> io::Result<()> {
     let mut scroll_tick = false;
     let mut battery = read_battery(&power::battery_dir());
     let mut battery_read = Instant::now();
+    // The minute shown, to redraw when it changes. The time settings show it too.
+    let mut shown_clock: Option<String>;
 
     loop {
         if monitor.check(Instant::now()) == Some(power::Level::Critical) {
@@ -1206,6 +1274,7 @@ fn run_launcher() -> io::Result<()> {
             scroll_start = Instant::now();
         }
         let size = framebuffer.size();
+        shown_clock = clock_minute(&launcher);
         let (canvas, scrolling) =
             launcher_canvas(size, &launcher, &library, &mut art, battery, scroll_start.elapsed());
         match scrolling {
@@ -1239,6 +1308,9 @@ fn run_launcher() -> io::Result<()> {
                         let reading = read_battery(&power::battery_dir());
                         if reading != battery {
                             battery = reading;
+                            break Wake::Redraw;
+                        }
+                        if clock_minute(&launcher) != shown_clock {
                             break Wake::Redraw;
                         }
                     }

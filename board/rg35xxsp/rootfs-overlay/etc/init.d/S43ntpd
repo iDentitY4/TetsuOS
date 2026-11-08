@@ -1,0 +1,27 @@
+#!/bin/sh
+# Keeps the clock right from the network. ntpd keeps trying, so it syncs whenever
+# Wi-Fi is up, and steps the clock on the first answer however far off it is.
+# Each sync also writes the RTC (ntp-synced), so the time is right after a
+# reboot without network; the kernel reads the RTC at boot.
+
+PIDFILE=/run/ntpd.pid
+
+case "$1" in
+start)
+	start-stop-daemon -S -b -m -p "$PIDFILE" -x /usr/sbin/ntpd -- -n \
+		-S /usr/libexec/ntp-synced \
+		-p 0.pool.ntp.org -p 1.pool.ntp.org -p 2.pool.ntp.org
+	;;
+stop)
+	start-stop-daemon -K -q -p "$PIDFILE"
+	rm -f "$PIDFILE"
+	;;
+restart)
+	"$0" stop
+	"$0" start
+	;;
+*)
+	echo "Usage: $0 {start|stop|restart}"
+	exit 1
+	;;
+esac

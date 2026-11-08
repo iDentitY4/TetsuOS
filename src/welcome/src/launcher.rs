@@ -66,10 +66,12 @@ pub enum Group {
     GameScreen,
     Wifi,
     BoxArt,
+    Time,
     System,
 }
 
-pub const GROUPS: [Group; 5] = [Group::General, Group::GameScreen, Group::Wifi, Group::BoxArt, Group::System];
+pub const GROUPS: [Group; 6] =
+    [Group::General, Group::GameScreen, Group::Wifi, Group::BoxArt, Group::Time, Group::System];
 
 /// The most settings a group has, which the settings screen makes room for.
 pub const MAX_GROUP_SETTINGS: usize = 4;
@@ -81,6 +83,7 @@ impl Group {
             Self::GameScreen => "GAME SCREEN",
             Self::Wifi => "WI-FI",
             Self::BoxArt => "BOX ART",
+            Self::Time => "TIME",
             Self::System => "SYSTEM",
         }
     }
@@ -91,6 +94,7 @@ impl Group {
             Self::GameScreen => &[Setting::Scaling, Setting::Effect, Setting::Ghosting],
             Self::Wifi => &[],
             Self::BoxArt => &[Setting::DownloadMissingArt, Setting::DownloadAllArt, Setting::DeleteArt],
+            Self::Time => &[Setting::TimeZone, Setting::ClockFormat],
             Self::System => &[Setting::ButtonTest, Setting::SystemInfo, Setting::Reboot, Setting::PowerOff],
         }
     }
@@ -106,6 +110,8 @@ pub enum Setting {
     DownloadMissingArt,
     DownloadAllArt,
     DeleteArt,
+    TimeZone,
+    ClockFormat,
     ButtonTest,
     SystemInfo,
     Reboot,
@@ -123,6 +129,8 @@ impl Setting {
             Self::DownloadMissingArt => "DOWNLOAD MISSING COVERS",
             Self::DownloadAllArt => "DOWNLOAD ALL COVERS AGAIN",
             Self::DeleteArt => "DELETE ALL COVERS",
+            Self::TimeZone => "TIME ZONE",
+            Self::ClockFormat => "CLOCK",
             Self::ButtonTest => "BUTTON TEST",
             Self::SystemInfo => "SYSTEM INFO",
             Self::Reboot => "REBOOT",
@@ -133,6 +141,14 @@ impl Setting {
     /// Whether A opens another screen, shown with a `>`.
     pub fn opens_screen(self) -> bool {
         matches!(self, Self::DownloadMissingArt | Self::DownloadAllArt | Self::ButtonTest | Self::SystemInfo)
+    }
+
+    /// Whether Left and Right change it.
+    pub fn changes_with_left_right(self) -> bool {
+        matches!(
+            self,
+            Self::Volume | Self::Brightness | Self::Scaling | Self::Effect | Self::Ghosting | Self::TimeZone | Self::ClockFormat
+        )
     }
 
     /// Whether A must be pressed twice, because it can't be undone.
@@ -179,6 +195,8 @@ pub enum Command {
     Scaling(i32),
     Effect(i32),
     Ghosting(i32),
+    TimeZone(i32),
+    ClockFormat(i32),
     Reboot,
     PowerOff,
 }
@@ -413,6 +431,8 @@ impl Launcher {
                 Setting::Scaling => return Command::Scaling(step),
                 Setting::Effect => return Command::Effect(step),
                 Setting::Ghosting => return Command::Ghosting(step),
+                Setting::TimeZone => return Command::TimeZone(step),
+                Setting::ClockFormat => return Command::ClockFormat(step),
                 _ => {}
             },
             Button::B => self.screen = Screen::Settings,
@@ -427,7 +447,13 @@ impl Launcher {
                 Setting::SystemInfo => self.screen = Screen::Info,
                 Setting::Reboot => return Command::Reboot,
                 Setting::PowerOff => return Command::PowerOff,
-                Setting::Volume | Setting::Brightness | Setting::Scaling | Setting::Effect | Setting::Ghosting => {}
+                Setting::Volume
+                | Setting::Brightness
+                | Setting::Scaling
+                | Setting::Effect
+                | Setting::Ghosting
+                | Setting::TimeZone
+                | Setting::ClockFormat => {}
             },
             _ => {}
         }
@@ -603,8 +629,8 @@ mod tests {
         assert_eq!(launcher.press(Button::A, &library), Command::DownloadBoxArt(ArtDownload::Missing));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::A, &library), Command::DownloadBoxArt(ArtDownload::All));
-        // System is the first tile of the second row.
-        press_all(&mut launcher, &library, &[Button::B, Button::Down, Button::A]);
+        // System is the second tile of the second row.
+        press_all(&mut launcher, &library, &[Button::B, Button::Down, Button::Right, Button::A]);
         assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::System));
         assert_eq!(launcher.press(Button::A, &library), Command::ButtonTest);
         press_all(&mut launcher, &library, &[Button::Down, Button::A]);
@@ -612,6 +638,19 @@ mod tests {
         launcher.press(Button::B, &library);
         assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::System));
         assert_eq!(launcher.setting_selected(Group::System), Some(Setting::SystemInfo));
+    }
+
+    #[test]
+    fn time_settings_change_with_left_and_right() {
+        let library = library();
+        let mut launcher = Launcher::new();
+        // Time is the first tile of the second row.
+        press_all(&mut launcher, &library, &[Button::Start, Button::Down, Button::A]);
+        assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::Time));
+        assert_eq!(launcher.press(Button::Right, &library), Command::TimeZone(1));
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::Left, &library), Command::ClockFormat(-1));
+        assert_eq!(launcher.press(Button::A, &library), Command::Nothing);
     }
 
     #[test]

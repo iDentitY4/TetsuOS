@@ -3,3 +3,6 @@ CONFIG_ACPID=y
 
 # Gives the PC an address on the USB network link
 CONFIG_UDHCPD=y
+
+# Sets the clock from the network once Wi-Fi is up (S43ntpd)
+CONFIG_NTPD=y

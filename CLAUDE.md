@@ -140,9 +140,29 @@ Built but not yet tested on the device:
   cover in a panel on the right (`boxart.rs`, `screens::list_screen`), or the console's
   icon without one, which leaves about 31 characters for names. Claude checked the GBA
   and SNES lists in screenshots, and the user said the covers look fine
+- Network time. BusyBox `ntpd` (`S43ntpd`, from `pool.ntp.org`) runs from boot and
+  keeps retrying, so it syncs whenever Wi-Fi is up, and steps the clock on its first
+  answer. `/usr/libexec/ntp-synced` writes the RTC with `hwclock -w -u` on each sync and
+  logs it to `/var/log/ntp.log`; the kernel reads the RTC at boot (`CONFIG_RTC_HCTOSYS`).
+  The clock had been 32.6 hours fast. Claude checked on the device: the first sync
+  stepped it by -117520 s to match the PC, and after a reboot it was right from the RTC
+  (0.7 s off) and synced again 16 s into boot, though ntpd started before Wi-Fi. The
+  system clock stays UTC
+- Time settings, a TIME tile in Settings: TIME ZONE (58 cities, west to east, Left and
+  Right) and CLOCK (24 HOUR, 12 HOUR or OFF) for a clock left of the battery level on
+  every screen that shows it. The group's note shows the date and when the network last
+  set the clock (from `/var/log/ntp.log`). Saved as `timezone=<IANA name>` and `clock=`
+  in `settings.txt`; UTC until chosen. `clock.rs` holds each zone as a POSIX TZ rule,
+  taken from the PC's tzdata file footers, so the device needs no zoneinfo: the launcher
+  reads it with the `jiff` crate, and games get it as `TZ`, which glibc reads, so cores'
+  clocks (Pokemon's RTC) show local time. A test checks every rule against the IANA
+  database hourly for two years, and on the device glibc gave the same local times as
+  the PC for all 58, in winter and summer. Claude checked the screens, the corner clock
+  in both formats and off, and `TZ` in a game's environment. The zone is set to Berlin
+  on the test unit. A game's clock was not checked inside a game
 - Settings is a grid of group tiles, like the home screen (`settings_grid`): GENERAL
   (volume, brightness), GAME SCREEN (scaling, effect, ghosting), WI-FI (opens the Wi-Fi
-  screen directly), BOX ART and SYSTEM (button test, system info, reboot, power off). A
+  screen directly), BOX ART, TIME and SYSTEM (button test, system info, reboot, power off). A
   opens a group's list, B goes back to its tile, and Start closes settings from anywhere
   in them. Groups and their settings are `GROUPS` and `Group::settings` in `launcher.rs`,
   so a new option is one more entry; `MAX_GROUP_SETTINGS` (4) is what the screen has
@@ -356,9 +376,6 @@ Proposed, not yet confirmed by the user:
   finding it would need netconsole over `usb0`.
 - **This `wpa_supplicant` has no syslog support:** `-s` prints the usage and exits
   with status 0, so a script can't tell it failed.
-- **The device clock was 32.6 hours fast on 2026-11-08,** with nothing setting it from the
-  network. HTTPS still works, since certificates are valid for months, but a clock far
-  enough off would fail downloads with `SECURE CONNECTION FAILED - CHECK THE DATE`.
 - **The linux-sunxi wiki returns 403 to automated fetches.** Use U-Boot's
   `doc/board/allwinner/sunxi.rst`, the ROCKNIX tree and the source code instead.
 
