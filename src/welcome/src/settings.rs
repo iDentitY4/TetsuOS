@@ -231,6 +231,38 @@ impl StartScreen {
     }
 }
 
+/// How games are named in lists.
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub enum GameNames {
+    /// Readable names, without tags like the region, as `names::short_name` makes them.
+    #[default]
+    Short,
+    /// The file name as it is, without the extension.
+    Full,
+}
+
+impl GameNames {
+    pub const ALL: [Self; 2] = [Self::Short, Self::Full];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Short => "SHORT",
+            Self::Full => "FULL",
+        }
+    }
+
+    pub fn cycle(self, steps: i32) -> Self {
+        cycle(&Self::ALL, self, steps)
+    }
+
+    fn key(self) -> &'static str {
+        match self {
+            Self::Short => "short",
+            Self::Full => "full",
+        }
+    }
+}
+
 /// The home screen's title, until another is typed.
 pub const DEFAULT_TITLE: &str = "RG35XX SP LINUX";
 /// What fits across the home screen at its title size.
@@ -259,6 +291,7 @@ struct Settings {
     /// Home screen tiles turned off, by key, such as `recent` or `gba`.
     hidden_tiles: Vec<String>,
     start_screen: StartScreen,
+    game_names: GameNames,
 }
 
 /// Reads the first value from `amixer cget` output, such as `  : values=25,25`.
@@ -303,6 +336,11 @@ fn parse(text: &str) -> Settings {
             }
             "title_hidden" => settings.title_hidden = value == "yes",
             "title" => settings.title = clean_title(value),
+            "names" => {
+                if let Some(&names) = GameNames::ALL.iter().find(|choice| choice.key() == value) {
+                    settings.game_names = names;
+                }
+            }
             "start" => {
                 if let Some(&start) = StartScreen::ALL.iter().find(|choice| choice.key() == value) {
                     settings.start_screen = start;
@@ -344,6 +382,7 @@ fn format(settings: &Settings) -> String {
         text += &format!("title={title}\n");
     }
     text += &format!("start={}\n", settings.start_screen.key());
+    text += &format!("names={}\n", settings.game_names.key());
     if !settings.hidden_tiles.is_empty() {
         text += &format!("hidden_tiles={}\n", settings.hidden_tiles.join(","));
     }
@@ -475,6 +514,14 @@ pub fn set_title(text: &str) -> io::Result<()> {
     store(&Settings { title: clean_title(text), ..load() })
 }
 
+pub fn game_names() -> GameNames {
+    load().game_names
+}
+
+pub fn set_game_names(game_names: GameNames) -> io::Result<()> {
+    store(&Settings { game_names, ..load() })
+}
+
 pub fn start_screen() -> StartScreen {
     load().start_screen
 }
@@ -554,6 +601,7 @@ mod tests {
             title: Some("Game = Fun & more".into()),
             hidden_tiles: vec!["recent".into(), "gba".into()],
             start_screen: StartScreen::LastGame,
+            game_names: GameNames::Full,
         };
         assert_eq!(parse(&format(&settings)), settings);
         // Files from before the time settings load with UTC and a 24 hour clock.
@@ -563,6 +611,7 @@ mod tests {
         assert_eq!((old.accent, old.title_hidden, old.title), (Accent::Teal, false, None));
         assert!(old.hidden_tiles.is_empty());
         assert_eq!(old.start_screen, StartScreen::Home);
+        assert_eq!(old.game_names, GameNames::Short);
         assert_eq!(StartScreen::Home.cycle(-1), StartScreen::LastGame);
         assert_eq!(parse("hidden_tiles=nes,, snes ,\n").hidden_tiles, ["nes", "snes"]);
     }

@@ -99,7 +99,7 @@ impl Group {
 
     pub fn settings(self) -> &'static [Setting] {
         match self {
-            Self::General => &[Setting::Volume, Setting::Brightness, Setting::StartScreen],
+            Self::General => &[Setting::Volume, Setting::Brightness, Setting::StartScreen, Setting::GameNames],
             Self::GameScreen => &[Setting::Scaling, Setting::Effect, Setting::Ghosting],
             Self::Wifi => &[],
             Self::BoxArt => &[Setting::DownloadMissingArt, Setting::DownloadAllArt, Setting::DeleteArt],
@@ -115,6 +115,7 @@ pub enum Setting {
     Volume,
     Brightness,
     StartScreen,
+    GameNames,
     Scaling,
     Effect,
     Ghosting,
@@ -139,6 +140,7 @@ impl Setting {
             Self::Volume => "VOLUME",
             Self::Brightness => "BRIGHTNESS",
             Self::StartScreen => "START SCREEN",
+            Self::GameNames => "GAME NAMES",
             Self::Scaling => "SCALING",
             Self::Effect => "SCREEN EFFECT",
             Self::Ghosting => "LCD GHOSTING",
@@ -178,6 +180,7 @@ impl Setting {
             Self::Volume
                 | Self::Brightness
                 | Self::StartScreen
+                | Self::GameNames
                 | Self::Scaling
                 | Self::Effect
                 | Self::Ghosting
@@ -230,6 +233,7 @@ pub enum Command {
     Volume(i32),
     Brightness(i32),
     StartScreen(i32),
+    GameNames(i32),
     Scaling(i32),
     Effect(i32),
     Ghosting(i32),
@@ -526,6 +530,7 @@ impl Launcher {
                 Setting::Volume => return Command::Volume(step),
                 Setting::Brightness => return Command::Brightness(step),
                 Setting::StartScreen => return Command::StartScreen(step),
+                Setting::GameNames => return Command::GameNames(step),
                 Setting::Scaling => return Command::Scaling(step),
                 Setting::Effect => return Command::Effect(step),
                 Setting::Ghosting => return Command::Ghosting(step),
@@ -552,6 +557,7 @@ impl Launcher {
                 Setting::Volume
                 | Setting::Brightness
                 | Setting::StartScreen
+                | Setting::GameNames
                 | Setting::Scaling
                 | Setting::Effect
                 | Setting::Ghosting
@@ -782,6 +788,8 @@ mod tests {
         assert_eq!(launcher.press(Button::Left, &library), Command::Brightness(-1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Right, &library), Command::StartScreen(1));
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::Left, &library), Command::GameNames(-1));
         press_all(&mut launcher, &library, &[Button::B, Button::Right, Button::A]);
         assert_eq!(launcher.press(Button::Right, &library), Command::Scaling(1));
         launcher.press(Button::Down, &library);

@@ -160,6 +160,10 @@ Built but not yet tested on the device:
   the title, the home grid starts at 36 instead of 84 pixels (`GRID_TOP_UNTITLED`, just
   below the clock), so 3 rows of tiles grow from 108 to 124 pixels, and each tile's icon
   and labels are centred in it
+- Game names: Settings > GENERAL > GAME NAMES: SHORT (`names::display_names`, as before)
+  or FULL, the file name without the extension, with its tags. Saved as `names=`;
+  `build_library` takes the choice. Claude checked a list in FULL on the device; the test
+  unit is back on SHORT
 - Start screen: Settings > GENERAL > START SCREEN: HOME, RECENT, FAVORITES or LAST GAME,
   the list of the last game's console with that game selected, from the first line of
   `recent.txt` (`Launcher::start_in`, `open_start_screen` in `main.rs`). An empty list

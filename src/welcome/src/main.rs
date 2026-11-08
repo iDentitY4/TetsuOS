@@ -237,7 +237,7 @@ fn system_index(rom: &Path) -> Option<usize> {
 
 /// Sorts games into a shelf per system, in the order of `SYSTEMS`, with readable names.
 /// Recent games only count while they are still among the games.
-fn build_library(roms: &[PathBuf], recent: &[PathBuf], favorites: &[PathBuf]) -> Library {
+fn build_library(roms: &[PathBuf], recent: &[PathBuf], favorites: &[PathBuf], names: settings::GameNames) -> Library {
     let mut shelves = Vec::new();
     for system in 0..SYSTEMS.len() {
         let paths: Vec<&PathBuf> = roms.iter().filter(|rom| system_index(rom) == Some(system)).collect();
@@ -245,9 +245,13 @@ fn build_library(roms: &[PathBuf], recent: &[PathBuf], favorites: &[PathBuf]) ->
             continue;
         }
         let stems: Vec<String> = paths.iter().map(|rom| rom_label(rom)).collect();
+        let shown = match names {
+            settings::GameNames::Short => names::display_names(&stems),
+            settings::GameNames::Full => stems,
+        };
         let mut games: Vec<Game> = paths
             .iter()
-            .zip(names::display_names(&stems))
+            .zip(shown)
             .map(|(path, name)| Game { path: path.to_path_buf(), name, system })
             .collect();
         games.sort_by_key(|game| game.name.to_ascii_lowercase());
@@ -323,6 +327,7 @@ fn load_library() -> Library {
         &find_roms(Path::new(ROM_DIR)),
         &recent::load(Path::new(recent::RECENT_PATH)),
         &favorites::load(Path::new(favorites::FAVORITES_PATH)),
+        settings::game_names(),
     )
 }
 
@@ -1111,6 +1116,7 @@ fn launcher_canvas(
                 clock_format: settings::clock_format().label(),
                 accent: settings::accent().label(),
                 start_screen: settings::start_screen().label(),
+                game_names: settings::game_names().label(),
                 title_shown: if settings::title_hidden() { "HIDDEN" } else { "SHOWN" },
                 title_text: &settings::title(),
                 message: launcher.confirmation(),
@@ -1241,6 +1247,13 @@ fn act(
         Action::Scaling(steps) => change_display(|display| display.scaling = display.scaling.cycle(steps)),
         Action::Effect(steps) => change_display(|display| display.effect = display.effect.cycle(steps)),
         Action::Ghosting(steps) => change_display(|display| display.ghosting = display.ghosting.cycle(steps)),
+        Action::GameNames(steps) => {
+            if let Err(error) = settings::set_game_names(settings::game_names().cycle(steps)) {
+                eprintln!("warning: could not save the game names: {error}");
+            }
+            // The lists are made again with the new names.
+            return Ok(true);
+        }
         Action::StartScreen(steps) => {
             if let Err(error) = settings::set_start_screen(settings::start_screen().cycle(steps)) {
                 eprintln!("warning: could not save the start screen: {error}");
@@ -1552,7 +1565,7 @@ fn write_launcher_preview(path: &str, buttons: &[Button]) -> io::Result<()> {
     roms.extend((1..=14).map(|i| PathBuf::from(format!("Game Boy Game {i:02} (USA).gb"))));
     let recent = [&roms[3], &roms[2], &roms[6]].map(PathBuf::clone);
     let favorites = [&roms[1], &roms[3]].map(PathBuf::clone);
-    let library = build_library(&roms, &recent, &favorites);
+    let library = build_library(&roms, &recent, &favorites, settings::GameNames::Short);
     let mut launcher = Launcher::new();
     for &button in buttons {
         launcher.press(button, &library);
@@ -1776,7 +1789,17 @@ mod tests {
     fn library_for(names: &[&str], recent: &[&str]) -> Library {
         let roms: Vec<PathBuf> = names.iter().map(PathBuf::from).collect();
         let recent: Vec<PathBuf> = recent.iter().map(PathBuf::from).collect();
-        build_library(&roms, &recent, &[])
+        build_library(&roms, &recent, &[], settings::GameNames::Short)
+    }
+
+    #[test]
+    fn full_names_keep_the_file_names() {
+        let roms = [PathBuf::from("/r/Legend of Zelda, The (USA) (Rev 1).nes")];
+        let short = build_library(&roms, &[], &[], settings::GameNames::Short);
+        assert_eq!(short.shelves[0].games[0].name, "The Legend of Zelda");
+        let full = build_library(&roms, &roms, &[], settings::GameNames::Full);
+        assert_eq!(full.shelves[0].games[0].name, "Legend of Zelda, The (USA) (Rev 1)");
+        assert_eq!(full.recent[0].name, "Legend of Zelda, The (USA) (Rev 1)");
     }
 
     #[test]
@@ -1807,7 +1830,7 @@ mod tests {
     fn favorites_are_sorted_by_name_and_drop_missing_games() {
         let roms: Vec<PathBuf> = ["/r/b.nes", "/r/a.gb"].iter().map(PathBuf::from).collect();
         let favorites: Vec<PathBuf> = ["/r/b.nes", "/r/gone.gba", "/r/a.gb"].iter().map(PathBuf::from).collect();
-        let library = build_library(&roms, &[], &favorites);
+        let library = build_library(&roms, &[], &favorites, settings::GameNames::Short);
         let names: Vec<&str> = library.favorites.iter().map(|game| game.name.as_str()).collect();
         assert_eq!(names, ["a", "b"]);
     }
