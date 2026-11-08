@@ -6,6 +6,7 @@ use crate::font;
 use crate::icons::{self, Icon};
 use crate::keyboard::{self, Key, Keyboard};
 use crate::launcher::{Group, Setting, COLUMNS, MAX_GROUP_SETTINGS, PAGE};
+use crate::settings::GridSize;
 use crate::wifi::Security;
 use crate::wifi_menu::{self, Entry};
 use std::time::Duration;
@@ -79,6 +80,7 @@ pub struct SettingsView<'a> {
     pub menu_sounds: &'a str,
     pub idle_sleep: &'a str,
     pub title_shown: &'a str,
+    pub grid_size: &'a str,
     /// The home screen's title, shown as typed.
     pub title_text: &'a str,
     /// A question waiting for a second press, in the accent colour.
@@ -112,6 +114,13 @@ fn bar(canvas: &mut Canvas, right: usize, top: usize, height: usize, level: Opti
     canvas.rect(x + 2, y + 2, fill, 10, on);
 }
 
+/// The width every grid takes, whatever its number of columns.
+const GRID_W: usize = COLUMNS * TILE_W + (COLUMNS - 1) * TILE_GAP;
+
+fn tile_width(columns: usize) -> usize {
+    (GRID_W - (columns - 1) * TILE_GAP) / columns
+}
+
 /// Tile height and icon scale for a grid of `rows` rows from `top` to `GRID_BOTTOM`.
 fn tile_size(rows: usize, top: usize) -> (usize, usize) {
     let space = GRID_BOTTOM - top - TILE_GAP * rows.saturating_sub(1);
@@ -127,6 +136,7 @@ pub fn home_screen(
     width: usize,
     height: usize,
     title: Option<&str>,
+    grid: GridSize,
     tiles: &[TileView],
     selected: usize,
     battery: Option<Battery>,
@@ -141,7 +151,7 @@ pub fn home_screen(
     canvas.battery(battery);
     // Without a title, the grid takes its space too.
     let top = if title.is_some() { GRID_TOP } else { GRID_TOP_UNTITLED };
-    tile_grid(&mut canvas, tiles, selected, top);
+    tile_grid(&mut canvas, tiles, selected, top, grid.columns(), grid.rows_shown());
     hint(&mut canvas, "A OPENS - START SETTINGS");
     canvas
 }
@@ -165,43 +175,69 @@ pub fn settings_grid(width: usize, height: usize, groups: &[Group], selected: us
     header(&mut canvas, &icons::SETTINGS, "SETTINGS", battery);
     let tiles: Vec<TileView> =
         groups.iter().map(|&group| TileView { icon: group_icon(group), label: group.label(), count: None }).collect();
-    tile_grid(&mut canvas, &tiles, selected, GRID_TOP);
+    tile_grid(&mut canvas, &tiles, selected, GRID_TOP, COLUMNS, None);
     hint(&mut canvas, "A OPENS - B BACK - START CLOSES");
     canvas
 }
 
-/// Tiles in rows of `COLUMNS`, centred between `area_top` and the hint.
-fn tile_grid(canvas: &mut Canvas, tiles: &[TileView], selected: usize, area_top: usize) {
-    let width = canvas.width;
-    let rows = tiles.len().div_ceil(COLUMNS);
-    let (tile_h, scale) = tile_size(rows, area_top);
-    let grid_w = COLUMNS * TILE_W + (COLUMNS - 1) * TILE_GAP;
-    let left = width.saturating_sub(grid_w) / 2;
-    let grid_h = rows * tile_h + rows.saturating_sub(1) * TILE_GAP;
-    let top = area_top + (GRID_BOTTOM - area_top).saturating_sub(grid_h) / 2;
+/// Draws a small triangle pointing up or down, centred on `x`, for more rows that way.
+fn more_arrow(canvas: &mut Canvas, x: usize, y: usize, up: bool) {
+    for step in 0..6 {
+        let half = if up { step } else { 5 - step };
+        canvas.rect(x.saturating_sub(half * 2 + 1), y + step, half * 4 + 2, 1, MUTED);
+    }
+}
 
-    for (index, tile) in tiles.iter().enumerate() {
-        let x = left + index % COLUMNS * (TILE_W + TILE_GAP);
-        let y = top + index / COLUMNS * (tile_h + TILE_GAP);
+/// Tiles in rows of `columns`, centred between `area_top` and the hint. With `rows_shown`,
+/// at most that many rows show, a page at a time, with arrows for the rows past them.
+fn tile_grid(
+    canvas: &mut Canvas,
+    tiles: &[TileView],
+    selected: usize,
+    area_top: usize,
+    columns: usize,
+    rows_shown: Option<usize>,
+) {
+    let width = canvas.width;
+    let rows = tiles.len().div_ceil(columns);
+    let shown = rows_shown.map_or(rows, |limit| rows.min(limit));
+    let (tile_h, scale) = tile_size(shown, area_top);
+    let tile_w = tile_width(columns);
+    let left = width.saturating_sub(GRID_W) / 2;
+    let grid_h = shown * tile_h + shown.saturating_sub(1) * TILE_GAP;
+    let top = area_top + (GRID_BOTTOM - area_top).saturating_sub(grid_h) / 2;
+    // Pages of whole rows, like the game lists.
+    let first_row = selected / columns / shown.max(1) * shown.max(1);
+    if first_row > 0 {
+        more_arrow(canvas, width / 2, top.saturating_sub(10), true);
+    }
+    if first_row + shown < rows {
+        more_arrow(canvas, width / 2, top + grid_h + 4, false);
+    }
+
+    let visible = first_row * columns..((first_row + shown) * columns).min(tiles.len());
+    for (index, tile) in tiles.iter().enumerate().take(visible.end).skip(visible.start) {
+        let x = left + index % columns * (tile_w + TILE_GAP);
+        let y = top + (index / columns - first_row) * (tile_h + TILE_GAP);
         if index == selected {
-            canvas.rect(x, y, TILE_W, tile_h, accent());
-            canvas.rect(x + TILE_BORDER, y + TILE_BORDER, TILE_W - 2 * TILE_BORDER, tile_h - 2 * TILE_BORDER, RAISED);
+            canvas.rect(x, y, tile_w, tile_h, accent());
+            canvas.rect(x + TILE_BORDER, y + TILE_BORDER, tile_w - 2 * TILE_BORDER, tile_h - 2 * TILE_BORDER, RAISED);
         } else {
-            canvas.rect(x, y, TILE_W, tile_h, BODY);
+            canvas.rect(x, y, tile_w, tile_h, BODY);
         }
         // The icon, label and count are centred in the tile, however tall it is.
         let gap = 4 * scale;
         let count_h = if tile.count.is_some() { gap / 2 + 2 + font::HEIGHT * TEXT_SCALE } else { 0 };
         let content_h = icons::HEIGHT * scale + gap + font::HEIGHT * TEXT_SCALE + count_h;
         let icon_y = y + tile_h.saturating_sub(content_h) / 2;
-        canvas.icon(tile.icon, x + (TILE_W - icons::WIDTH * scale) / 2, icon_y, scale);
+        canvas.icon(tile.icon, x + (tile_w - icons::WIDTH * scale) / 2, icon_y, scale);
         let label_y = icon_y + icons::HEIGHT * scale + gap;
         let label_color = if index == selected { accent() } else { TEXT };
-        let label_x = x + TILE_W.saturating_sub(text_width(tile.label, TEXT_SCALE)) / 2;
+        let label_x = x + tile_w.saturating_sub(text_width(tile.label, TEXT_SCALE)) / 2;
         canvas.text_at(tile.label, label_x, label_y, TEXT_SCALE, label_color);
         if let Some(count) = tile.count {
             let text = format!("{count} {}", if count == 1 { "GAME" } else { "GAMES" });
-            let count_x = x + TILE_W.saturating_sub(text_width(&text, TEXT_SCALE)) / 2;
+            let count_x = x + tile_w.saturating_sub(text_width(&text, TEXT_SCALE)) / 2;
             canvas.text_at(&text, count_x, label_y + font::HEIGHT * TEXT_SCALE + gap / 2 + 2, TEXT_SCALE, MUTED);
         }
     }
@@ -356,6 +392,7 @@ pub fn settings_screen(width: usize, height: usize, view: &SettingsView, battery
             | Setting::Ghosting
             | Setting::AccentColor
             | Setting::ShowTitle
+            | Setting::GridSize
             | Setting::StartScreen
             | Setting::GameNames
             | Setting::ShowCovers
@@ -376,6 +413,7 @@ pub fn settings_screen(width: usize, height: usize, view: &SettingsView, battery
                     Setting::Ghosting => view.display.ghosting.label(),
                     Setting::AccentColor => view.accent,
                     Setting::ShowTitle => view.title_shown,
+                    Setting::GridSize => view.grid_size,
                     Setting::TimeZone => view.time_zone,
                     _ => view.clock_format,
                 };
@@ -745,7 +783,7 @@ mod tests {
                 let content = 4 * scale + icons::HEIGHT * scale + 4 * scale + 2 * font::HEIGHT * TEXT_SCALE + 2 * scale + 2;
                 assert!(content + TILE_BORDER <= height, "{count}: {content} > {height}");
             }
-            let canvas = home_screen(640, 480, Some("RG35XX SP LINUX"), &tiles(count), count - 1, None);
+            let canvas = home_screen(640, 480, Some("RG35XX SP LINUX"), GridSize::Normal, &tiles(count), count - 1, None);
             assert_eq!(canvas.pixels.len(), 640 * 480);
             // Without the title the tiles are at least as tall, and start higher.
             assert!(tile_size(rows, GRID_TOP_UNTITLED).0 >= tile_size(rows, GRID_TOP).0);
@@ -755,12 +793,41 @@ mod tests {
     #[test]
     fn without_a_title_the_grid_moves_up_below_the_corner() {
         let first_lit = |canvas: &Canvas| (0..480).find(|&y| (0..640).any(|x| pixel(canvas, x, y) == BODY)).unwrap();
-        let titled = home_screen(640, 480, Some("RG35XX SP LINUX"), &tiles(10), 0, None);
-        let untitled = home_screen(640, 480, None, &tiles(10), 0, None);
+        let titled = home_screen(640, 480, Some("RG35XX SP LINUX"), GridSize::Normal, &tiles(10), 0, None);
+        let untitled = home_screen(640, 480, None, GridSize::Normal, &tiles(10), 0, None);
         assert!(first_lit(&untitled) < first_lit(&titled));
         assert!(first_lit(&untitled) >= GRID_TOP_UNTITLED);
         // The corner text ends above the grid.
         assert!(8 + font::HEIGHT * TEXT_SCALE + 8 <= GRID_TOP_UNTITLED);
+    }
+
+    #[test]
+    fn a_large_grid_has_big_tiles_and_pages_two_rows_at_a_time() {
+        let columns = GridSize::Large.columns();
+        assert!(tile_width(columns) > TILE_W);
+        for top in [GRID_TOP, GRID_TOP_UNTITLED] {
+            let (height, scale) = tile_size(2, top);
+            assert_eq!(scale, 3, "big icons");
+            let content = 4 * scale + icons::HEIGHT * scale + 4 * scale + 2 * font::HEIGHT * TEXT_SCALE + 2 * scale + 2;
+            assert!(content + TILE_BORDER <= height);
+        }
+        // 10 tiles: four rows, two shown. The arrow below shows on the first page, the one
+        // above on the second.
+        let (tile_h, _) = tile_size(2, GRID_TOP_UNTITLED);
+        let grid_h = 2 * tile_h + TILE_GAP;
+        let grid_top = GRID_TOP_UNTITLED + (GRID_BOTTOM - GRID_TOP_UNTITLED - grid_h) / 2;
+        // Only between the grid and the edges of its area, where nothing else is drawn.
+        let arrow_rows = |canvas: &Canvas| -> (bool, bool) {
+            let lit = |y: usize| pixel(canvas, 320, y) == MUTED;
+            ((GRID_TOP_UNTITLED - 12..grid_top).any(lit), (grid_top + grid_h..GRID_BOTTOM + 12).any(lit))
+        };
+        let first = home_screen(640, 480, None, GridSize::Large, &tiles(10), 0, None);
+        assert_eq!(arrow_rows(&first), (false, true));
+        let second = home_screen(640, 480, None, GridSize::Large, &tiles(10), 7, None);
+        assert_eq!(arrow_rows(&second), (true, false));
+        // The selected tile on the second page is drawn, in the first row.
+        assert!((0..480).any(|y| pixel(&second, 22 + tile_width(columns) + TILE_GAP + 1, y) == accent()));
+        home_screen(64, 48, None, GridSize::Large, &tiles(10), 9, None);
     }
 
     #[test]
@@ -772,7 +839,7 @@ mod tests {
 
     #[test]
     fn the_selected_tile_has_a_border() {
-        let canvas = home_screen(640, 480, Some("RG35XX SP LINUX"), &tiles(5), 1, None);
+        let canvas = home_screen(640, 480, Some("RG35XX SP LINUX"), GridSize::Normal, &tiles(5), 1, None);
         let grid_left = (640 - (COLUMNS * TILE_W + (COLUMNS - 1) * TILE_GAP)) / 2;
         let (tile_h, _) = tile_size(2, GRID_TOP);
         let top = GRID_TOP + (GRID_BOTTOM - GRID_TOP - (2 * tile_h + TILE_GAP)) / 2;
@@ -835,13 +902,13 @@ mod tests {
         let big = Image { width: 300, height: 400, pixels: vec![TEXT; 300 * 400] };
         let canvas = list_screen(640, 480, &view(Some(Art::Cover(&big)), 5000), None);
         assert_eq!(canvas.pixels.len(), 640 * 480);
-        assert_eq!(home_screen(64, 48, Some("RG35XX SP LINUX"), &tiles(3), 0, None).pixels.len(), 64 * 48);
+        assert_eq!(home_screen(64, 48, Some("RG35XX SP LINUX"), GridSize::Normal, &tiles(3), 0, None).pixels.len(), 64 * 48);
         // The longest title fits the width, a smaller size if need be, and so does none.
         let longest = "W".repeat(crate::settings::MAX_TITLE_LENGTH);
         assert!(text_width(&longest, TITLE_SCALE - 1) + 32 <= 640);
-        let canvas = home_screen(640, 480, Some(&longest), &tiles(3), 0, None);
+        let canvas = home_screen(640, 480, Some(&longest), GridSize::Normal, &tiles(3), 0, None);
         assert!((0..640).all(|x| pixel(&canvas, x, TITLE_Y - 1) == BACKGROUND || x > 400));
-        home_screen(640, 480, None, &tiles(3), 0, None);
+        home_screen(640, 480, None, GridSize::Normal, &tiles(3), 0, None);
     }
 
     #[test]
@@ -1022,6 +1089,7 @@ mod tests {
             menu_sounds: "OFF",
             idle_sleep: "OFF",
             title_shown: "SHOWN",
+            grid_size: "NORMAL",
             title_text: "RG35XX SP LINUX",
             message: Some("PRESS A AGAIN TO POWER OFF"),
             note: None,
@@ -1063,6 +1131,7 @@ mod tests {
                 menu_sounds: "ON",
                 idle_sleep: "30 MIN",
                 title_shown: "HIDDEN",
+                grid_size: "LARGE",
                 title_text: "XXXXXXXXXXXXXXXXXXXXXXXX",
                 message: Some("PRESS A AGAIN TO DELETE ALL COVERS"),
                 note: Some("WEDNESDAY 30 SEPTEMBER 2026, 12:30 PM\nWAITING FOR THE TIME FROM THE NETWORK"),

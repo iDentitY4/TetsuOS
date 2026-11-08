@@ -2,10 +2,11 @@
 //! from running games so they can be tested.
 
 use crate::input::Button;
+use crate::settings::GridSize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-/// Tiles per row on the home screen.
+/// Tiles per row on the settings grid, and on the home screen at its normal size.
 pub const COLUMNS: usize = 4;
 /// Games per screen in a list, which Left and Right move by.
 pub const PAGE: usize = 12;
@@ -34,6 +35,8 @@ pub struct Library {
     pub systems: usize,
     /// Tiles turned off in Settings > THEME > HOME SCREEN TILES.
     pub hidden: Vec<Tile>,
+    /// How large the home screen's tiles are, which sets how many are in a row.
+    pub grid: GridSize,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -111,7 +114,9 @@ impl Group {
             Self::GameScreen => &[Setting::Scaling, Setting::Effect, Setting::Ghosting],
             Self::Wifi => &[],
             Self::BoxArt => &[Setting::ShowCovers, Setting::DownloadMissingArt, Setting::DownloadAllArt, Setting::DeleteArt],
-            Self::Theme => &[Setting::AccentColor, Setting::ShowTitle, Setting::TitleText, Setting::HomeTiles],
+            Self::Theme => {
+                &[Setting::AccentColor, Setting::ShowTitle, Setting::TitleText, Setting::GridSize, Setting::HomeTiles]
+            }
             Self::Time => &[Setting::TimeZone, Setting::ClockFormat],
             Self::System => {
                 &[Setting::ButtonTest, Setting::SystemInfo, Setting::IdleSleep, Setting::Reboot, Setting::PowerOff]
@@ -138,6 +143,7 @@ pub enum Setting {
     AccentColor,
     ShowTitle,
     TitleText,
+    GridSize,
     HomeTiles,
     TimeZone,
     ClockFormat,
@@ -167,6 +173,7 @@ impl Setting {
             Self::AccentColor => "COLOR",
             Self::ShowTitle => "TITLE",
             Self::TitleText => "TITLE TEXT",
+            Self::GridSize => "GRID SIZE",
             Self::HomeTiles => "HOME SCREEN TILES",
             Self::TimeZone => "TIME ZONE",
             Self::ClockFormat => "CLOCK",
@@ -208,6 +215,7 @@ impl Setting {
                 | Self::Ghosting
                 | Self::AccentColor
                 | Self::ShowTitle
+                | Self::GridSize
                 | Self::TimeZone
                 | Self::ClockFormat
         )
@@ -228,15 +236,15 @@ pub enum ArtDownload {
     All,
 }
 
-/// The tile `selected` moves to on a grid of `count` tiles, `COLUMNS` to a row.
-pub fn grid_move(selected: usize, count: usize, button: Button) -> usize {
+/// The tile `selected` moves to on a grid of `count` tiles, `columns` to a row.
+pub fn grid_move(selected: usize, count: usize, columns: usize, button: Button) -> usize {
     let last = count.saturating_sub(1);
     match button {
         Button::Left => selected.saturating_sub(1),
         Button::Right => (selected + 1).min(last),
-        Button::Up => selected.checked_sub(COLUMNS).unwrap_or(selected),
+        Button::Up => selected.checked_sub(columns).unwrap_or(selected),
         // Down from a row above the last goes to the last tile if the row is short.
-        Button::Down if selected / COLUMNS < last / COLUMNS => (selected + COLUMNS).min(last),
+        Button::Down if selected / columns < last / columns => (selected + columns).min(last),
         _ => selected,
     }
 }
@@ -268,6 +276,7 @@ pub enum Command {
     Accent(i32),
     /// Shows the home screen's title if it is hidden, or hides it.
     ToggleTitle,
+    GridSize(i32),
     EditTitle,
     /// Turns a home screen tile off, or on again.
     ToggleTile(Tile),
@@ -488,7 +497,7 @@ impl Launcher {
     fn press_home(&mut self, button: Button, library: &Library) -> Command {
         let tiles = library.tiles();
         let selected = self.home_selected(library);
-        self.home_index = grid_move(selected, tiles.len(), button);
+        self.home_index = grid_move(selected, tiles.len(), library.grid.columns(), button);
         self.home = Some(tiles[self.home_index]);
         if button == Button::A {
             match tiles[selected] {
@@ -523,7 +532,7 @@ impl Launcher {
     }
 
     fn press_settings_grid(&mut self, button: Button) -> Command {
-        self.group = grid_move(self.group, GROUPS.len(), button);
+        self.group = grid_move(self.group, GROUPS.len(), COLUMNS, button);
         match button {
             Button::B => self.screen = self.before_settings,
             Button::A => match self.group_selected() {
@@ -568,6 +577,7 @@ impl Launcher {
                 Setting::Ghosting => return Command::Ghosting(step),
                 Setting::AccentColor => return Command::Accent(step),
                 Setting::ShowTitle => return Command::ToggleTitle,
+                Setting::GridSize => return Command::GridSize(step),
                 Setting::TimeZone => return Command::TimeZone(step),
                 Setting::ClockFormat => return Command::ClockFormat(step),
                 _ => {}
@@ -599,6 +609,7 @@ impl Launcher {
                 | Setting::Ghosting
                 | Setting::AccentColor
                 | Setting::ShowTitle
+                | Setting::GridSize
                 | Setting::TimeZone
                 | Setting::ClockFormat => {}
             },
@@ -886,6 +897,22 @@ mod tests {
         assert_eq!(launcher.press(Button::Left, &library), Command::ToggleTitle);
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::A, &library), Command::EditTitle);
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::Right, &library), Command::GridSize(1));
+    }
+
+    #[test]
+    fn a_large_grid_moves_three_to_a_row() {
+        let mut library = library();
+        library.grid = GridSize::Large;
+        // Recent, 3 systems and settings: rows of 3, then 2.
+        let mut launcher = Launcher::new();
+        launcher.press(Button::Down, &library);
+        assert_eq!(library.tiles()[launcher.home_selected(&library)], Tile::System(5));
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.home_selected(&library), 3, "no row below");
+        assert_eq!(grid_move(4, 5, 3, Button::Up), 1);
+        assert_eq!(grid_move(2, 5, 3, Button::Down), 4, "to the last tile of a short row");
     }
 
     #[test]

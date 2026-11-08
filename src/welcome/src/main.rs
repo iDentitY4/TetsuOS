@@ -274,7 +274,7 @@ fn build_library(roms: &[PathBuf], recent: &[PathBuf], favorites: &[PathBuf], na
     let recent = pick(recent);
     let mut favorites = pick(favorites);
     favorites.sort_by_key(|game| game.name.to_ascii_lowercase());
-    Library { recent, favorites, shelves, systems: SYSTEMS.len(), hidden: hidden_tiles() }
+    Library { recent, favorites, shelves, systems: SYSTEMS.len(), hidden: hidden_tiles(), grid: settings::grid_size() }
 }
 
 /// Opens the screen chosen in Settings > GENERAL > START SCREEN. A game resumed at boot
@@ -1116,7 +1116,8 @@ fn launcher_canvas(
                 })
                 .collect();
             let title = settings::shown_title();
-            screens::home_screen(width, height, title.as_deref(), &tiles, launcher.home_selected(library), battery)
+            let selected = launcher.home_selected(library);
+            screens::home_screen(width, height, title.as_deref(), library.grid, &tiles, selected, battery)
         }
         Screen::Games(list) => {
             let (icon, title) = match list {
@@ -1183,6 +1184,7 @@ fn launcher_canvas(
                 menu_sounds: if settings::menu_sounds() { "ON" } else { "OFF" },
                 idle_sleep: &settings::idle_sleep_label(settings::idle_minutes()),
                 title_shown: if settings::title_hidden() { "HIDDEN" } else { "SHOWN" },
+                grid_size: settings::grid_size().label(),
                 title_text: &settings::title(),
                 message: launcher.confirmation(),
                 note: note.as_deref(),
@@ -1359,6 +1361,13 @@ fn act(
             if let Err(error) = settings::set_accent(accent) {
                 eprintln!("warning: could not save the colour: {error}");
             }
+        }
+        Action::GridSize(steps) => {
+            if let Err(error) = settings::set_grid_size(settings::grid_size().cycle(steps)) {
+                eprintln!("warning: could not save the grid size: {error}");
+            }
+            // The home screen's tiles are laid out again.
+            return Ok(true);
         }
         Action::ToggleTitle => {
             if let Err(error) = settings::set_title_hidden(!settings::title_hidden()) {

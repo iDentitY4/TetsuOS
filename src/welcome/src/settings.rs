@@ -277,6 +277,53 @@ pub fn idle_sleep_label(minutes: u32) -> String {
     }
 }
 
+/// How large the home screen's tiles are.
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub enum GridSize {
+    /// 4 to a row, with every row on the screen.
+    #[default]
+    Normal,
+    /// 3 to a row, with bigger icons, two rows at a time.
+    Large,
+}
+
+impl GridSize {
+    pub const ALL: [Self; 2] = [Self::Normal, Self::Large];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Normal => "NORMAL",
+            Self::Large => "LARGE",
+        }
+    }
+
+    pub fn cycle(self, steps: i32) -> Self {
+        cycle(&Self::ALL, self, steps)
+    }
+
+    fn key(self) -> &'static str {
+        match self {
+            Self::Normal => "normal",
+            Self::Large => "large",
+        }
+    }
+
+    pub fn columns(self) -> usize {
+        match self {
+            Self::Normal => 4,
+            Self::Large => 3,
+        }
+    }
+
+    /// The most rows on the screen at once, which pages beyond. None shows every row.
+    pub fn rows_shown(self) -> Option<usize> {
+        match self {
+            Self::Normal => None,
+            Self::Large => Some(2),
+        }
+    }
+}
+
 /// How games are named in lists.
 #[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub enum GameNames {
@@ -344,6 +391,7 @@ struct Settings {
     /// Minutes without a press in the menus before sleeping, one of `IDLE_SLEEP_MINUTES`.
     idle_minutes: u32,
     menu_sounds: bool,
+    grid: GridSize,
 }
 
 /// Reads the first value from `amixer cget` output, such as `  : values=25,25`.
@@ -390,6 +438,11 @@ fn parse(text: &str) -> Settings {
             "title" => settings.title = clean_title(value),
             "covers" => settings.covers_hidden = value == "off",
             "sounds" => settings.menu_sounds = value == "on",
+            "grid" => {
+                if let Some(&grid) = GridSize::ALL.iter().find(|choice| choice.key() == value) {
+                    settings.grid = grid;
+                }
+            }
             "idle" => {
                 if let Some(&minutes) = IDLE_SLEEP_MINUTES.iter().find(|&&choice| value.parse() == Ok(choice)) {
                     settings.idle_minutes = minutes;
@@ -451,6 +504,7 @@ fn format(settings: &Settings) -> String {
     text += &format!("battery={}\n", settings.battery.key());
     text += &format!("idle={}\n", settings.idle_minutes);
     text += &format!("sounds={}\n", if settings.menu_sounds { "on" } else { "off" });
+    text += &format!("grid={}\n", settings.grid.key());
     if !settings.hidden_tiles.is_empty() {
         text += &format!("hidden_tiles={}\n", settings.hidden_tiles.join(","));
     }
@@ -580,6 +634,14 @@ pub fn set_title_hidden(hidden: bool) -> io::Result<()> {
 /// Saves a typed title. Nothing brings back the default.
 pub fn set_title(text: &str) -> io::Result<()> {
     store(&Settings { title: clean_title(text), ..load() })
+}
+
+pub fn grid_size() -> GridSize {
+    load().grid
+}
+
+pub fn set_grid_size(grid: GridSize) -> io::Result<()> {
+    store(&Settings { grid, ..load() })
 }
 
 /// Whether presses in the menus make a sound.
@@ -712,6 +774,7 @@ mod tests {
             battery: BatteryDisplay::WhenLow,
             idle_minutes: 10,
             menu_sounds: true,
+            grid: GridSize::Large,
         };
         assert_eq!(parse(&format(&settings)), settings);
         // Files from before the time settings load with UTC and a 24 hour clock.
@@ -726,6 +789,7 @@ mod tests {
         assert_eq!(old.battery, BatteryDisplay::Percent);
         assert_eq!(old.idle_minutes, 0, "no sleeping until chosen");
         assert!(!old.menu_sounds, "quiet until turned on");
+        assert_eq!(old.grid, GridSize::Normal);
         assert_eq!(parse("idle=7\n").idle_minutes, 0, "only the offered choices");
         assert_eq!(cycle(&IDLE_SLEEP_MINUTES, 0, -1), 30);
         assert_eq!(idle_sleep_label(0), "OFF");

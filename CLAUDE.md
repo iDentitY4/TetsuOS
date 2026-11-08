@@ -199,6 +199,12 @@ Built but not yet tested on the device:
   stays home, and a game resumed at boot returns to it. Saved as `start=`. Claude checked
   LAST GAME and RECENT on the device by restarting the launcher; the test unit is back on
   HOME
+- Grid size: Settings > THEME > GRID SIZE: NORMAL (4 to a row, every row shown) or LARGE
+  (3 to a row with icons at 3x, two rows at a time, paging like the lists, with small
+  arrows for rows above or below). `settings::GridSize` gives the columns and rows, the
+  home screen and `grid_move` take them, and the settings grid stays at 4. Saved as
+  `grid=`. Claude checked both pages of LARGE on the device; the test unit is back on
+  NORMAL
 - Hiding home screen tiles: Settings > THEME > HOME SCREEN TILES lists RECENT,
   FAVORITES, every console (with games or not) and SETTINGS, each SHOWN or HIDDEN, toggled
   with A (`Library::every_tile`, `screens::home_tiles_screen`). Saved as
