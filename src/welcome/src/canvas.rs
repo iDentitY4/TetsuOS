@@ -5,7 +5,7 @@ use crate::boxart::Image;
 use crate::icons::{self, Icon};
 use crate::input::{Button, Controls};
 use crate::pause::{Item, PauseMenu, ITEMS};
-use crate::settings::Display;
+use crate::settings::{BatteryDisplay, Display};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -24,6 +24,35 @@ pub(crate) fn accent() -> Rgb {
 
 pub fn set_accent(Rgb(red, green, blue): Rgb) {
     ACCENT.store(u32::from(red) << 16 | u32::from(green) << 8 | u32::from(blue), Ordering::Relaxed);
+}
+
+/// When the battery level shows, from Settings > GENERAL > BATTERY, by its place in
+/// `BatteryDisplay::ALL`. Each process sets it once, and again when it changes.
+static BATTERY_DISPLAY: AtomicU32 = AtomicU32::new(0);
+
+pub fn set_battery_display(display: BatteryDisplay) {
+    let index = BatteryDisplay::ALL.iter().position(|&other| other == display).unwrap_or(0);
+    BATTERY_DISPLAY.store(index as u32, Ordering::Relaxed);
+}
+
+fn battery_display() -> BatteryDisplay {
+    BatteryDisplay::ALL.get(BATTERY_DISPLAY.load(Ordering::Relaxed) as usize).copied().unwrap_or_default()
+}
+
+/// Whether a battery reading is low enough to show in red.
+fn is_low(Battery { percent, charging }: Battery) -> bool {
+    percent <= LOW_BATTERY_PERCENT && !charging
+}
+
+/// The battery level's text, if the setting shows it for this reading.
+fn battery_label(battery: Option<Battery>, display: BatteryDisplay) -> Option<String> {
+    let battery = battery?;
+    let shown = match display {
+        BatteryDisplay::Percent => true,
+        BatteryDisplay::WhenLow => is_low(battery),
+        BatteryDisplay::Hidden => false,
+    };
+    shown.then(|| format!("{}%{}", battery.percent, if battery.charging { "+" } else { "" }))
 }
 pub(crate) const TEXT: Rgb = Rgb(0xF2, 0xF4, 0xF8);
 pub(crate) const MUTED: Rgb = Rgb(0x8A, 0x92, 0xA6);
@@ -155,18 +184,16 @@ impl Canvas {
 
     /// The charge level in the top right corner, in red when low and not charging.
     pub(crate) fn battery(&mut self, battery: Option<Battery>) {
-        let Some(Battery { percent, charging }) = battery else { return };
-        let label = format!("{percent}%{}", if charging { "+" } else { "" });
-        let color = if percent <= LOW_BATTERY_PERCENT && !charging { LOW } else { MUTED };
+        let Some(label) = battery_label(battery, battery_display()) else { return };
+        let color = if battery.is_some_and(is_low) { LOW } else { MUTED };
         let x = self.width.saturating_sub(text_width(&label, BATTERY_TEXT_SCALE) + BATTERY_RIGHT);
         self.text_at(&label, x, BATTERY_TOP, BATTERY_TEXT_SCALE, color);
     }
 
-    /// The clock, to the left of the battery level.
+    /// The clock, to the left of the battery level, or in its place when it is hidden.
     pub(crate) fn clock(&mut self, text: &str, battery: Option<Battery>) {
-        let battery_w = battery.map_or(0, |Battery { percent, charging }| {
-            text_width(&format!("{percent}%{}", if charging { "+" } else { "" }), BATTERY_TEXT_SCALE) + CLOCK_GAP
-        });
+        let battery_w = battery_label(battery, battery_display())
+            .map_or(0, |label| text_width(&label, BATTERY_TEXT_SCALE) + CLOCK_GAP);
         let x = self.width.saturating_sub(text_width(text, BATTERY_TEXT_SCALE) + battery_w + BATTERY_RIGHT);
         self.text_at(text, x, BATTERY_TOP, BATTERY_TEXT_SCALE, MUTED);
     }
@@ -364,6 +391,21 @@ pub fn pause_screen(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_battery_shows_as_chosen() {
+        let full = Some(Battery { percent: 80, charging: false });
+        let low = Some(Battery { percent: 9, charging: false });
+        let charging = Some(Battery { percent: 9, charging: true });
+        assert_eq!(battery_label(full, BatteryDisplay::Percent).as_deref(), Some("80%"));
+        assert_eq!(battery_label(charging, BatteryDisplay::Percent).as_deref(), Some("9%+"));
+        assert_eq!(battery_label(full, BatteryDisplay::WhenLow), None);
+        assert_eq!(battery_label(low, BatteryDisplay::WhenLow).as_deref(), Some("9%"));
+        assert_eq!(battery_label(charging, BatteryDisplay::WhenLow), None, "charging isn't a warning");
+        assert_eq!(battery_label(low, BatteryDisplay::Hidden), None);
+        assert_eq!(battery_label(None, BatteryDisplay::Percent), None);
+    }
+
     use super::*;
     use crate::input::Event;
 

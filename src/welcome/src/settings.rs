@@ -231,6 +231,41 @@ impl StartScreen {
     }
 }
 
+/// When the menus show the battery level in the top-right corner. A game still warns
+/// when the battery runs low, whichever is chosen.
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub enum BatteryDisplay {
+    #[default]
+    Percent,
+    /// Only once it is low and not charging, when it shows in red.
+    WhenLow,
+    Hidden,
+}
+
+impl BatteryDisplay {
+    pub const ALL: [Self; 3] = [Self::Percent, Self::WhenLow, Self::Hidden];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Percent => "PERCENT",
+            Self::WhenLow => "WHEN LOW",
+            Self::Hidden => "HIDDEN",
+        }
+    }
+
+    pub fn cycle(self, steps: i32) -> Self {
+        cycle(&Self::ALL, self, steps)
+    }
+
+    fn key(self) -> &'static str {
+        match self {
+            Self::Percent => "percent",
+            Self::WhenLow => "low",
+            Self::Hidden => "hidden",
+        }
+    }
+}
+
 /// How games are named in lists.
 #[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub enum GameNames {
@@ -294,6 +329,7 @@ struct Settings {
     game_names: GameNames,
     /// Lists leave out the cover panel, so names have the whole width.
     covers_hidden: bool,
+    battery: BatteryDisplay,
 }
 
 /// Reads the first value from `amixer cget` output, such as `  : values=25,25`.
@@ -339,6 +375,11 @@ fn parse(text: &str) -> Settings {
             "title_hidden" => settings.title_hidden = value == "yes",
             "title" => settings.title = clean_title(value),
             "covers" => settings.covers_hidden = value == "off",
+            "battery" => {
+                if let Some(&battery) = BatteryDisplay::ALL.iter().find(|choice| choice.key() == value) {
+                    settings.battery = battery;
+                }
+            }
             "names" => {
                 if let Some(&names) = GameNames::ALL.iter().find(|choice| choice.key() == value) {
                     settings.game_names = names;
@@ -387,6 +428,7 @@ fn format(settings: &Settings) -> String {
     text += &format!("start={}\n", settings.start_screen.key());
     text += &format!("names={}\n", settings.game_names.key());
     text += &format!("covers={}\n", if settings.covers_hidden { "off" } else { "on" });
+    text += &format!("battery={}\n", settings.battery.key());
     if !settings.hidden_tiles.is_empty() {
         text += &format!("hidden_tiles={}\n", settings.hidden_tiles.join(","));
     }
@@ -518,6 +560,14 @@ pub fn set_title(text: &str) -> io::Result<()> {
     store(&Settings { title: clean_title(text), ..load() })
 }
 
+pub fn battery_display() -> BatteryDisplay {
+    load().battery
+}
+
+pub fn set_battery_display(battery: BatteryDisplay) -> io::Result<()> {
+    store(&Settings { battery, ..load() })
+}
+
 /// Whether game lists show the selected game's cover.
 pub fn covers_shown() -> bool {
     !load().covers_hidden
@@ -616,6 +666,7 @@ mod tests {
             start_screen: StartScreen::LastGame,
             game_names: GameNames::Full,
             covers_hidden: true,
+            battery: BatteryDisplay::WhenLow,
         };
         assert_eq!(parse(&format(&settings)), settings);
         // Files from before the time settings load with UTC and a 24 hour clock.
@@ -627,6 +678,7 @@ mod tests {
         assert_eq!(old.start_screen, StartScreen::Home);
         assert_eq!(old.game_names, GameNames::Short);
         assert!(!old.covers_hidden, "covers show until turned off");
+        assert_eq!(old.battery, BatteryDisplay::Percent);
         assert_eq!(StartScreen::Home.cycle(-1), StartScreen::LastGame);
         assert_eq!(parse("hidden_tiles=nes,, snes ,\n").hidden_tiles, ["nes", "snes"]);
     }

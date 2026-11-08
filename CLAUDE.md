@@ -160,6 +160,13 @@ Built but not yet tested on the device:
   the title, the home grid starts at 36 instead of 84 pixels (`GRID_TOP_UNTITLED`, just
   below the clock), so 3 rows of tiles grow from 108 to 124 pixels, and each tile's icon
   and labels are centred in it
+- Battery display: Settings > GENERAL > BATTERY: PERCENT, WHEN LOW (only at 15% or below
+  while not charging, in red) or HIDDEN, for the menus' top-right corner; the clock takes
+  its place. Games' low-battery warning and shutdown don't change. Like the accent, it is
+  a runtime value in `canvas.rs`, set when each process starts. Saved as `battery=`.
+  Groups now have room for 5 settings (`MAX_GROUP_SETTINGS`). Claude checked all three on
+  the device, WHEN LOW with a fake 9% battery through `WELCOME_BATTERY_DIR`; the test
+  unit is back on PERCENT
 - Covers in lists: Settings > BOX ART > COVERS IN LISTS, ON or OFF. Off leaves out the
   art panel, so names have the whole width, about 49 characters instead of 31. Saved as
   `covers=`. Claude checked the GBA list both ways; the test unit is back on ON

@@ -82,7 +82,7 @@ pub const GROUPS: [Group; 7] =
     [Group::General, Group::GameScreen, Group::Wifi, Group::BoxArt, Group::Theme, Group::Time, Group::System];
 
 /// The most settings a group has, which the settings screen makes room for.
-pub const MAX_GROUP_SETTINGS: usize = 4;
+pub const MAX_GROUP_SETTINGS: usize = 5;
 
 impl Group {
     pub fn label(self) -> &'static str {
@@ -99,7 +99,8 @@ impl Group {
 
     pub fn settings(self) -> &'static [Setting] {
         match self {
-            Self::General => &[Setting::Volume, Setting::Brightness, Setting::StartScreen, Setting::GameNames],
+            Self::General =>
+                &[Setting::Volume, Setting::Brightness, Setting::StartScreen, Setting::GameNames, Setting::Battery],
             Self::GameScreen => &[Setting::Scaling, Setting::Effect, Setting::Ghosting],
             Self::Wifi => &[],
             Self::BoxArt => &[Setting::ShowCovers, Setting::DownloadMissingArt, Setting::DownloadAllArt, Setting::DeleteArt],
@@ -116,6 +117,7 @@ pub enum Setting {
     Brightness,
     StartScreen,
     GameNames,
+    Battery,
     Scaling,
     Effect,
     Ghosting,
@@ -142,6 +144,7 @@ impl Setting {
             Self::Brightness => "BRIGHTNESS",
             Self::StartScreen => "START SCREEN",
             Self::GameNames => "GAME NAMES",
+            Self::Battery => "BATTERY",
             Self::Scaling => "SCALING",
             Self::Effect => "SCREEN EFFECT",
             Self::Ghosting => "LCD GHOSTING",
@@ -183,6 +186,7 @@ impl Setting {
                 | Self::Brightness
                 | Self::StartScreen
                 | Self::GameNames
+                | Self::Battery
                 | Self::ShowCovers
                 | Self::Scaling
                 | Self::Effect
@@ -239,6 +243,7 @@ pub enum Command {
     Brightness(i32),
     StartScreen(i32),
     GameNames(i32),
+    BatteryDisplay(i32),
     Scaling(i32),
     Effect(i32),
     Ghosting(i32),
@@ -536,6 +541,7 @@ impl Launcher {
                 Setting::Brightness => return Command::Brightness(step),
                 Setting::StartScreen => return Command::StartScreen(step),
                 Setting::GameNames => return Command::GameNames(step),
+                Setting::Battery => return Command::BatteryDisplay(step),
                 Setting::ShowCovers => return Command::ToggleCovers,
                 Setting::Scaling => return Command::Scaling(step),
                 Setting::Effect => return Command::Effect(step),
@@ -564,6 +570,7 @@ impl Launcher {
                 | Setting::Brightness
                 | Setting::StartScreen
                 | Setting::GameNames
+                | Setting::Battery
                 | Setting::ShowCovers
                 | Setting::Scaling
                 | Setting::Effect
@@ -797,6 +804,8 @@ mod tests {
         assert_eq!(launcher.press(Button::Right, &library), Command::StartScreen(1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Left, &library), Command::GameNames(-1));
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::Right, &library), Command::BatteryDisplay(1));
         press_all(&mut launcher, &library, &[Button::B, Button::Right, Button::A]);
         assert_eq!(launcher.press(Button::Right, &library), Command::Scaling(1));
         launcher.press(Button::Down, &library);

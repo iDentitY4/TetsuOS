@@ -1121,6 +1121,7 @@ fn launcher_canvas(
                 start_screen: settings::start_screen().label(),
                 game_names: settings::game_names().label(),
                 covers: if settings::covers_shown() { "ON" } else { "OFF" },
+                battery: settings::battery_display().label(),
                 title_shown: if settings::title_hidden() { "HIDDEN" } else { "SHOWN" },
                 title_text: &settings::title(),
                 message: launcher.confirmation(),
@@ -1251,6 +1252,13 @@ fn act(
         Action::Scaling(steps) => change_display(|display| display.scaling = display.scaling.cycle(steps)),
         Action::Effect(steps) => change_display(|display| display.effect = display.effect.cycle(steps)),
         Action::Ghosting(steps) => change_display(|display| display.ghosting = display.ghosting.cycle(steps)),
+        Action::BatteryDisplay(steps) => {
+            let display = settings::battery_display().cycle(steps);
+            canvas::set_battery_display(display);
+            if let Err(error) = settings::set_battery_display(display) {
+                eprintln!("warning: could not save the battery setting: {error}");
+            }
+        }
         Action::ToggleCovers => {
             if let Err(error) = settings::set_covers_shown(!settings::covers_shown()) {
                 eprintln!("warning: could not save the covers setting: {error}");
@@ -1681,6 +1689,7 @@ fn write_button_preview(path: &str) -> io::Result<()> {
 fn main() -> ExitCode {
     // The theme colour, for the launcher and a game's menu alike.
     canvas::set_accent(settings::accent().rgb());
+    canvas::set_battery_display(settings::battery_display());
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.as_slice() {
         [] => run_launcher(),
