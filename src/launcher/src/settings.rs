@@ -175,7 +175,7 @@ impl Background {
 choices! {
     /// How large the home screen's tiles are.
     pub enum GridSize (default Normal) {
-        /// 4 to a row, with every row on the screen.
+        /// 4 to a row, three rows at a time.
         Normal => "normal", "NORMAL";
         /// 3 to a row, with bigger icons, two rows at a time.
         Large => "large", "LARGE";
@@ -190,11 +190,12 @@ impl GridSize {
         }
     }
 
-    /// The most rows on the screen at once, which pages beyond. None shows every row.
-    pub fn rows_shown(self) -> Option<usize> {
+    /// The most rows on the screen at once, which pages beyond. A fourth row of tiles
+    /// would be too short for a tile's icon, name and game count.
+    pub fn rows_shown(self) -> usize {
         match self {
-            Self::Normal => None,
-            Self::Large => Some(2),
+            Self::Normal => 3,
+            Self::Large => 2,
         }
     }
 }

@@ -115,6 +115,28 @@ Working on the test unit, confirmed by the user:
   the lowest 480 MHz and 44 C with no underruns, FF7 sees a formatted card, and save
   states (4.4 MB) save and load. 50 Hz games can't match the 59.94 Hz panel, so some
   frames show twice. The user hasn't tried it yet, so sound and feel are unchecked
+- Mega Drive, Master System and Game Gear through `package/libretro-genesis-plus-gx`, and
+  PC Engine cards through `package/libretro-beetle-pce-fast`. Files are `.md`, `.gen` and
+  `.smd`; `.sms`; `.gg`; and `.pce`. Mega Drive `.bin` isn't listed, because the launcher
+  picks a system by extension alone and would show every PlayStation disc's `.bin` as a
+  game, so rename those to `.md`. CD games aren't offered, as they need a BIOS and `.cue`
+  is PlayStation's. The Mega Drive, Master System and PC Engine show at 4:3, since their
+  pixels aren't square; the Game Gear keeps its 160x144 shape, 533x480 with side borders.
+  Both cores answer their declared option defaults. Genesis Plus GX reports its save size
+  differently once running: the full 64 KiB until the first frame, then only up to the
+  last changed byte. So saves load fully, the first autosave rewrites the file at its
+  trimmed size, and a game that has never saved gets a 0-byte `.srm`, which is harmless.
+  Its licence bans selling it or using it commercially, like Snes9x's, which matters for
+  a release. Claude tested with homebrew from `/tmp` on the device: Cave Story (Mega
+  Drive) emulates at 206 fps headless and plays at 59.8 fps with 9.3 ms of work per frame
+  at 1008 MHz, Astroswab (Master System) at 378 fps, and Jazz Jackrabbit (Game Gear) at
+  503 fps. Save and load state and resume were proved on Jazz's level select, a Mega
+  Drive save survived a reload, and states are about 1 MB. No PC Engine ROM was at hand,
+  so a hand-written 8 KiB card checked that the core boots, draws correct colours, runs
+  at 373 fps, keeps its 2 KiB save and writes an 80 KB state. The user tried all four
+  consoles on 2026-11-09 and confirmed they work
+- With 11 consoles a full home screen reached four rows, too short for a tile's text, so
+  GRID SIZE's NORMAL now shows three rows at a time and pages beyond, as LARGE does
 
 Built but not yet tested on the device:
 

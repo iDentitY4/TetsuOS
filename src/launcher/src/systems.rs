@@ -32,9 +32,10 @@ pub(crate) struct System {
 }
 
 pub(crate) const MGBA: &str = "/usr/lib/libretro/mgba_libretro.so";
+pub(crate) const GENESIS_PLUS_GX: &str = "/usr/lib/libretro/genesis_plus_gx_libretro.so";
 
 /// In the order the launcher lists them, which is by the console's release.
-pub(crate) const SYSTEMS: [System; 7] = [
+pub(crate) const SYSTEMS: [System; 11] = [
     System {
         console: "NES",
         key: "nes",
@@ -50,6 +51,49 @@ pub(crate) const SYSTEMS: [System; 7] = [
         thumbnails: Some("Nintendo_-_Nintendo_Entertainment_System"),
     },
     System {
+        console: "MASTER SYSTEM",
+        key: "sms",
+        label: "MASTER SYS",
+        icon: &icons::MASTER_SYSTEM,
+        extensions: &["sms"],
+        core: GENESIS_PLUS_GX,
+        persistence: Persistence::BatteryRam,
+        save_extension: "srm",
+        rom_size: None,
+        short_save_names: false,
+        setup: CoreSetup { aspect: Some((4, 3)), declared_defaults: true },
+        thumbnails: Some("Sega_-_Master_System_-_Mark_III"),
+    },
+    System {
+        console: "PC ENGINE",
+        key: "pce",
+        label: "PC ENGINE",
+        icon: &icons::PC_ENGINE,
+        extensions: &["pce"],
+        core: "/usr/lib/libretro/mednafen_pce_fast_libretro.so",
+        persistence: Persistence::BatteryRam,
+        save_extension: "srm",
+        rom_size: None,
+        short_save_names: false,
+        setup: CoreSetup { aspect: Some((4, 3)), declared_defaults: true },
+        thumbnails: Some("NEC_-_PC_Engine_-_TurboGrafx_16"),
+    },
+    System {
+        console: "MEGA DRIVE",
+        key: "md",
+        label: "MEGA DRIVE",
+        icon: &icons::MEGA_DRIVE,
+        // Not `.bin`, which would list the tracks of PlayStation discs as games.
+        extensions: &["md", "gen", "smd"],
+        core: GENESIS_PLUS_GX,
+        persistence: Persistence::BatteryRam,
+        save_extension: "srm",
+        rom_size: None,
+        short_save_names: false,
+        setup: CoreSetup { aspect: Some((4, 3)), declared_defaults: true },
+        thumbnails: Some("Sega_-_Mega_Drive_-_Genesis"),
+    },
+    System {
         console: "GAME BOY",
         key: "gb",
         label: "GAME BOY",
@@ -62,6 +106,20 @@ pub(crate) const SYSTEMS: [System; 7] = [
         short_save_names: false,
         setup: CoreSetup { aspect: None, declared_defaults: false },
         thumbnails: Some("Nintendo_-_Game_Boy"),
+    },
+    System {
+        console: "GAME GEAR",
+        key: "gg",
+        label: "GAME GEAR",
+        icon: &icons::GAME_GEAR,
+        extensions: &["gg"],
+        core: GENESIS_PLUS_GX,
+        persistence: Persistence::BatteryRam,
+        save_extension: "srm",
+        rom_size: None,
+        short_save_names: false,
+        setup: CoreSetup { aspect: None, declared_defaults: true },
+        thumbnails: Some("Sega_-_Game_Gear"),
     },
     System {
         console: "SNES",
@@ -206,11 +264,18 @@ mod tests {
             ("a.GBC", "mgba"),
             ("a.sfc", "snes9x"),
             ("a.smc", "snes9x"),
+            ("a.sms", "genesis_plus_gx"),
+            ("a.md", "genesis_plus_gx"),
+            ("a.gen", "genesis_plus_gx"),
+            ("a.smd", "genesis_plus_gx"),
+            ("a.gg", "genesis_plus_gx"),
+            ("a.pce", "pce_fast"),
         ] {
             assert!(system_for(Path::new(name)).unwrap().core.contains(core), "{name}");
         }
         assert!(system_for(Path::new("/roms/notes.txt")).is_none());
         assert!(system_for(Path::new("/roms/no-extension")).is_none());
+        assert!(system_for(Path::new("/roms/Disc (Track 1).bin")).is_none(), "tracks of a disc aren't games");
     }
 
     #[test]

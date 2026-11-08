@@ -1,0 +1,7 @@
+config BR2_PACKAGE_LIBRETRO_GENESIS_PLUS_GX
+	bool "libretro-genesis-plus-gx"
+	help
+	  The Genesis Plus GX emulator, as a libretro core: Sega Mega
+	  Drive, Master System and Game Gear.
+
+	  https://github.com/libretro/Genesis-Plus-GX

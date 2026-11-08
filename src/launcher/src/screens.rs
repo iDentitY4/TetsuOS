@@ -153,7 +153,7 @@ pub fn home_screen(
     canvas.battery(frame.battery);
     // Without a title, the grid takes its space too.
     let top = if title.is_some() { GRID_TOP } else { GRID_TOP_UNTITLED };
-    tile_grid(&mut canvas, tiles, selected, top, grid.columns(), grid.rows_shown());
+    tile_grid(&mut canvas, tiles, selected, top, grid.columns(), Some(grid.rows_shown()));
     hint(&mut canvas, "A OPENS - START SETTINGS");
     canvas
 }
@@ -1166,6 +1166,14 @@ mod tests {
             let drawn_apart = matches!(setting, Setting::Volume | Setting::Brightness | Setting::BootMessages);
             let changes = setting.changes_with_left_right() && !drawn_apart;
             assert_eq!(setting_value(*setting, &Settings::default()).is_some(), changes, "{setting:?}");
+        }
+    }
+
+    #[test]
+    fn home_tiles_stay_tall_enough_for_their_text_at_every_grid_size() {
+        for grid in [crate::settings::GridSize::Normal, crate::settings::GridSize::Large] {
+            let (height, _) = tile_size(grid.rows_shown(), GRID_TOP);
+            assert!(height >= 100, "{height}");
         }
     }
 

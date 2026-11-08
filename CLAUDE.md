@@ -18,7 +18,8 @@ root password; a CPU performance setting; USB STORAGE, which shows TETSU-DATA to
 a drive.
 
 Games: NES (FCEUmm), SNES (Snes9x), Game Boy, Color and Advance (mGBA), PlayStation (PCSX
-ReARMed) and Tamagotchi (tamalib), with an in-game menu (8 save slots, levels, display
+ReARMed), Mega Drive, Master System and Game Gear (Genesis Plus GX), PC Engine (Beetle PCE
+Fast) and Tamagotchi (tamalib), with an in-game menu (8 save slots, levels, display
 options), resume on leaving and after power-off, fast-forward on R2, and sharp-bilinear
 scaling with CRT and LCD effects.
 

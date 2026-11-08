@@ -50,7 +50,8 @@ Put the card in the TF1 slot and power on. To add games, open Settings > SYSTEM 
 USB STORAGE with the device connected to a PC, which then shows TETSU-DATA as a USB
 drive, or put the card in a PC. Copy the games to the `roms` folder on TETSU-DATA, in
 folders of your choice or none. The launcher shows a tile for each console with games: NES (`.nes`), Game Boy (`.gb`),
-SNES (`.sfc`, `.smc`), Tamagotchi (`tama.b`), Game Boy Color (`.gbc`) and Game Boy
+Master System (`.sms`), PC Engine (`.pce`), Mega Drive (`.md`, `.gen`, `.smd`; rename
+`.bin`), Game Gear (`.gg`), SNES (`.sfc`, `.smc`), Tamagotchi (`tama.b`), Game Boy Color (`.gbc`) and Game Boy
 Advance (`.gba`). Zipped games aren't supported. In a list, hold Up or Down to
 scroll, and use Left and Right to page. Start opens the settings. In a game, tap Menu for save states, volume, brightness and
 quit, or hold Menu + Start to leave straight away. Hold R2 to fast-forward.
