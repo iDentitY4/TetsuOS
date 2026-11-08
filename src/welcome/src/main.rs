@@ -859,7 +859,14 @@ fn wifi_settings(framebuffer: &mut fb::Framebuffer, events: &Receiver<Event>) ->
 
         let mut canvas = match &menu.keyboard {
             Some((ssid, keyboard)) => {
-                screens::keyboard_screen(size.0, size.1, &wifi::display_name(ssid), keyboard, PASSWORD_NOTE, battery)
+                let subtitle = format!("FOR {}", wifi::display_name(ssid));
+                let view = screens::KeyboardView {
+                    icon: &icons::WIFI,
+                    title: "PASSWORD",
+                    subtitle: &subtitle,
+                    valid_note: PASSWORD_NOTE,
+                };
+                screens::keyboard_screen(size.0, size.1, &view, keyboard, battery)
             }
             None => {
                 let line = wifi_status_line(control.is_some(), &status, attempt.as_ref());
@@ -991,7 +998,8 @@ fn launcher_canvas(
                     Tile::Settings => screens::TileView { icon: &icons::SETTINGS, label: "SETTINGS", count: None },
                 })
                 .collect();
-            screens::home_screen(width, height, &tiles, launcher.home_selected(library), battery)
+            let title = settings::shown_title();
+            screens::home_screen(width, height, title.as_deref(), &tiles, launcher.home_selected(library), battery)
         }
         Screen::Games(list) => {
             let (icon, title) = match list {
@@ -1046,6 +1054,9 @@ fn launcher_canvas(
                 display: settings::display(),
                 time_zone: settings::time_zone().label,
                 clock_format: settings::clock_format().label(),
+                accent: settings::accent().label(),
+                title_shown: if settings::title_hidden() { "HIDDEN" } else { "SHOWN" },
+                title_text: &settings::title(),
                 message: launcher.confirmation(),
                 note: note.as_deref(),
             };
@@ -1163,6 +1174,19 @@ fn act(
         Action::Scaling(steps) => change_display(|display| display.scaling = display.scaling.cycle(steps)),
         Action::Effect(steps) => change_display(|display| display.effect = display.effect.cycle(steps)),
         Action::Ghosting(steps) => change_display(|display| display.ghosting = display.ghosting.cycle(steps)),
+        Action::Accent(steps) => {
+            let accent = settings::accent().cycle(steps);
+            canvas::set_accent(accent.rgb());
+            if let Err(error) = settings::set_accent(accent) {
+                eprintln!("warning: could not save the colour: {error}");
+            }
+        }
+        Action::ToggleTitle => {
+            if let Err(error) = settings::set_title_hidden(!settings::title_hidden()) {
+                eprintln!("warning: could not save the title setting: {error}");
+            }
+        }
+        Action::EditTitle => edit_title(framebuffer, events)?,
         Action::TimeZone(steps) => {
             if let Err(error) = settings::set_time_zone(clock::cycle_zone(settings::time_zone(), steps)) {
                 eprintln!("warning: could not save the time zone: {error}");
@@ -1180,6 +1204,40 @@ fn act(
         Action::PowerOff => shut_down(framebuffer, "POWERING OFF", &power::poweroff_command())?,
     }
     Ok(false)
+}
+
+/// Types the home screen's title on the on-screen keyboard, from Settings > THEME. An
+/// empty title brings back the default. Returns when it is saved or B leaves it empty.
+fn edit_title(framebuffer: &mut fb::Framebuffer, events: &Receiver<Event>) -> io::Result<()> {
+    let (width, height) = framebuffer.size();
+    let mut keyboard = keyboard::Keyboard::new(settings::MAX_TITLE_LENGTH, |_| true);
+    keyboard.text = settings::title();
+    let subtitle = format!("EMPTY BRINGS BACK {}", settings::DEFAULT_TITLE);
+    let view = screens::KeyboardView { icon: &icons::THEME, title: "TITLE", subtitle: &subtitle, valid_note: "" };
+    let battery = read_battery(&power::battery_dir());
+    loop {
+        let mut canvas = screens::keyboard_screen(width, height, &view, &keyboard, battery);
+        add_clock(&mut canvas, battery);
+        framebuffer.draw(&canvas)?;
+        let Ok(event) = events.recv() else { return Ok(()) };
+        match event.pressed() {
+            Some(Button::Lid) => sleep_until_lid_opens(events),
+            Some(button @ (Button::VolumeUp | Button::VolumeDown)) => change_volume(button),
+            Some(button) => match keyboard.press(button) {
+                keyboard::Outcome::Typing => {}
+                keyboard::Outcome::Done(text) => {
+                    if let Err(error) = settings::set_title(&text) {
+                        eprintln!("warning: could not save the title: {error}");
+                    }
+                    break;
+                }
+                keyboard::Outcome::Cancel => break,
+            },
+            None => {}
+        }
+    }
+    events.try_iter().for_each(drop);
+    Ok(())
 }
 
 /// Seconds since the kernel started, for timing the boot in the log.
@@ -1495,7 +1553,13 @@ fn write_keyboard_preview(path: &str) -> io::Result<()> {
     keyboard.press(Button::Right);
     let (width, height) = PREVIEW_SIZE;
     let battery = Some(Battery { percent: 95, charging: true });
-    write_ppm(&screens::keyboard_screen(width, height, "FRITZ!Box 7590 XY", &keyboard, PASSWORD_NOTE, battery), path)
+    let view = screens::KeyboardView {
+        icon: &icons::WIFI,
+        title: "PASSWORD",
+        subtitle: "FOR FRITZ!Box 7590 XY",
+        valid_note: PASSWORD_NOTE,
+    };
+    write_ppm(&screens::keyboard_screen(width, height, &view, &keyboard, battery), path)
 }
 
 /// Renders the button test to a PPM image. Up has been pressed and A is held, so the
@@ -1512,6 +1576,8 @@ fn write_button_preview(path: &str) -> io::Result<()> {
 }
 
 fn main() -> ExitCode {
+    // The theme colour, for the launcher and a game's menu alike.
+    canvas::set_accent(settings::accent().rgb());
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.as_slice() {
         [] => run_launcher(),

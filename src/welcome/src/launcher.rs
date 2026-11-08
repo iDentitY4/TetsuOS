@@ -66,12 +66,13 @@ pub enum Group {
     GameScreen,
     Wifi,
     BoxArt,
+    Theme,
     Time,
     System,
 }
 
-pub const GROUPS: [Group; 6] =
-    [Group::General, Group::GameScreen, Group::Wifi, Group::BoxArt, Group::Time, Group::System];
+pub const GROUPS: [Group; 7] =
+    [Group::General, Group::GameScreen, Group::Wifi, Group::BoxArt, Group::Theme, Group::Time, Group::System];
 
 /// The most settings a group has, which the settings screen makes room for.
 pub const MAX_GROUP_SETTINGS: usize = 4;
@@ -83,6 +84,7 @@ impl Group {
             Self::GameScreen => "GAME SCREEN",
             Self::Wifi => "WI-FI",
             Self::BoxArt => "BOX ART",
+            Self::Theme => "THEME",
             Self::Time => "TIME",
             Self::System => "SYSTEM",
         }
@@ -94,6 +96,7 @@ impl Group {
             Self::GameScreen => &[Setting::Scaling, Setting::Effect, Setting::Ghosting],
             Self::Wifi => &[],
             Self::BoxArt => &[Setting::DownloadMissingArt, Setting::DownloadAllArt, Setting::DeleteArt],
+            Self::Theme => &[Setting::AccentColor, Setting::ShowTitle, Setting::TitleText],
             Self::Time => &[Setting::TimeZone, Setting::ClockFormat],
             Self::System => &[Setting::ButtonTest, Setting::SystemInfo, Setting::Reboot, Setting::PowerOff],
         }
@@ -110,6 +113,9 @@ pub enum Setting {
     DownloadMissingArt,
     DownloadAllArt,
     DeleteArt,
+    AccentColor,
+    ShowTitle,
+    TitleText,
     TimeZone,
     ClockFormat,
     ButtonTest,
@@ -129,6 +135,9 @@ impl Setting {
             Self::DownloadMissingArt => "DOWNLOAD MISSING COVERS",
             Self::DownloadAllArt => "DOWNLOAD ALL COVERS AGAIN",
             Self::DeleteArt => "DELETE ALL COVERS",
+            Self::AccentColor => "COLOR",
+            Self::ShowTitle => "TITLE",
+            Self::TitleText => "TITLE TEXT",
             Self::TimeZone => "TIME ZONE",
             Self::ClockFormat => "CLOCK",
             Self::ButtonTest => "BUTTON TEST",
@@ -140,14 +149,25 @@ impl Setting {
 
     /// Whether A opens another screen, shown with a `>`.
     pub fn opens_screen(self) -> bool {
-        matches!(self, Self::DownloadMissingArt | Self::DownloadAllArt | Self::ButtonTest | Self::SystemInfo)
+        matches!(
+            self,
+            Self::DownloadMissingArt | Self::DownloadAllArt | Self::TitleText | Self::ButtonTest | Self::SystemInfo
+        )
     }
 
     /// Whether Left and Right change it.
     pub fn changes_with_left_right(self) -> bool {
         matches!(
             self,
-            Self::Volume | Self::Brightness | Self::Scaling | Self::Effect | Self::Ghosting | Self::TimeZone | Self::ClockFormat
+            Self::Volume
+                | Self::Brightness
+                | Self::Scaling
+                | Self::Effect
+                | Self::Ghosting
+                | Self::AccentColor
+                | Self::ShowTitle
+                | Self::TimeZone
+                | Self::ClockFormat
         )
     }
 
@@ -195,6 +215,10 @@ pub enum Command {
     Scaling(i32),
     Effect(i32),
     Ghosting(i32),
+    Accent(i32),
+    /// Shows the home screen's title if it is hidden, or hides it.
+    ToggleTitle,
+    EditTitle,
     TimeZone(i32),
     ClockFormat(i32),
     Reboot,
@@ -431,6 +455,8 @@ impl Launcher {
                 Setting::Scaling => return Command::Scaling(step),
                 Setting::Effect => return Command::Effect(step),
                 Setting::Ghosting => return Command::Ghosting(step),
+                Setting::AccentColor => return Command::Accent(step),
+                Setting::ShowTitle => return Command::ToggleTitle,
                 Setting::TimeZone => return Command::TimeZone(step),
                 Setting::ClockFormat => return Command::ClockFormat(step),
                 _ => {}
@@ -443,6 +469,7 @@ impl Launcher {
                 Setting::DownloadMissingArt => return Command::DownloadBoxArt(ArtDownload::Missing),
                 Setting::DownloadAllArt => return Command::DownloadBoxArt(ArtDownload::All),
                 Setting::DeleteArt => return Command::DeleteBoxArt,
+                Setting::TitleText => return Command::EditTitle,
                 Setting::ButtonTest => return Command::ButtonTest,
                 Setting::SystemInfo => self.screen = Screen::Info,
                 Setting::Reboot => return Command::Reboot,
@@ -452,6 +479,8 @@ impl Launcher {
                 | Setting::Scaling
                 | Setting::Effect
                 | Setting::Ghosting
+                | Setting::AccentColor
+                | Setting::ShowTitle
                 | Setting::TimeZone
                 | Setting::ClockFormat => {}
             },
@@ -644,13 +673,27 @@ mod tests {
     fn time_settings_change_with_left_and_right() {
         let library = library();
         let mut launcher = Launcher::new();
-        // Time is the first tile of the second row.
-        press_all(&mut launcher, &library, &[Button::Start, Button::Down, Button::A]);
+        // Time is the second tile of the second row.
+        press_all(&mut launcher, &library, &[Button::Start, Button::Down, Button::Right, Button::A]);
         assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::Time));
         assert_eq!(launcher.press(Button::Right, &library), Command::TimeZone(1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Left, &library), Command::ClockFormat(-1));
         assert_eq!(launcher.press(Button::A, &library), Command::Nothing);
+    }
+
+    #[test]
+    fn theme_settings_change_the_colour_and_title() {
+        let library = library();
+        let mut launcher = Launcher::new();
+        press_all(&mut launcher, &library, &[Button::Start, Button::Down, Button::A]);
+        assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::Theme));
+        assert_eq!(launcher.press(Button::Left, &library), Command::Accent(-1));
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::Right, &library), Command::ToggleTitle);
+        assert_eq!(launcher.press(Button::Left, &library), Command::ToggleTitle);
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::A, &library), Command::EditTitle);
     }
 
     #[test]

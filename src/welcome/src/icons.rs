@@ -470,11 +470,40 @@ pub const TIME: Icon = [
     "................................",
 ];
 
+/// Theme settings: a paint palette.
+pub const THEME: Icon = [
+    "................................",
+    "................................",
+    "................................",
+    "...........KKKKKKKKK............",
+    ".........KKLLLLLLLLLKK..........",
+    "........KLLLLLLLLLLLLLK.........",
+    ".......KLLRRLLLLLYYLLLLK........",
+    "......KLLRRRRLLLYYYYLLLLK.......",
+    "......KLLLRRLLLLLYYLLLLLK.......",
+    ".....KLLLLLLLLLLLLLLLLLLLK......",
+    ".....KLBBLLLLLLLLLLLLLLLLK......",
+    ".....KBBBBLLLLLLLKKKLLLLK.......",
+    ".....KLBBLLLLLLLK...KLLK........",
+    ".....KLLLLLLLLLLK...KLLK........",
+    ".....KLLLLNNLLLLLKKKLLLLK.......",
+    "......KLLNNNNLLLLLLLLLLLK.......",
+    "......KLLLNNLLLLLLLLLLLK........",
+    ".......KLLLLLLLLLLLLLLK.........",
+    "........KKLLLLLLLLLLKK..........",
+    "..........KKKKKKKKKK............",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const ALL: [&Icon; 16] = [
+    const ALL: [&Icon; 17] = [
+        &THEME,
         &TIME,
         &GENERAL,
         &GAME_SCREEN,

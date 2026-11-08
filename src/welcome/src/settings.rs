@@ -1,6 +1,7 @@
 //! Volume, screen brightness, how games are shown and the time zone, kept on the RGDATA
 //! partition across reboots.
 
+use crate::canvas::Rgb;
 use crate::clock::{self, ClockFormat, Zone};
 use crate::storage::write_atomic;
 use std::io;
@@ -127,6 +128,77 @@ impl Ghosting {
     }
 }
 
+/// The theme colour. Each is bright enough for the dark text on a selected row.
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub enum Accent {
+    #[default]
+    Teal,
+    Blue,
+    Purple,
+    Pink,
+    Red,
+    Orange,
+    Yellow,
+    Green,
+    White,
+}
+
+impl Accent {
+    pub const ALL: [Self; 9] =
+        [Self::Teal, Self::Blue, Self::Purple, Self::Pink, Self::Red, Self::Orange, Self::Yellow, Self::Green, Self::White];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Teal => "TEAL",
+            Self::Blue => "BLUE",
+            Self::Purple => "PURPLE",
+            Self::Pink => "PINK",
+            Self::Red => "RED",
+            Self::Orange => "ORANGE",
+            Self::Yellow => "YELLOW",
+            Self::Green => "GREEN",
+            Self::White => "WHITE",
+        }
+    }
+
+    pub fn cycle(self, steps: i32) -> Self {
+        cycle(&Self::ALL, self, steps)
+    }
+
+    fn key(self) -> &'static str {
+        match self {
+            Self::Teal => "teal",
+            Self::Blue => "blue",
+            Self::Purple => "purple",
+            Self::Pink => "pink",
+            Self::Red => "red",
+            Self::Orange => "orange",
+            Self::Yellow => "yellow",
+            Self::Green => "green",
+            Self::White => "white",
+        }
+    }
+
+    pub fn rgb(self) -> Rgb {
+        match self {
+            Self::Teal => Rgb(0x4F, 0xD1, 0xC5),
+            Self::Blue => Rgb(0x5A, 0xA9, 0xFF),
+            Self::Purple => Rgb(0xB4, 0x8C, 0xFF),
+            Self::Pink => Rgb(0xFF, 0x7A, 0xC6),
+            Self::Red => Rgb(0xFF, 0x6B, 0x6B),
+            Self::Orange => Rgb(0xFF, 0xA2, 0x4C),
+            Self::Yellow => Rgb(0xF5, 0xD5, 0x47),
+            Self::Green => Rgb(0x7A, 0xD9, 0x6B),
+            Self::White => Rgb(0xE6, 0xE8, 0xEE),
+        }
+    }
+}
+
+/// The home screen's title, until another is typed.
+pub const DEFAULT_TITLE: &str = "RG35XX SP LINUX";
+/// What fits across the home screen at its title size.
+pub const MAX_TITLE_LENGTH: usize = 24;
+
 /// How games are shown.
 #[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct Display {
@@ -135,7 +207,7 @@ pub struct Display {
     pub ghosting: Ghosting,
 }
 
-#[derive(Clone, Copy, PartialEq, Debug, Default)]
+#[derive(Clone, PartialEq, Debug, Default)]
 struct Settings {
     volume: Option<u32>,
     brightness: Option<u32>,
@@ -143,6 +215,10 @@ struct Settings {
     /// The time zone's IANA name, one of `clock::ZONES`.
     zone: Option<&'static str>,
     clock: ClockFormat,
+    accent: Accent,
+    title_hidden: bool,
+    /// The home screen's title, if one was typed.
+    title: Option<String>,
 }
 
 /// Reads the first value from `amixer cget` output, such as `  : values=25,25`.
@@ -180,6 +256,13 @@ fn parse(text: &str) -> Settings {
                     settings.display.ghosting = ghosting;
                 }
             }
+            "accent" => {
+                if let Some(&accent) = Accent::ALL.iter().find(|choice| choice.key() == value) {
+                    settings.accent = accent;
+                }
+            }
+            "title_hidden" => settings.title_hidden = value == "yes",
+            "title" => settings.title = clean_title(value),
             "timezone" => settings.zone = clock::zone_named(value).map(|zone| zone.name),
             "clock" => {
                 if let Some(&format) = ClockFormat::ALL.iter().find(|choice| choice.key() == value) {
@@ -207,7 +290,20 @@ fn format(settings: &Settings) -> String {
         text += &format!("timezone={zone}\n");
     }
     text += &format!("clock={}\n", settings.clock.key());
+    text += &format!("accent={}\n", settings.accent.key());
+    text += &format!("title_hidden={}\n", if settings.title_hidden { "yes" } else { "no" });
+    if let Some(title) = &settings.title {
+        text += &format!("title={title}\n");
+    }
     text
+}
+
+/// A typed title as it is kept: printable ASCII the font has, trimmed, and short enough to
+/// fit. None for nothing, which brings back the default.
+pub fn clean_title(text: &str) -> Option<String> {
+    let kept: String = text.chars().filter(|c| matches!(c, ' '..='~')).take(MAX_TITLE_LENGTH).collect();
+    let trimmed = kept.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
 fn load() -> Settings {
@@ -291,6 +387,42 @@ pub fn set_display(display: Display) -> io::Result<()> {
     write_atomic(Path::new(SETTINGS_PATH), format(&settings).as_bytes())
 }
 
+fn store(settings: &Settings) -> io::Result<()> {
+    write_atomic(Path::new(SETTINGS_PATH), format(settings).as_bytes())
+}
+
+pub fn accent() -> Accent {
+    load().accent
+}
+
+pub fn set_accent(accent: Accent) -> io::Result<()> {
+    store(&Settings { accent, ..load() })
+}
+
+/// The home screen's title, or None when it is hidden.
+pub fn shown_title() -> Option<String> {
+    let settings = load();
+    (!settings.title_hidden).then(|| settings.title.unwrap_or_else(|| DEFAULT_TITLE.to_string()))
+}
+
+/// The title, shown or not.
+pub fn title() -> String {
+    load().title.unwrap_or_else(|| DEFAULT_TITLE.to_string())
+}
+
+pub fn title_hidden() -> bool {
+    load().title_hidden
+}
+
+pub fn set_title_hidden(hidden: bool) -> io::Result<()> {
+    store(&Settings { title_hidden: hidden, ..load() })
+}
+
+/// Saves a typed title. Nothing brings back the default.
+pub fn set_title(text: &str) -> io::Result<()> {
+    store(&Settings { title: clean_title(text), ..load() })
+}
+
 /// The chosen time zone, UTC until one is chosen.
 pub fn time_zone() -> &'static Zone {
     load().zone.and_then(clock::zone_named).unwrap_or(clock::UTC)
@@ -342,12 +474,16 @@ mod tests {
             display,
             zone: Some("Europe/Berlin"),
             clock: ClockFormat::Hours12,
+            accent: Accent::Pink,
+            title_hidden: true,
+            title: Some("Game = Fun & more".into()),
         };
         assert_eq!(parse(&format(&settings)), settings);
         // Files from before the time settings load with UTC and a 24 hour clock.
         let old = parse("volume=25\nscaling=fit\n");
         assert_eq!((old.zone, old.clock), (None, ClockFormat::Hours24));
         assert_eq!(parse("timezone=Mars/Olympus\n").zone, None);
+        assert_eq!((old.accent, old.title_hidden, old.title), (Accent::Teal, false, None));
     }
 
     #[test]
@@ -371,6 +507,16 @@ mod tests {
         assert_eq!(Effect::None.cycle(2), Effect::Lcd);
         assert_eq!(Ghosting::default(), Ghosting::Smart);
         assert_eq!(Ghosting::Smart.cycle(1), Ghosting::Full);
+    }
+
+    #[test]
+    fn titles_are_cleaned_and_empty_ones_reset() {
+        assert_eq!(clean_title("  My Handheld  ").as_deref(), Some("My Handheld"));
+        assert_eq!(clean_title("   "), None);
+        assert_eq!(clean_title("tab\there é"), Some("tabhere".into()));
+        assert_eq!(clean_title(&"X".repeat(40)).map(|t| t.len()), Some(MAX_TITLE_LENGTH));
+        assert_eq!(Accent::Teal.cycle(-1), Accent::White);
+        assert_eq!(Accent::Teal.rgb(), Rgb(0x4F, 0xD1, 0xC5), "the first theme colour");
     }
 
     #[test]

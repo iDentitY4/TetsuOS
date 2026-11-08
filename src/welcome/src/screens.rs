@@ -1,7 +1,7 @@
 //! Lays out the launcher's screens: the console grid, game lists, settings and system info.
 
 use crate::boxart::Image;
-use crate::canvas::{text_width, Battery, Canvas, Rgb, ACCENT, BACKGROUND, BODY, LOW, MUTED, TEXT};
+use crate::canvas::{accent, text_width, Battery, Canvas, Rgb, BACKGROUND, BODY, LOW, MUTED, TEXT};
 use crate::font;
 use crate::icons::{self, Icon};
 use crate::keyboard::{self, Key, Keyboard};
@@ -19,6 +19,8 @@ const RAISED: Rgb = Rgb(0x3A, 0x41, 0x55);
 const TILE_W: usize = 140;
 const TILE_GAP: usize = 12;
 const GRID_TOP: usize = 84;
+/// Where the home screen's grid starts without a title: below the clock and battery.
+const GRID_TOP_UNTITLED: usize = 36;
 const GRID_BOTTOM: usize = 432;
 const TILE_BORDER: usize = 4;
 
@@ -69,6 +71,10 @@ pub struct SettingsView<'a> {
     pub display: Display,
     pub time_zone: &'a str,
     pub clock_format: &'a str,
+    pub accent: &'a str,
+    pub title_shown: &'a str,
+    /// The home screen's title, shown as typed.
+    pub title_text: &'a str,
     /// A question waiting for a second press, in the accent colour.
     pub message: Option<&'a str>,
     /// Lines about the group, such as how many games have covers, split at newlines.
@@ -100,24 +106,36 @@ fn bar(canvas: &mut Canvas, right: usize, top: usize, height: usize, level: Opti
     canvas.rect(x + 2, y + 2, fill, 10, on);
 }
 
-/// Tile height and icon scale for a grid of `rows` rows.
-fn tile_size(rows: usize) -> (usize, usize) {
-    let space = GRID_BOTTOM - GRID_TOP - TILE_GAP * rows.saturating_sub(1);
+/// Tile height and icon scale for a grid of `rows` rows from `top` to `GRID_BOTTOM`.
+fn tile_size(rows: usize, top: usize) -> (usize, usize) {
+    let space = GRID_BOTTOM - top - TILE_GAP * rows.saturating_sub(1);
     let height = (space / rows.max(1)).min(160);
     (height, if height >= 140 { 3 } else { 2 })
 }
 
+/// The home screen's title is this large, or smaller if it wouldn't fit.
+const TITLE_SCALE: usize = 4;
+const TITLE_Y: usize = 24;
+
 pub fn home_screen(
     width: usize,
     height: usize,
+    title: Option<&str>,
     tiles: &[TileView],
     selected: usize,
     battery: Option<Battery>,
 ) -> Canvas {
     let mut canvas = Canvas::new(width, height);
-    canvas.text("RG35XX SP LINUX", 20, 4, TEXT);
+    if let Some(title) = title {
+        let scale = if text_width(title, TITLE_SCALE) + 32 <= width { TITLE_SCALE } else { TITLE_SCALE - 1 };
+        let x = width.saturating_sub(text_width(title, scale)) / 2;
+        let y = TITLE_Y + (TITLE_SCALE - scale) * font::HEIGHT / 2;
+        canvas.text_cased_at(title, x, y, scale, TEXT);
+    }
     canvas.battery(battery);
-    tile_grid(&mut canvas, tiles, selected);
+    // Without a title, the grid takes its space too.
+    let top = if title.is_some() { GRID_TOP } else { GRID_TOP_UNTITLED };
+    tile_grid(&mut canvas, tiles, selected, top);
     hint(&mut canvas, "A OPENS - START SETTINGS");
     canvas
 }
@@ -129,6 +147,7 @@ pub fn group_icon(group: Group) -> &'static Icon {
         Group::GameScreen => &icons::GAME_SCREEN,
         Group::Wifi => &icons::WIFI,
         Group::BoxArt => &icons::BOX_ART,
+        Group::Theme => &icons::THEME,
         Group::Time => &icons::TIME,
         Group::System => &icons::SYSTEM,
     }
@@ -140,35 +159,38 @@ pub fn settings_grid(width: usize, height: usize, groups: &[Group], selected: us
     header(&mut canvas, &icons::SETTINGS, "SETTINGS", battery);
     let tiles: Vec<TileView> =
         groups.iter().map(|&group| TileView { icon: group_icon(group), label: group.label(), count: None }).collect();
-    tile_grid(&mut canvas, &tiles, selected);
+    tile_grid(&mut canvas, &tiles, selected, GRID_TOP);
     hint(&mut canvas, "A OPENS - B BACK - START CLOSES");
     canvas
 }
 
-/// Tiles in rows of `COLUMNS`, centred between the title and the hint.
-fn tile_grid(canvas: &mut Canvas, tiles: &[TileView], selected: usize) {
+/// Tiles in rows of `COLUMNS`, centred between `area_top` and the hint.
+fn tile_grid(canvas: &mut Canvas, tiles: &[TileView], selected: usize, area_top: usize) {
     let width = canvas.width;
     let rows = tiles.len().div_ceil(COLUMNS);
-    let (tile_h, scale) = tile_size(rows);
+    let (tile_h, scale) = tile_size(rows, area_top);
     let grid_w = COLUMNS * TILE_W + (COLUMNS - 1) * TILE_GAP;
     let left = width.saturating_sub(grid_w) / 2;
     let grid_h = rows * tile_h + rows.saturating_sub(1) * TILE_GAP;
-    let top = GRID_TOP + (GRID_BOTTOM - GRID_TOP).saturating_sub(grid_h) / 2;
+    let top = area_top + (GRID_BOTTOM - area_top).saturating_sub(grid_h) / 2;
 
     for (index, tile) in tiles.iter().enumerate() {
         let x = left + index % COLUMNS * (TILE_W + TILE_GAP);
         let y = top + index / COLUMNS * (tile_h + TILE_GAP);
         if index == selected {
-            canvas.rect(x, y, TILE_W, tile_h, ACCENT);
+            canvas.rect(x, y, TILE_W, tile_h, accent());
             canvas.rect(x + TILE_BORDER, y + TILE_BORDER, TILE_W - 2 * TILE_BORDER, tile_h - 2 * TILE_BORDER, RAISED);
         } else {
             canvas.rect(x, y, TILE_W, tile_h, BODY);
         }
+        // The icon, label and count are centred in the tile, however tall it is.
         let gap = 4 * scale;
-        let icon_y = y + gap;
+        let count_h = if tile.count.is_some() { gap / 2 + 2 + font::HEIGHT * TEXT_SCALE } else { 0 };
+        let content_h = icons::HEIGHT * scale + gap + font::HEIGHT * TEXT_SCALE + count_h;
+        let icon_y = y + tile_h.saturating_sub(content_h) / 2;
         canvas.icon(tile.icon, x + (TILE_W - icons::WIDTH * scale) / 2, icon_y, scale);
         let label_y = icon_y + icons::HEIGHT * scale + gap;
-        let label_color = if index == selected { ACCENT } else { TEXT };
+        let label_color = if index == selected { accent() } else { TEXT };
         let label_x = x + TILE_W.saturating_sub(text_width(tile.label, TEXT_SCALE)) / 2;
         canvas.text_at(tile.label, label_x, label_y, TEXT_SCALE, label_color);
         if let Some(count) = tile.count {
@@ -259,7 +281,7 @@ pub fn list_screen(width: usize, height: usize, view: &ListView, battery: Option
     for (line, (index, row)) in rows.iter().enumerate().skip(first).take(PAGE).enumerate() {
         let y = LIST_TOP + line * LIST_ROW;
         let color = if index == selected {
-            canvas.rect(0, y, list_right, LIST_ROW - 2, ACCENT);
+            canvas.rect(0, y, list_right, LIST_ROW - 2, accent());
             BACKGROUND
         } else {
             TEXT
@@ -309,21 +331,33 @@ pub fn settings_screen(width: usize, height: usize, view: &SettingsView, battery
         let y = SETTINGS_TOP + row * SETTINGS_ROW;
         let selected = setting == view.selected;
         let (text_color, on, off) = if selected {
-            canvas.rect(0, y, width, SETTINGS_ROW - 4, ACCENT);
-            (BACKGROUND, BACKGROUND, ACCENT)
+            canvas.rect(0, y, width, SETTINGS_ROW - 4, accent());
+            (BACKGROUND, BACKGROUND, accent())
         } else {
-            (TEXT, ACCENT, BACKGROUND)
+            (TEXT, accent(), BACKGROUND)
         };
         let text_y = row_text_y(y, SETTINGS_ROW - 4);
         canvas.text_at(setting.label(), SETTINGS_LEFT, text_y, TEXT_SCALE, text_color);
         match setting {
             Setting::Volume => bar(&mut canvas, right, y, SETTINGS_ROW - 4, view.volume_percent, on, off),
             Setting::Brightness => bar(&mut canvas, right, y, SETTINGS_ROW - 4, view.brightness_percent, on, off),
-            Setting::Scaling | Setting::Effect | Setting::Ghosting | Setting::TimeZone | Setting::ClockFormat => {
+            Setting::TitleText => {
+                let value = format!("{} >", view.title_text);
+                canvas.text_cased_at(&value, right - text_width(&value, TEXT_SCALE), text_y, TEXT_SCALE, text_color);
+            }
+            Setting::Scaling
+            | Setting::Effect
+            | Setting::Ghosting
+            | Setting::AccentColor
+            | Setting::ShowTitle
+            | Setting::TimeZone
+            | Setting::ClockFormat => {
                 let label = match setting {
                     Setting::Scaling => view.display.scaling.label(),
                     Setting::Effect => view.display.effect.label(),
                     Setting::Ghosting => view.display.ghosting.label(),
+                    Setting::AccentColor => view.accent,
+                    Setting::ShowTitle => view.title_shown,
                     Setting::TimeZone => view.time_zone,
                     _ => view.clock_format,
                 };
@@ -342,7 +376,7 @@ pub fn settings_screen(width: usize, height: usize, view: &SettingsView, battery
         below += SETTINGS_ROW;
     }
     if let Some(message) = view.message {
-        canvas.text(message, below, TEXT_SCALE, ACCENT);
+        canvas.text(message, below, TEXT_SCALE, accent());
     }
     let changes = settings.iter().any(|setting| setting.changes_with_left_right());
     hint(&mut canvas, if changes { "A SELECTS - LEFT RIGHT CHANGES - B BACK" } else { "A SELECTS - B BACK" });
@@ -392,9 +426,9 @@ pub fn boxart_screen(width: usize, height: usize, view: &BoxArtView, battery: Op
     let bar_w = width.saturating_sub(2 * LIST_LEFT);
     if let (Some(percent), true) = (view.progress, bar_w > 4) {
         let y = BOXART_TOP + 66;
-        canvas.rect(LIST_LEFT, y, bar_w, 14, ACCENT);
+        canvas.rect(LIST_LEFT, y, bar_w, 14, accent());
         canvas.rect(LIST_LEFT + 2, y + 2, bar_w - 4, 10, BACKGROUND);
-        canvas.rect(LIST_LEFT + 2, y + 2, (bar_w - 4) * percent.min(100) as usize / 100, 10, ACCENT);
+        canvas.rect(LIST_LEFT + 2, y + 2, (bar_w - 4) * percent.min(100) as usize / 100, 10, accent());
     }
     if !view.missing.is_empty() {
         let top = BOXART_TOP + 100;
@@ -447,7 +481,7 @@ fn padlock(canvas: &mut Canvas, x: usize, top: usize, color: Rgb) {
 pub fn wifi_screen(width: usize, height: usize, view: &WifiView, battery: Option<Battery>) -> Canvas {
     let mut canvas = Canvas::new(width, height);
     header(&mut canvas, &icons::WIFI, "WI-FI", battery);
-    let status_color = if view.connected { ACCENT } else { MUTED };
+    let status_color = if view.connected { accent() } else { MUTED };
     canvas.text_cased_at(view.status, LIST_LEFT, 76, TEXT_SCALE, status_color);
     if view.entries.is_empty() {
         canvas.text("NO NETWORKS FOUND YET", WIFI_TOP + 60, TEXT_SCALE, MUTED);
@@ -459,7 +493,7 @@ pub fn wifi_screen(width: usize, height: usize, view: &WifiView, battery: Option
         let row_h = WIFI_ROW - 2;
         let selected = index == view.selected;
         let (color, muted, off) = if selected {
-            canvas.rect(0, y, width, row_h, ACCENT);
+            canvas.rect(0, y, width, row_h, accent());
             (BACKGROUND, BACKGROUND, RAISED)
         } else {
             (if entry.signal.is_some() { TEXT } else { MUTED }, MUTED, BODY)
@@ -483,13 +517,13 @@ pub fn wifi_screen(width: usize, height: usize, view: &WifiView, battery: Option
         };
         let text_y = row_text_y(y, row_h);
         let label_x = lock_x.saturating_sub(12 + text_width(label, TEXT_SCALE));
-        canvas.text_at(label, label_x, text_y, TEXT_SCALE, if entry.connected && !selected { ACCENT } else { muted });
+        canvas.text_at(label, label_x, text_y, TEXT_SCALE, if entry.connected && !selected { accent() } else { muted });
         let columns = label_x.saturating_sub(LIST_LEFT + 12) / advance;
         let name: String = entry.name.chars().take(columns).collect();
         canvas.text_cased_at(&name, LIST_LEFT, text_y, TEXT_SCALE, color);
     }
     if let Some(message) = view.message {
-        canvas.text(message, WIFI_TOP + wifi_menu::PAGE * WIFI_ROW + 14, TEXT_SCALE, ACCENT);
+        canvas.text(message, WIFI_TOP + wifi_menu::PAGE * WIFI_ROW + 14, TEXT_SCALE, accent());
     }
     hint(&mut canvas, "A CONNECTS - X FORGETS - Y SCANS - B BACK");
     canvas
@@ -504,21 +538,29 @@ const _: () = assert!(KEYS_TOP + 5 * (KEY_H + KEY_GAP) + 20 <= HINT_Y);
 
 /// The password keyboard for the network `name`. `valid_note` explains what a valid
 /// password is while the text isn't one.
+/// What the on-screen keyboard is for, as `keyboard_screen` shows it.
+pub struct KeyboardView<'a> {
+    pub icon: &'a Icon,
+    pub title: &'a str,
+    /// The line above the text field, such as the network a password is for.
+    pub subtitle: &'a str,
+    /// Shown while the text can't be accepted, such as a password's length.
+    pub valid_note: &'a str,
+}
+
 pub fn keyboard_screen(
     width: usize,
     height: usize,
-    name: &str,
+    view: &KeyboardView,
     keyboard: &Keyboard,
-    valid_note: &str,
     battery: Option<Battery>,
 ) -> Canvas {
     let mut canvas = Canvas::new(width, height);
-    header(&mut canvas, &icons::WIFI, "PASSWORD", battery);
+    header(&mut canvas, view.icon, view.title, battery);
     let grid_w = keyboard::COLUMNS * KEY_W + (keyboard::COLUMNS - 1) * KEY_GAP;
     let left = width.saturating_sub(grid_w) / 2;
     let advance = (font::WIDTH + 1) * TEXT_SCALE;
-    let for_name = format!("FOR {name}");
-    let shown: String = for_name.chars().take(grid_w / advance).collect();
+    let shown: String = view.subtitle.chars().take(grid_w / advance).collect();
     canvas.text_cased_at(&shown, left, 76, TEXT_SCALE, MUTED);
 
     // The field shows the end of the text, where typing happens.
@@ -531,7 +573,7 @@ pub fn keyboard_screen(
     let text_y = field_y + (field_h - font::HEIGHT * KEY_SCALE) / 2;
     canvas.text_cased_at(&visible, left + 10, text_y, KEY_SCALE, TEXT);
     let cursor_x = left + 10 + visible.chars().count() * field_advance;
-    canvas.rect(cursor_x, text_y - 2, 3, font::HEIGHT * KEY_SCALE + 4, ACCENT);
+    canvas.rect(cursor_x, text_y - 2, 3, font::HEIGHT * KEY_SCALE + 4, accent());
     let counter = format!("{count}");
     canvas.text_at(&counter, left + grid_w - 8 - text_width(&counter, TEXT_SCALE), field_y + field_h + 4, TEXT_SCALE, MUTED);
 
@@ -549,9 +591,9 @@ pub fn keyboard_screen(
             let selected = row == keyboard.row && index == keyboard.selected_index();
             let disabled = key == Key::Done && !keyboard.can_finish();
             let (fill, color) = match (selected, disabled) {
-                (true, _) => (ACCENT, BACKGROUND),
+                (true, _) => (accent(), BACKGROUND),
                 (false, true) => (BODY, MUTED),
-                (false, false) => (BODY, if row == 4 { ACCENT } else { TEXT }),
+                (false, false) => (BODY, if row == 4 { accent() } else { TEXT }),
             };
             canvas.rect(x, y, w, KEY_H, fill);
             let label = key.label(keyboard.layer);
@@ -561,7 +603,7 @@ pub fn keyboard_screen(
         }
     }
     if !keyboard.can_finish() {
-        canvas.text(valid_note, KEYS_TOP + 5 * (KEY_H + KEY_GAP) + 4, TEXT_SCALE, MUTED);
+        canvas.text(view.valid_note, KEYS_TOP + 5 * (KEY_H + KEY_GAP) + 4, TEXT_SCALE, MUTED);
     }
     hint(&mut canvas, "A TYPES - B DELETES - X CASE - Y SPACE - START OK");
     canvas
@@ -582,7 +624,7 @@ pub fn fast_forward_sign(on: bool) -> Canvas {
     let mut canvas = Canvas::new(text_width(text, TEXT_SCALE) + 4, font::HEIGHT * TEXT_SCALE + 4);
     canvas.pixels.fill(Rgb(0, 0, 0));
     if on {
-        canvas.text_at(text, 2, 2, TEXT_SCALE, ACCENT);
+        canvas.text_at(text, 2, 2, TEXT_SCALE, accent());
     }
     canvas
 }
@@ -594,7 +636,7 @@ pub fn splash() -> Canvas {
     let width = text_width(title, 6) + 16;
     let mut canvas = Canvas::new(width, font::HEIGHT * 6 + 12 + font::HEIGHT * 3 + 16);
     canvas.pixels.fill(Rgb(0, 0, 0));
-    canvas.text(title, 8, 6, ACCENT);
+    canvas.text(title, 8, 6, accent());
     canvas.text(subtitle, 8 + font::HEIGHT * 6 + 12, 3, TEXT);
     canvas
 }
@@ -604,7 +646,7 @@ pub fn resume_screen(width: usize, height: usize, icon: &Icon, name: &str) -> Ca
     let mut canvas = Canvas::new(width, height);
     let scale = 4;
     canvas.icon(icon, width.saturating_sub(icons::WIDTH * scale) / 2, 90, scale);
-    canvas.text("RESUMING", 90 + icons::HEIGHT * scale + 30, 3, ACCENT);
+    canvas.text("RESUMING", 90 + icons::HEIGHT * scale + 30, 3, accent());
     let columns = width.saturating_sub(32) / ((font::WIDTH + 1) * TEXT_SCALE);
     let visible: String = name.chars().take(columns).collect();
     canvas.text(&visible, 90 + icons::HEIGHT * scale + 76, TEXT_SCALE, TEXT);
@@ -635,14 +677,29 @@ mod tests {
     fn the_grid_fits_two_and_three_rows() {
         for count in [1usize, 8, 12] {
             let rows = count.div_ceil(COLUMNS);
-            let (height, scale) = tile_size(rows);
-            assert!(rows * height + (rows - 1) * TILE_GAP <= GRID_BOTTOM - GRID_TOP, "{count}");
-            // Icon, label and count fit inside the tile.
-            let content = 4 * scale + icons::HEIGHT * scale + 4 * scale + 2 * font::HEIGHT * TEXT_SCALE + 2 * scale + 2;
-            assert!(content + TILE_BORDER <= height, "{count}: {content} > {height}");
-            let canvas = home_screen(640, 480, &tiles(count), count - 1, None);
+            for top in [GRID_TOP, GRID_TOP_UNTITLED] {
+                let (height, scale) = tile_size(rows, top);
+                assert!(rows * height + (rows - 1) * TILE_GAP <= GRID_BOTTOM - top, "{count}");
+                // Icon, label and count fit inside the tile, with a margin.
+                let content = 4 * scale + icons::HEIGHT * scale + 4 * scale + 2 * font::HEIGHT * TEXT_SCALE + 2 * scale + 2;
+                assert!(content + TILE_BORDER <= height, "{count}: {content} > {height}");
+            }
+            let canvas = home_screen(640, 480, Some("RG35XX SP LINUX"), &tiles(count), count - 1, None);
             assert_eq!(canvas.pixels.len(), 640 * 480);
+            // Without the title the tiles are at least as tall, and start higher.
+            assert!(tile_size(rows, GRID_TOP_UNTITLED).0 >= tile_size(rows, GRID_TOP).0);
         }
+    }
+
+    #[test]
+    fn without_a_title_the_grid_moves_up_below_the_corner() {
+        let first_lit = |canvas: &Canvas| (0..480).find(|&y| (0..640).any(|x| pixel(canvas, x, y) == BODY)).unwrap();
+        let titled = home_screen(640, 480, Some("RG35XX SP LINUX"), &tiles(10), 0, None);
+        let untitled = home_screen(640, 480, None, &tiles(10), 0, None);
+        assert!(first_lit(&untitled) < first_lit(&titled));
+        assert!(first_lit(&untitled) >= GRID_TOP_UNTITLED);
+        // The corner text ends above the grid.
+        assert!(8 + font::HEIGHT * TEXT_SCALE + 8 <= GRID_TOP_UNTITLED);
     }
 
     #[test]
@@ -654,12 +711,12 @@ mod tests {
 
     #[test]
     fn the_selected_tile_has_a_border() {
-        let canvas = home_screen(640, 480, &tiles(5), 1, None);
+        let canvas = home_screen(640, 480, Some("RG35XX SP LINUX"), &tiles(5), 1, None);
         let grid_left = (640 - (COLUMNS * TILE_W + (COLUMNS - 1) * TILE_GAP)) / 2;
-        let (tile_h, _) = tile_size(2);
+        let (tile_h, _) = tile_size(2, GRID_TOP);
         let top = GRID_TOP + (GRID_BOTTOM - GRID_TOP - (2 * tile_h + TILE_GAP)) / 2;
         assert_eq!(pixel(&canvas, grid_left + 1, top + 1), BODY);
-        assert_eq!(pixel(&canvas, grid_left + TILE_W + TILE_GAP + 1, top + 1), ACCENT);
+        assert_eq!(pixel(&canvas, grid_left + TILE_W + TILE_GAP + 1, top + 1), accent());
     }
 
     #[test]
@@ -672,7 +729,7 @@ mod tests {
         let view = ListView { icon: &icons::GAME_BOY, title: "GAME BOY", rows: &rows, selected: 14, art: None, scroll: 0 };
         let canvas = list_screen(640, 480, &view, None);
         // Game 14 is the third row of the second page.
-        assert_eq!(pixel(&canvas, 639, LIST_TOP + 2 * LIST_ROW + 2), ACCENT);
+        assert_eq!(pixel(&canvas, 639, LIST_TOP + 2 * LIST_ROW + 2), accent());
         assert_eq!(pixel(&canvas, 639, LIST_TOP + 2), BACKGROUND);
     }
 
@@ -706,7 +763,13 @@ mod tests {
         let big = Image { width: 300, height: 400, pixels: vec![TEXT; 300 * 400] };
         let canvas = list_screen(640, 480, &view(Some(Art::Cover(&big)), 5000), None);
         assert_eq!(canvas.pixels.len(), 640 * 480);
-        assert_eq!(home_screen(64, 48, &tiles(3), 0, None).pixels.len(), 64 * 48);
+        assert_eq!(home_screen(64, 48, Some("RG35XX SP LINUX"), &tiles(3), 0, None).pixels.len(), 64 * 48);
+        // The longest title fits the width, a smaller size if need be, and so does none.
+        let longest = "W".repeat(crate::settings::MAX_TITLE_LENGTH);
+        assert!(text_width(&longest, TITLE_SCALE - 1) + 32 <= 640);
+        let canvas = home_screen(640, 480, Some(&longest), &tiles(3), 0, None);
+        assert!((0..640).all(|x| pixel(&canvas, x, TITLE_Y - 1) == BACKGROUND || x > 400));
+        home_screen(640, 480, None, &tiles(3), 0, None);
     }
 
     #[test]
@@ -720,7 +783,7 @@ mod tests {
         let view = ListView { icon: &icons::NES, title: "NES", rows: &rows, selected: 0, art: Some(Art::Cover(&cover)), scroll: 0 };
         let canvas = list_screen(640, 480, &view, None);
         // The selection stops short of the panel, and the cover is in the panel's middle.
-        assert_eq!(pixel(&canvas, x - 9, LIST_TOP + 2), ACCENT);
+        assert_eq!(pixel(&canvas, x - 9, LIST_TOP + 2), accent());
         assert_eq!(pixel(&canvas, x + 1, LIST_TOP + 2), BACKGROUND);
         assert_eq!(pixel(&canvas, x + (w - 10) / 2, y + (h - 10) / 2), Rgb(1, 2, 3));
     }
@@ -821,14 +884,17 @@ mod tests {
     fn the_keyboard_fits_and_highlights_its_key() {
         let mut keyboard = Keyboard::new(64, |text| text.len() >= 8);
         keyboard.text = "x".repeat(64);
-        let canvas = keyboard_screen(640, 480, "Home", &keyboard, "8 TO 63 CHARACTERS", None);
+        let view = KeyboardView { icon: &icons::WIFI, title: "PASSWORD", subtitle: "FOR Home", valid_note: "8 TO 63 CHARACTERS" };
+        let canvas = keyboard_screen(640, 480, &view, &keyboard, None);
         let grid_w = keyboard::COLUMNS * KEY_W + (keyboard::COLUMNS - 1) * KEY_GAP;
         assert!(grid_w <= 640 - 16);
         let left = (640 - grid_w) / 2;
         // q, on the second row, starts selected.
-        assert_eq!(pixel(&canvas, left + 1, KEYS_TOP + KEY_H + KEY_GAP + 1), ACCENT);
+        assert_eq!(pixel(&canvas, left + 1, KEYS_TOP + KEY_H + KEY_GAP + 1), accent());
         assert_eq!(pixel(&canvas, left + 1, KEYS_TOP + 1), BODY);
-        assert_eq!(keyboard_screen(64, 48, &"y".repeat(99), &keyboard, "", None).pixels.len(), 64 * 48);
+        let long = "y".repeat(99);
+        let view = KeyboardView { icon: &icons::WIFI, title: "PASSWORD", subtitle: &long, valid_note: "" };
+        assert_eq!(keyboard_screen(64, 48, &view, &keyboard, None).pixels.len(), 64 * 48);
     }
 
     #[test]
@@ -854,8 +920,8 @@ mod tests {
     fn the_fast_forward_sign_fits_inside_every_border() {
         let sign = fast_forward_sign(true);
         assert!(6 + sign.height <= 27 && 6 + sign.width <= 46);
-        assert!(sign.pixels.contains(&ACCENT));
-        assert!(!fast_forward_sign(false).pixels.contains(&ACCENT));
+        assert!(sign.pixels.contains(&accent()));
+        assert!(!fast_forward_sign(false).pixels.contains(&accent()));
     }
 
     #[test]
@@ -876,12 +942,15 @@ mod tests {
             display: Display::default(),
             time_zone: "UTC",
             clock_format: "24 HOUR",
+            accent: "TEAL",
+            title_shown: "SHOWN",
+            title_text: "RG35XX SP LINUX",
             message: Some("PRESS A AGAIN TO POWER OFF"),
             note: None,
         };
         let canvas = settings_screen(640, 480, &view, None);
         let row = Group::System.settings().iter().position(|&s| s == Setting::PowerOff).unwrap();
-        assert_eq!(pixel(&canvas, 2, SETTINGS_TOP + row * SETTINGS_ROW + 2), ACCENT);
+        assert_eq!(pixel(&canvas, 2, SETTINGS_TOP + row * SETTINGS_ROW + 2), accent());
         assert_eq!(pixel(&canvas, 2, SETTINGS_TOP + 2), BACKGROUND);
     }
 
@@ -908,6 +977,9 @@ mod tests {
                 display: Display::default(),
                 time_zone: "BUENOS AIRES",
                 clock_format: "24 HOUR",
+                accent: "PURPLE",
+                title_shown: "HIDDEN",
+                title_text: "XXXXXXXXXXXXXXXXXXXXXXXX",
                 message: Some("PRESS A AGAIN TO DELETE ALL COVERS"),
                 note: Some("WEDNESDAY 30 SEPTEMBER 2026, 12:30 PM\nWAITING FOR THE TIME FROM THE NETWORK"),
             };

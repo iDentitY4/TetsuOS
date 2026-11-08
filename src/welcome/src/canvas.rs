@@ -6,13 +6,25 @@ use crate::icons::{self, Icon};
 use crate::input::{Button, Controls};
 use crate::pause::{Item, PauseMenu, ITEMS};
 use crate::settings::Display;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Rgb(pub u8, pub u8, pub u8);
 
 pub(crate) const BACKGROUND: Rgb = Rgb(0x12, 0x14, 0x1C);
 pub(crate) const BODY: Rgb = Rgb(0x2B, 0x30, 0x3F);
-pub(crate) const ACCENT: Rgb = Rgb(0x4F, 0xD1, 0xC5);
+/// The theme colour, for selections, bars and highlights, chosen in Settings > THEME.
+/// Each process sets it once from the settings, and again when it changes.
+static ACCENT: AtomicU32 = AtomicU32::new(0x4FD1C5);
+
+pub(crate) fn accent() -> Rgb {
+    let value = ACCENT.load(Ordering::Relaxed);
+    Rgb((value >> 16) as u8, (value >> 8) as u8, value as u8)
+}
+
+pub fn set_accent(Rgb(red, green, blue): Rgb) {
+    ACCENT.store(u32::from(red) << 16 | u32::from(green) << 8 | u32::from(blue), Ordering::Relaxed);
+}
 pub(crate) const TEXT: Rgb = Rgb(0xF2, 0xF4, 0xF8);
 pub(crate) const MUTED: Rgb = Rgb(0x8A, 0x92, 0xA6);
 pub(crate) const LOW: Rgb = Rgb(0xF0, 0x64, 0x64);
@@ -164,12 +176,12 @@ impl Canvas {
         let Tile { button, x, y, w, h } = *tile;
         let label = button.label();
         let label_color = if controls.is_held(button) {
-            self.rect(x, y, w, h, ACCENT);
+            self.rect(x, y, w, h, accent());
             BACKGROUND
         } else if controls.was_seen(button) {
-            self.rect(x, y, w, h, ACCENT);
+            self.rect(x, y, w, h, accent());
             self.rect(x + 3, y + 3, w.saturating_sub(6), h.saturating_sub(6), BODY);
-            ACCENT
+            accent()
         } else {
             self.rect(x, y, w, h, BODY);
             TEXT
@@ -224,12 +236,12 @@ const TILES: [Tile; 18] = [
 pub fn button_screen(width: usize, height: usize, controls: &Controls) -> Canvas {
     let mut canvas = Canvas::new(width, height);
     canvas.text("BUTTON TEST", 20, 4, TEXT);
-    canvas.text("RG35XX SP LINUX", 58, 2, ACCENT);
+    canvas.text("RG35XX SP LINUX", 58, 2, accent());
     for tile in &TILES {
         canvas.tile(tile, controls);
     }
     match controls.last() {
-        Some(last) => canvas.text(last, 390, 4, ACCENT),
+        Some(last) => canvas.text(last, 390, 4, accent()),
         None => canvas.text("PRESS ANY BUTTON", 394, 3, MUTED),
     }
     canvas.text("HOLD MENU + START TO LEAVE", 448, 2, MUTED);
@@ -306,10 +318,10 @@ pub fn pause_screen(
         let y = PAUSE_TOP + row * PAUSE_ROW;
         let selected = item == menu.selected();
         let (text_color, bar_color) = if selected {
-            canvas.rect(panel_x, y, panel_w, PAUSE_ROW - 4, ACCENT);
+            canvas.rect(panel_x, y, panel_w, PAUSE_ROW - 4, accent());
             (BACKGROUND, BACKGROUND)
         } else {
-            (TEXT, ACCENT)
+            (TEXT, accent())
         };
         let text_y = y + (PAUSE_ROW - 4 - font::HEIGHT * PAUSE_TEXT_SCALE) / 2;
         canvas.text_at(item.label(), label_x, text_y, PAUSE_TEXT_SCALE, text_color);
@@ -323,7 +335,7 @@ pub fn pause_screen(
             let bar_x = value_right - PAUSE_BAR_WIDTH;
             let bar_y = y + (PAUSE_ROW - 4) / 2 - 6;
             canvas.rect(bar_x, bar_y, PAUSE_BAR_WIDTH, 12, bar_color);
-            canvas.rect(bar_x + 2, bar_y + 2, PAUSE_BAR_WIDTH - 4, 8, if selected { ACCENT } else { BACKGROUND });
+            canvas.rect(bar_x + 2, bar_y + 2, PAUSE_BAR_WIDTH - 4, 8, if selected { accent() } else { BACKGROUND });
             let fill = (PAUSE_BAR_WIDTH - 4) * level.unwrap_or(0).min(100) as usize / 100;
             canvas.rect(bar_x + 2, bar_y + 2, fill, 8, bar_color);
             continue;
@@ -344,7 +356,7 @@ pub fn pause_screen(
 
     let message_y = PAUSE_TOP + ITEMS.len() * PAUSE_ROW + 12;
     if let Some(message) = menu.message() {
-        canvas.text(message, message_y, PAUSE_TEXT_SCALE, ACCENT);
+        canvas.text(message, message_y, PAUSE_TEXT_SCALE, accent());
     }
     canvas.text("A SELECTS - B RESUMES", message_y + 30, PAUSE_TEXT_SCALE, MUTED);
     canvas
@@ -364,7 +376,7 @@ mod tests {
         let canvas = button_screen(640, 480, &Controls::new());
         assert_eq!(canvas.pixels.len(), 640 * 480);
         assert!(count(&canvas, TEXT) > 0);
-        assert!(count(&canvas, ACCENT) > 0);
+        assert!(count(&canvas, accent()) > 0);
     }
 
     fn pixel(canvas: &Canvas, x: usize, y: usize) -> Rgb {
@@ -418,11 +430,11 @@ mod tests {
 
         controls.apply(&Event::key(BTN_EAST, 1));
         let held = button_screen(640, 480, &controls);
-        assert_eq!(pixel(&held, a.x + 3, a.y + 3), ACCENT);
+        assert_eq!(pixel(&held, a.x + 3, a.y + 3), accent());
 
         controls.apply(&Event::key(BTN_EAST, 0));
         let seen = button_screen(640, 480, &controls);
-        assert_eq!(pixel(&seen, a.x, a.y), ACCENT);
+        assert_eq!(pixel(&seen, a.x, a.y), accent());
         assert_eq!(pixel(&seen, a.x + 3, a.y + 3), BODY);
     }
 
@@ -454,7 +466,7 @@ mod tests {
         assert_eq!(pixel(&canvas, 5, 240), Rgb(85, 85, 85));
         assert_eq!(pixel(&canvas, 5, 5), Rgb(0, 0, 0));
         // Resume is selected first.
-        assert_eq!(pixel(&canvas, PAUSE_PANEL.0 + 2, PAUSE_TOP + 2), ACCENT);
+        assert_eq!(pixel(&canvas, PAUSE_PANEL.0 + 2, PAUSE_TOP + 2), accent());
         assert_eq!(pixel(&canvas, PAUSE_PANEL.0 + 2, PAUSE_TOP + PAUSE_ROW + 2), BACKGROUND);
     }
 

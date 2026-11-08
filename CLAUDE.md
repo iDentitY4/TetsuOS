@@ -148,6 +148,18 @@ Built but not yet tested on the device:
   stepped it by -117520 s to match the PC, and after a reboot it was right from the RTC
   (0.7 s off) and synced again 16 s into boot, though ntpd started before Wi-Fi. The
   system clock stays UTC
+- Theme settings, a THEME tile in Settings: COLOR (9 accent colours, all bright enough
+  for the dark text on a selected row), TITLE (SHOWN or HIDDEN) and TITLE TEXT, typed on
+  the on-screen keyboard (`screens::KeyboardView`, shared with Wi-Fi passwords), up to
+  24 characters with case kept; saving it empty brings back RG35XX SP LINUX. The accent
+  is a runtime value (`canvas::accent`), set from `settings.txt` when each process
+  starts, so a game's menu uses it too. Saved as `accent=`, `title_hidden=` and
+  `title=`. Claude checked the colour on the menus and a game's menu (from
+  `--preview-pause` on the device), editing, hiding and resetting the title; the test
+  unit is back on the defaults. The user then chose blue with the title hidden. Without
+  the title, the home grid starts at 36 instead of 84 pixels (`GRID_TOP_UNTITLED`, just
+  below the clock), so 3 rows of tiles grow from 108 to 124 pixels, and each tile's icon
+  and labels are centred in it
 - Time settings, a TIME tile in Settings: TIME ZONE (58 cities, west to east, Left and
   Right) and CLOCK (24 HOUR, 12 HOUR or OFF) for a clock left of the battery level on
   every screen that shows it. The group's note shows the date and when the network last
@@ -162,7 +174,7 @@ Built but not yet tested on the device:
   on the test unit. A game's clock was not checked inside a game
 - Settings is a grid of group tiles, like the home screen (`settings_grid`): GENERAL
   (volume, brightness), GAME SCREEN (scaling, effect, ghosting), WI-FI (opens the Wi-Fi
-  screen directly), BOX ART, TIME and SYSTEM (button test, system info, reboot, power off). A
+  screen directly), BOX ART, THEME, TIME and SYSTEM (button test, system info, reboot, power off). A
   opens a group's list, B goes back to its tile, and Start closes settings from anywhere
   in them. Groups and their settings are `GROUPS` and `Group::settings` in `launcher.rs`,
   so a new option is one more entry; `MAX_GROUP_SETTINGS` (4) is what the screen has
