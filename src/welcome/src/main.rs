@@ -1177,6 +1177,7 @@ fn launcher_canvas(
                 time_zone: settings::time_zone().label,
                 clock_format: settings::clock_format().label(),
                 accent: settings::accent().label(),
+                background: settings::background().label(),
                 start_screen: settings::start_screen().label(),
                 game_names: settings::game_names().label(),
                 covers: if settings::covers_shown() { "ON" } else { "OFF" },
@@ -1368,6 +1369,13 @@ fn act(
             }
             // The home screen's tiles are laid out again.
             return Ok(true);
+        }
+        Action::Background(steps) => {
+            let background = settings::background().cycle(steps);
+            canvas::set_background(background);
+            if let Err(error) = settings::set_background(background) {
+                eprintln!("warning: could not save the background: {error}");
+            }
         }
         Action::ToggleTitle => {
             if let Err(error) = settings::set_title_hidden(!settings::title_hidden()) {
@@ -1799,6 +1807,7 @@ fn main() -> ExitCode {
     // The theme colour, for the launcher and a game's menu alike.
     canvas::set_accent(settings::accent().rgb());
     canvas::set_battery_display(settings::battery_display());
+    canvas::set_background(settings::background());
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.as_slice() {
         [] => run_launcher(),

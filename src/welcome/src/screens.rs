@@ -1,7 +1,7 @@
 //! Lays out the launcher's screens: the console grid, game lists, settings and system info.
 
 use crate::boxart::Image;
-use crate::canvas::{accent, text_width, Battery, Canvas, Rgb, BACKGROUND, BODY, LOW, MUTED, TEXT};
+use crate::canvas::{accent, background, text_width, Battery, Canvas, Rgb, BODY, LOW, MUTED, TEXT};
 use crate::font;
 use crate::icons::{self, Icon};
 use crate::keyboard::{self, Key, Keyboard};
@@ -73,6 +73,7 @@ pub struct SettingsView<'a> {
     pub time_zone: &'a str,
     pub clock_format: &'a str,
     pub accent: &'a str,
+    pub background: &'a str,
     pub start_screen: &'a str,
     pub game_names: &'a str,
     pub covers: &'a str,
@@ -324,7 +325,7 @@ pub fn list_screen(width: usize, height: usize, view: &ListView, battery: Option
         let y = LIST_TOP + line * LIST_ROW;
         let color = if index == selected {
             canvas.rect(0, y, list_right, LIST_ROW - 2, accent());
-            BACKGROUND
+            background()
         } else {
             TEXT
         };
@@ -333,7 +334,7 @@ pub fn list_screen(width: usize, height: usize, view: &ListView, battery: Option
         }
         let text_y = row_text_y(y, LIST_ROW - 2);
         if row.starred {
-            let star_color = if index == selected { BACKGROUND } else { STAR };
+            let star_color = if index == selected { background() } else { STAR };
             canvas.text_at("*", STAR_LEFT, text_y, TEXT_SCALE, star_color);
         }
         if index == selected {
@@ -374,9 +375,9 @@ pub fn settings_screen(width: usize, height: usize, view: &SettingsView, battery
         let selected = setting == view.selected;
         let (text_color, on, off) = if selected {
             canvas.rect(0, y, width, SETTINGS_ROW - 4, accent());
-            (BACKGROUND, BACKGROUND, accent())
+            (background(), background(), accent())
         } else {
-            (TEXT, accent(), BACKGROUND)
+            (TEXT, accent(), background())
         };
         let text_y = row_text_y(y, SETTINGS_ROW - 4);
         canvas.text_at(setting.label(), SETTINGS_LEFT, text_y, TEXT_SCALE, text_color);
@@ -391,6 +392,7 @@ pub fn settings_screen(width: usize, height: usize, view: &SettingsView, battery
             | Setting::Effect
             | Setting::Ghosting
             | Setting::AccentColor
+            | Setting::Background
             | Setting::ShowTitle
             | Setting::GridSize
             | Setting::StartScreen
@@ -412,6 +414,7 @@ pub fn settings_screen(width: usize, height: usize, view: &SettingsView, battery
                     Setting::Effect => view.display.effect.label(),
                     Setting::Ghosting => view.display.ghosting.label(),
                     Setting::AccentColor => view.accent,
+                    Setting::Background => view.background,
                     Setting::ShowTitle => view.title_shown,
                     Setting::GridSize => view.grid_size,
                     Setting::TimeZone => view.time_zone,
@@ -475,7 +478,7 @@ pub fn home_tiles_screen(
         let y = LIST_TOP + line * LIST_ROW;
         let (label_color, value_color) = if index == selected {
             canvas.rect(0, y, width, LIST_ROW - 2, accent());
-            (BACKGROUND, BACKGROUND)
+            (background(), background())
         } else if row.shown {
             (TEXT, TEXT)
         } else {
@@ -526,7 +529,7 @@ pub fn boxart_screen(width: usize, height: usize, view: &BoxArtView, battery: Op
     if let (Some(percent), true) = (view.progress, bar_w > 4) {
         let y = BOXART_TOP + 66;
         canvas.rect(LIST_LEFT, y, bar_w, 14, accent());
-        canvas.rect(LIST_LEFT + 2, y + 2, bar_w - 4, 10, BACKGROUND);
+        canvas.rect(LIST_LEFT + 2, y + 2, bar_w - 4, 10, background());
         canvas.rect(LIST_LEFT + 2, y + 2, (bar_w - 4) * percent.min(100) as usize / 100, 10, accent());
     }
     if !view.missing.is_empty() {
@@ -593,7 +596,7 @@ pub fn wifi_screen(width: usize, height: usize, view: &WifiView, battery: Option
         let selected = index == view.selected;
         let (color, muted, off) = if selected {
             canvas.rect(0, y, width, row_h, accent());
-            (BACKGROUND, BACKGROUND, RAISED)
+            (background(), background(), RAISED)
         } else {
             (if entry.signal.is_some() { TEXT } else { MUTED }, MUTED, BODY)
         };
@@ -690,7 +693,7 @@ pub fn keyboard_screen(
             let selected = row == keyboard.row && index == keyboard.selected_index();
             let disabled = key == Key::Done && !keyboard.can_finish();
             let (fill, color) = match (selected, disabled) {
-                (true, _) => (accent(), BACKGROUND),
+                (true, _) => (accent(), background()),
                 (false, true) => (BODY, MUTED),
                 (false, false) => (BODY, if row == 4 { accent() } else { TEXT }),
             };
@@ -858,7 +861,7 @@ mod tests {
         let canvas = list_screen(640, 480, &view, None);
         // Game 14 is the third row of the second page.
         assert_eq!(pixel(&canvas, 639, LIST_TOP + 2 * LIST_ROW + 2), accent());
-        assert_eq!(pixel(&canvas, 639, LIST_TOP + 2), BACKGROUND);
+        assert_eq!(pixel(&canvas, 639, LIST_TOP + 2), background());
     }
 
     #[test]
@@ -886,7 +889,7 @@ mod tests {
         assert_eq!(canvas.pixels.len(), 640 * 480);
         // Nothing drawn between the list and the hint.
         let gap = BOXART_TOP + 100 + (BOXART_MISSING_ROWS + 1) * LIST_ROW;
-        assert!(canvas.pixels[gap * 640..(HINT_Y - 2) * 640].iter().all(|&pixel| pixel == BACKGROUND));
+        assert!(canvas.pixels[gap * 640..(HINT_Y - 2) * 640].iter().all(|&pixel| pixel == background()));
         boxart_screen(100, 60, &view, None);
         boxart_screen(40, 30, &view, None);
     }
@@ -907,7 +910,7 @@ mod tests {
         let longest = "W".repeat(crate::settings::MAX_TITLE_LENGTH);
         assert!(text_width(&longest, TITLE_SCALE - 1) + 32 <= 640);
         let canvas = home_screen(640, 480, Some(&longest), GridSize::Normal, &tiles(3), 0, None);
-        assert!((0..640).all(|x| pixel(&canvas, x, TITLE_Y - 1) == BACKGROUND || x > 400));
+        assert!((0..640).all(|x| pixel(&canvas, x, TITLE_Y - 1) == background() || x > 400));
         home_screen(640, 480, None, GridSize::Normal, &tiles(3), 0, None);
     }
 
@@ -923,7 +926,7 @@ mod tests {
         let canvas = list_screen(640, 480, &view, None);
         // The selection stops short of the panel, and the cover is in the panel's middle.
         assert_eq!(pixel(&canvas, x - 9, LIST_TOP + 2), accent());
-        assert_eq!(pixel(&canvas, x + 1, LIST_TOP + 2), BACKGROUND);
+        assert_eq!(pixel(&canvas, x + 1, LIST_TOP + 2), background());
         assert_eq!(pixel(&canvas, x + (w - 10) / 2, y + (h - 10) / 2), Rgb(1, 2, 3));
     }
 
@@ -960,7 +963,7 @@ mod tests {
         let row_y = LIST_TOP..LIST_TOP + LIST_ROW - 2;
         // Text, drawn in the background colour on the highlight, keeps clear of the
         // margins on both sides.
-        let text_in = |xs: std::ops::Range<usize>| xs.clone().any(|x| row_y.clone().any(|y| pixel(&canvas, x, y) == BACKGROUND));
+        let text_in = |xs: std::ops::Range<usize>| xs.clone().any(|x| row_y.clone().any(|y| pixel(&canvas, x, y) == background()));
         assert!(!text_in(0..LIST_LEFT));
         assert!(!text_in(ART_PANEL.0 - 16..ART_PANEL.0 - 8));
         assert!(text_in(LIST_LEFT..ART_PANEL.0 - 16));
@@ -1082,6 +1085,7 @@ mod tests {
             time_zone: "UTC",
             clock_format: "24 HOUR",
             accent: "TEAL",
+            background: "DARK",
             start_screen: "HOME",
             game_names: "SHORT",
             covers: "ON",
@@ -1097,7 +1101,7 @@ mod tests {
         let canvas = settings_screen(640, 480, &view, None);
         let row = Group::System.settings().iter().position(|&s| s == Setting::PowerOff).unwrap();
         assert_eq!(pixel(&canvas, 2, SETTINGS_TOP + row * SETTINGS_ROW + 2), accent());
-        assert_eq!(pixel(&canvas, 2, SETTINGS_TOP + 2), BACKGROUND);
+        assert_eq!(pixel(&canvas, 2, SETTINGS_TOP + 2), background());
     }
 
     #[test]
@@ -1124,6 +1128,7 @@ mod tests {
                 time_zone: "BUENOS AIRES",
                 clock_format: "24 HOUR",
                 accent: "PURPLE",
+                background: "TINT",
                 start_screen: "LAST GAME",
                 game_names: "FULL",
                 covers: "OFF",

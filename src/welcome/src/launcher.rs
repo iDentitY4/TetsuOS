@@ -115,7 +115,14 @@ impl Group {
             Self::Wifi => &[],
             Self::BoxArt => &[Setting::ShowCovers, Setting::DownloadMissingArt, Setting::DownloadAllArt, Setting::DeleteArt],
             Self::Theme => {
-                &[Setting::AccentColor, Setting::ShowTitle, Setting::TitleText, Setting::GridSize, Setting::HomeTiles]
+                &[
+                    Setting::AccentColor,
+                    Setting::Background,
+                    Setting::ShowTitle,
+                    Setting::TitleText,
+                    Setting::GridSize,
+                    Setting::HomeTiles,
+                ]
             }
             Self::Time => &[Setting::TimeZone, Setting::ClockFormat],
             Self::System => {
@@ -141,6 +148,7 @@ pub enum Setting {
     DownloadAllArt,
     DeleteArt,
     AccentColor,
+    Background,
     ShowTitle,
     TitleText,
     GridSize,
@@ -171,6 +179,7 @@ impl Setting {
             Self::DownloadAllArt => "DOWNLOAD ALL COVERS AGAIN",
             Self::DeleteArt => "DELETE ALL COVERS",
             Self::AccentColor => "COLOR",
+            Self::Background => "BACKGROUND",
             Self::ShowTitle => "TITLE",
             Self::TitleText => "TITLE TEXT",
             Self::GridSize => "GRID SIZE",
@@ -214,6 +223,7 @@ impl Setting {
                 | Self::Effect
                 | Self::Ghosting
                 | Self::AccentColor
+                | Self::Background
                 | Self::ShowTitle
                 | Self::GridSize
                 | Self::TimeZone
@@ -274,6 +284,7 @@ pub enum Command {
     Effect(i32),
     Ghosting(i32),
     Accent(i32),
+    Background(i32),
     /// Shows the home screen's title if it is hidden, or hides it.
     ToggleTitle,
     GridSize(i32),
@@ -576,6 +587,7 @@ impl Launcher {
                 Setting::Effect => return Command::Effect(step),
                 Setting::Ghosting => return Command::Ghosting(step),
                 Setting::AccentColor => return Command::Accent(step),
+                Setting::Background => return Command::Background(step),
                 Setting::ShowTitle => return Command::ToggleTitle,
                 Setting::GridSize => return Command::GridSize(step),
                 Setting::TimeZone => return Command::TimeZone(step),
@@ -608,6 +620,7 @@ impl Launcher {
                 | Setting::Effect
                 | Setting::Ghosting
                 | Setting::AccentColor
+                | Setting::Background
                 | Setting::ShowTitle
                 | Setting::GridSize
                 | Setting::TimeZone
@@ -892,6 +905,8 @@ mod tests {
         press_all(&mut launcher, &library, &[Button::Start, Button::Down, Button::A]);
         assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::Theme));
         assert_eq!(launcher.press(Button::Left, &library), Command::Accent(-1));
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::Right, &library), Command::Background(1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Right, &library), Command::ToggleTitle);
         assert_eq!(launcher.press(Button::Left, &library), Command::ToggleTitle);

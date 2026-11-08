@@ -5,13 +5,12 @@ use crate::boxart::Image;
 use crate::icons::{self, Icon};
 use crate::input::{Button, Controls};
 use crate::pause::{Item, PauseMenu, ITEMS};
-use crate::settings::{BatteryDisplay, Display};
+use crate::settings::{Background, BatteryDisplay, Display};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Rgb(pub u8, pub u8, pub u8);
 
-pub(crate) const BACKGROUND: Rgb = Rgb(0x12, 0x14, 0x1C);
 pub(crate) const BODY: Rgb = Rgb(0x2B, 0x30, 0x3F);
 /// The theme colour, for selections, bars and highlights, chosen in Settings > THEME.
 /// Each process sets it once from the settings, and again when it changes.
@@ -24,6 +23,22 @@ pub(crate) fn accent() -> Rgb {
 
 pub fn set_accent(Rgb(red, green, blue): Rgb) {
     ACCENT.store(u32::from(red) << 16 | u32::from(green) << 8 | u32::from(blue), Ordering::Relaxed);
+}
+
+/// The screen's background, from Settings > THEME > BACKGROUND, by its place in
+/// `Background::ALL`. Each process sets it once, and again when it changes.
+static BACKGROUND_SHADE: AtomicU32 = AtomicU32::new(0);
+
+pub fn set_background(shade: Background) {
+    let index = Background::ALL.iter().position(|&other| other == shade).unwrap_or(0);
+    BACKGROUND_SHADE.store(index as u32, Ordering::Relaxed);
+}
+
+/// The background colour, which is also the dark text on a selected row. A tint follows
+/// the theme colour.
+pub(crate) fn background() -> Rgb {
+    let shade = Background::ALL.get(BACKGROUND_SHADE.load(Ordering::Relaxed) as usize).copied().unwrap_or_default();
+    shade.rgb(accent())
 }
 
 /// When the battery level shows, from Settings > GENERAL > BATTERY, by its place in
@@ -69,7 +84,7 @@ impl Canvas {
         Self {
             width,
             height,
-            pixels: vec![BACKGROUND; width * height],
+            pixels: vec![background(); width * height],
         }
     }
 
@@ -204,7 +219,7 @@ impl Canvas {
         let label = button.label();
         let label_color = if controls.is_held(button) {
             self.rect(x, y, w, h, accent());
-            BACKGROUND
+            background()
         } else if controls.was_seen(button) {
             self.rect(x, y, w, h, accent());
             self.rect(x + 3, y + 3, w.saturating_sub(6), h.saturating_sub(6), BODY);
@@ -335,7 +350,7 @@ pub fn pause_screen(
     }
 
     let (panel_x, panel_y, panel_w, panel_h) = PAUSE_PANEL;
-    canvas.rect(panel_x, panel_y, panel_w, panel_h, BACKGROUND);
+    canvas.rect(panel_x, panel_y, panel_w, panel_h, background());
     canvas.text("PAUSED", panel_y + 20, 3, TEXT);
 
     let label_x = panel_x + 20;
@@ -346,7 +361,7 @@ pub fn pause_screen(
         let selected = item == menu.selected();
         let (text_color, bar_color) = if selected {
             canvas.rect(panel_x, y, panel_w, PAUSE_ROW - 4, accent());
-            (BACKGROUND, BACKGROUND)
+            (background(), background())
         } else {
             (TEXT, accent())
         };
@@ -362,7 +377,7 @@ pub fn pause_screen(
             let bar_x = value_right - PAUSE_BAR_WIDTH;
             let bar_y = y + (PAUSE_ROW - 4) / 2 - 6;
             canvas.rect(bar_x, bar_y, PAUSE_BAR_WIDTH, 12, bar_color);
-            canvas.rect(bar_x + 2, bar_y + 2, PAUSE_BAR_WIDTH - 4, 8, if selected { accent() } else { BACKGROUND });
+            canvas.rect(bar_x + 2, bar_y + 2, PAUSE_BAR_WIDTH - 4, 8, if selected { accent() } else { background() });
             let fill = (PAUSE_BAR_WIDTH - 4) * level.unwrap_or(0).min(100) as usize / 100;
             canvas.rect(bar_x + 2, bar_y + 2, fill, 8, bar_color);
             continue;
@@ -509,7 +524,7 @@ mod tests {
         assert_eq!(pixel(&canvas, 5, 5), Rgb(0, 0, 0));
         // Resume is selected first.
         assert_eq!(pixel(&canvas, PAUSE_PANEL.0 + 2, PAUSE_TOP + 2), accent());
-        assert_eq!(pixel(&canvas, PAUSE_PANEL.0 + 2, PAUSE_TOP + PAUSE_ROW + 2), BACKGROUND);
+        assert_eq!(pixel(&canvas, PAUSE_PANEL.0 + 2, PAUSE_TOP + PAUSE_ROW + 2), background());
     }
 
     #[test]

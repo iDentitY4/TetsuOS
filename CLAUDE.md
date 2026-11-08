@@ -199,6 +199,12 @@ Built but not yet tested on the device:
   stays home, and a game resumed at boot returns to it. Saved as `start=`. Claude checked
   LAST GAME and RECENT on the device by restarting the launcher; the test unit is back on
   HOME
+- Background shade: Settings > THEME > BACKGROUND: DARK (the first blue-grey), BLACK or
+  TINT, an eighth of the theme colour over near black, which follows the colour
+  (`settings::Background::rgb`). Like the accent, `canvas::background()` is a runtime
+  value set when each process starts; it is also the dark text on selected rows. Saved
+  as `background=`. Claude checked BLACK and TINT on the device; the test unit is back on
+  DARK
 - Grid size: Settings > THEME > GRID SIZE: NORMAL (4 to a row, every row shown) or LARGE
   (3 to a row with icons at 3x, two rows at a time, paging like the lists, with small
   arrows for rows above or below). `settings::GridSize` gives the columns and rows, the

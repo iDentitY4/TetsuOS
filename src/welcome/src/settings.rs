@@ -277,6 +277,54 @@ pub fn idle_sleep_label(minutes: u32) -> String {
     }
 }
 
+/// The menus' background.
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub enum Background {
+    /// A dark blue-grey, the first background.
+    #[default]
+    Dark,
+    Black,
+    /// A dark shade of the theme colour.
+    Tint,
+}
+
+impl Background {
+    pub const ALL: [Self; 3] = [Self::Dark, Self::Black, Self::Tint];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Dark => "DARK",
+            Self::Black => "BLACK",
+            Self::Tint => "TINT",
+        }
+    }
+
+    pub fn cycle(self, steps: i32) -> Self {
+        cycle(&Self::ALL, self, steps)
+    }
+
+    fn key(self) -> &'static str {
+        match self {
+            Self::Dark => "dark",
+            Self::Black => "black",
+            Self::Tint => "tint",
+        }
+    }
+
+    /// The colour, for a tint from the theme colour `accent`: an eighth of it over a near
+    /// black, dark enough for light text and the tiles to stand out.
+    pub fn rgb(self, accent: Rgb) -> Rgb {
+        match self {
+            Self::Dark => Rgb(0x12, 0x14, 0x1C),
+            Self::Black => Rgb(0, 0, 0),
+            Self::Tint => {
+                let tint = |channel: u8| 0x0A + channel / 8;
+                Rgb(tint(accent.0), tint(accent.1), tint(accent.2))
+            }
+        }
+    }
+}
+
 /// How large the home screen's tiles are.
 #[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub enum GridSize {
@@ -392,6 +440,7 @@ struct Settings {
     idle_minutes: u32,
     menu_sounds: bool,
     grid: GridSize,
+    background: Background,
 }
 
 /// Reads the first value from `amixer cget` output, such as `  : values=25,25`.
@@ -438,6 +487,11 @@ fn parse(text: &str) -> Settings {
             "title" => settings.title = clean_title(value),
             "covers" => settings.covers_hidden = value == "off",
             "sounds" => settings.menu_sounds = value == "on",
+            "background" => {
+                if let Some(&background) = Background::ALL.iter().find(|choice| choice.key() == value) {
+                    settings.background = background;
+                }
+            }
             "grid" => {
                 if let Some(&grid) = GridSize::ALL.iter().find(|choice| choice.key() == value) {
                     settings.grid = grid;
@@ -505,6 +559,7 @@ fn format(settings: &Settings) -> String {
     text += &format!("idle={}\n", settings.idle_minutes);
     text += &format!("sounds={}\n", if settings.menu_sounds { "on" } else { "off" });
     text += &format!("grid={}\n", settings.grid.key());
+    text += &format!("background={}\n", settings.background.key());
     if !settings.hidden_tiles.is_empty() {
         text += &format!("hidden_tiles={}\n", settings.hidden_tiles.join(","));
     }
@@ -634,6 +689,14 @@ pub fn set_title_hidden(hidden: bool) -> io::Result<()> {
 /// Saves a typed title. Nothing brings back the default.
 pub fn set_title(text: &str) -> io::Result<()> {
     store(&Settings { title: clean_title(text), ..load() })
+}
+
+pub fn background() -> Background {
+    load().background
+}
+
+pub fn set_background(background: Background) -> io::Result<()> {
+    store(&Settings { background, ..load() })
 }
 
 pub fn grid_size() -> GridSize {
@@ -775,6 +838,7 @@ mod tests {
             idle_minutes: 10,
             menu_sounds: true,
             grid: GridSize::Large,
+            background: Background::Tint,
         };
         assert_eq!(parse(&format(&settings)), settings);
         // Files from before the time settings load with UTC and a 24 hour clock.
@@ -790,6 +854,14 @@ mod tests {
         assert_eq!(old.idle_minutes, 0, "no sleeping until chosen");
         assert!(!old.menu_sounds, "quiet until turned on");
         assert_eq!(old.grid, GridSize::Normal);
+        assert_eq!(old.background, Background::Dark);
+        assert_eq!(Background::Dark.rgb(Accent::Teal.rgb()), Rgb(0x12, 0x14, 0x1C), "the first background");
+        // Every tint is dark, below the tiles' grey, and differs by colour.
+        for accent in Accent::ALL {
+            let Rgb(r, g, b) = Background::Tint.rgb(accent.rgb());
+            assert!(r.max(g).max(b) < 0x2B, "{accent:?}");
+        }
+        assert_ne!(Background::Tint.rgb(Accent::Red.rgb()), Background::Tint.rgb(Accent::Blue.rgb()));
         assert_eq!(parse("idle=7\n").idle_minutes, 0, "only the offered choices");
         assert_eq!(cycle(&IDLE_SLEEP_MINUTES, 0, -1), 30);
         assert_eq!(idle_sleep_label(0), "OFF");
