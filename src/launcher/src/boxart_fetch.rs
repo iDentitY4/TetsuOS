@@ -468,7 +468,7 @@ mod tests {
 
     #[test]
     fn a_run_saves_covers_and_lists_the_rest() {
-        let directory = std::env::temp_dir().join(format!("welcome-fetch-test-{}", std::process::id()));
+        let directory = std::env::temp_dir().join(format!("launcher-fetch-test-{}", std::process::id()));
         std::fs::create_dir_all(&directory).unwrap();
         let collection = "Nintendo_-_Game_Boy";
         let mut files = HashMap::new();

@@ -5,9 +5,9 @@ use std::time::{Duration, Instant};
 
 const BATTERY_DIR: &str = "/sys/class/power_supply/axp20x-battery";
 /// Overrides the battery folder, to test with files made up to look like a low battery.
-const BATTERY_DIR_VARIABLE: &str = "WELCOME_BATTERY_DIR";
+const BATTERY_DIR_VARIABLE: &str = "LAUNCHER_BATTERY_DIR";
 /// Overrides the power-off command, to test the empty battery path without powering off.
-const POWEROFF_VARIABLE: &str = "WELCOME_POWEROFF";
+const POWEROFF_VARIABLE: &str = "LAUNCHER_POWEROFF";
 
 /// At or below this, a game shows the charge level as a warning.
 const LOW_PERCENT: u32 = 10;
@@ -145,7 +145,7 @@ mod tests {
 
     #[test]
     fn readings_come_from_sysfs_files() {
-        let dir = std::env::temp_dir().join(format!("welcome-power-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("launcher-power-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         assert_eq!(read(&dir), None);
         std::fs::write(dir.join("capacity"), "7\n").unwrap();

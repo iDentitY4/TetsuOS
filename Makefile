@@ -23,9 +23,9 @@ $(BUILDROOT_DIR)/Makefile:
 	tar xzf $(BUILDROOT_TARBALL)
 	touch $@
 
-# Renders the welcome screen on this PC, without the device
+# Renders the launcher's home screen on this PC, without the device
 preview:
-	cargo run --release --manifest-path src/welcome/Cargo.toml -- --preview welcome-preview.ppm
+	cargo run --release --manifest-path src/launcher/Cargo.toml -- --preview launcher-preview.ppm
 
 clean:
 	rm -rf $(OUTPUT)

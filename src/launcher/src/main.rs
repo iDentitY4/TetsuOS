@@ -1300,7 +1300,7 @@ fn act(
             match play_game(&rom, events) {
                 Ok(Ending::BatteryEmpty) => shut_down(framebuffer, "BATTERY EMPTY", &power::poweroff_command())?,
                 Ok(Ending::Quit) => {}
-                Err(error) => eprintln!("welcome: could not start the game: {error}"),
+                Err(error) => eprintln!("launcher: could not start the game: {error}"),
             }
             return Ok(true);
         }
@@ -1871,7 +1871,7 @@ fn main() -> ExitCode {
         }
         _ => {
             eprintln!(
-                "usage: welcome [--preview | --preview-list | --preview-recent | --preview-settings FILE.ppm\n\
+                "usage: launcher [--preview | --preview-list | --preview-recent | --preview-settings FILE.ppm\n\
                  \x20              | --preview-buttons | --preview-wifi | --preview-keyboard FILE.ppm\n\
                  \x20              | --preview-pause FILE.ppm | --preview-splash FILE.ppm\n\
                  \x20              | --play CORE ROM SAVE battery|state\n\
@@ -1883,7 +1883,7 @@ fn main() -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("welcome: {error}");
+            eprintln!("launcher: {error}");
             ExitCode::FAILURE
         }
     }
@@ -2040,7 +2040,7 @@ mod tests {
 
     #[test]
     fn roms_are_found_sorted_and_by_extension() {
-        let dir = std::env::temp_dir().join(format!("welcome-rom-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("launcher-rom-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         for name in ["b.gba", "a.GBA", "c.b", "notes.txt"] {
             std::fs::write(dir.join(name), []).unwrap();
@@ -2052,7 +2052,7 @@ mod tests {
 
     #[test]
     fn the_battery_is_read_from_sysfs_files() {
-        let dir = std::env::temp_dir().join(format!("welcome-battery-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("launcher-battery-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         assert_eq!(read_battery(&dir), None);
 

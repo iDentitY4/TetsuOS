@@ -3,13 +3,13 @@
 case "$1" in
 start)
 	# In its own session, so it keeps running after an SSH login that started it ends.
-	setsid /usr/bin/welcome </dev/null >/var/log/welcome.log 2>&1 &
+	setsid /usr/bin/launcher </dev/null >/var/log/launcher.log 2>&1 &
 	;;
 stop)
-	killall welcome 2>/dev/null
+	killall launcher 2>/dev/null
 	# A running game saves as it exits, which must finish before RGDATA is unmounted.
 	for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-		pidof welcome >/dev/null || break
+		pidof launcher >/dev/null || break
 		sleep 0.1
 	done
 	;;

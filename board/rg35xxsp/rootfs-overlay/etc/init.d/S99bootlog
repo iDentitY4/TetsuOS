@@ -13,8 +13,8 @@ write_log() {
 	{
 		echo "== kernel"; uname -a
 		echo "== uptime"; cat /proc/uptime
-		echo "== welcome app"; cat /var/log/welcome.log
-		echo "== welcome running"; pidof welcome
+		echo "== launcher"; cat /var/log/launcher.log
+		echo "== launcher running"; pidof launcher
 		echo "== acpid running"; pidof acpid
 		echo "== input devices"; grep -E '^(N:|H:)' /proc/bus/input/devices
 		echo "== framebuffers"; ls -l /dev/fb* /sys/class/graphics
@@ -44,7 +44,7 @@ write_log() {
 }
 
 save_log() {
-	# Give deferred drivers and the welcome app time to finish
+	# Give deferred drivers and the launcher time to finish
 	sleep 15
 	write_log
 	# Again later, to catch a USB cable connected after boot

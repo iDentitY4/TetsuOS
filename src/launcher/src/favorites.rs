@@ -51,7 +51,7 @@ mod tests {
 
     #[test]
     fn the_file_survives_a_round_trip() {
-        let dir = std::env::temp_dir().join(format!("welcome-favorites-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("launcher-favorites-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("favorites.txt");
         assert!(load(&file).is_empty());

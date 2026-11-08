@@ -66,7 +66,7 @@ mod tests {
 
     #[test]
     fn the_file_survives_a_round_trip() {
-        let dir = std::env::temp_dir().join(format!("welcome-recent-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("launcher-recent-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("recent.txt");
         assert!(load(&file).is_empty());

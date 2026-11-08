@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Copies build output to the running device over the USB cable, instead of reflashing.
 #
-#   app     the welcome app, then restarts it
+#   app     the launcher, then restarts it
 #   rootfs  files in the root filesystem that changed, then restarts the app
 #   boot    the kernel, device tree and extlinux.conf, then reboots
 #   all     rootfs, then boot
@@ -30,10 +30,10 @@ copy() {
 }
 
 push_app() {
-	echo "Copying the welcome app"
+	echo "Copying the launcher"
 	# rsync replaces the file instead of writing into it, so the running copy is unaffected.
-	copy "$TARGET/usr/bin/welcome" "$DEVICE:/usr/bin/welcome"
-	on_device /etc/init.d/S90welcome restart
+	copy "$TARGET/usr/bin/launcher" "$DEVICE:/usr/bin/launcher"
+	on_device /etc/init.d/S90launcher restart
 }
 
 push_rootfs() {
@@ -45,7 +45,7 @@ push_rootfs() {
 		--exclude=/tmp/ --exclude=/mnt/ --exclude=/media/ --exclude=/root/ \
 		--exclude=/var/ --exclude=/etc/dropbear \
 		"$TARGET/" "$DEVICE:/"
-	on_device /etc/init.d/S90welcome restart
+	on_device /etc/init.d/S90launcher restart
 	echo "Changed init scripts take effect after a reboot."
 }
 

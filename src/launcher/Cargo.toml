@@ -1,9 +1,9 @@
 [package]
-name = "welcome"
+name = "launcher"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-description = "Framebuffer welcome screen for the RG35XX SP"
+description = "Game launcher and libretro frontend for the RG35XX SP"
 
 [dependencies]
 jiff = { version = "0.2.40", default-features = false, features = ["std"] }

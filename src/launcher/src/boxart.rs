@@ -104,7 +104,7 @@ mod tests {
 
     #[test]
     fn covers_are_found_by_the_game_name_and_cached() {
-        let dir = std::env::temp_dir().join(format!("welcome-boxart-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("launcher-boxart-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let mut bytes = b"P6 1 1 255\n".to_vec();
         bytes.extend_from_slice(&[1, 2, 3]);

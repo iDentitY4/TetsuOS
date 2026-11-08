@@ -1,6 +1,0 @@
-config BR2_PACKAGE_WELCOME
-	bool "welcome"
-	depends on BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS
-	select BR2_PACKAGE_HOST_RUSTC
-	help
-	  Framebuffer welcome screen for the RG35XX SP.

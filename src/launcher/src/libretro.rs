@@ -1643,7 +1643,7 @@ mod tests {
 
     #[test]
     fn a_save_is_only_written_when_it_changes() {
-        let dir = std::env::temp_dir().join(format!("welcome-save-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("launcher-save-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("game.srm");
         let mut progress = vec![1u8; 8];

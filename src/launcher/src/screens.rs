@@ -732,7 +732,7 @@ pub fn fast_forward_sign(on: bool) -> Canvas {
 }
 
 /// The kernel's boot logo, shown centred on black until the launcher starts. It is made
-/// with `welcome --preview-splash` and kept as `board/rg35xxsp/logo.ppm`.
+/// with `launcher --preview-splash` and kept as `board/rg35xxsp/logo.ppm`.
 pub fn splash() -> Canvas {
     let (title, subtitle) = ("RG35XX SP", "LINUX");
     let width = text_width(title, 6) + 16;

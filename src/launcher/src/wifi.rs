@@ -192,7 +192,7 @@ pub struct Control {
 
 impl Control {
     pub fn open(path: &Path) -> io::Result<Self> {
-        let local = PathBuf::from(format!("/tmp/welcome-wpa-{}", std::process::id()));
+        let local = PathBuf::from(format!("/tmp/launcher-wpa-{}", std::process::id()));
         let _ = std::fs::remove_file(&local);
         let socket = UnixDatagram::bind(&local)?;
         let control = Self { socket, local };

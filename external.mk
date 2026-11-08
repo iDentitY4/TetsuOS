@@ -6,7 +6,7 @@ include $(sort $(wildcard $(BR2_EXTERNAL_RG35XXSP_PATH)/package/*/*.mk))
 MESA3D_CONF_OPTS += -Dllvm=disabled
 
 # The boot logo, shown centred until the launcher starts. It is a plain-text PPM,
-# made with `welcome --preview-splash`, because the kernel's converter reads no other.
+# made with `launcher --preview-splash`, because the kernel's converter reads no other.
 define RG35XXSP_LINUX_BOOT_LOGO
 	cp $(BR2_EXTERNAL_RG35XXSP_PATH)/board/rg35xxsp/logo.ppm \
 		$(LINUX_DIR)/drivers/video/logo/logo_linux_clut224.ppm

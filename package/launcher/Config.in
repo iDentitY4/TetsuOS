@@ -1,0 +1,7 @@
+config BR2_PACKAGE_LAUNCHER
+	bool "launcher"
+	depends on BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS
+	select BR2_PACKAGE_HOST_RUSTC
+	help
+	  The game launcher and libretro frontend for the RG35XX SP,
+	  drawing to the framebuffer.

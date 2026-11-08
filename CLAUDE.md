@@ -1,18 +1,19 @@
 # RG35XX SP Linux
 
 A custom Linux OS for the Anbernic RG35XX SP (Allwinner H700), growing into a
-retro gaming OS. It is a Buildroot external tree with a Rust welcome screen.
+retro gaming OS. It is a Buildroot external tree with a Rust launcher (`src/launcher`, renamed from
+`welcome` on 2026-11-08).
 `README.md` covers building, flashing and failed-boot debugging.
 
 ## Current state (2026-11-08)
 
 Working on the test unit, confirmed by the user:
 
-- Boots to the welcome screen
+- Boots to the launcher
 - Power button starts the device, and a short press shuts it down
 - USB-C root console
 - Boot log saved at about 15 and 60 seconds after init starts
-- The welcome screen shows each control as it is pressed: filled while held, outlined
+- The button test shows each control as it is pressed: filled while held, outlined
   once seen, with the last press named below. An unlisted key shows as `KEY <code>`.
 - Audio: speakers and headphones play, and outputs switch automatically with the jack,
   including during playback and when booting with headphones plugged in
@@ -22,11 +23,11 @@ Working on the test unit, confirmed by the user:
   no visible tearing. The GPU runs at a fixed 432 MHz, because there is no clock scaling
   table yet
 
-- A launcher in the welcome app lists games from `/mnt/data/roms`, with the button test as
+- The launcher lists games from `/mnt/data/roms`, with the button test as
   a menu entry and working volume buttons
 - A libretro frontend in the same app, in `libretro.rs`, runs the mGBA core from
   `package/libretro-mgba`. Pokemon FireRed runs at 59.7 fps with clean sound and no tearing,
-  at about 50 C. Holding Menu + Start leaves a game. `/var/log/welcome.log` has timings
+  at about 50 C. Holding Menu + Start leaves a game. `/var/log/launcher.log` has timings
 - Games and saves are in `roms` and `saves` on the RGDATA partition. They survive leaving a
   game, rebooting and reflashing with `flash.sh`
 - CPU speed scaling, up to 1512 MHz on this chip. It was fixed at 1008 MHz before, which
@@ -113,7 +114,7 @@ Built but not yet tested on the device:
   warnings such as `4021000.mmc: card claims to support voltages below defined range`
   still printed over the logo, as the user saw, because tty3 isn't allocated that
   early and the kernel falls back to the visible tty1. The
-  logo is `board/rg35xxsp/logo.ppm`, a plain PPM made with `welcome --preview-splash`,
+  logo is `board/rg35xxsp/logo.ppm`, a plain PPM made with `launcher --preview-splash`,
   copied over the kernel's by a hook in `external.mk`, and shown centred from about
   0.44 s after the kernel starts. The init scripts take 0.01 to 0.04 s each.
   `scripts/push.sh uboot` writes U-Boot at 8 KiB on the card over SSH and checks it by
@@ -186,7 +187,7 @@ Built but not yet tested on the device:
   its place. Games' low-battery warning and shutdown don't change. Like the accent, it is
   a runtime value in `canvas.rs`, set when each process starts. Saved as `battery=`.
   Groups now have room for 5 settings (`MAX_GROUP_SETTINGS`). Claude checked all three on
-  the device, WHEN LOW with a fake 9% battery through `WELCOME_BATTERY_DIR`; the test
+  the device, WHEN LOW with a fake 9% battery through `LAUNCHER_BATTERY_DIR`; the test
   unit is back on PERCENT
 - Covers in lists: Settings > BOX ART > COVERS IN LISTS, ON or OFF. Off leaves out the
   art panel, so names have the whole width, about 49 characters instead of 31. Saved as
@@ -252,7 +253,7 @@ Built but not yet tested on the device:
   default) downloads; the `png` crate decodes (`png.rs`); covers are shrunk by area
   averaging. The screen shows progress, B stops after the current game, the lid stops the
   download before sleeping (sleep leaves the network), and games with no cover are listed.
-  The PNG tests use images from `src/welcome/testdata/make.py`. Claude checked all 38
+  The PNG tests use images from `src/launcher/testdata/make.py`. Claude checked all 38
   cached covers decode exactly as Pillow does, then on the device: all 38 downloaded in
   about a minute, at the script's sizes with a mean difference of at most 4.2 of 255
   (Lanczos against area averaging), the closest-name fallback, a game with no cover, B
@@ -283,7 +284,7 @@ Built but not yet tested on the device:
   to 8 frames, keeping only the last frame's picture and sound, so sound keeps flowing.
   A `>>` shows in the top-right corner, and the CPU is held at 1008 MHz meanwhile. A Game
   Boy game reached about 5x with no underruns; at an 8 ms budget it missed refreshes and
-  the sound ran out. The welcome log's statistics show the speed. The user confirmed it
+  the sound ran out. The launcher log's statistics show the speed. The user confirmed it
   works; the sound is very choppy, especially on NES, which the user accepts
 - Sound rate from measured samples. The first 30 frames run silent while the frontend
   counts samples per frame, then aplay starts at the matching rate (`playback_rate`).
@@ -302,8 +303,8 @@ Built but not yet tested on the device:
   below, or under 3.35 V, read twice 5 seconds apart, the game saves as when quitting,
   shows BATTERY EMPTY and exits with code 3, and the launcher powers off. The launcher
   also powers off when it reads empty. Closing the lid in a game saves its resume state,
-  and the launcher waits 500 ms before sleeping. `WELCOME_BATTERY_DIR` and
-  `WELCOME_POWEROFF` point the battery reading at test files and replace `poweroff`.
+  and the launcher waits 500 ms before sleeping. `LAUNCHER_BATTERY_DIR` and
+  `LAUNCHER_POWEROFF` point the battery reading at test files and replace `poweroff`.
   Claude tested the warning, the empty path and the lid save on the device with those;
   a real empty battery hasn't been tried
 
@@ -342,7 +343,7 @@ Not working yet:
 - USB host mode is disabled, so USB accessories don't work
 - The wrong-password message over Wi-Fi is untested
 - An occasional single audio underrun during play, sometimes at the start, seen in
-  `/var/log/welcome.log`. It was there without the menu. Not yet investigated
+  `/var/log/launcher.log`. It was there without the menu. Not yet investigated
 
 The kernel is trimmed to the Allwinner platform with modules off, and the user confirmed
 that it boots and that everything still works, including power-off. The image went from
@@ -361,9 +362,16 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
 
 ## Next steps
 
-Agreed with the user on 2026-11-08, in this order:
+Agreed with the user on 2026-11-08, in this order, each shown to the user before the next:
 
-1. Rewind, moved to the end by the user
+1. Refactor, after renaming `welcome` to `launcher` (done): keep settings in memory
+   instead of re-reading `settings.txt` about 15 times per redraw, with less per-option
+   boilerplate; split `main.rs` into modules; use `libc`, `libloading` and `evdev`
+   instead of hand-declared FFI and raw `input_event` decoding; replace the global
+   theme atomics with a `Theme` value and let `SettingsView` take the settings; move
+   box art downloads into the app with `ureq` and `rustls` plus `serde_json`, dropping
+   the curl, mbedTLS and CA-certificate packages
+2. Rewind, moved to the end by the user
 
 Proposed, not yet confirmed by the user:
 
@@ -425,8 +433,8 @@ Proposed, not yet confirmed by the user:
   the DAC never runs and playback fails with error -5.
 - **Headphones are silent while the `Speaker` path is on,** so the two can't play at once.
 - **The display is `card1`,** because Panfrost now takes `card0`. Name it explicitly, as
-  in `kmscube -D /dev/dri/card1`, and stop the welcome app first with
-  `/etc/init.d/S90welcome stop`.
+  in `kmscube -D /dev/dri/card1`, and stop the launcher first with
+  `/etc/init.d/S90launcher stop`.
 - **`kmscube` quits on any waiting input,** printing `user interrupted!`. Paste its test
   as one line, because lines pasted after it count as input. Over SSH, closed input also
   counts, so give it open input: `sleep 30 | kmscube -D /dev/dri/card1 -c 600`.
@@ -462,9 +470,9 @@ Proposed, not yet confirmed by the user:
 - `board/rg35xxsp/extlinux.conf`, `genimage.cfg`, `post-image.sh`: SD card image
 - `board/rg35xxsp/post-build.sh`: removes unused Mesa build dependencies from the rootfs
 - `external.mk`: includes the packages, and builds Mesa without LLVM
-- `package/welcome/`, `package/libretro-*/`: Buildroot packages for the app and the cores
-- `src/welcome/`: Rust launcher and libretro frontend. Crates are fine to use; Buildroot
-  vendors them in a pre-build hook in `package/welcome/welcome.mk`, because a `local`
+- `package/launcher/`, `package/libretro-*/`: Buildroot packages for the app and the cores
+- `src/launcher/`: Rust launcher and libretro frontend. Crates are fine to use; Buildroot
+  vendors them in a pre-build hook in `package/launcher/launcher.mk`, because a `local`
   package skips Buildroot's download-time vendoring. They are cached in `dl/br-cargo-home`
 - `scripts/flash.sh`: checked SD card flashing
 - `scripts/push.sh`: copies build output to the running device over the USB network link
@@ -480,8 +488,8 @@ Use `command make`, because `make` is a shell alias on this machine.
 ```sh
 command make                # full build: output/images/sdcard.img
 command make config         # required after changing configs/rg35xxsp_defconfig
-command make preview        # renders welcome-preview.ppm on the PC
-cd src/welcome && cargo test
+command make preview        # renders launcher-preview.ppm on the PC
+cd src/launcher && cargo test
 ```
 
 Kernel config, fragment and patch changes need a clean package rebuild, then a normal
@@ -495,9 +503,9 @@ command make
 
 The targets are `linux-dirclean`, `uboot-dirclean` and `busybox-dirclean`. Kernel or
 U-Boot rebuilds take several minutes, so run them in the background. Overlay-only
-changes just need `command make`. The welcome app is a `local` package, which Buildroot
-doesn't copy again once built, so app changes need `welcome-rebuild` before
-`command make`. Check with `strings output/target/usr/bin/welcome` that new text landed.
+changes just need `command make`. The launcher is a `local` package, which Buildroot
+doesn't copy again once built, so app changes need `launcher-rebuild` before
+`command make`. Check with `strings output/target/usr/bin/launcher` that new text landed.
 
 ## Testing on the device
 
@@ -520,9 +528,9 @@ anything physical like the lid:
   ask whether the device is awake with the cable in.
 - **Commands on the device:** `ssh -o StrictHostKeyChecking=no -o
   UserKnownHostsFile=/dev/null root@10.35.35.1 '<command>'`, for logs, `dmesg` and sysfs.
-- **Without USB networking:** copy `output/target/usr/bin/welcome` to the mounted card's
-  first partition, then on the device run `/etc/init.d/S90welcome stop`, copy it to
-  `/usr/bin/welcome`, and start the script again. A new `.dtb` can be copied to the
+- **Without USB networking:** copy `output/target/usr/bin/launcher` to the mounted card's
+  first partition, then on the device run `/etc/init.d/S90launcher stop`, copy it to
+  `/usr/bin/launcher`, and start the script again. A new `.dtb` can be copied to the
   mounted `RGBOOT` partition. Verify with `cmp` and `sync`.
 - **USB recovery check:** with no card and the cable connected, power on and look for
   `1f3a:efe8` in `lsusb`. This shows the cable and port work without any of our code.

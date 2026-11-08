@@ -1,9 +1,9 @@
 # RG35XX SP Linux
 
 A custom Linux OS for the Anbernic RG35XX SP (Allwinner H700). It currently
-boots to a welcome screen, as the base for a retro gaming OS.
+boots to a game launcher, as the base for a retro gaming OS.
 
-**Status: boots to the welcome screen on an LPDDR3 RG35XX SP (first confirmed
+**Status: boots to the launcher on an LPDDR3 RG35XX SP (first confirmed
 2026-11-06). The power button and USB-C console also work on that unit. USB host
 mode is disabled, so USB accessories don't work yet.**
 
@@ -19,17 +19,17 @@ unit, read the 32-bit value at offset `0x3c` of its working boot0, which starts
 | Build system | Buildroot 2026.08.1, as an external tree |
 | Kernel | Linux 7.2.15 plus the display patches in `board/rg35xxsp/patches/` |
 | Bootloader | U-Boot 2026.10 and TF-A v2.12 |
-| Welcome screen | Rust app in `src/welcome/`, drawing to `/dev/fb0` |
+| Launcher | Rust app in `src/launcher/`, drawing to `/dev/fb0` |
 
 ## Build
 
 ```sh
 make            # full build; the image is output/images/sdcard.img
-make preview    # renders the screen to welcome-preview.ppm on this PC
+make preview    # renders the screen to launcher-preview.ppm on this PC
 ```
 
 The first build compiles a cross-toolchain, so it takes a while. To run the app
-tests, use `cargo test` in `src/welcome/`.
+tests, use `cargo test` in `src/launcher/`.
 
 ## Flash and boot
 
@@ -60,7 +60,7 @@ USB/OTG port is also a network adapter: the device is `10.35.35.1` and gives the
 `10.35.35.2`, which NetworkManager picks up without setup. After `make`, run:
 
 ```sh
-scripts/push.sh app      # the welcome app, restarted in about a second
+scripts/push.sh app      # the launcher, restarted in about a second
 scripts/push.sh rootfs   # changed root filesystem files, without deleting any
 scripts/push.sh boot     # kernel, device tree and extlinux.conf, then a reboot
 scripts/push.sh all      # rootfs, then boot

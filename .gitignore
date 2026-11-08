@@ -1,6 +1,6 @@
 /buildroot-*/
 /dl/
 /output/
-/welcome-preview.ppm
-/src/welcome/target/
+/launcher-preview.ppm
+/src/launcher/target/
 /muos-boot0.bin

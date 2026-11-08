@@ -23,7 +23,7 @@ mod tests {
 
     #[test]
     fn replaces_the_contents_and_leaves_no_temporary_file() {
-        let dir = std::env::temp_dir().join(format!("welcome-storage-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("launcher-storage-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("file.state1");
         write_atomic(&path, b"first").unwrap();
