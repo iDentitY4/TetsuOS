@@ -311,7 +311,15 @@ Built but not yet tested on the device:
     also the driver's maximum. A software stop at a percentage (turning charging off
     through `status`) was left out: a crash could leave charging off. Claude checked
     that each value reached `voltage_max` and that FULL started charging again; the user
-    saw the charge level behave so far, but not yet over a whole charge
+    saw the charge level behave so far, but not yet over a whole charge. The orange light
+    can blink after choosing 85% or 70% with the battery above that limit. While it
+    blinked at 85% (4.16 V, USB in), `0x01` read `0x95` and `0x4a` had bit 0 set (battery
+    over-voltage), with health Good and `0x02` clear. Writing 4.2 V and then 4.1 V gave a
+    few seconds of charging, then `0x94` and no over-voltage bit, and the blinking was
+    found stopped. Unplugging and replugging USB after that gave one blink only, with the
+    same readings. The cause is inferred: no AXP717 charger or LED documentation was found
+    (the AXP717D datasheet has neither), and what starts the blinking wasn't reproduced.
+    No harm was seen. `current_now` has an unknown offset, so about 425 mA here isn't real
   - BOOT MESSAGES (`boot_partition.rs`): LOGO is `console=ttynull loglevel=5`, as before;
     TEXT is `console=tty1 loglevel=7`, so kernel and init messages show until the
     launcher draws. The launcher mounts TETSU-BOOT at `/run/launcher-boot`, changes only
