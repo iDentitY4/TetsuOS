@@ -21,8 +21,9 @@ Working on the test unit, confirmed by the user:
   no visible tearing. The GPU runs at a fixed 432 MHz, because there is no clock scaling
   table yet
 
-- The launcher lists games from `/mnt/data/roms`, with the button test as
-  a menu entry and working volume buttons
+- The launcher lists games from `/mnt/data/roms` and the folders inside it, in any
+  arrangement, as the file extension decides the console; hidden files and folders are
+  left out. It has the button test as a menu entry and working volume buttons
 - A libretro frontend in the same app, in `libretro.rs`, runs the mGBA core from
   `package/libretro-mgba`. Pokemon FireRed runs at 59.7 fps with clean sound and no tearing,
   at about 50 C. Holding Menu + Start leaves a game. `/var/log/launcher.log` has timings

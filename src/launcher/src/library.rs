@@ -5,17 +5,29 @@ use crate::icons;
 use crate::launcher::{Game, Launcher, Library, List, Shelf, Tile};
 use std::path::{Path, PathBuf};
 
-/// The games in a folder, sorted by name.
+/// The games in a folder and the folders inside it, sorted by path. A game's file extension
+/// decides its console, so folders can be arranged in any way. Hidden files and folders are
+/// left out, like the `._` files macOS leaves on a card, which end in a game's extension.
 pub(crate) fn find_roms(directory: &Path) -> Vec<PathBuf> {
-    let mut roms: Vec<PathBuf> = std::fs::read_dir(directory)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| system_for(path).is_some())
-        .collect();
+    let mut roms = Vec::new();
+    add_roms(directory, &mut roms);
     roms.sort();
     roms
+}
+
+fn add_roms(directory: &Path, roms: &mut Vec<PathBuf>) {
+    for entry in std::fs::read_dir(directory).into_iter().flatten().flatten() {
+        if entry.file_name().as_encoded_bytes().starts_with(b".") {
+            continue;
+        }
+        let path = entry.path();
+        // The entry's own type, so a link to a folder can't make this go round in circles.
+        if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+            add_roms(&path, roms);
+        } else if system_for(&path).is_some() {
+            roms.push(path);
+        }
+    }
 }
 
 pub(crate) fn rom_label(rom: &Path) -> String {
@@ -180,6 +192,20 @@ mod tests {
         }
         let names: Vec<String> = find_roms(&dir).iter().map(|rom| rom_label(rom)).collect();
         assert_eq!(names, ["a", "b", "c"]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn roms_are_found_in_folders_but_not_hidden_ones() {
+        let dir = std::env::temp_dir().join(format!("launcher-rom-folders-test-{}", std::process::id()));
+        for folder in ["GB", "PS1/Metal Slug X", ".Trash-1000"] {
+            std::fs::create_dir_all(dir.join(folder)).unwrap();
+        }
+        for name in ["top.nes", "GB/Tetris.gb", "GB/._Tetris.gb", "PS1/Metal Slug X/Metal Slug X.cue", "PS1/Metal Slug X/Metal Slug X.bin", ".Trash-1000/Old.gb"] {
+            std::fs::write(dir.join(name), []).unwrap();
+        }
+        let names: Vec<String> = find_roms(&dir).iter().map(|rom| rom_label(rom)).collect();
+        assert_eq!(names, ["Tetris", "Metal Slug X", "top"]);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
