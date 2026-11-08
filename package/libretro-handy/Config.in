@@ -1,0 +1,6 @@
+config BR2_PACKAGE_LIBRETRO_HANDY
+	bool "libretro-handy"
+	help
+	  The Handy emulator, as a libretro core: Atari Lynx.
+
+	  https://github.com/libretro/libretro-handy

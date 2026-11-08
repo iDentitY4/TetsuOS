@@ -84,6 +84,10 @@ BR2_PACKAGE_LIBRETRO_PCSX_REARMED=y
 BR2_PACKAGE_LIBRETRO_GENESIS_PLUS_GX=y
 # PC Engine emulator
 BR2_PACKAGE_LIBRETRO_BEETLE_PCE_FAST=y
+# Neo Geo Pocket, WonderSwan and Atari Lynx emulators
+BR2_PACKAGE_LIBRETRO_BEETLE_NGP=y
+BR2_PACKAGE_LIBRETRO_BEETLE_WSWAN=y
+BR2_PACKAGE_LIBRETRO_HANDY=y
 
 # GPU: OpenGL ES through Panfrost, which Buildroot only offers with LLVM. Mesa
 # itself is built without it (external.mk), and post-build.sh removes the rest.

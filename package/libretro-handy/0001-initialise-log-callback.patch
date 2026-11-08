@@ -1,0 +1,17 @@
+Don't call a garbage log callback when the frontend has no log interface
+
+retro_init read log.log from an uninitialised struct after the environment
+call failed, and the first message, the missing BIOS warning at load, then
+crashed the core.
+
+--- a/libretro/libretro.cpp
++++ b/libretro/libretro.cpp
+@@ -854,7 +854,7 @@
+ 
+ void retro_init(void)
+ {
+-   struct retro_log_callback log;
++   struct retro_log_callback log = { NULL };
+    uint64_t serialization_quirks = RETRO_SERIALIZATION_QUIRK_SINGLE_SESSION;
+    environ_cb(RETRO_ENVIRONMENT_GET_LOG_INTERFACE, &log);
+    if (log.log)

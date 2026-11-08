@@ -1,0 +1,7 @@
+config BR2_PACKAGE_LIBRETRO_BEETLE_NGP
+	bool "libretro-beetle-ngp"
+	help
+	  The Beetle NeoPop emulator, as a libretro core: Neo Geo Pocket
+	  and Neo Geo Pocket Color.
+
+	  https://github.com/libretro/beetle-ngp-libretro

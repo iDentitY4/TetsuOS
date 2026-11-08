@@ -135,7 +135,31 @@ Working on the test unit, confirmed by the user:
   so a hand-written 8 KiB card checked that the core boots, draws correct colours, runs
   at 373 fps, keeps its 2 KiB save and writes an 80 KB state. The user tried all four
   consoles on 2026-11-09 and confirmed they work
-- With 11 consoles a full home screen reached four rows, too short for a tile's text, so
+- Neo Geo Pocket and Color through `package/libretro-beetle-ngp` (`.ngp`; `.ngc`, `.ngpc`),
+  WonderSwan and Color through `package/libretro-beetle-wswan` (`.ws`; `.wsc`), and Atari
+  Lynx through `package/libretro-handy` (`.lnx`, `.lyx`). Handy was chosen over Beetle Lynx
+  because it has a built-in boot replacement, so no BIOS file is needed. Its `retro_init`
+  reads a log callback from an uninitialised struct when the frontend has no log interface,
+  and crashed on its first message, so `0001-initialise-log-callback.patch` starts it at
+  NULL. All show in their own shape, with no `CoreSetup::aspect`. WonderSwan's native 75 Hz
+  would play 20% slow when paced by the panel, but the core's default 60 Hz mode runs 5
+  frames per 4 refreshes and reports 60.38 fps. WonderSwan has no Select button, so Select
+  rotates the picture for vertical games: the core does it in software when `SET_ROTATION`
+  fails, and has no automatic choice. Lynx rotates by the cartridge header, and Select
+  overrides it. Two of these save outside the frontend's save memory: Neo Geo Pocket writes
+  `saves/<game>.flash` when a game unloads, which every normal exit does, and resume states
+  carry the flash too; Lynx writes `saves/<game>.eeprom`. WonderSwan uses the `.srm` as
+  usual. Claude tested on the device from `/tmp` with homebrew: Asteroids Neo (Neo Geo
+  Pocket) emulates at 154 fps headless and played at about 59.5 fps with 8 ms of emulation
+  at 1008 MHz, a little under the panel's 59.94, so its feel is worth watching; Daybreak
+  Ledger (WonderSwan) at 337 fps, playing at 59.8 fps; and the cc65 template (Lynx) played
+  at 59.7 fps with 2.4 ms of emulation at 480 MHz. Save states and resume files were written
+  on all three with no errors, restarting showed Neo Geo Pocket and Lynx resuming, and Select
+  rotated WonderSwan. WonderSwan wasn't restarted to see it resume, and loading a state wasn't
+  checked by its picture on any of the three. Only a WonderSwan ROM renamed `.wsc` tested
+  that tile, and no game that actually saves to flash has been tried. Nobody has heard these
+  systems' sound or tried their controls
+- With more consoles a full home screen reached four rows, too short for a tile's text, so
   GRID SIZE's NORMAL now shows three rows at a time and pages beyond, as LARGE does
 
 Built but not yet tested on the device:

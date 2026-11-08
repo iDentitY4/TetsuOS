@@ -19,7 +19,8 @@ a drive.
 
 Games: NES (FCEUmm), SNES (Snes9x), Game Boy, Color and Advance (mGBA), PlayStation (PCSX
 ReARMed), Mega Drive, Master System and Game Gear (Genesis Plus GX), PC Engine (Beetle PCE
-Fast) and Tamagotchi (tamalib), with an in-game menu (8 save slots, levels, display
+Fast), Neo Geo Pocket and Color (Beetle NeoPop), WonderSwan and Color (Beetle Cygne), Lynx
+(Handy) and Tamagotchi (tamalib), with an in-game menu (8 save slots, levels, display
 options), resume on leaving and after power-off, fast-forward on R2, and sharp-bilinear
 scaling with CRT and LCD effects.
 
@@ -31,6 +32,7 @@ hidden tiles, start screen, game names, battery display, menu sounds and sleep w
 ## Not yet checked by the user
 
 - Game Boy SGB games without their border; PlayStation sound and feel
+- Neo Geo Pocket, WonderSwan and Lynx sound and controls; a Neo Geo Pocket game that saves
 - Sleep when idle: the screen dark while asleep, and waking with the power button
 - The lid since input moved to the `evdev` crate; the lid during a box art download
 - A game's own clock (Pokemon's RTC) showing local time

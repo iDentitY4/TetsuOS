@@ -33,9 +33,11 @@ pub(crate) struct System {
 
 pub(crate) const MGBA: &str = "/usr/lib/libretro/mgba_libretro.so";
 pub(crate) const GENESIS_PLUS_GX: &str = "/usr/lib/libretro/genesis_plus_gx_libretro.so";
+pub(crate) const BEETLE_NGP: &str = "/usr/lib/libretro/mednafen_ngp_libretro.so";
+pub(crate) const BEETLE_WSWAN: &str = "/usr/lib/libretro/mednafen_wswan_libretro.so";
 
 /// In the order the launcher lists them, which is by the console's release.
-pub(crate) const SYSTEMS: [System; 11] = [
+pub(crate) const SYSTEMS: [System; 16] = [
     System {
         console: "NES",
         key: "nes",
@@ -106,6 +108,20 @@ pub(crate) const SYSTEMS: [System; 11] = [
         short_save_names: false,
         setup: CoreSetup { aspect: None, declared_defaults: false },
         thumbnails: Some("Nintendo_-_Game_Boy"),
+    },
+    System {
+        console: "LYNX",
+        key: "lynx",
+        label: "LYNX",
+        icon: &icons::LYNX,
+        extensions: &["lnx", "lyx"],
+        core: "/usr/lib/libretro/handy_libretro.so",
+        persistence: Persistence::BatteryRam,
+        save_extension: "srm",
+        rom_size: None,
+        short_save_names: false,
+        setup: CoreSetup { aspect: None, declared_defaults: true },
+        thumbnails: Some("Atari_-_Lynx"),
     },
     System {
         console: "GAME GEAR",
@@ -179,6 +195,62 @@ pub(crate) const SYSTEMS: [System; 11] = [
         short_save_names: false,
         setup: CoreSetup { aspect: None, declared_defaults: false },
         thumbnails: Some("Nintendo_-_Game_Boy_Color"),
+    },
+    System {
+        console: "NEO GEO POCKET",
+        key: "ngp",
+        label: "NEO POCKET",
+        icon: &icons::NEO_POCKET,
+        extensions: &["ngp"],
+        core: BEETLE_NGP,
+        persistence: Persistence::BatteryRam,
+        save_extension: "srm",
+        rom_size: None,
+        short_save_names: false,
+        setup: CoreSetup { aspect: None, declared_defaults: true },
+        thumbnails: Some("SNK_-_Neo_Geo_Pocket"),
+    },
+    System {
+        console: "NEO GEO POCKET COLOR",
+        key: "ngpc",
+        label: "NGP COLOR",
+        icon: &icons::NEO_POCKET_COLOR,
+        extensions: &["ngc", "ngpc"],
+        core: BEETLE_NGP,
+        persistence: Persistence::BatteryRam,
+        save_extension: "srm",
+        rom_size: None,
+        short_save_names: false,
+        setup: CoreSetup { aspect: None, declared_defaults: true },
+        thumbnails: Some("SNK_-_Neo_Geo_Pocket_Color"),
+    },
+    System {
+        console: "WONDERSWAN",
+        key: "ws",
+        label: "WONDERSWAN",
+        icon: &icons::WONDERSWAN,
+        extensions: &["ws"],
+        core: BEETLE_WSWAN,
+        persistence: Persistence::BatteryRam,
+        save_extension: "srm",
+        rom_size: None,
+        short_save_names: false,
+        setup: CoreSetup { aspect: None, declared_defaults: true },
+        thumbnails: Some("Bandai_-_WonderSwan"),
+    },
+    System {
+        console: "WONDERSWAN COLOR",
+        key: "wsc",
+        label: "WS COLOR",
+        icon: &icons::WONDERSWAN_COLOR,
+        extensions: &["wsc"],
+        core: BEETLE_WSWAN,
+        persistence: Persistence::BatteryRam,
+        save_extension: "srm",
+        rom_size: None,
+        short_save_names: false,
+        setup: CoreSetup { aspect: None, declared_defaults: true },
+        thumbnails: Some("Bandai_-_WonderSwan_Color"),
     },
     System {
         console: "GAME BOY ADVANCE",
@@ -270,6 +342,13 @@ mod tests {
             ("a.smd", "genesis_plus_gx"),
             ("a.gg", "genesis_plus_gx"),
             ("a.pce", "pce_fast"),
+            ("a.lnx", "handy"),
+            ("a.lyx", "handy"),
+            ("a.ngp", "ngp"),
+            ("a.ngc", "ngp"),
+            ("a.ngpc", "ngp"),
+            ("a.ws", "wswan"),
+            ("a.wsc", "wswan"),
         ] {
             assert!(system_for(Path::new(name)).unwrap().core.contains(core), "{name}");
         }
