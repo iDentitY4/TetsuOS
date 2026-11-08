@@ -248,10 +248,12 @@ Built but not yet tested on the device:
   games without one, DOWNLOAD ALL COVERS AGAIN replaces each cover once its new one is
   saved, and DELETE ALL COVERS removes every `.ppm`, including those of removed games.
   The group shows how many games have a cover. Each console's collection is
-  `thumbnails` in `SYSTEMS`. curl (with mbedTLS, checking certificates against
-  `/etc/ssl/certs/ca-certificates.crt`, passed as `--cacert` because this curl has no
-  default) downloads; the `png` crate decodes (`png.rs`); covers are shrunk by area
-  averaging. The screen shows progress, B stops after the current game, the lid stops the
+  `thumbnails` in `SYSTEMS`. The app downloads over HTTPS itself (`boxart_fetch::Https`:
+  `ureq` with rustls, HTTPS only, checking certificates against the Mozilla roots built in
+  by `webpki-roots`, so the device has no curl or certificate files since 2026-11-08);
+  `serde_json` reads GitHub's file listing; the `png` crate decodes (`png.rs`); covers are
+  shrunk by area averaging. After the switch from curl, four covers downloaded again were
+  byte-identical to curl's. The screen shows progress, B stops after the current game, the lid stops the
   download before sleeping (sleep leaves the network), and games with no cover are listed.
   The PNG tests use images from `src/launcher/testdata/make.py`. Claude checked all 38
   cached covers decode exactly as Pillow does, then on the device: all 38 downloaded in
@@ -390,11 +392,11 @@ pixel-identical apart from the live clock.
 
 Agreed with the user on 2026-11-08, in this order, each shown to the user before the next:
 
-1. Refactor, after renaming `welcome` to `launcher`, keeping settings in memory,
-   splitting `main.rs` into modules, using crates for system calls and passing the theme
-   as a value (all done): move box art downloads into the app with `ureq` and `rustls` plus `serde_json`, dropping
-   the curl, mbedTLS and CA-certificate packages
-2. Rewind, moved to the end by the user
+1. Rewind, moved to the end by the user
+
+The refactor agreed on 2026-11-08 is done: `welcome` renamed to `launcher`, settings kept
+in memory, `main.rs` split into modules, crates for system calls and input, the theme as
+a value, and box art downloads inside the app.
 
 Proposed, not yet confirmed by the user:
 

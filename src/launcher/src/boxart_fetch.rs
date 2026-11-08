@@ -1,23 +1,25 @@
 //! Downloads box art over Wi-Fi, as `scripts/boxart.py` does over USB. Covers come from
 //! the libretro-thumbnails collections on GitHub, which are named after No-Intro file
-//! names like the games. They are fetched with curl, decoded by `png`, shrunk to the art
-//! panel and saved as PPM files where `boxart::BoxArt` reads them. Games that already have
+//! names like the games. They are fetched over HTTPS with `ureq`, decoded by `png`, shrunk
+//! to the art panel and saved as PPM files where `boxart::BoxArt` reads them. Games that already have
 //! a cover are skipped, so running it again only fetches new games.
 
 use crate::boxart::Image;
 use crate::canvas::Rgb;
 use crate::png;
 use crate::storage::write_atomic;
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
+use std::time::Duration;
 
 const RAW_URL: &str = "https://raw.githubusercontent.com/libretro-thumbnails";
 const TREE_URL: &str = "https://api.github.com/repos/libretro-thumbnails";
-const CA_BUNDLE: &str = "/etc/ssl/certs/ca-certificates.crt";
+/// The most a download may be. GitHub's listing of the PlayStation covers is a few MB.
+const MAX_DOWNLOAD: u64 = 64 << 20;
 /// The art panel in the launcher's game lists.
 pub const MAX_SIZE: (usize, usize) = (200, 300);
 /// How many symbolic link stubs are followed from one name.
@@ -55,33 +57,48 @@ pub trait Source {
     fn get(&self, url: &str) -> Result<Option<Vec<u8>>, String>;
 }
 
-pub struct Curl;
+/// Downloads over HTTPS inside the app: `ureq` with rustls, checking certificates against
+/// the Mozilla roots built in by `webpki-roots`, so the device needs no certificate files.
+pub struct Https {
+    agent: ureq::Agent,
+}
 
-impl Source for Curl {
+impl Https {
+    pub fn new() -> Self {
+        let config = ureq::Agent::config_builder()
+            .https_only(true)
+            .timeout_connect(Some(Duration::from_secs(15)))
+            .timeout_global(Some(Duration::from_secs(60)))
+            .build();
+        Self { agent: config.into() }
+    }
+}
+
+impl Source for Https {
     fn get(&self, url: &str) -> Result<Option<Vec<u8>>, String> {
-        let output = Command::new("curl")
-            .args(["--fail", "--silent", "--show-error", "--location", "--proto", "=https"])
-            .args(["--connect-timeout", "15", "--max-time", "60", "--cacert", CA_BUNDLE])
-            .arg(url)
-            .output()
-            .map_err(|error| {
-                eprintln!("boxart: could not run curl: {error}");
-                "CURL IS MISSING".to_string()
-            })?;
-        match output.status.code() {
-            Some(0) => Ok(Some(output.stdout)),
+        let result = self.agent.get(url).call().and_then(|mut response| {
+            response.body_mut().with_config().limit(MAX_DOWNLOAD).read_to_vec()
+        });
+        match result {
+            Ok(bytes) => Ok(Some(bytes)),
             // The server answered with an error, which for a cover means there is none.
-            Some(22) => Ok(None),
-            code => {
-                let message = String::from_utf8_lossy(&output.stderr);
-                eprintln!("boxart: curl failed ({code:?}) for {url}: {}", message.trim());
-                Err(match code {
-                    Some(6 | 7 | 28) => "NO CONNECTION TO GITHUB".into(),
-                    Some(35 | 60) => "SECURE CONNECTION FAILED - CHECK THE DATE".into(),
-                    _ => "DOWNLOAD FAILED".into(),
-                })
+            Err(ureq::Error::StatusCode(_)) => Ok(None),
+            Err(error) => {
+                eprintln!("boxart: download failed for {url}: {error}");
+                Err(failure_message(&error).into())
             }
         }
+    }
+}
+
+/// What the screen says about a download that failed.
+fn failure_message(error: &ureq::Error) -> &'static str {
+    match error {
+        ureq::Error::HostNotFound | ureq::Error::ConnectionFailed | ureq::Error::Timeout(_) | ureq::Error::Io(_) => {
+            "NO CONNECTION TO GITHUB"
+        }
+        ureq::Error::Tls(_) | ureq::Error::Rustls(_) => "SECURE CONNECTION FAILED - CHECK THE DATE",
+        _ => "DOWNLOAD FAILED",
     }
 }
 
@@ -128,6 +145,17 @@ fn fetch_cover(source: &dyn Source, collection: &str, name: &str) -> Result<Opti
     Ok(data.filter(|bytes| bytes.starts_with(PNG_SIGNATURE)))
 }
 
+/// GitHub's listing of a repository's files, as far as it is read.
+#[derive(Deserialize)]
+struct Listing {
+    tree: Vec<ListedFile>,
+}
+
+#[derive(Deserialize)]
+struct ListedFile {
+    path: String,
+}
+
 /// Every cover name in a collection, from GitHub's listing of its files. Empty if the
 /// listing can't be had, such as past GitHub's limit of 60 listings an hour.
 fn cover_names(source: &dyn Source, collection: &str) -> Result<Vec<String>, String> {
@@ -136,66 +164,18 @@ fn cover_names(source: &dyn Source, collection: &str) -> Result<Vec<String>, Str
         eprintln!("boxart: no file listing for {collection}");
         return Ok(Vec::new());
     };
-    Ok(json_strings_after(&String::from_utf8_lossy(&listing), "\"path\"")
-        .into_iter()
-        .filter_map(|path| path.strip_prefix("Named_Boxarts/")?.strip_suffix(".png").map(String::from))
-        .collect())
-}
-
-/// The JSON string values that follow each occurrence of `key`, such as every `"path"`.
-/// Enough of JSON for GitHub's listing, without a parser.
-fn json_strings_after(json: &str, key: &str) -> Vec<String> {
-    let mut values = Vec::new();
-    let mut rest = json;
-    while let Some(found) = rest.find(key) {
-        rest = &rest[found + key.len()..];
-        let Some(after_colon) = rest.trim_start().strip_prefix(':') else { continue };
-        let Some(body) = after_colon.trim_start().strip_prefix('"') else { continue };
-        let (value, remaining) = json_string(body);
-        values.push(value);
-        rest = remaining;
-    }
-    values
-}
-
-/// Reads a JSON string body up to its closing quote. Returns it and what follows.
-fn json_string(body: &str) -> (String, &str) {
-    let mut value = String::new();
-    let mut chars = body.char_indices();
-    let mut pending_high: Option<u32> = None;
-    while let Some((index, c)) = chars.next() {
-        match c {
-            '"' => return (value, &body[index + 1..]),
-            '\\' => {
-                let Some((_, escape)) = chars.next() else { break };
-                match escape {
-                    'n' => value.push('\n'),
-                    't' => value.push('\t'),
-                    'r' => value.push('\r'),
-                    'b' => value.push('\u{8}'),
-                    'f' => value.push('\u{c}'),
-                    'u' => {
-                        let hex: String = chars.by_ref().take(4).map(|(_, c)| c).collect();
-                        let Ok(unit) = u32::from_str_radix(&hex, 16) else { continue };
-                        if (0xD800..0xDC00).contains(&unit) {
-                            pending_high = Some(unit);
-                            continue;
-                        }
-                        let code = match pending_high.take() {
-                            Some(high) if (0xDC00..0xE000).contains(&unit) => {
-                                0x10000 + ((high - 0xD800) << 10) + (unit - 0xDC00)
-                            }
-                            _ => unit,
-                        };
-                        value.push(char::from_u32(code).unwrap_or('\u{FFFD}'));
-                    }
-                    other => value.push(other),
-                }
-            }
-            _ => value.push(c),
+    let listing: Listing = match serde_json::from_slice(&listing) {
+        Ok(listing) => listing,
+        Err(error) => {
+            eprintln!("boxart: unreadable file listing for {collection}: {error}");
+            return Ok(Vec::new());
         }
-    }
-    (value, "")
+    };
+    Ok(listing
+        .tree
+        .into_iter()
+        .filter_map(|file| file.path.strip_prefix("Named_Boxarts/")?.strip_suffix(".png").map(String::from))
+        .collect())
 }
 
 /// Splits "Tetris DX (World) (SGB Enhanced)" into "tetris dx" and its tags.
@@ -365,7 +345,7 @@ pub fn spawn(jobs: Vec<Job>, directory: PathBuf, stop: Arc<AtomicBool>) -> Recei
         if let Err(error) = std::fs::create_dir_all(&directory) {
             eprintln!("boxart: could not make {}: {error}", directory.display());
         }
-        let summary = run(&Curl, &jobs, &directory, &stop, &sender);
+        let summary = run(&Https::new(), &jobs, &directory, &stop, &sender);
         println!("boxart: {} covers saved, {} not found", summary.found, summary.missing.len());
         let _ = sender.send(Progress::Finished(summary));
     });
@@ -396,6 +376,14 @@ mod tests {
 
     fn test_png() -> Vec<u8> {
         std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("testdata/rgb.png")).unwrap()
+    }
+
+    #[test]
+    fn failures_say_what_went_wrong() {
+        assert_eq!(failure_message(&ureq::Error::HostNotFound), "NO CONNECTION TO GITHUB");
+        assert_eq!(failure_message(&ureq::Error::ConnectionFailed), "NO CONNECTION TO GITHUB");
+        assert_eq!(failure_message(&ureq::Error::Tls("bad certificate")), "SECURE CONNECTION FAILED - CHECK THE DATE");
+        assert_eq!(failure_message(&ureq::Error::TooManyRedirects), "DOWNLOAD FAILED");
     }
 
     #[test]
