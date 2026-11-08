@@ -206,7 +206,10 @@ pub(crate) fn launcher_canvas(
             };
             screens::settings_screen(width, height, &view, &frame)
         }
-        Screen::Info => screens::info_screen(width, height, &system_info(battery), &frame),
+        Screen::Info => {
+            let games = library.shelves.iter().map(|shelf| shelf.games.len()).sum();
+            screens::info_screen(width, height, &system_info(battery, games), &frame)
+        }
         Screen::HomeTiles => {
             let rows: Vec<screens::TileToggle> = library
                 .every_tile()

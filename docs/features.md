@@ -240,6 +240,14 @@ Built but not yet tested on the device:
   room for. Settings that can't be undone (delete covers, reboot, power off) need A
   twice. Group icons are in `icons.rs`. Claude checked each screen on the device; not yet
   seen by the user
+- System info (`system_info.rs`) shows 11 lines, as many as the screen has room for:
+  battery with voltage, game storage, game count (a `.cue` and its `.bin` count once),
+  available memory, CPU speed and temperature, the Wi-Fi network and address (from
+  wpa_supplicant's `STATUS`), the USB address, time since boot, kernel release and build
+  date, the system build and the app version. The system build is the project's git
+  revision, which Buildroot writes to `VERSION` in `/etc/os-release`; MODIFIED means
+  it was built with uncommitted changes. It reads once per redraw (a key press, a new
+  minute or a battery change). Claude checked the screen on the device
 - Box art over Wi-Fi, from Settings > BOX ART (`boxart_fetch.rs`), with the same sources
   and matching as the script, which still works over USB. DOWNLOAD MISSING COVERS fetches
   games without one, DOWNLOAD ALL COVERS AGAIN replaces each cover once its new one is

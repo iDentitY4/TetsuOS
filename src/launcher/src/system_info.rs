@@ -1,6 +1,8 @@
 //! Settings > SYSTEM > SYSTEM INFO, and boot timing for the log.
 
 use crate::canvas::Battery;
+use crate::{power, wifi};
+use std::path::Path;
 use std::process::Command;
 
 /// Reads free and total space from `df -k` output, in kilobytes.
@@ -23,6 +25,49 @@ pub(crate) fn parse_kernel_date(version: &str) -> Option<String> {
     Some(format!("{} {} {}", words.get(1)?, words.get(2)?, words.last()?))
 }
 
+/// Reads the release, like `7.2.15`, from `/proc/version`.
+pub(crate) fn parse_kernel_release(version: &str) -> Option<String> {
+    Some(version.strip_prefix("Linux version ")?.split_whitespace().next()?.to_string())
+}
+
+/// Reads available and total memory from `/proc/meminfo`, in kilobytes.
+pub(crate) fn parse_meminfo(meminfo: &str) -> Option<(u64, u64)> {
+    let field = |name: &str| {
+        meminfo.lines().find_map(|line| line.strip_prefix(name)?.split_whitespace().next()?.parse::<u64>().ok())
+    };
+    Some((field("MemAvailable:")?, field("MemTotal:")?))
+}
+
+/// Reads the project's git revision from `/etc/os-release`, where Buildroot puts it as
+/// `VERSION=-g83e209b-dirty`. `dirty` means it was built with uncommitted changes.
+pub(crate) fn parse_os_build(os_release: &str) -> Option<String> {
+    let version = os_release.lines().find_map(|line| line.strip_prefix("VERSION="))?;
+    let version = version.trim_matches('"').trim_start_matches('-');
+    let version = version.strip_prefix('g').unwrap_or(version);
+    match version.strip_suffix("-dirty") {
+        Some(revision) => Some(format!("{revision} MODIFIED")),
+        None => (!version.is_empty()).then(|| version.to_string()),
+    }
+}
+
+/// Seconds as hours and minutes, like `2 H 05 MIN`.
+pub(crate) fn format_uptime(seconds: u64) -> String {
+    let minutes = seconds / 60;
+    match minutes / 60 {
+        0 => format!("{minutes} MIN"),
+        hours => format!("{hours} H {:02} MIN", minutes % 60),
+    }
+}
+
+/// Fits a value into `limit` characters, ending with `...` if it was cut.
+pub(crate) fn shorten(text: &str, limit: usize) -> String {
+    if text.chars().count() <= limit {
+        return text.to_string();
+    }
+    let kept: String = text.chars().take(limit.saturating_sub(3)).collect();
+    format!("{}...", kept.trim_end())
+}
+
 pub(crate) fn command_output(program: &str, args: &[&str]) -> String {
     Command::new(program)
         .args(args)
@@ -35,31 +80,73 @@ pub(crate) fn gigabytes(kilobytes: u64) -> String {
     format!("{:.1} GB", kilobytes as f64 / 1024.0 / 1024.0)
 }
 
-/// The lines the system info screen shows.
-pub(crate) fn system_info(battery: Option<Battery>) -> Vec<(String, String)> {
+pub(crate) fn megabytes(kilobytes: u64) -> String {
+    format!("{} MB", kilobytes / 1024)
+}
+
+fn read_text(path: &str) -> Option<String> {
+    std::fs::read_to_string(path).ok()
+}
+
+fn read_number(path: &str) -> Option<i64> {
+    read_text(path)?.trim().parse().ok()
+}
+
+/// The Wi-Fi network's name and address, from wpa_supplicant.
+fn wifi_line() -> Option<String> {
+    let status = wifi::Control::open(Path::new(wifi::CONTROL_PATH)).ok()?.status().ok()?;
+    if !status.connected() {
+        return None;
+    }
+    let name = status.ssid.as_deref().map(wifi::display_name).unwrap_or_default();
+    Some(match status.address {
+        Some(address) => format!("{} - {address}", shorten(&name, 14)),
+        None => shorten(&name, 30),
+    })
+}
+
+/// The lines the system info screen shows. There is room for 11.
+pub(crate) fn system_info(battery: Option<Battery>, games: usize) -> Vec<(String, String)> {
     let unknown = || "UNKNOWN".to_string();
+    let volts = read_number(&format!("{}/voltage_now", power::battery_dir().display()))
+        .map(|microvolts| format!(" - {:.2} V", microvolts as f64 / 1_000_000.0))
+        .unwrap_or_default();
     let battery = battery.map_or_else(unknown, |Battery { percent, charging }| {
-        format!("{percent}%{}", if charging { " CHARGING" } else { "" })
+        format!("{percent}%{}{volts}", if charging { " CHARGING" } else { "" })
     });
     let storage = parse_df(&command_output("df", &["-k", "/mnt/data"]))
         .map_or_else(unknown, |(free, total)| format!("{} FREE OF {}", gigabytes(free), gigabytes(total)));
+    let memory = read_text("/proc/meminfo")
+        .and_then(|meminfo| parse_meminfo(&meminfo))
+        .map_or_else(unknown, |(free, total)| format!("{} FREE OF {}", megabytes(free), megabytes(total)));
+    let speed = read_number("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq").map(|khz| format!("{} MHZ", khz / 1000));
+    let temperature =
+        read_number("/sys/class/thermal/thermal_zone0/temp").map(|millidegrees| format!("{} C", millidegrees / 1000));
+    let cpu = match (speed, temperature) {
+        (Some(speed), Some(temperature)) => format!("{speed} - {temperature}"),
+        (speed, temperature) => speed.or(temperature).unwrap_or_else(unknown),
+    };
     let address = parse_ifconfig(&command_output("ifconfig", &["usb0"])).unwrap_or_else(unknown);
-    let wifi = parse_ifconfig(&command_output("ifconfig", &["wlan0"])).unwrap_or_else(|| "NOT CONNECTED".into());
-    let temperature = std::fs::read_to_string("/sys/class/thermal/thermal_zone0/temp")
-        .ok()
-        .and_then(|text| text.trim().parse::<i64>().ok())
-        .map_or_else(unknown, |millidegrees| format!("{} C", millidegrees / 1000));
-    let kernel = std::fs::read_to_string("/proc/version")
-        .ok()
-        .and_then(|version| parse_kernel_date(&version))
-        .unwrap_or_else(unknown);
+    let uptime = read_text("/proc/uptime")
+        .and_then(|text| text.split_whitespace().next()?.split('.').next()?.parse().ok())
+        .map_or_else(unknown, format_uptime);
+    let version = read_text("/proc/version").unwrap_or_default();
+    let kernel = match (parse_kernel_release(&version), parse_kernel_date(&version)) {
+        (Some(release), Some(date)) => format!("{release} - {date}"),
+        (release, _) => release.unwrap_or_else(unknown),
+    };
+    let build = read_text("/etc/os-release").and_then(|text| parse_os_build(&text)).unwrap_or_else(unknown);
     vec![
         ("BATTERY".to_string(), battery),
         ("GAME STORAGE".to_string(), storage),
+        ("GAMES".to_string(), games.to_string()),
+        ("MEMORY".to_string(), memory),
+        ("CPU".to_string(), cpu),
+        ("WI-FI".to_string(), wifi_line().unwrap_or_else(|| "NOT CONNECTED".into())),
         ("SSH OVER USB".to_string(), address),
-        ("WI-FI".to_string(), wifi),
-        ("CPU TEMPERATURE".to_string(), temperature),
-        ("KERNEL BUILT".to_string(), kernel),
+        ("RUNNING FOR".to_string(), uptime),
+        ("KERNEL".to_string(), kernel),
+        ("SYSTEM BUILD".to_string(), build),
         ("APP VERSION".to_string(), env!("CARGO_PKG_VERSION").to_string()),
     ]
 }
@@ -112,6 +199,17 @@ mod tests {
         assert_eq!(parse_ifconfig("usb0 down"), None);
         let version = "Linux version 7.2.15 (user@cachy) (gcc 15) #1 SMP PREEMPT Sun Nov  8 00:29:39 CET 2026\n";
         assert_eq!(parse_kernel_date(version).as_deref(), Some("Nov 8 2026"));
+        assert_eq!(parse_kernel_release(version).as_deref(), Some("7.2.15"));
         assert_eq!(gigabytes(58112576), "55.4 GB");
+        let meminfo = "MemTotal:        1005464 kB\nMemFree:          859028 kB\nMemAvailable:     869592 kB\n";
+        assert_eq!(parse_meminfo(meminfo), Some((869592, 1005464)));
+        assert_eq!(megabytes(1005464), "981 MB");
+        assert_eq!(parse_os_build("NAME=Buildroot\nVERSION=-g83e209b-dirty\n").as_deref(), Some("83e209b MODIFIED"));
+        assert_eq!(parse_os_build("VERSION=-g83e209b\n").as_deref(), Some("83e209b"));
+        assert_eq!(parse_os_build("NAME=Buildroot\n"), None);
+        assert_eq!(format_uptime(59), "0 MIN");
+        assert_eq!(format_uptime(4025), "1 H 07 MIN");
+        assert_eq!(shorten("VALINOR", 14), "VALINOR");
+        assert_eq!(shorten("A VERY LONG NETWORK NAME", 14), "A VERY LONG...");
     }
 }
