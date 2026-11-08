@@ -51,8 +51,49 @@ pub enum Tile {
 pub enum Screen {
     Home,
     Games(List),
+    /// The grid of settings groups.
     Settings,
+    /// One group's settings.
+    SettingsGroup(Group),
     Info,
+}
+
+/// A tile on the settings grid. Each opens a list of its settings, except Wi-Fi, which
+/// opens the Wi-Fi screen.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum Group {
+    General,
+    GameScreen,
+    Wifi,
+    BoxArt,
+    System,
+}
+
+pub const GROUPS: [Group; 5] = [Group::General, Group::GameScreen, Group::Wifi, Group::BoxArt, Group::System];
+
+/// The most settings a group has, which the settings screen makes room for.
+pub const MAX_GROUP_SETTINGS: usize = 4;
+
+impl Group {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::General => "GENERAL",
+            Self::GameScreen => "GAME SCREEN",
+            Self::Wifi => "WI-FI",
+            Self::BoxArt => "BOX ART",
+            Self::System => "SYSTEM",
+        }
+    }
+
+    pub fn settings(self) -> &'static [Setting] {
+        match self {
+            Self::General => &[Setting::Volume, Setting::Brightness],
+            Self::GameScreen => &[Setting::Scaling, Setting::Effect, Setting::Ghosting],
+            Self::Wifi => &[],
+            Self::BoxArt => &[Setting::DownloadMissingArt, Setting::DownloadAllArt, Setting::DeleteArt],
+            Self::System => &[Setting::ButtonTest, Setting::SystemInfo, Setting::Reboot, Setting::PowerOff],
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -62,25 +103,14 @@ pub enum Setting {
     Scaling,
     Effect,
     Ghosting,
-    Wifi,
+    DownloadMissingArt,
+    DownloadAllArt,
+    DeleteArt,
     ButtonTest,
     SystemInfo,
     Reboot,
     PowerOff,
 }
-
-pub const SETTINGS: [Setting; 10] = [
-    Setting::Volume,
-    Setting::Brightness,
-    Setting::Scaling,
-    Setting::Effect,
-    Setting::Ghosting,
-    Setting::Wifi,
-    Setting::ButtonTest,
-    Setting::SystemInfo,
-    Setting::Reboot,
-    Setting::PowerOff,
-];
 
 impl Setting {
     pub fn label(self) -> &'static str {
@@ -90,12 +120,46 @@ impl Setting {
             Self::Scaling => "SCALING",
             Self::Effect => "SCREEN EFFECT",
             Self::Ghosting => "LCD GHOSTING",
-            Self::Wifi => "WI-FI",
+            Self::DownloadMissingArt => "DOWNLOAD MISSING COVERS",
+            Self::DownloadAllArt => "DOWNLOAD ALL COVERS AGAIN",
+            Self::DeleteArt => "DELETE ALL COVERS",
             Self::ButtonTest => "BUTTON TEST",
             Self::SystemInfo => "SYSTEM INFO",
             Self::Reboot => "REBOOT",
             Self::PowerOff => "POWER OFF",
         }
+    }
+
+    /// Whether A opens another screen, shown with a `>`.
+    pub fn opens_screen(self) -> bool {
+        matches!(self, Self::DownloadMissingArt | Self::DownloadAllArt | Self::ButtonTest | Self::SystemInfo)
+    }
+
+    /// Whether A must be pressed twice, because it can't be undone.
+    fn needs_confirming(self) -> bool {
+        matches!(self, Self::DeleteArt | Self::Reboot | Self::PowerOff)
+    }
+}
+
+/// Which covers a box art download fetches.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum ArtDownload {
+    /// Only games without a cover.
+    Missing,
+    /// Every game, replacing covers it gets new ones for.
+    All,
+}
+
+/// The tile `selected` moves to on a grid of `count` tiles, `COLUMNS` to a row.
+pub fn grid_move(selected: usize, count: usize, button: Button) -> usize {
+    let last = count.saturating_sub(1);
+    match button {
+        Button::Left => selected.saturating_sub(1),
+        Button::Right => (selected + 1).min(last),
+        Button::Up => selected.checked_sub(COLUMNS).unwrap_or(selected),
+        // Down from a row above the last goes to the last tile if the row is short.
+        Button::Down if selected / COLUMNS < last / COLUMNS => (selected + COLUMNS).min(last),
+        _ => selected,
     }
 }
 
@@ -108,6 +172,8 @@ pub enum Command {
     ToggleFavorite(PathBuf),
     ButtonTest,
     Wifi,
+    DownloadBoxArt(ArtDownload),
+    DeleteBoxArt,
     Volume(i32),
     Brightness(i32),
     Scaling(i32),
@@ -126,10 +192,13 @@ pub struct Launcher {
     /// Its position, for when the tile itself is gone.
     home_index: usize,
     lists: HashMap<List, usize>,
-    settings: usize,
+    /// The selected tile on the settings grid.
+    group: usize,
+    /// The selected setting in each group.
+    group_rows: HashMap<Group, usize>,
     /// Where settings go back to.
     before_settings: Screen,
-    /// A power action waiting for a second press of A.
+    /// A setting that can't be undone, waiting for a second press of A.
     confirming: Option<Setting>,
 }
 
@@ -173,7 +242,8 @@ impl Launcher {
             home: None,
             home_index: 0,
             lists: HashMap::new(),
-            settings: 0,
+            group: 0,
+            group_rows: HashMap::new(),
             before_settings: Screen::Home,
             confirming: None,
         }
@@ -208,40 +278,60 @@ impl Launcher {
         self.lists.get(&list).copied().unwrap_or(0).min(count.saturating_sub(1))
     }
 
-    pub fn settings_selected(&self) -> Setting {
-        SETTINGS[self.settings]
+    /// The selected tile on the settings grid.
+    pub fn group_selected(&self) -> Group {
+        GROUPS[self.group]
     }
 
-    /// The question to show while a power action waits for confirmation.
+    /// The selected setting in a group, or None for a group without any.
+    pub fn setting_selected(&self, group: Group) -> Option<Setting> {
+        let settings = group.settings();
+        let row = self.group_rows.get(&group).copied().unwrap_or(0);
+        settings.get(row.min(settings.len().saturating_sub(1))).copied()
+    }
+
+    /// The question to show while a setting waits for confirmation.
     pub fn confirmation(&self) -> Option<&'static str> {
         match self.confirming? {
+            Setting::DeleteArt => Some("PRESS A AGAIN TO DELETE ALL COVERS"),
             Setting::Reboot => Some("PRESS A AGAIN TO REBOOT"),
             Setting::PowerOff => Some("PRESS A AGAIN TO POWER OFF"),
             _ => None,
         }
     }
 
+    fn in_settings(&self) -> bool {
+        matches!(self.screen, Screen::Settings | Screen::SettingsGroup(_) | Screen::Info)
+    }
+
     fn open_settings(&mut self) {
-        if !matches!(self.screen, Screen::Settings | Screen::Info) {
+        if !self.in_settings() {
             self.before_settings = self.screen;
-            self.settings = 0;
+            self.group = 0;
+            self.group_rows.clear();
         }
         self.screen = Screen::Settings;
     }
 
     pub fn press(&mut self, button: Button, library: &Library) -> Command {
         let confirming = self.confirming.take();
-        if button == Button::Start && self.screen != Screen::Settings {
-            self.open_settings();
+        // Start opens settings from anywhere, and closes them from anywhere in them.
+        if button == Button::Start {
+            if self.in_settings() {
+                self.screen = self.before_settings;
+            } else {
+                self.open_settings();
+            }
             return Command::Nothing;
         }
         match self.screen {
             Screen::Home => self.press_home(button, library),
             Screen::Games(list) => self.press_list(button, library, list),
-            Screen::Settings => self.press_settings(button, confirming),
+            Screen::Settings => self.press_settings_grid(button),
+            Screen::SettingsGroup(group) => self.press_group(button, group, confirming),
             Screen::Info => {
                 if matches!(button, Button::A | Button::B) {
-                    self.screen = Screen::Settings;
+                    self.screen = Screen::SettingsGroup(Group::System);
                 }
                 Command::Nothing
             }
@@ -250,16 +340,8 @@ impl Launcher {
 
     fn press_home(&mut self, button: Button, library: &Library) -> Command {
         let tiles = library.tiles();
-        let last = tiles.len() - 1;
         let selected = self.home_selected(library);
-        self.home_index = match button {
-            Button::Left => selected.saturating_sub(1),
-            Button::Right => (selected + 1).min(last),
-            Button::Up => selected.checked_sub(COLUMNS).unwrap_or(selected),
-            // Down from a row above the last goes to the last tile if the row is short.
-            Button::Down if selected / COLUMNS < last / COLUMNS => (selected + COLUMNS).min(last),
-            _ => selected,
-        };
+        self.home_index = grid_move(selected, tiles.len(), button);
         self.home = Some(tiles[self.home_index]);
         if button == Button::A {
             match tiles[selected] {
@@ -293,32 +375,58 @@ impl Launcher {
         Command::Nothing
     }
 
-    fn press_settings(&mut self, button: Button, confirming: Option<Setting>) -> Command {
-        let setting = self.settings_selected();
+    fn press_settings_grid(&mut self, button: Button) -> Command {
+        self.group = grid_move(self.group, GROUPS.len(), button);
+        match button {
+            Button::B => self.screen = self.before_settings,
+            Button::A => match self.group_selected() {
+                Group::Wifi => return Command::Wifi,
+                group => self.screen = Screen::SettingsGroup(group),
+            },
+            _ => {}
+        }
+        Command::Nothing
+    }
+
+    fn press_group(&mut self, button: Button, group: Group, confirming: Option<Setting>) -> Command {
+        let settings = group.settings();
+        let Some(setting) = self.setting_selected(group) else {
+            self.screen = Screen::Settings;
+            return Command::Nothing;
+        };
+        let row = settings.iter().position(|&other| other == setting).unwrap_or(0);
         let step = match button {
             Button::Left => -1,
             Button::Right => 1,
             _ => 0,
         };
         match button {
-            Button::Up => self.settings = (self.settings + SETTINGS.len() - 1) % SETTINGS.len(),
-            Button::Down => self.settings = (self.settings + 1) % SETTINGS.len(),
-            Button::Left | Button::Right if setting == Setting::Volume => return Command::Volume(step),
-            Button::Left | Button::Right if setting == Setting::Brightness => {
-                return Command::Brightness(step)
+            Button::Up => {
+                self.group_rows.insert(group, (row + settings.len() - 1) % settings.len());
             }
-            Button::Left | Button::Right if setting == Setting::Scaling => return Command::Scaling(step),
-            Button::Left | Button::Right if setting == Setting::Effect => return Command::Effect(step),
-            Button::Left | Button::Right if setting == Setting::Ghosting => return Command::Ghosting(step),
-            Button::B | Button::Start => self.screen = self.before_settings,
+            Button::Down => {
+                self.group_rows.insert(group, (row + 1) % settings.len());
+            }
+            Button::Left | Button::Right => match setting {
+                Setting::Volume => return Command::Volume(step),
+                Setting::Brightness => return Command::Brightness(step),
+                Setting::Scaling => return Command::Scaling(step),
+                Setting::Effect => return Command::Effect(step),
+                Setting::Ghosting => return Command::Ghosting(step),
+                _ => {}
+            },
+            Button::B => self.screen = Screen::Settings,
+            Button::A if setting.needs_confirming() && confirming != Some(setting) => {
+                self.confirming = Some(setting);
+            }
             Button::A => match setting {
-                Setting::Wifi => return Command::Wifi,
+                Setting::DownloadMissingArt => return Command::DownloadBoxArt(ArtDownload::Missing),
+                Setting::DownloadAllArt => return Command::DownloadBoxArt(ArtDownload::All),
+                Setting::DeleteArt => return Command::DeleteBoxArt,
                 Setting::ButtonTest => return Command::ButtonTest,
                 Setting::SystemInfo => self.screen = Screen::Info,
-                Setting::Reboot | Setting::PowerOff if confirming == Some(setting) => {
-                    return if setting == Setting::Reboot { Command::Reboot } else { Command::PowerOff };
-                }
-                Setting::Reboot | Setting::PowerOff => self.confirming = Some(setting),
+                Setting::Reboot => return Command::Reboot,
+                Setting::PowerOff => return Command::PowerOff,
                 Setting::Volume | Setting::Brightness | Setting::Scaling | Setting::Effect | Setting::Ghosting => {}
             },
             _ => {}
@@ -463,37 +571,81 @@ mod tests {
         assert_eq!(launcher.screen(), Screen::Home);
     }
 
+    /// Opens settings, then a group from the grid's first row.
+    fn open_group(launcher: &mut Launcher, library: &Library, group: Group) {
+        launcher.press(Button::Start, library);
+        let index = GROUPS.iter().position(|&other| other == group).unwrap();
+        for _ in 0..index {
+            launcher.press(Button::Right, library);
+        }
+        launcher.press(Button::A, library);
+        assert_eq!(launcher.screen(), Screen::SettingsGroup(group));
+    }
+
     #[test]
     fn settings_adjust_levels_and_open_tools() {
         let library = library();
         let mut launcher = Launcher::new();
-        launcher.press(Button::Start, &library);
+        open_group(&mut launcher, &library, Group::General);
         assert_eq!(launcher.press(Button::Right, &library), Command::Volume(1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Left, &library), Command::Brightness(-1));
-        launcher.press(Button::Down, &library);
+        press_all(&mut launcher, &library, &[Button::B, Button::Right, Button::A]);
         assert_eq!(launcher.press(Button::Right, &library), Command::Scaling(1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Left, &library), Command::Effect(-1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Right, &library), Command::Ghosting(1));
+        // Wi-Fi opens its own screen straight from the grid.
+        assert_eq!(press_all(&mut launcher, &library, &[Button::B, Button::Right, Button::A]), Command::Wifi);
+        assert_eq!(launcher.screen(), Screen::Settings);
+        press_all(&mut launcher, &library, &[Button::Right, Button::A]);
+        assert_eq!(launcher.press(Button::A, &library), Command::DownloadBoxArt(ArtDownload::Missing));
         launcher.press(Button::Down, &library);
-        assert_eq!(launcher.press(Button::A, &library), Command::Wifi);
-        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::A, &library), Command::DownloadBoxArt(ArtDownload::All));
+        // System is the first tile of the second row.
+        press_all(&mut launcher, &library, &[Button::B, Button::Down, Button::A]);
+        assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::System));
         assert_eq!(launcher.press(Button::A, &library), Command::ButtonTest);
         press_all(&mut launcher, &library, &[Button::Down, Button::A]);
         assert_eq!(launcher.screen(), Screen::Info);
         launcher.press(Button::B, &library);
-        assert_eq!(launcher.screen(), Screen::Settings);
-        assert_eq!(launcher.settings_selected(), Setting::SystemInfo);
+        assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::System));
+        assert_eq!(launcher.setting_selected(Group::System), Some(Setting::SystemInfo));
     }
 
     #[test]
-    fn power_actions_need_a_second_press() {
+    fn groups_remember_their_selection_and_start_closes_settings() {
         let library = library();
         let mut launcher = Launcher::new();
-        press_all(&mut launcher, &library, &[Button::Start, Button::Up]);
-        assert_eq!(launcher.settings_selected(), Setting::PowerOff);
+        launcher.press(Button::A, &library);
+        open_group(&mut launcher, &library, Group::GameScreen);
+        press_all(&mut launcher, &library, &[Button::Down, Button::B]);
+        assert_eq!(launcher.group_selected(), Group::GameScreen);
+        launcher.press(Button::A, &library);
+        assert_eq!(launcher.setting_selected(Group::GameScreen), Some(Setting::Effect));
+        launcher.press(Button::Start, &library);
+        assert_eq!(launcher.screen(), Screen::Games(List::Recent));
+        // Opening settings again starts from the first tile.
+        launcher.press(Button::Start, &library);
+        assert_eq!((launcher.screen(), launcher.group_selected()), (Screen::Settings, Group::General));
+    }
+
+    #[test]
+    fn every_group_fits_the_settings_screen() {
+        for group in GROUPS {
+            assert!(group.settings().len() <= MAX_GROUP_SETTINGS, "{group:?}");
+            assert_eq!(group.settings().is_empty(), group == Group::Wifi);
+        }
+    }
+
+    #[test]
+    fn actions_that_cant_be_undone_need_a_second_press() {
+        let library = library();
+        let mut launcher = Launcher::new();
+        open_group(&mut launcher, &library, Group::System);
+        launcher.press(Button::Up, &library);
+        assert_eq!(launcher.setting_selected(Group::System), Some(Setting::PowerOff));
         assert_eq!(launcher.press(Button::A, &library), Command::Nothing);
         assert!(launcher.confirmation().is_some());
         assert_eq!(launcher.press(Button::A, &library), Command::PowerOff);
@@ -505,6 +657,13 @@ mod tests {
         assert_eq!(launcher.confirmation(), None);
         launcher.press(Button::Up, &library);
         assert_eq!(launcher.press(Button::A, &library), Command::Nothing);
+
+        let mut launcher = Launcher::new();
+        open_group(&mut launcher, &library, Group::BoxArt);
+        launcher.press(Button::Up, &library);
+        assert_eq!(launcher.press(Button::A, &library), Command::Nothing);
+        assert_eq!(launcher.confirmation(), Some("PRESS A AGAIN TO DELETE ALL COVERS"));
+        assert_eq!(launcher.press(Button::A, &library), Command::DeleteBoxArt);
     }
 
     #[test]

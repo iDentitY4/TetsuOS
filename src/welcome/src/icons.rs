@@ -330,11 +330,127 @@ pub const FAVORITES: Icon = [
     "................................",
 ];
 
+/// Volume and brightness: a speaker.
+pub const GENERAL: Icon = [
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "..............KK................",
+    ".............KLK.......C........",
+    "............KLLK....C...C.......",
+    "....KKKKKKKKLLLK.....C...C......",
+    "....KGGGGGKLLLLK..C...C...C.....",
+    "....KGGGGGKLLLLK...C..C...C.....",
+    "....KGGGGGKLLLLK...C...C...C....",
+    "....KGGGGGKLLLLK...C...C...C....",
+    "....KGGGGGKLLLLK...C..C...C.....",
+    "....KGGGGGKLLLLK..C...C...C.....",
+    "....KKKKKKKKLLLK.....C...C......",
+    "............KLLK....C...C.......",
+    ".............KLK.......C........",
+    "..............KK................",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+];
+
+/// How games are shown: a monitor.
+pub const GAME_SCREEN: Icon = [
+    "................................",
+    "................................",
+    "................................",
+    "....KKKKKKKKKKKKKKKKKKKKKKKK....",
+    "....KDDDDDDDDDDDDDDDDDDDDDDK....",
+    "....KDBBBBBBBBBBBBBBBBBBBBDK....",
+    "....KDBBBBBBBBBBBBBBBBBBBBDK....",
+    "....KDVVVVVVVVVVVVVVVVVVVVDK....",
+    "....KDBBBBBBBBBBBYYBBBBBBBDK....",
+    "....KDBBBBBBBBBBYYYYBBBBBBDK....",
+    "....KDVVVVVVVVVVVYYVVVVVVVDK....",
+    "....KDBBBBBBNNBBBBBBBBBBBBDK....",
+    "....KDBBBBBNNNNBBBBBBBBBBBDK....",
+    "....KDVVVVNNNNNNVVVVVVVVVVDK....",
+    "....KDBBBNNNNNNNNBBBBBBBBBDK....",
+    "....KDDDDDDDDDDDDDDDDDDDDDDK....",
+    "....KKKKKKKKKKKKKKKKKKKKKKKK....",
+    "..............KDDK..............",
+    "...........KKKKDDKKKK...........",
+    "...........KGGGGGGGGK...........",
+    "...........KKKKKKKKKK...........",
+    "................................",
+    "................................",
+    "................................",
+];
+
+/// Box art: a cover in front of another.
+pub const BOX_ART: Icon = [
+    "................................",
+    "................................",
+    "..........KKKKKKKKKKKKK.........",
+    "..........KWWWWWWWWWWWKK........",
+    "..........KWBBBBBBBBBWKLK.......",
+    "..........KWBBBBBBYYBWKLK.......",
+    "..........KWBBBBBYYYYWKLK.......",
+    "..........KWBBBBBBYYBWKLK.......",
+    "..........KWBBBBBBBBBWKLK.......",
+    "..........KWBBBNBBBBBWKLK.......",
+    "..........KWBBNNNBBBBWKLK.......",
+    "..........KWBNNNNNBNBWKLK.......",
+    "..........KWNNNNNNNNNWKLK.......",
+    "..........KWNNNNNNNNNWKLK.......",
+    "..........KWWWWWWWWWWWKLK.......",
+    "..........KWRRRRRRRRRWKLK.......",
+    "..........KWWWWWWWWWWWKLK.......",
+    "..........KWWWDDDDDWWWKLK.......",
+    "..........KWWWWWWWWWWWKLK.......",
+    "..........KKKKKKKKKKKKKLK.......",
+    "...........KLLLLLLLLLLLLK.......",
+    "............KKKKKKKKKKKK........",
+    "................................",
+    "................................",
+];
+
+/// The system: a chip.
+pub const SYSTEM: Icon = [
+    "................................",
+    "................................",
+    "...........G..G..G..G...........",
+    "...........G..G..G..G...........",
+    "........KKKKKKKKKKKKKKKK........",
+    "........KDDDDDDDDDDDDDDK........",
+    ".....GGGKDLLLLLLLLLLLLDKGGG.....",
+    "........KDLKKKKKKKKKKLDK........",
+    ".....GGGKDLKCCCCCCCCKLDKGGG.....",
+    "........KDLKCKKKKKKCKLDK........",
+    ".....GGGKDLKCKDDDDKCKLDKGGG.....",
+    "........KDLKCKDDDDKCKLDK........",
+    ".....GGGKDLKCKKKKKKCKLDKGGG.....",
+    "........KDLKCCCCCCCCKLDK........",
+    ".....GGGKDLKKKKKKKKKKLDKGGG.....",
+    "........KDLLLLLLLLLLLLDK........",
+    "........KDDDDDDDDDDDDDDK........",
+    "........KKKKKKKKKKKKKKKK........",
+    "...........G..G..G..G...........",
+    "...........G..G..G..G...........",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const ALL: [&Icon; 11] = [
+    const ALL: [&Icon; 15] = [
+        &GENERAL,
+        &GAME_SCREEN,
+        &BOX_ART,
+        &SYSTEM,
         &NES,
         &GAME_BOY,
         &SNES,

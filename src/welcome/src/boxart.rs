@@ -1,5 +1,5 @@
-//! Box art for games, which `scripts/boxart.py` puts on the card as PPM images named after
-//! each game's file.
+//! Box art for games, which Settings > BOX ART (`boxart_fetch`) or `scripts/boxart.py`
+//! puts on the card as PPM images named after each game's file.
 
 use crate::canvas::Rgb;
 use std::collections::HashMap;

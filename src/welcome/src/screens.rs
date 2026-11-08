@@ -5,7 +5,7 @@ use crate::canvas::{text_width, Battery, Canvas, Rgb, ACCENT, BACKGROUND, BODY, 
 use crate::font;
 use crate::icons::{self, Icon};
 use crate::keyboard::{self, Key, Keyboard};
-use crate::launcher::{Setting, COLUMNS, PAGE, SETTINGS};
+use crate::launcher::{Group, Setting, COLUMNS, MAX_GROUP_SETTINGS, PAGE};
 use crate::wifi::Security;
 use crate::wifi_menu::{self, Entry};
 use std::time::Duration;
@@ -43,7 +43,7 @@ const BAR_W: usize = 160;
 
 // Lists, settings and the confirmation line must end above the hint.
 const _: () = assert!(LIST_TOP + PAGE * LIST_ROW <= HINT_Y - 8);
-const _: () = assert!(SETTINGS_TOP + SETTINGS.len() * SETTINGS_ROW + 40 <= HINT_Y);
+const _: () = assert!(SETTINGS_TOP + MAX_GROUP_SETTINGS * SETTINGS_ROW + 80 <= HINT_Y);
 
 /// A tile on the home screen.
 pub struct TileView<'a> {
@@ -60,12 +60,17 @@ pub struct RowView<'a> {
     pub starred: bool,
 }
 
+/// One settings group's list, as `settings_screen` shows it.
 pub struct SettingsView<'a> {
+    pub group: Group,
     pub selected: Setting,
     pub volume_percent: Option<u32>,
     pub brightness_percent: Option<u32>,
     pub display: Display,
+    /// A question waiting for a second press, in the accent colour.
     pub message: Option<&'a str>,
+    /// A line about the group, such as how many games have covers.
+    pub note: Option<&'a str>,
 }
 
 fn row_text_y(top: usize, height: usize) -> usize {
@@ -110,7 +115,36 @@ pub fn home_screen(
     let mut canvas = Canvas::new(width, height);
     canvas.text("RG35XX SP LINUX", 20, 4, TEXT);
     canvas.battery(battery);
+    tile_grid(&mut canvas, tiles, selected);
+    hint(&mut canvas, "A OPENS - START SETTINGS");
+    canvas
+}
 
+/// The pictogram for a settings group.
+pub fn group_icon(group: Group) -> &'static Icon {
+    match group {
+        Group::General => &icons::GENERAL,
+        Group::GameScreen => &icons::GAME_SCREEN,
+        Group::Wifi => &icons::WIFI,
+        Group::BoxArt => &icons::BOX_ART,
+        Group::System => &icons::SYSTEM,
+    }
+}
+
+/// The settings groups as tiles, laid out like the home screen.
+pub fn settings_grid(width: usize, height: usize, groups: &[Group], selected: usize, battery: Option<Battery>) -> Canvas {
+    let mut canvas = Canvas::new(width, height);
+    header(&mut canvas, &icons::SETTINGS, "SETTINGS", battery);
+    let tiles: Vec<TileView> =
+        groups.iter().map(|&group| TileView { icon: group_icon(group), label: group.label(), count: None }).collect();
+    tile_grid(&mut canvas, &tiles, selected);
+    hint(&mut canvas, "A OPENS - B BACK - START CLOSES");
+    canvas
+}
+
+/// Tiles in rows of `COLUMNS`, centred between the title and the hint.
+fn tile_grid(canvas: &mut Canvas, tiles: &[TileView], selected: usize) {
+    let width = canvas.width;
     let rows = tiles.len().div_ceil(COLUMNS);
     let (tile_h, scale) = tile_size(rows);
     let grid_w = COLUMNS * TILE_W + (COLUMNS - 1) * TILE_GAP;
@@ -140,8 +174,6 @@ pub fn home_screen(
             canvas.text_at(&text, count_x, label_y + font::HEIGHT * TEXT_SCALE + gap / 2 + 2, TEXT_SCALE, MUTED);
         }
     }
-    hint(&mut canvas, "A OPENS - START SETTINGS");
-    canvas
 }
 
 /// The first row shown: lists scroll a whole page at a time.
@@ -267,9 +299,10 @@ pub fn list_screen(width: usize, height: usize, view: &ListView, battery: Option
 
 pub fn settings_screen(width: usize, height: usize, view: &SettingsView, battery: Option<Battery>) -> Canvas {
     let mut canvas = Canvas::new(width, height);
-    header(&mut canvas, &icons::SETTINGS, "SETTINGS", battery);
+    header(&mut canvas, group_icon(view.group), view.group.label(), battery);
     let right = width.saturating_sub(SETTINGS_RIGHT);
-    for (row, &setting) in SETTINGS.iter().enumerate() {
+    let settings = view.group.settings();
+    for (row, &setting) in settings.iter().enumerate() {
         let y = SETTINGS_TOP + row * SETTINGS_ROW;
         let selected = setting == view.selected;
         let (text_color, on, off) = if selected {
@@ -292,16 +325,23 @@ pub fn settings_screen(width: usize, height: usize, view: &SettingsView, battery
                 let value = if selected { format!("< {label} >") } else { label.to_string() };
                 canvas.text_at(&value, right - text_width(&value, TEXT_SCALE), text_y, TEXT_SCALE, text_color);
             }
-            Setting::Wifi | Setting::ButtonTest | Setting::SystemInfo => {
+            _ if setting.opens_screen() => {
                 canvas.text_at(">", right - text_width(">", TEXT_SCALE), text_y, TEXT_SCALE, text_color);
             }
-            Setting::Reboot | Setting::PowerOff => {}
+            _ => {}
         }
     }
-    if let Some(message) = view.message {
-        canvas.text(message, SETTINGS_TOP + SETTINGS.len() * SETTINGS_ROW + 12, TEXT_SCALE, ACCENT);
+    let below = SETTINGS_TOP + settings.len() * SETTINGS_ROW + 12;
+    if let Some(note) = view.note {
+        canvas.text(note, below, TEXT_SCALE, MUTED);
     }
-    hint(&mut canvas, "A SELECTS - LEFT RIGHT CHANGES - B BACK");
+    if let Some(message) = view.message {
+        canvas.text(message, below + 32, TEXT_SCALE, ACCENT);
+    }
+    let changes = settings.iter().any(|setting| {
+        matches!(setting, Setting::Volume | Setting::Brightness | Setting::Scaling | Setting::Effect | Setting::Ghosting)
+    });
+    hint(&mut canvas, if changes { "A SELECTS - LEFT RIGHT CHANGES - B BACK" } else { "A SELECTS - B BACK" });
     canvas
 }
 
@@ -315,6 +355,56 @@ pub fn info_screen(width: usize, height: usize, lines: &[(String, String)], batt
         canvas.text_at(value, right.saturating_sub(text_width(value, TEXT_SCALE)), y, TEXT_SCALE, TEXT);
     }
     hint(&mut canvas, "B BACK");
+    canvas
+}
+
+/// The box art download, as `boxart_screen` shows it.
+pub struct BoxArtView<'a> {
+    pub status: &'a str,
+    /// The game being fetched, or nothing.
+    pub detail: &'a str,
+    /// How far through the games, from 0 to 100, while downloading.
+    pub progress: Option<u32>,
+    /// Games with no cover, by readable name.
+    pub missing: &'a [String],
+    pub hint: &'a str,
+}
+
+const BOXART_TOP: usize = 92;
+/// Names that fit beside the left margin, as on the Wi-Fi screen.
+const BOXART_COLUMNS: usize = 49;
+const BOXART_MISSING_ROWS: usize = 7;
+const _: () = assert!(BOXART_TOP + 100 + (BOXART_MISSING_ROWS + 1) * LIST_ROW <= HINT_Y);
+
+fn clip(text: &str, columns: usize) -> String {
+    text.chars().take(columns).collect()
+}
+
+pub fn boxart_screen(width: usize, height: usize, view: &BoxArtView, battery: Option<Battery>) -> Canvas {
+    let mut canvas = Canvas::new(width, height);
+    header(&mut canvas, &icons::SETTINGS, "BOX ART", battery);
+    canvas.text_at(&clip(view.status, BOXART_COLUMNS), LIST_LEFT, BOXART_TOP, TEXT_SCALE, TEXT);
+    canvas.text_at(&clip(view.detail, BOXART_COLUMNS), LIST_LEFT, BOXART_TOP + 30, TEXT_SCALE, MUTED);
+    let bar_w = width.saturating_sub(2 * LIST_LEFT);
+    if let (Some(percent), true) = (view.progress, bar_w > 4) {
+        let y = BOXART_TOP + 66;
+        canvas.rect(LIST_LEFT, y, bar_w, 14, ACCENT);
+        canvas.rect(LIST_LEFT + 2, y + 2, bar_w - 4, 10, BACKGROUND);
+        canvas.rect(LIST_LEFT + 2, y + 2, (bar_w - 4) * percent.min(100) as usize / 100, 10, ACCENT);
+    }
+    if !view.missing.is_empty() {
+        let top = BOXART_TOP + 100;
+        canvas.text_at("NO COVER FOUND FOR", LIST_LEFT, top, TEXT_SCALE, MUTED);
+        let shown = if view.missing.len() > BOXART_MISSING_ROWS { BOXART_MISSING_ROWS - 1 } else { view.missing.len() };
+        for (row, name) in view.missing.iter().take(shown).enumerate() {
+            canvas.text_at(&clip(name, BOXART_COLUMNS), LIST_LEFT, top + (row + 1) * LIST_ROW, TEXT_SCALE, TEXT);
+        }
+        if shown < view.missing.len() {
+            let more = format!("AND {} MORE", view.missing.len() - shown);
+            canvas.text_at(&more, LIST_LEFT, top + (shown + 1) * LIST_ROW, TEXT_SCALE, MUTED);
+        }
+    }
+    hint(&mut canvas, view.hint);
     canvas
 }
 
@@ -583,6 +673,25 @@ mod tests {
     }
 
     #[test]
+    fn the_box_art_screen_fits_a_long_list_of_missing_games() {
+        let missing: Vec<String> = (0..20).map(|n| format!("A VERY LONG GAME NAME THAT DOES NOT FIT ON ONE LINE {n}")).collect();
+        let view = BoxArtView {
+            status: "DOWNLOADING 3 OF 20",
+            detail: &missing[0],
+            progress: Some(150),
+            missing: &missing,
+            hint: "B STOPS",
+        };
+        let canvas = boxart_screen(640, 480, &view, None);
+        assert_eq!(canvas.pixels.len(), 640 * 480);
+        // Nothing drawn between the list and the hint.
+        let gap = BOXART_TOP + 100 + (BOXART_MISSING_ROWS + 1) * LIST_ROW;
+        assert!(canvas.pixels[gap * 640..(HINT_Y - 2) * 640].iter().all(|&pixel| pixel == BACKGROUND));
+        boxart_screen(100, 60, &view, None);
+        boxart_screen(40, 30, &view, None);
+    }
+
+    #[test]
     fn long_names_and_small_screens_are_safe() {
         let long = "X".repeat(500);
         let rows = [RowView { name: &long, icon: Some(&icons::SNES), starred: true }];
@@ -756,15 +865,41 @@ mod tests {
     #[test]
     fn settings_show_the_selection_and_a_confirmation() {
         let view = SettingsView {
+            group: Group::System,
             selected: Setting::PowerOff,
             volume_percent: Some(80),
             brightness_percent: Some(50),
             display: Display::default(),
             message: Some("PRESS A AGAIN TO POWER OFF"),
+            note: None,
         };
         let canvas = settings_screen(640, 480, &view, None);
-        let row = SETTINGS.iter().position(|&s| s == Setting::PowerOff).unwrap();
+        let row = Group::System.settings().iter().position(|&s| s == Setting::PowerOff).unwrap();
         assert_eq!(pixel(&canvas, 2, SETTINGS_TOP + row * SETTINGS_ROW + 2), ACCENT);
         assert_eq!(pixel(&canvas, 2, SETTINGS_TOP + 2), BACKGROUND);
+    }
+
+    #[test]
+    fn every_group_and_its_longest_label_fit() {
+        use crate::launcher::GROUPS;
+        for group in GROUPS {
+            assert!(text_width(group.label(), TEXT_SCALE) + 2 * TILE_BORDER <= TILE_W, "{group:?}");
+            for setting in group.settings() {
+                // The label and a value or bar on the right don't meet.
+                assert!(SETTINGS_LEFT + text_width(setting.label(), TEXT_SCALE) + 16 + BAR_W <= 640 - SETTINGS_RIGHT, "{setting:?}");
+            }
+            let view = SettingsView {
+                group,
+                selected: group.settings().first().copied().unwrap_or(Setting::Volume),
+                volume_percent: None,
+                brightness_percent: None,
+                display: Display::default(),
+                message: Some("PRESS A AGAIN TO DELETE ALL COVERS"),
+                note: Some("35 OF 38 GAMES HAVE A COVER"),
+            };
+            assert_eq!(settings_screen(640, 480, &view, None).pixels.len(), 640 * 480);
+        }
+        let canvas = settings_grid(640, 480, &GROUPS, 4, None);
+        assert_eq!(canvas.pixels.len(), 640 * 480);
     }
 }

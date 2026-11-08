@@ -6,6 +6,7 @@ license = "MIT"
 description = "Framebuffer welcome screen for the RG35XX SP"
 
 [dependencies]
+png = "0.18.1"
 
 [profile.release]
 opt-level = "s"

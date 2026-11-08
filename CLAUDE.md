@@ -70,8 +70,7 @@ Working on the test unit, confirmed by the user:
   (`icons.rs`, drawn for this project): RECENT (the last 8 games, in
   `/mnt/data/recent.txt`), each console with games, and SETTINGS. A console opens its list
   of games, with short names from `names.rs`. Holding a direction repeats (`repeat.rs`),
-  Left and Right page, B goes back, and Start opens settings anywhere. Settings has volume,
-  brightness, the button test, system info, reboot and power off, which need A twice.
+  Left and Right page, B goes back, and Start opens settings anywhere.
   Screens and button handling are in `launcher.rs` and `screens.rs`. Claude checked every
   screen on the device with injected presses and screenshots, and the user confirmed on
   2026-11-08 that it feels very good
@@ -139,9 +138,34 @@ Built but not yet tested on the device:
   Downloads are cached in `~/.cache/rg35xxsp-boxart`, never in the project, because the
   covers are copyrighted. All 35 games got a cover. Game lists show the selected game's
   cover in a panel on the right (`boxart.rs`, `screens::list_screen`), or the console's
-  icon without one, which leaves about 31 characters for names. Run the script again
-  after adding games. Claude checked the GBA and SNES lists in screenshots, and the user
-  said the covers look fine
+  icon without one, which leaves about 31 characters for names. Claude checked the GBA
+  and SNES lists in screenshots, and the user said the covers look fine
+- Settings is a grid of group tiles, like the home screen (`settings_grid`): GENERAL
+  (volume, brightness), GAME SCREEN (scaling, effect, ghosting), WI-FI (opens the Wi-Fi
+  screen directly), BOX ART and SYSTEM (button test, system info, reboot, power off). A
+  opens a group's list, B goes back to its tile, and Start closes settings from anywhere
+  in them. Groups and their settings are `GROUPS` and `Group::settings` in `launcher.rs`,
+  so a new option is one more entry; `MAX_GROUP_SETTINGS` (4) is what the screen has
+  room for. Settings that can't be undone (delete covers, reboot, power off) need A
+  twice. Group icons are in `icons.rs`. Claude checked each screen on the device; not yet
+  seen by the user
+- Box art over Wi-Fi, from Settings > BOX ART (`boxart_fetch.rs`), with the same sources
+  and matching as the script, which still works over USB. DOWNLOAD MISSING COVERS fetches
+  games without one, DOWNLOAD ALL COVERS AGAIN replaces each cover once its new one is
+  saved, and DELETE ALL COVERS removes every `.ppm`, including those of removed games.
+  The group shows how many games have a cover. Each console's collection is
+  `thumbnails` in `SYSTEMS`. curl (with mbedTLS, checking certificates against
+  `/etc/ssl/certs/ca-certificates.crt`, passed as `--cacert` because this curl has no
+  default) downloads; the `png` crate decodes (`png.rs`); covers are shrunk by area
+  averaging. The screen shows progress, B stops after the current game, the lid stops the
+  download before sleeping (sleep leaves the network), and games with no cover are listed.
+  The PNG tests use images from `src/welcome/testdata/make.py`. Claude checked all 38
+  cached covers decode exactly as Pillow does, then on the device: all 38 downloaded in
+  about a minute, at the script's sizes with a mean difference of at most 4.2 of 255
+  (Lanczos against area averaging), the closest-name fallback, a game with no cover, B
+  while running, and not connected. Then again after the settings rework, with the `png`
+  crate: delete all, download missing (38) and download all again (38). The lid during a
+  download is untested
 
 - Display options, in Settings and the in-game menu, saved in `settings.txt`, after
   research into emulator shader techniques. Scaling is sharp-bilinear (`axis_weights` in
@@ -246,8 +270,7 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
 
 Agreed with the user on 2026-11-08, in this order:
 
-1. Downloading box art on the device instead of with `scripts/boxart.py`
-2. Rewind, moved to the end by the user
+1. Rewind, moved to the end by the user
 
 Proposed, not yet confirmed by the user:
 
@@ -333,6 +356,9 @@ Proposed, not yet confirmed by the user:
   finding it would need netconsole over `usb0`.
 - **This `wpa_supplicant` has no syslog support:** `-s` prints the usage and exits
   with status 0, so a script can't tell it failed.
+- **The device clock was 32.6 hours fast on 2026-11-08,** with nothing setting it from the
+  network. HTTPS still works, since certificates are valid for months, but a clock far
+  enough off would fail downloads with `SECURE CONNECTION FAILED - CHECK THE DATE`.
 - **The linux-sunxi wiki returns 403 to automated fetches.** Use U-Boot's
   `doc/board/allwinner/sunxi.rst`, the ROCKNIX tree and the source code instead.
 
@@ -347,7 +373,9 @@ Proposed, not yet confirmed by the user:
 - `board/rg35xxsp/post-build.sh`: removes unused Mesa build dependencies from the rootfs
 - `external.mk`: includes the packages, and builds Mesa without LLVM
 - `package/welcome/`, `package/libretro-*/`: Buildroot packages for the app and the cores
-- `src/welcome/`: Rust launcher and libretro frontend, with no crate dependencies
+- `src/welcome/`: Rust launcher and libretro frontend. Crates are fine to use; Buildroot
+  vendors them in a pre-build hook in `package/welcome/welcome.mk`, because a `local`
+  package skips Buildroot's download-time vendoring. They are cached in `dl/br-cargo-home`
 - `scripts/flash.sh`: checked SD card flashing
 - `scripts/push.sh`: copies build output to the running device over the USB network link
 - `scripts/boxart.py`: fetches covers for the games on the device and copies them there
