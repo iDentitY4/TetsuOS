@@ -5,53 +5,36 @@ use crate::boxart::Image;
 use crate::icons::{self, Icon};
 use crate::input::{Button, Controls};
 use crate::pause::{Item, PauseMenu, ITEMS};
-use crate::settings::{Background, BatteryDisplay, GameDisplay};
-use std::sync::atomic::{AtomicU32, Ordering};
+use crate::settings::{BatteryDisplay, GameDisplay, Settings};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Rgb(pub u8, pub u8, pub u8);
 
 pub(crate) const BODY: Rgb = Rgb(0x2B, 0x30, 0x3F);
-/// The theme colour, for selections, bars and highlights, chosen in Settings > THEME.
-/// Each process sets it once from the settings, and again when it changes.
-static ACCENT: AtomicU32 = AtomicU32::new(0x4FD1C5);
-
-pub(crate) fn accent() -> Rgb {
-    let value = ACCENT.load(Ordering::Relaxed);
-    Rgb((value >> 16) as u8, (value >> 8) as u8, value as u8)
+/// How the menus look, from Settings > THEME and GENERAL > BATTERY. Each canvas carries
+/// one, so drawing needs no global state.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Theme {
+    /// For selections, bars and highlights.
+    pub accent: Rgb,
+    /// Also the dark text on a selected row.
+    pub background: Rgb,
+    /// When the corner shows the battery level.
+    pub battery: BatteryDisplay,
 }
 
-pub fn set_accent(Rgb(red, green, blue): Rgb) {
-    ACCENT.store(u32::from(red) << 16 | u32::from(green) << 8 | u32::from(blue), Ordering::Relaxed);
+impl Theme {
+    pub fn from_settings(settings: &Settings) -> Self {
+        let accent = settings.accent.rgb();
+        Self { accent, background: settings.background.rgb(accent), battery: settings.battery }
+    }
 }
 
-/// The screen's background, from Settings > THEME > BACKGROUND, by its place in
-/// `Background::ALL`. Each process sets it once, and again when it changes.
-static BACKGROUND_SHADE: AtomicU32 = AtomicU32::new(0);
-
-pub fn set_background(shade: Background) {
-    let index = Background::ALL.iter().position(|&other| other == shade).unwrap_or(0);
-    BACKGROUND_SHADE.store(index as u32, Ordering::Relaxed);
-}
-
-/// The background colour, which is also the dark text on a selected row. A tint follows
-/// the theme colour.
-pub(crate) fn background() -> Rgb {
-    let shade = Background::ALL.get(BACKGROUND_SHADE.load(Ordering::Relaxed) as usize).copied().unwrap_or_default();
-    shade.rgb(accent())
-}
-
-/// When the battery level shows, from Settings > GENERAL > BATTERY, by its place in
-/// `BatteryDisplay::ALL`. Each process sets it once, and again when it changes.
-static BATTERY_DISPLAY: AtomicU32 = AtomicU32::new(0);
-
-pub fn set_battery_display(display: BatteryDisplay) {
-    let index = BatteryDisplay::ALL.iter().position(|&other| other == display).unwrap_or(0);
-    BATTERY_DISPLAY.store(index as u32, Ordering::Relaxed);
-}
-
-fn battery_display() -> BatteryDisplay {
-    BatteryDisplay::ALL.get(BATTERY_DISPLAY.load(Ordering::Relaxed) as usize).copied().unwrap_or_default()
+impl Default for Theme {
+    /// The first look: teal on dark blue-grey, with the battery level shown.
+    fn default() -> Self {
+        Self::from_settings(&Settings::default())
+    }
 }
 
 /// Whether a battery reading is low enough to show in red.
@@ -77,15 +60,12 @@ pub struct Canvas {
     pub width: usize,
     pub height: usize,
     pub pixels: Vec<Rgb>,
+    pub theme: Theme,
 }
 
 impl Canvas {
-    pub fn new(width: usize, height: usize) -> Self {
-        Self {
-            width,
-            height,
-            pixels: vec![background(); width * height],
-        }
+    pub fn new(width: usize, height: usize, theme: Theme) -> Self {
+        Self { width, height, pixels: vec![theme.background; width * height], theme }
     }
 
     /// Fills a rectangle, clipping anything outside the canvas.
@@ -199,7 +179,7 @@ impl Canvas {
 
     /// The charge level in the top right corner, in red when low and not charging.
     pub(crate) fn battery(&mut self, battery: Option<Battery>) {
-        let Some(label) = battery_label(battery, battery_display()) else { return };
+        let Some(label) = battery_label(battery, self.theme.battery) else { return };
         let color = if battery.is_some_and(is_low) { LOW } else { MUTED };
         let x = self.width.saturating_sub(text_width(&label, BATTERY_TEXT_SCALE) + BATTERY_RIGHT);
         self.text_at(&label, x, BATTERY_TOP, BATTERY_TEXT_SCALE, color);
@@ -207,7 +187,7 @@ impl Canvas {
 
     /// The clock, to the left of the battery level, or in its place when it is hidden.
     pub(crate) fn clock(&mut self, text: &str, battery: Option<Battery>) {
-        let battery_w = battery_label(battery, battery_display())
+        let battery_w = battery_label(battery, self.theme.battery)
             .map_or(0, |label| text_width(&label, BATTERY_TEXT_SCALE) + CLOCK_GAP);
         let x = self.width.saturating_sub(text_width(text, BATTERY_TEXT_SCALE) + battery_w + BATTERY_RIGHT);
         self.text_at(text, x, BATTERY_TOP, BATTERY_TEXT_SCALE, MUTED);
@@ -218,12 +198,12 @@ impl Canvas {
         let Tile { button, x, y, w, h } = *tile;
         let label = button.label();
         let label_color = if controls.is_held(button) {
-            self.rect(x, y, w, h, accent());
-            background()
+            self.rect(x, y, w, h, self.theme.accent);
+            self.theme.background
         } else if controls.was_seen(button) {
-            self.rect(x, y, w, h, accent());
+            self.rect(x, y, w, h, self.theme.accent);
             self.rect(x + 3, y + 3, w.saturating_sub(6), h.saturating_sub(6), BODY);
-            accent()
+            self.theme.accent
         } else {
             self.rect(x, y, w, h, BODY);
             TEXT
@@ -275,15 +255,15 @@ const TILES: [Tile; 18] = [
 ];
 
 /// Lays out the button test.
-pub fn button_screen(width: usize, height: usize, controls: &Controls) -> Canvas {
-    let mut canvas = Canvas::new(width, height);
+pub fn button_screen(width: usize, height: usize, controls: &Controls, theme: Theme) -> Canvas {
+    let mut canvas = Canvas::new(width, height, theme);
     canvas.text("BUTTON TEST", 20, 4, TEXT);
-    canvas.text("RG35XX SP LINUX", 58, 2, accent());
+    canvas.text("RG35XX SP LINUX", 58, 2, canvas.theme.accent);
     for tile in &TILES {
         canvas.tile(tile, controls);
     }
     match controls.last() {
-        Some(last) => canvas.text(last, 390, 4, accent()),
+        Some(last) => canvas.text(last, 390, 4, canvas.theme.accent),
         None => canvas.text("PRESS ANY BUTTON", 394, 3, MUTED),
     }
     canvas.text("HOLD MENU + START TO LEAVE", 448, 2, MUTED);
@@ -336,8 +316,9 @@ pub fn pause_screen(
     frame: &[u32],
     (frame_w, frame_h): (usize, usize),
     view: &PauseView,
+    theme: Theme,
 ) -> Canvas {
-    let mut canvas = Canvas::new(width, height);
+    let mut canvas = Canvas::new(width, height, theme);
     canvas.pixels.fill(Rgb(0, 0, 0));
     let left = width.saturating_sub(frame_w) / 2;
     let top = height.saturating_sub(frame_h) / 2;
@@ -350,7 +331,7 @@ pub fn pause_screen(
     }
 
     let (panel_x, panel_y, panel_w, panel_h) = PAUSE_PANEL;
-    canvas.rect(panel_x, panel_y, panel_w, panel_h, background());
+    canvas.rect(panel_x, panel_y, panel_w, panel_h, canvas.theme.background);
     canvas.text("PAUSED", panel_y + 20, 3, TEXT);
 
     let label_x = panel_x + 20;
@@ -360,10 +341,10 @@ pub fn pause_screen(
         let y = PAUSE_TOP + row * PAUSE_ROW;
         let selected = item == menu.selected();
         let (text_color, bar_color) = if selected {
-            canvas.rect(panel_x, y, panel_w, PAUSE_ROW - 4, accent());
-            (background(), background())
+            canvas.rect(panel_x, y, panel_w, PAUSE_ROW - 4, canvas.theme.accent);
+            (canvas.theme.background, canvas.theme.background)
         } else {
-            (TEXT, accent())
+            (TEXT, canvas.theme.accent)
         };
         let text_y = y + (PAUSE_ROW - 4 - font::HEIGHT * PAUSE_TEXT_SCALE) / 2;
         canvas.text_at(item.label(), label_x, text_y, PAUSE_TEXT_SCALE, text_color);
@@ -377,7 +358,7 @@ pub fn pause_screen(
             let bar_x = value_right - PAUSE_BAR_WIDTH;
             let bar_y = y + (PAUSE_ROW - 4) / 2 - 6;
             canvas.rect(bar_x, bar_y, PAUSE_BAR_WIDTH, 12, bar_color);
-            canvas.rect(bar_x + 2, bar_y + 2, PAUSE_BAR_WIDTH - 4, 8, if selected { accent() } else { background() });
+            canvas.rect(bar_x + 2, bar_y + 2, PAUSE_BAR_WIDTH - 4, 8, if selected { canvas.theme.accent } else { canvas.theme.background });
             let fill = (PAUSE_BAR_WIDTH - 4) * level.unwrap_or(0).min(100) as usize / 100;
             canvas.rect(bar_x + 2, bar_y + 2, fill, 8, bar_color);
             continue;
@@ -398,7 +379,7 @@ pub fn pause_screen(
 
     let message_y = PAUSE_TOP + ITEMS.len() * PAUSE_ROW + 12;
     if let Some(message) = menu.message() {
-        canvas.text(message, message_y, PAUSE_TEXT_SCALE, accent());
+        canvas.text(message, message_y, PAUSE_TEXT_SCALE, canvas.theme.accent);
     }
     canvas.text("A SELECTS - B RESUMES", message_y + 30, PAUSE_TEXT_SCALE, MUTED);
     canvas
@@ -430,10 +411,10 @@ mod tests {
 
     #[test]
     fn draws_on_the_native_panel_size() {
-        let canvas = button_screen(640, 480, &Controls::new());
+        let canvas = button_screen(640, 480, &Controls::new(), Theme::default());
         assert_eq!(canvas.pixels.len(), 640 * 480);
         assert!(count(&canvas, TEXT) > 0);
-        assert!(count(&canvas, accent()) > 0);
+        assert!(count(&canvas, Theme::default().accent) > 0);
     }
 
     fn pixel(canvas: &Canvas, x: usize, y: usize) -> Rgb {
@@ -482,22 +463,22 @@ mod tests {
         let a = TILES.iter().find(|t| t.button == Button::A).unwrap();
         let mut controls = Controls::new();
 
-        let idle = button_screen(640, 480, &controls);
+        let idle = button_screen(640, 480, &controls, Theme::default());
         assert_eq!(pixel(&idle, a.x, a.y), BODY);
 
         controls.apply(&Event::key(BTN_EAST, 1));
-        let held = button_screen(640, 480, &controls);
-        assert_eq!(pixel(&held, a.x + 3, a.y + 3), accent());
+        let held = button_screen(640, 480, &controls, Theme::default());
+        assert_eq!(pixel(&held, a.x + 3, a.y + 3), Theme::default().accent);
 
         controls.apply(&Event::key(BTN_EAST, 0));
-        let seen = button_screen(640, 480, &controls);
-        assert_eq!(pixel(&seen, a.x, a.y), accent());
+        let seen = button_screen(640, 480, &controls, Theme::default());
+        assert_eq!(pixel(&seen, a.x, a.y), Theme::default().accent);
         assert_eq!(pixel(&seen, a.x + 3, a.y + 3), BODY);
     }
 
     #[test]
     fn text_is_centred() {
-        let mut canvas = Canvas::new(640, 100);
+        let mut canvas = Canvas::new(640, 100, Theme::default());
         canvas.text("WELCOME", 10, 8, TEXT);
         let columns: Vec<usize> = canvas
             .pixels
@@ -518,21 +499,21 @@ mod tests {
     fn the_pause_menu_dims_the_frame_and_highlights_the_selection() {
         let frame = vec![0x00FF_FFFFu32; 640 * 426];
         let menu = PauseMenu::new();
-        let canvas = pause_screen(640, 480, &frame, (640, 426), &pause_view(&menu));
+        let canvas = pause_screen(640, 480, &frame, (640, 426), &pause_view(&menu), Theme::default());
         // Outside the panel, the frame shows dimmed. The bars above and below are black.
         assert_eq!(pixel(&canvas, 5, 240), Rgb(85, 85, 85));
         assert_eq!(pixel(&canvas, 5, 5), Rgb(0, 0, 0));
         // Resume is selected first.
-        assert_eq!(pixel(&canvas, PAUSE_PANEL.0 + 2, PAUSE_TOP + 2), accent());
-        assert_eq!(pixel(&canvas, PAUSE_PANEL.0 + 2, PAUSE_TOP + PAUSE_ROW + 2), background());
+        assert_eq!(pixel(&canvas, PAUSE_PANEL.0 + 2, PAUSE_TOP + 2), Theme::default().accent);
+        assert_eq!(pixel(&canvas, PAUSE_PANEL.0 + 2, PAUSE_TOP + PAUSE_ROW + 2), Theme::default().background);
     }
 
     #[test]
     fn the_pause_menu_survives_odd_sizes() {
         let menu = PauseMenu::new();
-        let canvas = pause_screen(64, 48, &[0; 4], (2, 2), &pause_view(&menu));
+        let canvas = pause_screen(64, 48, &[0; 4], (2, 2), &pause_view(&menu), Theme::default());
         assert_eq!(canvas.pixels.len(), 64 * 48);
-        let canvas = pause_screen(640, 480, &[], (0, 0), &pause_view(&menu));
+        let canvas = pause_screen(640, 480, &[], (0, 0), &pause_view(&menu), Theme::default());
         assert_eq!(canvas.pixels.len(), 640 * 480);
     }
 
@@ -545,7 +526,7 @@ mod tests {
 
     #[test]
     fn survives_a_screen_smaller_than_the_layout() {
-        let canvas = button_screen(64, 48, &Controls::new());
+        let canvas = button_screen(64, 48, &Controls::new(), Theme::default());
         assert_eq!(canvas.pixels.len(), 64 * 48);
     }
 }

@@ -135,7 +135,7 @@ pub(crate) fn wifi_settings(framebuffer: &mut fb::Framebuffer, events: &Receiver
                     subtitle: &subtitle,
                     valid_note: PASSWORD_NOTE,
                 };
-                screens::keyboard_screen(size.0, size.1, &view, keyboard, battery)
+                screens::keyboard_screen(size.0, size.1, &view, keyboard, &screen_frame(battery))
             }
             None => {
                 let line = wifi_status_line(control.is_some(), &status, attempt.as_ref());
@@ -146,7 +146,7 @@ pub(crate) fn wifi_settings(framebuffer: &mut fb::Framebuffer, events: &Receiver
                     connected: attempt.is_none() && status.connected(),
                     message: menu.message.as_deref(),
                 };
-                screens::wifi_screen(size.0, size.1, &view, battery)
+                screens::wifi_screen(size.0, size.1, &view, &screen_frame(battery))
             }
         };
         add_clock(&mut canvas, battery);

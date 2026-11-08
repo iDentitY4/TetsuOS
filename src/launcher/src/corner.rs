@@ -46,6 +46,17 @@ pub(crate) fn time_note() -> String {
     format!("{now}\n{network}")
 }
 
+
+/// The look chosen in Settings, for drawing a screen.
+pub(crate) fn current_theme() -> canvas::Theme {
+    canvas::Theme::from_settings(&settings::get())
+}
+
+/// The look and the battery reading, for a screen with the top-right corner.
+pub(crate) fn screen_frame(battery: Option<Battery>) -> screens::Frame {
+    screens::Frame { theme: current_theme(), battery }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

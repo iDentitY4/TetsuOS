@@ -968,7 +968,7 @@ const FAST_FORWARD_MAX: u32 = 8;
 /// Shows or clears the fast-forward sign in the top right corner, which is border for
 /// every system's picture, like the battery warning's corner.
 fn draw_fast_forward(framebuffer: &mut Framebuffer, on: bool) -> io::Result<()> {
-    let canvas = screens::fast_forward_sign(on);
+    let canvas = screens::fast_forward_sign(on, crate::current_theme());
     let pixels: Vec<u32> = canvas
         .pixels
         .iter()
@@ -1047,7 +1047,7 @@ fn pause(
                 brightness_percent: settings::brightness_percent(),
                 display: with_host(|host| host.display),
             };
-            framebuffer.draw(&canvas::pause_screen(width, height, &frame, frame_size, &view))?;
+            framebuffer.draw(&canvas::pause_screen(width, height, &frame, frame_size, &view, crate::current_theme()))?;
             redraw = false;
         }
         let event = match events.recv_timeout(Duration::from_millis(100)) {
@@ -1193,7 +1193,7 @@ pub fn play(
             Some(Level::Critical) => {
                 eprintln!("the battery is empty: saving and powering off");
                 let (width, height) = framebuffer.size();
-                framebuffer.draw(&screens::message_screen(width, height, "BATTERY EMPTY"))?;
+                framebuffer.draw(&screens::message_screen(width, height, "BATTERY EMPTY", crate::current_theme()))?;
                 ending = Ending::BatteryEmpty;
                 break;
             }

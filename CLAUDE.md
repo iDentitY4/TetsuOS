@@ -374,14 +374,25 @@ choices is declared with the `choices!` macro, which gives `ALL`, `key`, `label`
 keeps `key=value` lines in any order, and unknown or missing lines fall back to defaults,
 so files from older versions load (tested with the test unit's file from 2026-11-08).
 
+## How drawing gets its colours
+
+A `canvas::Theme` (accent, background, battery display) is built from the settings with
+`Theme::from_settings` and carried by each `Canvas`, so drawing reads `canvas.theme`
+instead of any global. Screens with the top-right corner take a `screens::Frame` (the
+theme and the battery reading); `corner::current_theme()` and `screen_frame(battery)`
+build them from the current settings, so a change shows on the next redraw, in the
+launcher and in a game's menu. The boot logo (`splash`) and the in-game battery warning
+keep fixed colours. `SettingsView` takes `&Settings`, and `setting_value` gives each
+row's value. Checked by rendering all nine PC previews before and after the change:
+pixel-identical apart from the live clock.
+
 ## Next steps
 
 Agreed with the user on 2026-11-08, in this order, each shown to the user before the next:
 
 1. Refactor, after renaming `welcome` to `launcher`, keeping settings in memory,
-   splitting `main.rs` into modules and using crates for system calls (all done): replace the global
-   theme atomics with a `Theme` value and let `SettingsView` take the settings; move
-   box art downloads into the app with `ureq` and `rustls` plus `serde_json`, dropping
+   splitting `main.rs` into modules, using crates for system calls and passing the theme
+   as a value (all done): move box art downloads into the app with `ureq` and `rustls` plus `serde_json`, dropping
    the curl, mbedTLS and CA-certificate packages
 2. Rewind, moved to the end by the user
 

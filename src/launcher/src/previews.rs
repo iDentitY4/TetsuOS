@@ -83,7 +83,7 @@ pub(crate) fn write_pause_preview(path: &str) -> io::Result<()> {
         brightness_percent: Some(50),
         display: settings::GameDisplay::default(),
     };
-    write_ppm(&canvas::pause_screen(width, height, &frame, frame_size, &view), path)
+    write_ppm(&canvas::pause_screen(width, height, &frame, frame_size, &view, current_theme()), path)
 }
 
 /// Renders the Wi-Fi screen with sample networks, connected to one of them.
@@ -120,7 +120,7 @@ pub(crate) fn write_wifi_preview(path: &str) -> io::Result<()> {
     };
     let (width, height) = PREVIEW_SIZE;
     let battery = Some(Battery { percent: 95, charging: true });
-    write_ppm(&screens::wifi_screen(width, height, &view, battery), path)
+    write_ppm(&screens::wifi_screen(width, height, &view, &screen_frame(battery)), path)
 }
 
 /// Renders the password keyboard partway through typing.
@@ -137,7 +137,7 @@ pub(crate) fn write_keyboard_preview(path: &str) -> io::Result<()> {
         subtitle: "FOR FRITZ!Box 7590 XY",
         valid_note: PASSWORD_NOTE,
     };
-    write_ppm(&screens::keyboard_screen(width, height, &view, &keyboard, battery), path)
+    write_ppm(&screens::keyboard_screen(width, height, &view, &keyboard, &screen_frame(battery)), path)
 }
 
 /// Renders the button test to a PPM image. Up has been pressed and A is held, so the
@@ -150,5 +150,5 @@ pub(crate) fn write_button_preview(path: &str) -> io::Result<()> {
     controls.apply(&Event::key(BTN_DPAD_UP, 1));
     controls.apply(&Event::key(BTN_DPAD_UP, 0));
     controls.apply(&Event::key(BTN_EAST, 1));
-    write_ppm(&canvas::button_screen(width, height, &controls), path)
+    write_ppm(&canvas::button_screen(width, height, &controls, current_theme()), path)
 }

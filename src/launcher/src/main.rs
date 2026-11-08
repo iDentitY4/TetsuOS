@@ -56,11 +56,6 @@ use std::path::Path;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
-    // The theme colour, for the launcher and a game's menu alike.
-    let current = settings::get();
-    canvas::set_accent(current.accent.rgb());
-    canvas::set_battery_display(current.battery);
-    canvas::set_background(current.background);
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.as_slice() {
         [] => run_launcher(),

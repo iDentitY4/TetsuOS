@@ -78,7 +78,7 @@ pub(crate) fn change_volume(button: Button) {
 /// as part of shutting down.
 pub(crate) fn shut_down(framebuffer: &mut fb::Framebuffer, message: &str, program: &str) -> io::Result<()> {
     let (width, height) = framebuffer.size();
-    framebuffer.draw(&screens::message_screen(width, height, message))?;
+    framebuffer.draw(&screens::message_screen(width, height, message, current_theme()))?;
     Command::new(program).status()?;
     Ok(())
 }
@@ -89,7 +89,7 @@ pub(crate) fn button_test(
 ) -> io::Result<()> {
     let (width, height) = framebuffer.size();
     let mut controls = Controls::new();
-    framebuffer.draw(&canvas::button_screen(width, height, &controls))?;
+    framebuffer.draw(&canvas::button_screen(width, height, &controls, current_theme()))?;
     while let Ok(event) = events.recv() {
         let mut changed = controls.apply(&event);
         // Events that arrived during the last draw are shown together.
@@ -100,7 +100,7 @@ pub(crate) fn button_test(
             break;
         }
         if changed {
-            framebuffer.draw(&canvas::button_screen(width, height, &controls))?;
+            framebuffer.draw(&canvas::button_screen(width, height, &controls, current_theme()))?;
         }
     }
     events.try_iter().for_each(drop);
@@ -120,6 +120,7 @@ pub(crate) fn launcher_canvas(
     scrolled: Duration,
 ) -> (canvas::Canvas, Option<(usize, usize, usize, usize)>) {
     let mut scrolling = None;
+    let frame = screen_frame(battery);
     let mut canvas = match launcher.screen() {
         Screen::Home => {
             let tiles: Vec<screens::TileView> = library
@@ -142,7 +143,7 @@ pub(crate) fn launcher_canvas(
                 .collect();
             let settings = settings::get();
             let selected = launcher.home_selected(library);
-            screens::home_screen(width, height, settings.shown_title(), library.grid, &tiles, selected, battery)
+            screens::home_screen(width, height, settings.shown_title(), library.grid, &tiles, selected, &frame)
         }
         Screen::Games(list) => {
             let (icon, title) = match list {
@@ -177,11 +178,11 @@ pub(crate) fn launcher_canvas(
             }
             let scroll = screens::scroll_offset(scrolled, overflow);
             let view = screens::ListView { icon, title, rows: &rows, selected, art, scroll };
-            screens::list_screen(width, height, &view, battery)
+            screens::list_screen(width, height, &view, &frame)
         }
         Screen::Settings => {
             let selected = GROUPS.iter().position(|&group| group == launcher.group_selected()).unwrap_or(0);
-            screens::settings_grid(width, height, &GROUPS, selected, battery)
+            screens::settings_grid(width, height, &GROUPS, selected, &frame)
         }
         Screen::SettingsGroup(group) => {
             let current = settings::get();
@@ -197,28 +198,15 @@ pub(crate) fn launcher_canvas(
             let view = screens::SettingsView {
                 group,
                 selected: launcher.setting_selected(group).unwrap_or(launcher::Setting::Volume),
+                settings: &current,
                 volume_percent: settings::volume_percent(),
                 brightness_percent: settings::brightness_percent(),
-                display: current.display,
-                time_zone: current.time_zone().label,
-                clock_format: current.clock.label(),
-                accent: current.accent.label(),
-                background: current.background.label(),
-                start_screen: current.start_screen.label(),
-                game_names: current.game_names.label(),
-                covers: if current.covers_hidden { "OFF" } else { "ON" },
-                battery: current.battery.label(),
-                menu_sounds: if current.menu_sounds { "ON" } else { "OFF" },
-                idle_sleep: &settings::idle_sleep_label(current.idle_minutes),
-                title_shown: if current.title_hidden { "HIDDEN" } else { "SHOWN" },
-                grid_size: current.grid.label(),
-                title_text: current.title(),
                 message: launcher.confirmation(),
                 note: note.as_deref(),
             };
-            screens::settings_screen(width, height, &view, battery)
+            screens::settings_screen(width, height, &view, &frame)
         }
-        Screen::Info => screens::info_screen(width, height, &system_info(battery), battery),
+        Screen::Info => screens::info_screen(width, height, &system_info(battery), &frame),
         Screen::HomeTiles => {
             let rows: Vec<screens::TileToggle> = library
                 .every_tile()
@@ -228,7 +216,7 @@ pub(crate) fn launcher_canvas(
                     screens::TileToggle { icon, label, shown: !library.hidden.contains(&tile) }
                 })
                 .collect();
-            screens::home_tiles_screen(width, height, &rows, launcher.home_tiles_selected(library), battery)
+            screens::home_tiles_screen(width, height, &rows, launcher.home_tiles_selected(library), &frame)
         }
     };
     add_clock(&mut canvas, battery);
@@ -326,7 +314,6 @@ pub(crate) fn act(
         }
         Action::BatteryDisplay(steps) => {
             change_settings(|s| s.battery = s.battery.cycle(steps));
-            canvas::set_battery_display(settings::get().battery);
         }
         Action::ToggleCovers => change_settings(|s| s.covers_hidden = !s.covers_hidden),
         Action::GameNames(steps) => {
@@ -337,7 +324,6 @@ pub(crate) fn act(
         Action::StartScreen(steps) => change_settings(|s| s.start_screen = s.start_screen.cycle(steps)),
         Action::Accent(steps) => {
             change_settings(|s| s.accent = s.accent.cycle(steps));
-            canvas::set_accent(settings::get().accent.rgb());
         }
         Action::GridSize(steps) => {
             change_settings(|s| s.grid = s.grid.cycle(steps));
@@ -346,7 +332,6 @@ pub(crate) fn act(
         }
         Action::Background(steps) => {
             change_settings(|s| s.background = s.background.cycle(steps));
-            canvas::set_background(settings::get().background);
         }
         Action::ToggleTitle => change_settings(|s| s.title_hidden = !s.title_hidden),
         Action::EditTitle => edit_title(framebuffer, events)?,
@@ -375,7 +360,7 @@ pub(crate) fn edit_title(framebuffer: &mut fb::Framebuffer, events: &Receiver<Ev
     let view = screens::KeyboardView { icon: &icons::THEME, title: "TITLE", subtitle: &subtitle, valid_note: "" };
     let battery = read_battery(&power::battery_dir());
     loop {
-        let mut canvas = screens::keyboard_screen(width, height, &view, &keyboard, battery);
+        let mut canvas = screens::keyboard_screen(width, height, &view, &keyboard, &screen_frame(battery));
         add_clock(&mut canvas, battery);
         framebuffer.draw(&canvas)?;
         let Ok(event) = events.recv() else { return Ok(()) };

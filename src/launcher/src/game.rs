@@ -98,7 +98,7 @@ pub(crate) fn interrupted_game<'a>(library: &'a Library, noted: &str) -> Option<
 /// Shows the game about to resume, and waits for B to cancel. Returns whether to resume.
 pub(crate) fn confirm_resume(framebuffer: &mut fb::Framebuffer, events: &Receiver<Event>, game: &Game) -> io::Result<bool> {
     let (width, height) = framebuffer.size();
-    framebuffer.draw(&screens::resume_screen(width, height, SYSTEMS[game.system].icon, &game.name))?;
+    framebuffer.draw(&screens::resume_screen(width, height, SYSTEMS[game.system].icon, &game.name, current_theme()))?;
     let deadline = Instant::now() + RESUME_WAIT;
     while let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
         match events.recv_timeout(remaining) {

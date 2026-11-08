@@ -1,7 +1,7 @@
 //! Lays out the launcher's screens: the console grid, game lists, settings and system info.
 
 use crate::boxart::Image;
-use crate::canvas::{accent, background, text_width, Battery, Canvas, Rgb, BODY, LOW, MUTED, TEXT};
+use crate::canvas::{text_width, Battery, Canvas, Rgb, Theme, BODY, LOW, MUTED, TEXT};
 use crate::font;
 use crate::icons::{self, Icon};
 use crate::keyboard::{self, Key, Keyboard};
@@ -10,7 +10,7 @@ use crate::settings::GridSize;
 use crate::wifi::Security;
 use crate::wifi_menu::{self, Entry};
 use std::time::Duration;
-use crate::settings::GameDisplay;
+use crate::settings::{idle_sleep_label, Settings};
 
 const TEXT_SCALE: usize = 2;
 const HINT_Y: usize = 448;
@@ -48,6 +48,14 @@ const BAR_W: usize = 160;
 const _: () = assert!(LIST_TOP + PAGE * LIST_ROW <= HINT_Y - 8);
 const _: () = assert!(SETTINGS_TOP + MAX_GROUP_SETTINGS * SETTINGS_ROW + 80 <= HINT_Y);
 
+/// What every screen with the top-right corner draws with: the look, and the battery
+/// reading the corner shows.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Frame {
+    pub theme: Theme,
+    pub battery: Option<Battery>,
+}
+
 /// A tile on the home screen.
 pub struct TileView<'a> {
     pub icon: &'a Icon,
@@ -67,23 +75,10 @@ pub struct RowView<'a> {
 pub struct SettingsView<'a> {
     pub group: Group,
     pub selected: Setting,
+    pub settings: &'a Settings,
+    /// The live levels, from the hardware.
     pub volume_percent: Option<u32>,
     pub brightness_percent: Option<u32>,
-    pub display: GameDisplay,
-    pub time_zone: &'a str,
-    pub clock_format: &'a str,
-    pub accent: &'a str,
-    pub background: &'a str,
-    pub start_screen: &'a str,
-    pub game_names: &'a str,
-    pub covers: &'a str,
-    pub battery: &'a str,
-    pub menu_sounds: &'a str,
-    pub idle_sleep: &'a str,
-    pub title_shown: &'a str,
-    pub grid_size: &'a str,
-    /// The home screen's title, shown as typed.
-    pub title_text: &'a str,
     /// A question waiting for a second press, in the accent colour.
     pub message: Option<&'a str>,
     /// Lines about the group, such as how many games have covers, split at newlines.
@@ -140,16 +135,16 @@ pub fn home_screen(
     grid: GridSize,
     tiles: &[TileView],
     selected: usize,
-    battery: Option<Battery>,
+    frame: &Frame,
 ) -> Canvas {
-    let mut canvas = Canvas::new(width, height);
+    let mut canvas = Canvas::new(width, height, frame.theme);
     if let Some(title) = title {
         let scale = if text_width(title, TITLE_SCALE) + 32 <= width { TITLE_SCALE } else { TITLE_SCALE - 1 };
         let x = width.saturating_sub(text_width(title, scale)) / 2;
         let y = TITLE_Y + (TITLE_SCALE - scale) * font::HEIGHT / 2;
         canvas.text_cased_at(title, x, y, scale, TEXT);
     }
-    canvas.battery(battery);
+    canvas.battery(frame.battery);
     // Without a title, the grid takes its space too.
     let top = if title.is_some() { GRID_TOP } else { GRID_TOP_UNTITLED };
     tile_grid(&mut canvas, tiles, selected, top, grid.columns(), grid.rows_shown());
@@ -171,9 +166,9 @@ pub fn group_icon(group: Group) -> &'static Icon {
 }
 
 /// The settings groups as tiles, laid out like the home screen.
-pub fn settings_grid(width: usize, height: usize, groups: &[Group], selected: usize, battery: Option<Battery>) -> Canvas {
-    let mut canvas = Canvas::new(width, height);
-    header(&mut canvas, &icons::SETTINGS, "SETTINGS", battery);
+pub fn settings_grid(width: usize, height: usize, groups: &[Group], selected: usize, frame: &Frame) -> Canvas {
+    let mut canvas = Canvas::new(width, height, frame.theme);
+    header(&mut canvas, &icons::SETTINGS, "SETTINGS", frame.battery);
     let tiles: Vec<TileView> =
         groups.iter().map(|&group| TileView { icon: group_icon(group), label: group.label(), count: None }).collect();
     tile_grid(&mut canvas, &tiles, selected, GRID_TOP, COLUMNS, None);
@@ -221,7 +216,7 @@ fn tile_grid(
         let x = left + index % columns * (tile_w + TILE_GAP);
         let y = top + (index / columns - first_row) * (tile_h + TILE_GAP);
         if index == selected {
-            canvas.rect(x, y, tile_w, tile_h, accent());
+            canvas.rect(x, y, tile_w, tile_h, canvas.theme.accent);
             canvas.rect(x + TILE_BORDER, y + TILE_BORDER, tile_w - 2 * TILE_BORDER, tile_h - 2 * TILE_BORDER, RAISED);
         } else {
             canvas.rect(x, y, tile_w, tile_h, BODY);
@@ -233,7 +228,7 @@ fn tile_grid(
         let icon_y = y + tile_h.saturating_sub(content_h) / 2;
         canvas.icon(tile.icon, x + (tile_w - icons::WIDTH * scale) / 2, icon_y, scale);
         let label_y = icon_y + icons::HEIGHT * scale + gap;
-        let label_color = if index == selected { accent() } else { TEXT };
+        let label_color = if index == selected { canvas.theme.accent } else { TEXT };
         let label_x = x + tile_w.saturating_sub(text_width(tile.label, TEXT_SCALE)) / 2;
         canvas.text_at(tile.label, label_x, label_y, TEXT_SCALE, label_color);
         if let Some(count) = tile.count {
@@ -309,10 +304,10 @@ pub fn selected_row_area(width: usize, rows: &[RowView], selected: usize, with_a
     (0, y, list_right, LIST_ROW - 2)
 }
 
-pub fn list_screen(width: usize, height: usize, view: &ListView, battery: Option<Battery>) -> Canvas {
+pub fn list_screen(width: usize, height: usize, view: &ListView, frame: &Frame) -> Canvas {
     let ListView { icon, title, rows, selected, ref art, scroll } = *view;
-    let mut canvas = Canvas::new(width, height);
-    header(&mut canvas, icon, title, battery);
+    let mut canvas = Canvas::new(width, height, frame.theme);
+    header(&mut canvas, icon, title, frame.battery);
     if !rows.is_empty() {
         let position = format!("{} OF {}", selected + 1, rows.len());
         let x = width.saturating_sub(text_width(&position, TEXT_SCALE) + 16);
@@ -324,8 +319,8 @@ pub fn list_screen(width: usize, height: usize, view: &ListView, battery: Option
     for (line, (index, row)) in rows.iter().enumerate().skip(first).take(PAGE).enumerate() {
         let y = LIST_TOP + line * LIST_ROW;
         let color = if index == selected {
-            canvas.rect(0, y, list_right, LIST_ROW - 2, accent());
-            background()
+            canvas.rect(0, y, list_right, LIST_ROW - 2, canvas.theme.accent);
+            canvas.theme.background
         } else {
             TEXT
         };
@@ -334,7 +329,7 @@ pub fn list_screen(width: usize, height: usize, view: &ListView, battery: Option
         }
         let text_y = row_text_y(y, LIST_ROW - 2);
         if row.starred {
-            let star_color = if index == selected { background() } else { STAR };
+            let star_color = if index == selected { canvas.theme.background } else { STAR };
             canvas.text_at("*", STAR_LEFT, text_y, TEXT_SCALE, star_color);
         }
         if index == selected {
@@ -365,19 +360,44 @@ pub fn list_screen(width: usize, height: usize, view: &ListView, battery: Option
     canvas
 }
 
-pub fn settings_screen(width: usize, height: usize, view: &SettingsView, battery: Option<Battery>) -> Canvas {
-    let mut canvas = Canvas::new(width, height);
-    header(&mut canvas, group_icon(view.group), view.group.label(), battery);
+/// The value a setting that changes with Left and Right shows on the right of its row.
+/// The levels show as bars instead, and the rest have none.
+fn setting_value(setting: Setting, settings: &Settings) -> Option<String> {
+    let on_off = |on: bool| if on { "ON" } else { "OFF" };
+    let label = match setting {
+        Setting::StartScreen => settings.start_screen.label(),
+        Setting::GameNames => settings.game_names.label(),
+        Setting::Battery => settings.battery.label(),
+        Setting::MenuSounds => on_off(settings.menu_sounds),
+        Setting::IdleSleep => return Some(idle_sleep_label(settings.idle_minutes)),
+        Setting::Scaling => settings.display.scaling.label(),
+        Setting::Effect => settings.display.effect.label(),
+        Setting::Ghosting => settings.display.ghosting.label(),
+        Setting::AccentColor => settings.accent.label(),
+        Setting::Background => settings.background.label(),
+        Setting::ShowTitle => if settings.title_hidden { "HIDDEN" } else { "SHOWN" },
+        Setting::GridSize => settings.grid.label(),
+        Setting::ShowCovers => on_off(!settings.covers_hidden),
+        Setting::TimeZone => settings.time_zone().label,
+        Setting::ClockFormat => settings.clock.label(),
+        _ => return None,
+    };
+    Some(label.to_string())
+}
+
+pub fn settings_screen(width: usize, height: usize, view: &SettingsView, frame: &Frame) -> Canvas {
+    let mut canvas = Canvas::new(width, height, frame.theme);
+    header(&mut canvas, group_icon(view.group), view.group.label(), frame.battery);
     let right = width.saturating_sub(SETTINGS_RIGHT);
     let settings = view.group.settings();
     for (row, &setting) in settings.iter().enumerate() {
         let y = SETTINGS_TOP + row * SETTINGS_ROW;
         let selected = setting == view.selected;
         let (text_color, on, off) = if selected {
-            canvas.rect(0, y, width, SETTINGS_ROW - 4, accent());
-            (background(), background(), accent())
+            canvas.rect(0, y, width, SETTINGS_ROW - 4, canvas.theme.accent);
+            (canvas.theme.background, canvas.theme.background, canvas.theme.accent)
         } else {
-            (TEXT, accent(), background())
+            (TEXT, canvas.theme.accent, canvas.theme.background)
         };
         let text_y = row_text_y(y, SETTINGS_ROW - 4);
         canvas.text_at(setting.label(), SETTINGS_LEFT, text_y, TEXT_SCALE, text_color);
@@ -385,42 +405,12 @@ pub fn settings_screen(width: usize, height: usize, view: &SettingsView, battery
             Setting::Volume => bar(&mut canvas, right, y, SETTINGS_ROW - 4, view.volume_percent, on, off),
             Setting::Brightness => bar(&mut canvas, right, y, SETTINGS_ROW - 4, view.brightness_percent, on, off),
             Setting::TitleText => {
-                let value = format!("{} >", view.title_text);
+                let value = format!("{} >", view.settings.title());
                 canvas.text_cased_at(&value, right - text_width(&value, TEXT_SCALE), text_y, TEXT_SCALE, text_color);
             }
-            Setting::Scaling
-            | Setting::Effect
-            | Setting::Ghosting
-            | Setting::AccentColor
-            | Setting::Background
-            | Setting::ShowTitle
-            | Setting::GridSize
-            | Setting::StartScreen
-            | Setting::GameNames
-            | Setting::ShowCovers
-            | Setting::Battery
-            | Setting::MenuSounds
-            | Setting::IdleSleep
-            | Setting::TimeZone
-            | Setting::ClockFormat => {
-                let label = match setting {
-                    Setting::StartScreen => view.start_screen,
-                    Setting::GameNames => view.game_names,
-                    Setting::ShowCovers => view.covers,
-                    Setting::Battery => view.battery,
-                    Setting::MenuSounds => view.menu_sounds,
-                    Setting::IdleSleep => view.idle_sleep,
-                    Setting::Scaling => view.display.scaling.label(),
-                    Setting::Effect => view.display.effect.label(),
-                    Setting::Ghosting => view.display.ghosting.label(),
-                    Setting::AccentColor => view.accent,
-                    Setting::Background => view.background,
-                    Setting::ShowTitle => view.title_shown,
-                    Setting::GridSize => view.grid_size,
-                    Setting::TimeZone => view.time_zone,
-                    _ => view.clock_format,
-                };
-                let value = if selected { format!("< {label} >") } else { label.to_string() };
+            _ if setting_value(setting, view.settings).is_some() => {
+                let label = setting_value(setting, view.settings).unwrap_or_default();
+                let value = if selected { format!("< {label} >") } else { label };
                 canvas.text_at(&value, right - text_width(&value, TEXT_SCALE), text_y, TEXT_SCALE, text_color);
             }
             _ if setting.opens_screen() => {
@@ -435,16 +425,16 @@ pub fn settings_screen(width: usize, height: usize, view: &SettingsView, battery
         below += SETTINGS_ROW;
     }
     if let Some(message) = view.message {
-        canvas.text(message, below, TEXT_SCALE, accent());
+        canvas.text(message, below, TEXT_SCALE, canvas.theme.accent);
     }
     let changes = settings.iter().any(|setting| setting.changes_with_left_right());
     hint(&mut canvas, if changes { "A SELECTS - LEFT RIGHT CHANGES - B BACK" } else { "A SELECTS - B BACK" });
     canvas
 }
 
-pub fn info_screen(width: usize, height: usize, lines: &[(String, String)], battery: Option<Battery>) -> Canvas {
-    let mut canvas = Canvas::new(width, height);
-    header(&mut canvas, &icons::SETTINGS, "SYSTEM INFO", battery);
+pub fn info_screen(width: usize, height: usize, lines: &[(String, String)], frame: &Frame) -> Canvas {
+    let mut canvas = Canvas::new(width, height, frame.theme);
+    header(&mut canvas, &icons::SETTINGS, "SYSTEM INFO", frame.battery);
     let right = width.saturating_sub(SETTINGS_RIGHT);
     for (row, (label, value)) in lines.iter().enumerate() {
         let y = row_text_y(SETTINGS_TOP + row * SETTINGS_ROW, SETTINGS_ROW - 4);
@@ -468,17 +458,17 @@ pub fn home_tiles_screen(
     height: usize,
     rows: &[TileToggle],
     selected: usize,
-    battery: Option<Battery>,
+    frame: &Frame,
 ) -> Canvas {
-    let mut canvas = Canvas::new(width, height);
-    header(&mut canvas, &icons::THEME, "HOME SCREEN TILES", battery);
+    let mut canvas = Canvas::new(width, height, frame.theme);
+    header(&mut canvas, &icons::THEME, "HOME SCREEN TILES", frame.battery);
     let right = width.saturating_sub(SETTINGS_RIGHT);
     let first = first_visible(selected);
     for (line, (index, row)) in rows.iter().enumerate().skip(first).take(PAGE).enumerate() {
         let y = LIST_TOP + line * LIST_ROW;
         let (label_color, value_color) = if index == selected {
-            canvas.rect(0, y, width, LIST_ROW - 2, accent());
-            (background(), background())
+            canvas.rect(0, y, width, LIST_ROW - 2, canvas.theme.accent);
+            (canvas.theme.background, canvas.theme.background)
         } else if row.shown {
             (TEXT, TEXT)
         } else {
@@ -520,17 +510,17 @@ fn clip(text: &str, columns: usize) -> String {
     text.chars().take(columns).collect()
 }
 
-pub fn boxart_screen(width: usize, height: usize, view: &BoxArtView, battery: Option<Battery>) -> Canvas {
-    let mut canvas = Canvas::new(width, height);
-    header(&mut canvas, &icons::SETTINGS, "BOX ART", battery);
+pub fn boxart_screen(width: usize, height: usize, view: &BoxArtView, frame: &Frame) -> Canvas {
+    let mut canvas = Canvas::new(width, height, frame.theme);
+    header(&mut canvas, &icons::SETTINGS, "BOX ART", frame.battery);
     canvas.text_at(&clip(view.status, BOXART_COLUMNS), LIST_LEFT, BOXART_TOP, TEXT_SCALE, TEXT);
     canvas.text_at(&clip(view.detail, BOXART_COLUMNS), LIST_LEFT, BOXART_TOP + 30, TEXT_SCALE, MUTED);
     let bar_w = width.saturating_sub(2 * LIST_LEFT);
     if let (Some(percent), true) = (view.progress, bar_w > 4) {
         let y = BOXART_TOP + 66;
-        canvas.rect(LIST_LEFT, y, bar_w, 14, accent());
-        canvas.rect(LIST_LEFT + 2, y + 2, bar_w - 4, 10, background());
-        canvas.rect(LIST_LEFT + 2, y + 2, (bar_w - 4) * percent.min(100) as usize / 100, 10, accent());
+        canvas.rect(LIST_LEFT, y, bar_w, 14, canvas.theme.accent);
+        canvas.rect(LIST_LEFT + 2, y + 2, bar_w - 4, 10, canvas.theme.background);
+        canvas.rect(LIST_LEFT + 2, y + 2, (bar_w - 4) * percent.min(100) as usize / 100, 10, canvas.theme.accent);
     }
     if !view.missing.is_empty() {
         let top = BOXART_TOP + 100;
@@ -580,10 +570,10 @@ fn padlock(canvas: &mut Canvas, x: usize, top: usize, color: Rgb) {
     canvas.rect(x, top + 6, 10, 8, color);
 }
 
-pub fn wifi_screen(width: usize, height: usize, view: &WifiView, battery: Option<Battery>) -> Canvas {
-    let mut canvas = Canvas::new(width, height);
-    header(&mut canvas, &icons::WIFI, "WI-FI", battery);
-    let status_color = if view.connected { accent() } else { MUTED };
+pub fn wifi_screen(width: usize, height: usize, view: &WifiView, frame: &Frame) -> Canvas {
+    let mut canvas = Canvas::new(width, height, frame.theme);
+    header(&mut canvas, &icons::WIFI, "WI-FI", frame.battery);
+    let status_color = if view.connected { canvas.theme.accent } else { MUTED };
     canvas.text_cased_at(view.status, LIST_LEFT, 76, TEXT_SCALE, status_color);
     if view.entries.is_empty() {
         canvas.text("NO NETWORKS FOUND YET", WIFI_TOP + 60, TEXT_SCALE, MUTED);
@@ -595,8 +585,8 @@ pub fn wifi_screen(width: usize, height: usize, view: &WifiView, battery: Option
         let row_h = WIFI_ROW - 2;
         let selected = index == view.selected;
         let (color, muted, off) = if selected {
-            canvas.rect(0, y, width, row_h, accent());
-            (background(), background(), RAISED)
+            canvas.rect(0, y, width, row_h, canvas.theme.accent);
+            (canvas.theme.background, canvas.theme.background, RAISED)
         } else {
             (if entry.signal.is_some() { TEXT } else { MUTED }, MUTED, BODY)
         };
@@ -619,13 +609,13 @@ pub fn wifi_screen(width: usize, height: usize, view: &WifiView, battery: Option
         };
         let text_y = row_text_y(y, row_h);
         let label_x = lock_x.saturating_sub(12 + text_width(label, TEXT_SCALE));
-        canvas.text_at(label, label_x, text_y, TEXT_SCALE, if entry.connected && !selected { accent() } else { muted });
+        canvas.text_at(label, label_x, text_y, TEXT_SCALE, if entry.connected && !selected { canvas.theme.accent } else { muted });
         let columns = label_x.saturating_sub(LIST_LEFT + 12) / advance;
         let name: String = entry.name.chars().take(columns).collect();
         canvas.text_cased_at(&name, LIST_LEFT, text_y, TEXT_SCALE, color);
     }
     if let Some(message) = view.message {
-        canvas.text(message, WIFI_TOP + wifi_menu::PAGE * WIFI_ROW + 14, TEXT_SCALE, accent());
+        canvas.text(message, WIFI_TOP + wifi_menu::PAGE * WIFI_ROW + 14, TEXT_SCALE, canvas.theme.accent);
     }
     hint(&mut canvas, "A CONNECTS - X FORGETS - Y SCANS - B BACK");
     canvas
@@ -655,10 +645,10 @@ pub fn keyboard_screen(
     height: usize,
     view: &KeyboardView,
     keyboard: &Keyboard,
-    battery: Option<Battery>,
+    frame: &Frame,
 ) -> Canvas {
-    let mut canvas = Canvas::new(width, height);
-    header(&mut canvas, view.icon, view.title, battery);
+    let mut canvas = Canvas::new(width, height, frame.theme);
+    header(&mut canvas, view.icon, view.title, frame.battery);
     let grid_w = keyboard::COLUMNS * KEY_W + (keyboard::COLUMNS - 1) * KEY_GAP;
     let left = width.saturating_sub(grid_w) / 2;
     let advance = (font::WIDTH + 1) * TEXT_SCALE;
@@ -675,7 +665,7 @@ pub fn keyboard_screen(
     let text_y = field_y + (field_h - font::HEIGHT * KEY_SCALE) / 2;
     canvas.text_cased_at(&visible, left + 10, text_y, KEY_SCALE, TEXT);
     let cursor_x = left + 10 + visible.chars().count() * field_advance;
-    canvas.rect(cursor_x, text_y - 2, 3, font::HEIGHT * KEY_SCALE + 4, accent());
+    canvas.rect(cursor_x, text_y - 2, 3, font::HEIGHT * KEY_SCALE + 4, canvas.theme.accent);
     let counter = format!("{count}");
     canvas.text_at(&counter, left + grid_w - 8 - text_width(&counter, TEXT_SCALE), field_y + field_h + 4, TEXT_SCALE, MUTED);
 
@@ -693,9 +683,9 @@ pub fn keyboard_screen(
             let selected = row == keyboard.row && index == keyboard.selected_index();
             let disabled = key == Key::Done && !keyboard.can_finish();
             let (fill, color) = match (selected, disabled) {
-                (true, _) => (accent(), background()),
+                (true, _) => (canvas.theme.accent, canvas.theme.background),
                 (false, true) => (BODY, MUTED),
-                (false, false) => (BODY, if row == 4 { accent() } else { TEXT }),
+                (false, false) => (BODY, if row == 4 { canvas.theme.accent } else { TEXT }),
             };
             canvas.rect(x, y, w, KEY_H, fill);
             let label = key.label(keyboard.layer);
@@ -714,41 +704,42 @@ pub fn keyboard_screen(
 /// The charge level in red, small enough for the border around a game's picture.
 pub fn battery_warning(percent: u32) -> Canvas {
     let text = format!("{percent}%");
-    let mut canvas = Canvas::new(text_width(&text, TEXT_SCALE) + 4, font::HEIGHT * TEXT_SCALE + 4);
+    let mut canvas = Canvas::new(text_width(&text, TEXT_SCALE) + 4, font::HEIGHT * TEXT_SCALE + 4, Theme::default());
     canvas.pixels.fill(Rgb(0, 0, 0));
     canvas.text_at(&text, 2, 2, TEXT_SCALE, LOW);
     canvas
 }
 
 /// The fast-forward sign, or black to clear it, small enough for a game's border.
-pub fn fast_forward_sign(on: bool) -> Canvas {
+pub fn fast_forward_sign(on: bool, theme: Theme) -> Canvas {
     let text = ">>";
-    let mut canvas = Canvas::new(text_width(text, TEXT_SCALE) + 4, font::HEIGHT * TEXT_SCALE + 4);
+    let mut canvas = Canvas::new(text_width(text, TEXT_SCALE) + 4, font::HEIGHT * TEXT_SCALE + 4, theme);
     canvas.pixels.fill(Rgb(0, 0, 0));
     if on {
-        canvas.text_at(text, 2, 2, TEXT_SCALE, accent());
+        canvas.text_at(text, 2, 2, TEXT_SCALE, canvas.theme.accent);
     }
     canvas
 }
 
 /// The kernel's boot logo, shown centred on black until the launcher starts. It is made
-/// with `launcher --preview-splash` and kept as `board/rg35xxsp/logo.ppm`.
+/// with `launcher --preview-splash` and kept as `board/rg35xxsp/logo.ppm`, in the first
+/// theme colour whatever is chosen, since the kernel shows it.
 pub fn splash() -> Canvas {
     let (title, subtitle) = ("RG35XX SP", "LINUX");
     let width = text_width(title, 6) + 16;
-    let mut canvas = Canvas::new(width, font::HEIGHT * 6 + 12 + font::HEIGHT * 3 + 16);
+    let mut canvas = Canvas::new(width, font::HEIGHT * 6 + 12 + font::HEIGHT * 3 + 16, Theme::default());
     canvas.pixels.fill(Rgb(0, 0, 0));
-    canvas.text(title, 8, 6, accent());
+    canvas.text(title, 8, 6, canvas.theme.accent);
     canvas.text(subtitle, 8 + font::HEIGHT * 6 + 12, 3, TEXT);
     canvas
 }
 
 /// The game the launcher is about to resume after starting up.
-pub fn resume_screen(width: usize, height: usize, icon: &Icon, name: &str) -> Canvas {
-    let mut canvas = Canvas::new(width, height);
+pub fn resume_screen(width: usize, height: usize, icon: &Icon, name: &str, theme: Theme) -> Canvas {
+    let mut canvas = Canvas::new(width, height, theme);
     let scale = 4;
     canvas.icon(icon, width.saturating_sub(icons::WIDTH * scale) / 2, 90, scale);
-    canvas.text("RESUMING", 90 + icons::HEIGHT * scale + 30, 3, accent());
+    canvas.text("RESUMING", 90 + icons::HEIGHT * scale + 30, 3, canvas.theme.accent);
     let columns = width.saturating_sub(32) / ((font::WIDTH + 1) * TEXT_SCALE);
     let visible: String = name.chars().take(columns).collect();
     canvas.text(&visible, 90 + icons::HEIGHT * scale + 76, TEXT_SCALE, TEXT);
@@ -757,8 +748,8 @@ pub fn resume_screen(width: usize, height: usize, icon: &Icon, name: &str) -> Ca
 }
 
 /// A message on its own, such as while the device powers off.
-pub fn message_screen(width: usize, height: usize, message: &str) -> Canvas {
-    let mut canvas = Canvas::new(width, height);
+pub fn message_screen(width: usize, height: usize, message: &str, theme: Theme) -> Canvas {
+    let mut canvas = Canvas::new(width, height, theme);
     canvas.text(message, height / 2 - font::HEIGHT * 2, 4, TEXT);
     canvas
 }
@@ -766,6 +757,11 @@ pub fn message_screen(width: usize, height: usize, message: &str) -> Canvas {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The first look, with no battery reading.
+    fn frame() -> Frame {
+        Frame { theme: Theme::default(), battery: None }
+    }
 
     fn pixel(canvas: &Canvas, x: usize, y: usize) -> Rgb {
         canvas.pixels[y * canvas.width + x]
@@ -786,7 +782,7 @@ mod tests {
                 let content = 4 * scale + icons::HEIGHT * scale + 4 * scale + 2 * font::HEIGHT * TEXT_SCALE + 2 * scale + 2;
                 assert!(content + TILE_BORDER <= height, "{count}: {content} > {height}");
             }
-            let canvas = home_screen(640, 480, Some("RG35XX SP LINUX"), GridSize::Normal, &tiles(count), count - 1, None);
+            let canvas = home_screen(640, 480, Some("RG35XX SP LINUX"), GridSize::Normal, &tiles(count), count - 1, &frame());
             assert_eq!(canvas.pixels.len(), 640 * 480);
             // Without the title the tiles are at least as tall, and start higher.
             assert!(tile_size(rows, GRID_TOP_UNTITLED).0 >= tile_size(rows, GRID_TOP).0);
@@ -796,8 +792,8 @@ mod tests {
     #[test]
     fn without_a_title_the_grid_moves_up_below_the_corner() {
         let first_lit = |canvas: &Canvas| (0..480).find(|&y| (0..640).any(|x| pixel(canvas, x, y) == BODY)).unwrap();
-        let titled = home_screen(640, 480, Some("RG35XX SP LINUX"), GridSize::Normal, &tiles(10), 0, None);
-        let untitled = home_screen(640, 480, None, GridSize::Normal, &tiles(10), 0, None);
+        let titled = home_screen(640, 480, Some("RG35XX SP LINUX"), GridSize::Normal, &tiles(10), 0, &frame());
+        let untitled = home_screen(640, 480, None, GridSize::Normal, &tiles(10), 0, &frame());
         assert!(first_lit(&untitled) < first_lit(&titled));
         assert!(first_lit(&untitled) >= GRID_TOP_UNTITLED);
         // The corner text ends above the grid.
@@ -824,13 +820,13 @@ mod tests {
             let lit = |y: usize| pixel(canvas, 320, y) == MUTED;
             ((GRID_TOP_UNTITLED - 12..grid_top).any(lit), (grid_top + grid_h..GRID_BOTTOM + 12).any(lit))
         };
-        let first = home_screen(640, 480, None, GridSize::Large, &tiles(10), 0, None);
+        let first = home_screen(640, 480, None, GridSize::Large, &tiles(10), 0, &frame());
         assert_eq!(arrow_rows(&first), (false, true));
-        let second = home_screen(640, 480, None, GridSize::Large, &tiles(10), 7, None);
+        let second = home_screen(640, 480, None, GridSize::Large, &tiles(10), 7, &frame());
         assert_eq!(arrow_rows(&second), (true, false));
         // The selected tile on the second page is drawn, in the first row.
-        assert!((0..480).any(|y| pixel(&second, 22 + tile_width(columns) + TILE_GAP + 1, y) == accent()));
-        home_screen(64, 48, None, GridSize::Large, &tiles(10), 9, None);
+        assert!((0..480).any(|y| pixel(&second, 22 + tile_width(columns) + TILE_GAP + 1, y) == Theme::default().accent));
+        home_screen(64, 48, None, GridSize::Large, &tiles(10), 9, &frame());
     }
 
     #[test]
@@ -842,12 +838,12 @@ mod tests {
 
     #[test]
     fn the_selected_tile_has_a_border() {
-        let canvas = home_screen(640, 480, Some("RG35XX SP LINUX"), GridSize::Normal, &tiles(5), 1, None);
+        let canvas = home_screen(640, 480, Some("RG35XX SP LINUX"), GridSize::Normal, &tiles(5), 1, &frame());
         let grid_left = (640 - (COLUMNS * TILE_W + (COLUMNS - 1) * TILE_GAP)) / 2;
         let (tile_h, _) = tile_size(2, GRID_TOP);
         let top = GRID_TOP + (GRID_BOTTOM - GRID_TOP - (2 * tile_h + TILE_GAP)) / 2;
         assert_eq!(pixel(&canvas, grid_left + 1, top + 1), BODY);
-        assert_eq!(pixel(&canvas, grid_left + TILE_W + TILE_GAP + 1, top + 1), accent());
+        assert_eq!(pixel(&canvas, grid_left + TILE_W + TILE_GAP + 1, top + 1), Theme::default().accent);
     }
 
     #[test]
@@ -858,10 +854,10 @@ mod tests {
         let names: Vec<String> = (0..20).map(|i| format!("GAME {i}")).collect();
         let rows: Vec<RowView> = names.iter().map(|name| RowView { name, icon: None, starred: false }).collect();
         let view = ListView { icon: &icons::GAME_BOY, title: "GAME BOY", rows: &rows, selected: 14, art: None, scroll: 0 };
-        let canvas = list_screen(640, 480, &view, None);
+        let canvas = list_screen(640, 480, &view, &frame());
         // Game 14 is the third row of the second page.
-        assert_eq!(pixel(&canvas, 639, LIST_TOP + 2 * LIST_ROW + 2), accent());
-        assert_eq!(pixel(&canvas, 639, LIST_TOP + 2), background());
+        assert_eq!(pixel(&canvas, 639, LIST_TOP + 2 * LIST_ROW + 2), Theme::default().accent);
+        assert_eq!(pixel(&canvas, 639, LIST_TOP + 2), Theme::default().background);
     }
 
     #[test]
@@ -870,9 +866,9 @@ mod tests {
             (0..10).map(|n| TileToggle { icon: &icons::NES, label: "GAME BOY ADVANCE", shown: n % 2 == 0 }).collect();
         rows.last_mut().unwrap().shown = false;
         assert!(LIST_TOP + rows.len() * LIST_ROW + 10 + font::HEIGHT * TEXT_SCALE <= HINT_Y);
-        let canvas = home_tiles_screen(640, 480, &rows, 3, None);
-        assert_eq!(pixel(&canvas, 2, LIST_TOP + 3 * LIST_ROW + 2), accent());
-        home_tiles_screen(60, 40, &rows, 9, None);
+        let canvas = home_tiles_screen(640, 480, &rows, 3, &frame());
+        assert_eq!(pixel(&canvas, 2, LIST_TOP + 3 * LIST_ROW + 2), Theme::default().accent);
+        home_tiles_screen(60, 40, &rows, 9, &frame());
     }
 
     #[test]
@@ -885,13 +881,13 @@ mod tests {
             missing: &missing,
             hint: "B STOPS",
         };
-        let canvas = boxart_screen(640, 480, &view, None);
+        let canvas = boxart_screen(640, 480, &view, &frame());
         assert_eq!(canvas.pixels.len(), 640 * 480);
         // Nothing drawn between the list and the hint.
         let gap = BOXART_TOP + 100 + (BOXART_MISSING_ROWS + 1) * LIST_ROW;
-        assert!(canvas.pixels[gap * 640..(HINT_Y - 2) * 640].iter().all(|&pixel| pixel == background()));
-        boxart_screen(100, 60, &view, None);
-        boxart_screen(40, 30, &view, None);
+        assert!(canvas.pixels[gap * 640..(HINT_Y - 2) * 640].iter().all(|&pixel| pixel == Theme::default().background));
+        boxart_screen(100, 60, &view, &frame());
+        boxart_screen(40, 30, &view, &frame());
     }
 
     #[test]
@@ -900,18 +896,18 @@ mod tests {
         let rows = [RowView { name: &long, icon: Some(&icons::SNES), starred: true }];
         let view = |art, scroll| ListView { icon: &icons::RECENT, title: "RECENT", rows: &rows, selected: 0, art, scroll };
         let placeholder = || Some(Art::Placeholder(&icons::SNES));
-        assert_eq!(list_screen(640, 480, &view(placeholder(), 0), None).pixels.len(), 640 * 480);
-        assert_eq!(list_screen(64, 48, &view(placeholder(), 9999), None).pixels.len(), 64 * 48);
+        assert_eq!(list_screen(640, 480, &view(placeholder(), 0), &frame()).pixels.len(), 640 * 480);
+        assert_eq!(list_screen(64, 48, &view(placeholder(), 9999), &frame()).pixels.len(), 64 * 48);
         let big = Image { width: 300, height: 400, pixels: vec![TEXT; 300 * 400] };
-        let canvas = list_screen(640, 480, &view(Some(Art::Cover(&big)), 5000), None);
+        let canvas = list_screen(640, 480, &view(Some(Art::Cover(&big)), 5000), &frame());
         assert_eq!(canvas.pixels.len(), 640 * 480);
-        assert_eq!(home_screen(64, 48, Some("RG35XX SP LINUX"), GridSize::Normal, &tiles(3), 0, None).pixels.len(), 64 * 48);
+        assert_eq!(home_screen(64, 48, Some("RG35XX SP LINUX"), GridSize::Normal, &tiles(3), 0, &frame()).pixels.len(), 64 * 48);
         // The longest title fits the width, a smaller size if need be, and so does none.
         let longest = "W".repeat(crate::settings::MAX_TITLE_LENGTH);
         assert!(text_width(&longest, TITLE_SCALE - 1) + 32 <= 640);
-        let canvas = home_screen(640, 480, Some(&longest), GridSize::Normal, &tiles(3), 0, None);
-        assert!((0..640).all(|x| pixel(&canvas, x, TITLE_Y - 1) == background() || x > 400));
-        home_screen(640, 480, None, GridSize::Normal, &tiles(3), 0, None);
+        let canvas = home_screen(640, 480, Some(&longest), GridSize::Normal, &tiles(3), 0, &frame());
+        assert!((0..640).all(|x| pixel(&canvas, x, TITLE_Y - 1) == Theme::default().background || x > 400));
+        home_screen(640, 480, None, GridSize::Normal, &tiles(3), 0, &frame());
     }
 
     #[test]
@@ -923,10 +919,10 @@ mod tests {
         let rows: Vec<RowView> = names.iter().map(|name| RowView { name, icon: None, starred: false }).collect();
         let cover = Image { width: 10, height: 10, pixels: vec![Rgb(1, 2, 3); 100] };
         let view = ListView { icon: &icons::NES, title: "NES", rows: &rows, selected: 0, art: Some(Art::Cover(&cover)), scroll: 0 };
-        let canvas = list_screen(640, 480, &view, None);
+        let canvas = list_screen(640, 480, &view, &frame());
         // The selection stops short of the panel, and the cover is in the panel's middle.
-        assert_eq!(pixel(&canvas, x - 9, LIST_TOP + 2), accent());
-        assert_eq!(pixel(&canvas, x + 1, LIST_TOP + 2), background());
+        assert_eq!(pixel(&canvas, x - 9, LIST_TOP + 2), Theme::default().accent);
+        assert_eq!(pixel(&canvas, x + 1, LIST_TOP + 2), Theme::default().background);
         assert_eq!(pixel(&canvas, x + (w - 10) / 2, y + (h - 10) / 2), Rgb(1, 2, 3));
     }
 
@@ -959,11 +955,11 @@ mod tests {
         let rows = [RowView { name: &long, icon: None, starred: false }];
         let cover = Image { width: 10, height: 10, pixels: vec![Rgb(1, 2, 3); 100] };
         let view = ListView { icon: &icons::NES, title: "NES", rows: &rows, selected: 0, art: Some(Art::Cover(&cover)), scroll: 100 };
-        let canvas = list_screen(640, 480, &view, None);
+        let canvas = list_screen(640, 480, &view, &frame());
         let row_y = LIST_TOP..LIST_TOP + LIST_ROW - 2;
         // Text, drawn in the background colour on the highlight, keeps clear of the
         // margins on both sides.
-        let text_in = |xs: std::ops::Range<usize>| xs.clone().any(|x| row_y.clone().any(|y| pixel(&canvas, x, y) == background()));
+        let text_in = |xs: std::ops::Range<usize>| xs.clone().any(|x| row_y.clone().any(|y| pixel(&canvas, x, y) == Theme::default().background));
         assert!(!text_in(0..LIST_LEFT));
         assert!(!text_in(ART_PANEL.0 - 16..ART_PANEL.0 - 8));
         assert!(text_in(LIST_LEFT..ART_PANEL.0 - 16));
@@ -977,7 +973,7 @@ mod tests {
             RowView { name: &names[1], icon: None, starred: false },
         ];
         let view = ListView { icon: &icons::NES, title: "NES", rows: &rows, selected: 1, art: None, scroll: 0 };
-        let canvas = list_screen(640, 480, &view, None);
+        let canvas = list_screen(640, 480, &view, &frame());
         let star_in = |row: usize| {
             let y = LIST_TOP + row * LIST_ROW;
             (STAR_LEFT..LIST_LEFT).any(|x| (y..y + LIST_ROW - 2).any(|y| pixel(&canvas, x, y) == STAR))
@@ -1011,12 +1007,12 @@ mod tests {
         entries.extend((0..20).map(|i| entry(&format!("Net {i}"), Some(-60), Security::Password, false, false)));
         for selected in [0, 12] {
             let view = WifiView { entries: &entries, selected, status: "CONNECTED TO x", connected: true, message: Some("SCANNING") };
-            assert_eq!(wifi_screen(640, 480, &view, None).pixels.len(), 640 * 480);
-            assert_eq!(wifi_screen(64, 48, &view, None).pixels.len(), 64 * 48);
+            assert_eq!(wifi_screen(640, 480, &view, &frame()).pixels.len(), 640 * 480);
+            assert_eq!(wifi_screen(64, 48, &view, &frame()).pixels.len(), 64 * 48);
         }
         // The long name stops before the CONNECTED label.
         let view = WifiView { entries: &entries, selected: 1, status: "", connected: false, message: None };
-        let canvas = wifi_screen(640, 480, &view, None);
+        let canvas = wifi_screen(640, 480, &view, &frame());
         let label_x = 640 - WIFI_RIGHT - 24 - 18 - 12 - text_width("CONNECTED", TEXT_SCALE);
         let row = WIFI_TOP..WIFI_TOP + WIFI_ROW - 2;
         assert!((label_x - 12..label_x - 1).all(|x| row.clone().all(|y| pixel(&canvas, x, y) != TEXT)));
@@ -1027,16 +1023,16 @@ mod tests {
         let mut keyboard = Keyboard::new(64, |text| text.len() >= 8);
         keyboard.text = "x".repeat(64);
         let view = KeyboardView { icon: &icons::WIFI, title: "PASSWORD", subtitle: "FOR Home", valid_note: "8 TO 63 CHARACTERS" };
-        let canvas = keyboard_screen(640, 480, &view, &keyboard, None);
+        let canvas = keyboard_screen(640, 480, &view, &keyboard, &frame());
         let grid_w = keyboard::COLUMNS * KEY_W + (keyboard::COLUMNS - 1) * KEY_GAP;
         assert!(grid_w <= 640 - 16);
         let left = (640 - grid_w) / 2;
         // q, on the second row, starts selected.
-        assert_eq!(pixel(&canvas, left + 1, KEYS_TOP + KEY_H + KEY_GAP + 1), accent());
+        assert_eq!(pixel(&canvas, left + 1, KEYS_TOP + KEY_H + KEY_GAP + 1), Theme::default().accent);
         assert_eq!(pixel(&canvas, left + 1, KEYS_TOP + 1), BODY);
         let long = "y".repeat(99);
         let view = KeyboardView { icon: &icons::WIFI, title: "PASSWORD", subtitle: &long, valid_note: "" };
-        assert_eq!(keyboard_screen(64, 48, &view, &keyboard, None).pixels.len(), 64 * 48);
+        assert_eq!(keyboard_screen(64, 48, &view, &keyboard, &frame()).pixels.len(), 64 * 48);
     }
 
     #[test]
@@ -1060,18 +1056,18 @@ mod tests {
 
     #[test]
     fn the_fast_forward_sign_fits_inside_every_border() {
-        let sign = fast_forward_sign(true);
+        let sign = fast_forward_sign(true, Theme::default());
         assert!(6 + sign.height <= 27 && 6 + sign.width <= 46);
-        assert!(sign.pixels.contains(&accent()));
-        assert!(!fast_forward_sign(false).pixels.contains(&accent()));
+        assert!(sign.pixels.contains(&Theme::default().accent));
+        assert!(!fast_forward_sign(false, Theme::default()).pixels.contains(&Theme::default().accent));
     }
 
     #[test]
     fn the_resume_screen_fits_above_the_hint() {
         assert!(90 + icons::HEIGHT * 4 + 76 + font::HEIGHT * TEXT_SCALE <= HINT_Y);
         let long = "X".repeat(200);
-        assert_eq!(resume_screen(640, 480, &icons::GAME_BOY, &long).pixels.len(), 640 * 480);
-        assert_eq!(resume_screen(64, 48, &icons::GAME_BOY, &long).pixels.len(), 64 * 48);
+        assert_eq!(resume_screen(640, 480, &icons::GAME_BOY, &long, Theme::default()).pixels.len(), 640 * 480);
+        assert_eq!(resume_screen(64, 48, &icons::GAME_BOY, &long, Theme::default()).pixels.len(), 64 * 48);
     }
 
     #[test]
@@ -1081,32 +1077,53 @@ mod tests {
             selected: Setting::PowerOff,
             volume_percent: Some(80),
             brightness_percent: Some(50),
-            display: GameDisplay::default(),
-            time_zone: "UTC",
-            clock_format: "24 HOUR",
-            accent: "TEAL",
-            background: "DARK",
-            start_screen: "HOME",
-            game_names: "SHORT",
-            covers: "ON",
-            battery: "PERCENT",
-            menu_sounds: "OFF",
-            idle_sleep: "OFF",
-            title_shown: "SHOWN",
-            grid_size: "NORMAL",
-            title_text: "RG35XX SP LINUX",
+            settings: &Settings::default(),
             message: Some("PRESS A AGAIN TO POWER OFF"),
             note: None,
         };
-        let canvas = settings_screen(640, 480, &view, None);
+        let canvas = settings_screen(640, 480, &view, &frame());
         let row = Group::System.settings().iter().position(|&s| s == Setting::PowerOff).unwrap();
-        assert_eq!(pixel(&canvas, 2, SETTINGS_TOP + row * SETTINGS_ROW + 2), accent());
-        assert_eq!(pixel(&canvas, 2, SETTINGS_TOP + 2), background());
+        assert_eq!(pixel(&canvas, 2, SETTINGS_TOP + row * SETTINGS_ROW + 2), Theme::default().accent);
+        assert_eq!(pixel(&canvas, 2, SETTINGS_TOP + 2), Theme::default().background);
+    }
+
+    #[test]
+    fn each_screen_draws_in_the_theme_it_is_given() {
+        use crate::launcher::GROUPS;
+        use crate::settings::{Accent, Background};
+        let pink = Settings { accent: Accent::Pink, background: Background::Black, ..Settings::default() };
+        let pink = Frame { theme: Theme::from_settings(&pink), battery: None };
+        // Two themes at once: nothing global decides the colours. (Teal also shows in some
+        // icons, so only the pink accent tells them apart.)
+        let first = settings_grid(640, 480, &GROUPS, 0, &frame());
+        let other = settings_grid(640, 480, &GROUPS, 0, &pink);
+        assert!(!first.pixels.contains(&pink.theme.accent));
+        assert!(other.pixels.contains(&pink.theme.accent));
+        assert_eq!(pixel(&first, 2, 470), Theme::default().background);
+        assert_eq!(pixel(&other, 2, 470), Rgb(0, 0, 0), "black background");
+    }
+
+    #[test]
+    fn every_setting_that_changes_shows_a_value() {
+        use crate::launcher::GROUPS;
+        for setting in GROUPS.iter().flat_map(|group| group.settings()) {
+            let changes = setting.changes_with_left_right() && !matches!(setting, Setting::Volume | Setting::Brightness);
+            assert_eq!(setting_value(*setting, &Settings::default()).is_some(), changes, "{setting:?}");
+        }
     }
 
     #[test]
     fn every_group_and_its_longest_label_fit() {
         use crate::launcher::GROUPS;
+        // Long values everywhere: the longest zone name, a full title.
+        let longest = Settings {
+            zone: Some("America/Argentina/Buenos_Aires"),
+            title: Some("X".repeat(crate::settings::MAX_TITLE_LENGTH)),
+            idle_minutes: 30,
+            start_screen: crate::settings::StartScreen::LastGame,
+            battery: crate::settings::BatteryDisplay::WhenLow,
+            ..Settings::default()
+        };
         for group in GROUPS {
             assert!(text_width(group.label(), TEXT_SCALE) + 2 * TILE_BORDER <= TILE_W, "{group:?}");
             for setting in group.settings() {
@@ -1124,26 +1141,13 @@ mod tests {
                 selected: group.settings().first().copied().unwrap_or(Setting::Volume),
                 volume_percent: None,
                 brightness_percent: None,
-                display: GameDisplay::default(),
-                time_zone: "BUENOS AIRES",
-                clock_format: "24 HOUR",
-                accent: "PURPLE",
-                background: "TINT",
-                start_screen: "LAST GAME",
-                game_names: "FULL",
-                covers: "OFF",
-                battery: "WHEN LOW",
-                menu_sounds: "ON",
-                idle_sleep: "30 MIN",
-                title_shown: "HIDDEN",
-                grid_size: "LARGE",
-                title_text: "XXXXXXXXXXXXXXXXXXXXXXXX",
+                settings: &longest,
                 message: Some("PRESS A AGAIN TO DELETE ALL COVERS"),
                 note: Some("WEDNESDAY 30 SEPTEMBER 2026, 12:30 PM\nWAITING FOR THE TIME FROM THE NETWORK"),
             };
-            assert_eq!(settings_screen(640, 480, &view, None).pixels.len(), 640 * 480);
+            assert_eq!(settings_screen(640, 480, &view, &frame()).pixels.len(), 640 * 480);
         }
-        let canvas = settings_grid(640, 480, &GROUPS, 4, None);
+        let canvas = settings_grid(640, 480, &GROUPS, 4, &frame());
         assert_eq!(canvas.pixels.len(), 640 * 480);
     }
 }
