@@ -264,6 +264,29 @@ choices! {
     }
 }
 
+choices! {
+    /// How full the battery charges, by the voltage the charger stops at. Lithium cells
+    /// last longer kept below full; the percentages are rough, for a typical cell.
+    pub enum ChargeLimit (default Full) {
+        /// 4.2 V, as the PMIC charged before this setting.
+        Full => "full", "FULL";
+        /// 4.1 V.
+        Most => "85", "ABOUT 85%";
+        /// 4.0 V.
+        Less => "70", "ABOUT 70%";
+    }
+}
+
+impl ChargeLimit {
+    pub fn microvolts(self) -> u32 {
+        match self {
+            Self::Full => 4_200_000,
+            Self::Most => 4_100_000,
+            Self::Less => 4_000_000,
+        }
+    }
+}
+
 /// The choices for sleeping when idle, in minutes without a press. 0 is off.
 pub const IDLE_SLEEP_MINUTES: [u32; 5] = [0, 2, 5, 10, 30];
 
@@ -316,6 +339,15 @@ pub struct Settings {
     pub menu_sounds: bool,
     pub ssh: SshAccess,
     pub performance: CpuLevel,
+    pub charge: ChargeLimit,
+}
+
+impl Settings {
+    /// Settings > ADVANCED > RESET SETTINGS: everything back to its default but the volume
+    /// and brightness, which live in the hardware and are set as the device is used.
+    pub fn reset(&self) -> Self {
+        Self { volume: self.volume, brightness: self.brightness, ..Self::default() }
+    }
 }
 
 impl Settings {
@@ -392,6 +424,7 @@ fn parse(text: &str) -> Settings {
             "sounds" => settings.menu_sounds = value == "on",
             "ssh" => choose(&mut settings.ssh, SshAccess::from_key(value)),
             "performance" => choose(&mut settings.performance, CpuLevel::from_key(value)),
+            "charge" => choose(&mut settings.charge, ChargeLimit::from_key(value)),
             _ => {}
         }
     }
@@ -432,6 +465,7 @@ fn format(settings: &Settings) -> String {
     lines.push(format!("sounds={}", on_off(settings.menu_sounds)));
     lines.push(format!("ssh={}", settings.ssh.key()));
     lines.push(format!("performance={}", settings.performance.key()));
+    lines.push(format!("charge={}", settings.charge.key()));
     lines.iter().map(|line| format!("{line}\n")).collect()
 }
 
@@ -596,8 +630,12 @@ mod tests {
             menu_sounds: true,
             ssh: SshAccess::Wifi,
             performance: CpuLevel::Battery,
+            charge: ChargeLimit::Less,
         };
         assert_eq!(parse(&format(&settings)), settings);
+        let reset = settings.reset();
+        assert_eq!((reset.volume, reset.brightness), (Some(25), Some(1250)));
+        assert_eq!(reset, Settings { volume: Some(25), brightness: Some(1250), ..Settings::default() });
         // S50dropbear reads the ssh line with sed, so it must be exactly this.
         assert!(format(&settings).lines().any(|line| line == "ssh=wifi"));
     }

@@ -3,6 +3,7 @@
 //! own process (`game`), and the `--preview` options render screens on the PC (`previews`).
 
 mod app;
+mod boot_partition;
 mod boxart;
 mod boxart_fetch;
 mod boxart_screen;

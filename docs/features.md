@@ -234,11 +234,12 @@ Built but not yet tested on the device:
   on the test unit. A game's clock was not checked inside a game
 - Settings is a grid of group tiles, like the home screen (`settings_grid`): GENERAL
   (volume, brightness), GAME SCREEN (scaling, effect, ghosting), WI-FI (opens the Wi-Fi
-  screen directly), BOX ART, THEME, TIME, SYSTEM (button test, system info, reboot,
-  power off) and ADVANCED (SSH, root password, SSH keys, performance). A opens a group's
+  screen directly), BOX ART, THEME, TIME, SYSTEM (button test, system info, sleep when
+  idle, save logs, reboot, power off) and ADVANCED (SSH, root password, SSH keys,
+  performance, charge limit, boot messages, reset). A opens a group's
   list, B goes back to its tile, and Start closes settings from anywhere
   in them. Groups and their settings are `GROUPS` and `Group::settings` in `launcher.rs`,
-  so a new option is one more entry; `MAX_GROUP_SETTINGS` (6) is what the screen has
+  so a new option is one more entry; `MAX_GROUP_SETTINGS` (7) is what the screen has
   room for. Settings that can't be undone (delete covers, reboot, power off) need A
   twice. Group icons are in `icons.rs`. Claude checked each screen on the device; not yet
   seen by the user
@@ -252,7 +253,9 @@ Built but not yet tested on the device:
     the screen says why, and the script falls back to USB ONLY too. Restarting stops only
     the listener, so open sessions stay connected. Until this, dropbear listened on Wi-Fi
     as well, with root's empty password
-  - ROOT PASSWORD: typed on the on-screen keyboard; empty removes it. R1 fills in a
+  - ROOT PASSWORD: typed on the on-screen keyboard; Start on an empty field removes it
+    (B on an empty field leaves without a change, which the user first took for
+    removing it, so the line above the field says so). R1 fills in a
     made-up one (`ssh::random_password`): three groups of four from 27 lowercase letters
     and digits without lookalikes (no 0, o, 1, i, l, and no g, p, q or y, which the font
     draws without descenders, like 9, P and Y), about 57 bits, from `/dev/urandom`. It
@@ -278,6 +281,35 @@ Built but not yet tested on the device:
     and removing the password then fell back to USB ONLY with the empty password working
     again; each PERFORMANCE level set the governor and cap. Not checked: a game at
     BATTERY or PERFORMANCE, and how either feels or lasts
+  - CHARGE TO (`charge=`): FULL (4.2 V), ABOUT 85% (4.1 V) or ABOUT 70% (4.0 V), the
+    voltage the AXP717 stops charging at, written to the battery's `voltage_max`
+    (`power::apply_charge_limit`). The driver takes only these three. The PMIC keeps the
+    value until the battery is disconnected, so the launcher writes it at every start;
+    this unit's PMIC was at 4.2 V, so FULL changes nothing. The percentages are rough,
+    for a typical cell. Charging current stays at the device tree's 1024 mA, which is
+    also the driver's maximum. A software stop at a percentage (turning charging off
+    through `status`) was left out: a crash could leave charging off. Claude checked
+    that each value reached `voltage_max` and that FULL started charging again; the user
+    saw the charge level behave so far, but not yet over a whole charge
+  - BOOT MESSAGES (`boot_partition.rs`): LOGO is `console=ttynull loglevel=5`, as before;
+    TEXT is `console=tty1 loglevel=7`, so kernel and init messages show until the
+    launcher draws. The launcher mounts RGBOOT at `/run/launcher-rgboot`, changes only
+    those arguments on the `APPEND` line of `extlinux/extlinux.conf`, writes it as
+    `extlinux.new`, reads it back and renames it over the old one. The value is read from
+    the card the first time ADVANCED opens, then kept. `push.sh boot` and flashing put
+    back LOGO. Claude checked that TEXT and back gave the original file byte for byte,
+    and that the device boots with TEXT (launcher drawn 1.48 s after the kernel started,
+    against 1.38 s); the user saw the logo with the messages below it, as it should be
+  - RESET SETTINGS (A twice): `Settings::reset` keeps volume and brightness and sets
+    everything else to its default, so SSH goes back to USB ONLY, the time zone to UTC
+    and the charge limit to FULL; the CPU, charge limit and SSH server are applied again.
+    Games, saves, covers, Wi-Fi networks, keys, the root password and the boot messages
+    stay. Checked on the device, then the user's settings were put back
+- Settings > SYSTEM > SAVE LOGS TO CARD (`boot_partition::save_logs`): writes
+  `launcher.log`, `dmesg.txt` and `system.txt` (date, kernel, build, uptime, settings,
+  storage, memory, processes, network) to `logs` on RGBOOT, replacing the last ones, and
+  says where. Wi-Fi passwords, keys and the root password hash are in other files and
+  left out. Checked on the device
 - System info (`system_info.rs`) shows 11 lines, as many as the screen has room for:
   battery with voltage, game storage, game count (a `.cue` and its `.bin` count once),
   available memory, CPU speed and temperature, the Wi-Fi network and address (from

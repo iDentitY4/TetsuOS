@@ -19,6 +19,17 @@ const CHECK_INTERVAL: Duration = Duration::from_secs(5);
 /// Readings in a row that must be critical, so a short dip under load doesn't count.
 const CRITICAL_READINGS: u32 = 2;
 
+/// Sets the voltage the charger stops at, from Settings > ADVANCED > CHARGE TO. The PMIC
+/// keeps it until the battery is disconnected, so it is set at every start, and FULL writes
+/// 4.2 V back. The driver only takes 4.0, 4.1 and 4.2 V.
+pub fn apply_charge_limit(limit: crate::settings::ChargeLimit) {
+    let path = Path::new(BATTERY_DIR).join("voltage_max");
+    match std::fs::write(&path, limit.microvolts().to_string()) {
+        Ok(()) => println!("charge limit: {} ({} mV)", limit.key(), limit.microvolts() / 1000),
+        Err(error) => eprintln!("warning: could not set the charge limit: {error}"),
+    }
+}
+
 pub fn battery_dir() -> PathBuf {
     std::env::var_os(BATTERY_DIR_VARIABLE).map_or_else(|| PathBuf::from(BATTERY_DIR), PathBuf::from)
 }

@@ -33,8 +33,8 @@ hidden tiles, start screen, game names, battery display, menu sounds and sleep w
 - The lid since input moved to the `evdev` crate; the lid during a box art download
 - A game's own clock (Pokemon's RTC) showing local time
 - A real empty battery, a wrong Wi-Fi password, a failing certificate check
-- Settings > ADVANCED: SSH from another machine over Wi-Fi, and games at BATTERY or
-  PERFORMANCE
+- Settings > ADVANCED: SSH from another machine over Wi-Fi, games at BATTERY or
+  PERFORMANCE, and the battery gauge over a whole charge with CHARGE TO below FULL
 
 ## Known issues
 
@@ -170,6 +170,8 @@ physical like the lid.
   `10.35.35.2` (`ip -br addr`) and that the device is awake with the cable in.
 - **Commands:** `ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
   root@10.35.35.1 '<command>'`. The launcher logs to `/var/log/launcher.log`.
+- **The boot partition:** RGBOOT isn't mounted while the device runs; mount it at a
+  folder of your own under `/tmp` (`blkid` finds it) and unmount it after.
 - **Claude logs in with root's empty password,** which only SSH USB ONLY with no root
   password allows: the PC's `id_rsa` has a passphrase and no agent. USB + WI-FI or a
   password locks Claude out, and pressing Right on SSH restarts the server mid-press.

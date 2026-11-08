@@ -94,7 +94,7 @@ pub const GROUPS: [Group; 8] = [
 ];
 
 /// The most settings a group has, which the settings screen makes room for.
-pub const MAX_GROUP_SETTINGS: usize = 6;
+pub const MAX_GROUP_SETTINGS: usize = 7;
 
 impl Group {
     pub fn label(self) -> &'static str {
@@ -136,9 +136,24 @@ impl Group {
             }
             Self::Time => &[Setting::TimeZone, Setting::ClockFormat],
             Self::System => {
-                &[Setting::ButtonTest, Setting::SystemInfo, Setting::IdleSleep, Setting::Reboot, Setting::PowerOff]
+                &[
+                    Setting::ButtonTest,
+                    Setting::SystemInfo,
+                    Setting::IdleSleep,
+                    Setting::SaveLogs,
+                    Setting::Reboot,
+                    Setting::PowerOff,
+                ]
             }
-            Self::Advanced => &[Setting::Ssh, Setting::RootPassword, Setting::SshKeys, Setting::Performance],
+            Self::Advanced => &[
+                Setting::Ssh,
+                Setting::RootPassword,
+                Setting::SshKeys,
+                Setting::Performance,
+                Setting::ChargeLimit,
+                Setting::BootMessages,
+                Setting::ResetSettings,
+            ],
         }
     }
 }
@@ -175,6 +190,10 @@ pub enum Setting {
     RootPassword,
     SshKeys,
     Performance,
+    ChargeLimit,
+    BootMessages,
+    ResetSettings,
+    SaveLogs,
 }
 
 impl Setting {
@@ -210,6 +229,10 @@ impl Setting {
             Self::RootPassword => "ROOT PASSWORD",
             Self::SshKeys => "SSH KEYS",
             Self::Performance => "PERFORMANCE",
+            Self::ChargeLimit => "CHARGE TO",
+            Self::BootMessages => "BOOT MESSAGES",
+            Self::ResetSettings => "RESET SETTINGS",
+            Self::SaveLogs => "SAVE LOGS TO CARD",
         }
     }
 
@@ -250,12 +273,14 @@ impl Setting {
                 | Self::ClockFormat
                 | Self::Ssh
                 | Self::Performance
+                | Self::ChargeLimit
+                | Self::BootMessages
         )
     }
 
     /// Whether A must be pressed twice, because it can't be undone.
     fn needs_confirming(self) -> bool {
-        matches!(self, Self::DeleteArt | Self::Reboot | Self::PowerOff | Self::SshKeys)
+        matches!(self, Self::DeleteArt | Self::Reboot | Self::PowerOff | Self::SshKeys | Self::ResetSettings)
     }
 }
 
@@ -319,6 +344,11 @@ pub enum Command {
     EditRootPassword,
     RemoveSshKeys,
     Performance(i32),
+    ChargeLimit(i32),
+    /// Switches the boot between the logo alone and the kernel's messages.
+    ToggleBootMessages,
+    ResetSettings,
+    SaveLogs,
     Reboot,
     PowerOff,
 }
@@ -471,6 +501,7 @@ impl Launcher {
             Setting::Reboot => Some("PRESS A AGAIN TO REBOOT"),
             Setting::PowerOff => Some("PRESS A AGAIN TO POWER OFF"),
             Setting::SshKeys => Some("PRESS A AGAIN TO REMOVE THE SSH KEYS"),
+            Setting::ResetSettings => Some("PRESS A AGAIN TO RESET ALL SETTINGS"),
             _ => None,
         }
     }
@@ -621,6 +652,8 @@ impl Launcher {
                 Setting::ClockFormat => return Command::ClockFormat(step),
                 Setting::Ssh => return Command::SshAccess(step),
                 Setting::Performance => return Command::Performance(step),
+                Setting::ChargeLimit => return Command::ChargeLimit(step),
+                Setting::BootMessages => return Command::ToggleBootMessages,
                 _ => {}
             },
             Button::B => self.screen = Screen::Settings,
@@ -639,6 +672,8 @@ impl Launcher {
                 Setting::PowerOff => return Command::PowerOff,
                 Setting::RootPassword => return Command::EditRootPassword,
                 Setting::SshKeys => return Command::RemoveSshKeys,
+                Setting::ResetSettings => return Command::ResetSettings,
+                Setting::SaveLogs => return Command::SaveLogs,
                 Setting::Volume
                 | Setting::Brightness
                 | Setting::StartScreen
@@ -657,7 +692,9 @@ impl Launcher {
                 | Setting::TimeZone
                 | Setting::ClockFormat
                 | Setting::Ssh
-                | Setting::Performance => {}
+                | Setting::Performance
+                | Setting::ChargeLimit
+                | Setting::BootMessages => {}
             },
             _ => {}
         }
@@ -1003,6 +1040,13 @@ mod tests {
         assert_eq!(launcher.press(Button::A, &library), Command::RemoveSshKeys);
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Left, &library), Command::Performance(-1));
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::Right, &library), Command::ChargeLimit(1));
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::Left, &library), Command::ToggleBootMessages);
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::A, &library), Command::Nothing, "resetting asks first");
+        assert_eq!(launcher.press(Button::A, &library), Command::ResetSettings);
     }
 
     #[test]

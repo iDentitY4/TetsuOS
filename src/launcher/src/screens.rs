@@ -7,6 +7,7 @@ use crate::icons::{self, Icon};
 use crate::keyboard::{self, Key, Keyboard};
 use crate::launcher::{Group, Setting, COLUMNS, MAX_GROUP_SETTINGS, PAGE};
 use crate::settings::GridSize;
+use crate::boot_partition::BootMessages;
 use crate::ssh;
 use crate::wifi::Security;
 use crate::wifi_menu::{self, Entry};
@@ -86,6 +87,8 @@ pub struct SettingsView<'a> {
     pub note: Option<&'a str>,
     /// Whether a root password and SSH keys are set, for the ADVANCED group.
     pub login: ssh::Login,
+    /// Where the boot messages go, read from the card; None if it couldn't be.
+    pub boot_messages: Option<BootMessages>,
 }
 
 fn row_text_y(top: usize, height: usize) -> usize {
@@ -386,6 +389,7 @@ fn setting_value(setting: Setting, settings: &Settings) -> Option<String> {
         Setting::ClockFormat => settings.clock.label(),
         Setting::Ssh => settings.ssh.label(),
         Setting::Performance => settings.performance.label(),
+        Setting::ChargeLimit => settings.charge.label(),
         _ => return None,
     };
     Some(label.to_string())
@@ -413,6 +417,11 @@ pub fn settings_screen(width: usize, height: usize, view: &SettingsView, frame: 
             Setting::TitleText => {
                 let value = format!("{} >", view.settings.title());
                 canvas.text_cased_at(&value, right - text_width(&value, TEXT_SCALE), text_y, TEXT_SCALE, text_color);
+            }
+            Setting::BootMessages => {
+                let label = view.boot_messages.map_or("UNKNOWN", BootMessages::label);
+                let value = if selected { format!("< {label} >") } else { label.to_string() };
+                canvas.text_at(&value, right - text_width(&value, TEXT_SCALE), text_y, TEXT_SCALE, text_color);
             }
             Setting::RootPassword => {
                 let value = if view.login.password { "SET >" } else { "NOT SET >" };
@@ -1099,6 +1108,7 @@ mod tests {
             message: Some("PRESS A AGAIN TO POWER OFF"),
             note: None,
             login: ssh::Login::default(),
+            boot_messages: None,
         };
         let canvas = settings_screen(640, 480, &view, &frame());
         let row = Group::System.settings().iter().position(|&s| s == Setting::PowerOff).unwrap();
@@ -1126,7 +1136,9 @@ mod tests {
     fn every_setting_that_changes_shows_a_value() {
         use crate::launcher::GROUPS;
         for setting in GROUPS.iter().flat_map(|group| group.settings()) {
-            let changes = setting.changes_with_left_right() && !matches!(setting, Setting::Volume | Setting::Brightness);
+            // Bars, and a value read from the card instead of the settings.
+            let drawn_apart = matches!(setting, Setting::Volume | Setting::Brightness | Setting::BootMessages);
+            let changes = setting.changes_with_left_right() && !drawn_apart;
             assert_eq!(setting_value(*setting, &Settings::default()).is_some(), changes, "{setting:?}");
         }
     }
@@ -1164,6 +1176,7 @@ mod tests {
                 message: Some("PRESS A AGAIN TO DELETE ALL COVERS"),
                 note: Some("WEDNESDAY 30 SEPTEMBER 2026, 12:30 PM\nWAITING FOR THE TIME FROM THE NETWORK"),
                 login: ssh::Login { password: true, keys: 12 },
+                boot_messages: Some(BootMessages::Text),
             };
             assert_eq!(settings_screen(640, 480, &view, &frame()).pixels.len(), 640 * 480);
         }

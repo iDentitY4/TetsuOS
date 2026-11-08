@@ -7,6 +7,7 @@ use crate::input::{self, Button, Controls, Event};
 use crate::launcher::{self, Command as Action, Group, Launcher, Library, List, Screen, Tile, GROUPS};
 use crate::libretro::Ending;
 use crate::repeat::Repeater;
+use crate::boot_partition;
 use crate::{performance, ssh};
 use std::io;
 use std::path::Path;
@@ -209,6 +210,8 @@ pub(crate) fn launcher_canvas(
                 message: launcher.confirmation(),
                 note: note.as_deref(),
                 login,
+                // Read from the card the first time the group opens, then kept.
+                boot_messages: if group == Group::Advanced { boot_partition::boot_messages() } else { None },
             };
             screens::settings_screen(width, height, &view, &frame)
         }
@@ -398,6 +401,29 @@ pub(crate) fn act(
             change_settings(|s| s.performance = s.performance.cycle(steps));
             performance::apply(settings::get().performance);
         }
+        Action::ChargeLimit(steps) => {
+            change_settings(|s| s.charge = s.charge.cycle(steps));
+            power::apply_charge_limit(settings::get().charge);
+        }
+        Action::ToggleBootMessages => {
+            // Unknown when the card's extlinux.conf couldn't be read: nothing to change.
+            if let Some(current) = boot_partition::boot_messages() {
+                if let Err(error) = boot_partition::set_boot_messages(current.other()) {
+                    eprintln!("warning: could not change the boot messages: {error}");
+                }
+            }
+        }
+        Action::ResetSettings => {
+            change_settings(|s| *s = s.reset());
+            let current = settings::get();
+            performance::apply(current.performance);
+            power::apply_charge_limit(current.charge);
+            ssh::restart_server();
+            println!("settings: reset to defaults");
+            // The home screen's tiles, names and grid are made again.
+            return Ok(true);
+        }
+        Action::SaveLogs => save_logs(framebuffer)?,
         Action::Reboot => shut_down(framebuffer, "REBOOTING", "reboot")?,
         Action::PowerOff => shut_down(framebuffer, "POWERING OFF", &power::poweroff_command())?,
     }
@@ -439,13 +465,29 @@ pub(crate) fn edit_title(framebuffer: &mut fb::Framebuffer, events: &Receiver<Ev
     Ok(())
 }
 
+/// Settings > SYSTEM > SAVE LOGS TO CARD, saying where they went or that they couldn't be.
+pub(crate) fn save_logs(framebuffer: &mut fb::Framebuffer) -> io::Result<()> {
+    let (width, height) = framebuffer.size();
+    framebuffer.draw(&screens::message_screen(width, height, "SAVING LOGS", current_theme()))?;
+    let message = match boot_partition::save_logs() {
+        Ok(folder) => format!("LOGS SAVED TO {folder}"),
+        Err(error) => {
+            eprintln!("warning: could not save the logs: {error}");
+            "COULD NOT SAVE THE LOGS".to_string()
+        }
+    };
+    framebuffer.draw(&screens::message_screen(width, height, &message, current_theme()))?;
+    sleep(Duration::from_secs(2));
+    Ok(())
+}
+
 /// Types the root password on the on-screen keyboard, from Settings > ADVANCED. Empty
 /// removes it. B leaves it as it was.
 pub(crate) fn edit_root_password(framebuffer: &mut fb::Framebuffer, events: &Receiver<Event>) -> io::Result<()> {
     let (width, height) = framebuffer.size();
     let mut keyboard = keyboard::Keyboard::new(ssh::MAX_PASSWORD_LENGTH, ssh::valid_password);
     let subtitle = if ssh::Login::read().password {
-        "R1 MAKES ONE UP - EMPTY REMOVES IT"
+        "R1 MAKES ONE UP - START WHILE EMPTY REMOVES IT"
     } else {
         "R1 MAKES ONE UP - FOR SSH AND THE CONSOLE"
     };
@@ -496,6 +538,7 @@ pub(crate) fn run_launcher() -> io::Result<()> {
     println!("launcher started {}", boot_time());
     settings::restore_levels();
     performance::apply(settings::get().performance);
+    power::apply_charge_limit(settings::get().charge);
     let mut framebuffer = open_framebuffer()?;
     // Non-fatal: at worst, console text could appear over the screen.
     let _console = fb::claim_console()
