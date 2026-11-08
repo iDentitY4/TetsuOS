@@ -28,7 +28,6 @@ hidden tiles, start screen, game names, battery display, menu sounds and sleep w
 
 ## Not yet checked by the user
 
-- The boot logo without kernel text over it (`ttynull`)
 - Game Boy SGB games without their border; PlayStation sound and feel
 - Sleep when idle: the screen dark while asleep, and waking with the power button
 - The lid since input moved to the `evdev` crate; the lid during a box art download

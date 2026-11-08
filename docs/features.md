@@ -118,7 +118,8 @@ Built but not yet tested on the device:
   0.44 s after the kernel starts. The init scripts take 0.01 to 0.04 s each.
   `scripts/push.sh uboot` writes U-Boot at 8 KiB on the card over SSH and checks it by
   reading it back. The user saw the logo with a kernel warning over it; with `ttynull`
-  it should be clean, which the user hasn't seen yet
+  it is clean. On 2026-11-08 the logo became TETSU over a smaller OS, and the user saw it
+  on the device with no kernel text over it
 
 - Scrolling names: a selected name too long for its row pauses 1.2 s, scrolls at 48
   pixels a second to its end, pauses, and starts over (`screens::scroll_offset`). Only
