@@ -424,6 +424,8 @@ pub(crate) fn act(
             return Ok(true);
         }
         Action::SaveLogs => save_logs(framebuffer)?,
+        // The PC may have changed the games, covers and lists.
+        Action::UsbStorage => return usb_drive(framebuffer, events),
         Action::Reboot => shut_down(framebuffer, "REBOOTING", "reboot")?,
         Action::PowerOff => shut_down(framebuffer, "POWERING OFF", &power::poweroff_command())?,
     }

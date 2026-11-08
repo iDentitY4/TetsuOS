@@ -14,7 +14,8 @@ updates over USB networking (`10.35.35.1`); audio with headphone switching; Panf
 CPU scaling to 1512 MHz; lid sleep (`s2idle`), with Wi-Fi and USB kept through it; Wi-Fi
 set up on the device; network time (`ntpd`) and a time zone setting; battery level,
 low-battery save and power-off; SSH over USB only by default, over Wi-Fi with a key or
-root password; a CPU performance setting.
+root password; a CPU performance setting; USB STORAGE, which shows TETSU-DATA to a PC as
+a drive.
 
 Games: NES (FCEUmm), SNES (Snes9x), Game Boy, Color and Advance (mGBA), PlayStation (PCSX
 ReARMed) and Tamagotchi (tamalib), with an in-game menu (8 save slots, levels, display
@@ -33,6 +34,7 @@ hidden tiles, start screen, game names, battery display, menu sounds and sleep w
 - The lid since input moved to the `evdev` crate; the lid during a box art download
 - A game's own clock (Pokemon's RTC) showing local time
 - A real empty battery, a wrong Wi-Fi password, a failing certificate check
+- USB STORAGE on Windows and macOS (Linux is checked)
 - Settings > ADVANCED: SSH from another machine over Wi-Fi, games at BATTERY or
   PERFORMANCE, and the battery gauge over a whole charge with CHARGE TO below FULL
 
@@ -95,8 +97,12 @@ In short here; `docs/features.md` has them in full.
   host mode, so patch 0007 disables them. Host mode needs that reverted plus a dual-role
   setup like ROCKNIX's `0151` and `0152`, which also drive 5 V on the port: review them
   before use while connected to a PC.
-- **The USB controller has 4 IN and 4 OUT endpoints;** `g_cdc` uses 4 IN and 2 OUT, so
-  another USB function needs one dropped.
+- **The USB controller has 4 IN and 4 OUT endpoints;** serial plus Ethernet use 4 IN and
+  2 OUT, so another USB function needs one dropped. `/usr/sbin/usb-gadget` sets the
+  gadget up through configfs; USB STORAGE swaps serial for the drive.
+- **MUSB flushes RX packets that arrive before a request is queued** (mainline commit
+  3fc137386c46), so mass storage lost commands and the PC reset it every 30 s. Patch 0014
+  reads them instead.
 - **USB power may start the device** (AXP717). Test shutdown with the cable unplugged.
 - **Kernel power-off** writes the wrong AXP717 register, but falls through to PSCI, and
   TF-A turns it off.
@@ -113,8 +119,8 @@ In short here; `docs/features.md` has them in full.
   launcher stopped (`/etc/init.d/S90launcher stop`) and open input:
   `sleep 30 | kmscube -D /dev/dri/card1 -c 600`.
 - **The GPU needs `CONFIG_SUN50I_H6_PRCM_PPU`,** or Panfrost fails silently.
-- **RGDATA starts at a fixed 4 GiB.** Writing the image replaces the partition table, and
-  `flash.sh` adds RGDATA back; after a plain `dd`, run `data-partition.sh`.
+- **TETSU-DATA starts at a fixed 4 GiB.** Writing the image replaces the partition table, and
+  `flash.sh` adds TETSU-DATA back; after a plain `dd`, run `data-partition.sh`.
 - **Wi-Fi:** without `keep-power-in-suspend` (patch 0013) rtw88 aborts every suspend.
   Sleeping while connected hangs the device for good, so sleep sends `DISCONNECT` first
   and `RECONNECT` after. This `wpa_supplicant` has no syslog (`-s` just prints usage).
@@ -170,7 +176,7 @@ physical like the lid.
   `10.35.35.2` (`ip -br addr`) and that the device is awake with the cable in.
 - **Commands:** `ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
   root@10.35.35.1 '<command>'`. The launcher logs to `/var/log/launcher.log`.
-- **The boot partition:** RGBOOT isn't mounted while the device runs; mount it at a
+- **The boot partition:** TETSU-BOOT isn't mounted while the device runs; mount it at a
   folder of your own under `/tmp` (`blkid` finds it) and unmount it after.
 - **Claude logs in with root's empty password,** which only SSH USB ONLY with no root
   password allows: the PC's `id_rsa` has a passphrase and no agent. USB + WI-FI or a
@@ -192,7 +198,7 @@ physical like the lid.
 - **Without USB networking:** copy `output/target/usr/bin/launcher` to the card's first
   partition, then on the device stop `S90launcher`, copy it to `/usr/bin` and start it.
 - **USB recovery check:** with no card, power on and look for `1f3a:efe8` in `lsusb`.
-- **Boot log:** `bootlog.txt` on the `RGBOOT` partition, written about 15 and 60 s after
+- **Boot log:** `bootlog.txt` on the `TETSU-BOOT` partition, written about 15 and 60 s after
   init. Filter the PC's kernel log with `journalctl -k -b | grep -v 'UFW BLOCK'`.
 
 ## Working agreements

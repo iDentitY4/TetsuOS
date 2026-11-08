@@ -1,0 +1,113 @@
+#!/bin/sh
+# The USB-C port's gadget, set up through configfs. Two layouts:
+#
+#   network   serial console (ttyGS0) plus CDC Ethernet (usb0), as the device runs
+#   storage   CDC Ethernet plus the TETSU-DATA partition as a USB drive, for
+#             Settings > SYSTEM > USB STORAGE
+#
+# The controller has 4 IN and 4 OUT endpoints. Serial and Ethernet take 2 IN and
+# 1 OUT each, and the drive 1 IN and 1 OUT, so the drive replaces the serial port.
+#
+# usb-gadget start      sets up the functions and binds the network layout (S41usbnet)
+# usb-gadget storage    unmounts TETSU-DATA and hands it to the PC as a drive
+# usb-gadget network    takes it back, checks it with fsck.fat and mounts it again
+# usb-gadget ejected    exits 0 if the PC has ejected the drive, or it was never given
+#
+# Each layout has its own product ID, because Windows remembers a device's interfaces
+# by its IDs. The network one is the ID that g_cdc, used before, had.
+
+G=/sys/kernel/config/usb_gadget/tetsu
+CONFIG="$G/configs/c.1"
+LUN="$G/functions/mass_storage.0/lun.0"
+DATA=/mnt/data
+LABEL=TETSU-DATA
+
+data_device() {
+	blkid | grep "LABEL=\"$LABEL\"" | head -n 1 | cut -d: -f1
+}
+
+setup() {
+	mountpoint -q /sys/kernel/config || mount -t configfs none /sys/kernel/config || exit 1
+	[ -d "$G" ] && return 0
+	mkdir "$G" || exit 1
+	echo 0x0200 > "$G/bcdUSB"
+	echo 0x0100 > "$G/bcdDevice"
+	# Interface association descriptors, so Windows sees each function on its own
+	echo 0xef > "$G/bDeviceClass"
+	echo 0x02 > "$G/bDeviceSubClass"
+	echo 0x01 > "$G/bDeviceProtocol"
+	mkdir "$G/strings/0x409"
+	echo "Tetsu OS" > "$G/strings/0x409/manufacturer"
+	echo "Tetsu OS RG35XX SP" > "$G/strings/0x409/product"
+	echo "tetsu-rg35xxsp" > "$G/strings/0x409/serialnumber"
+
+	mkdir "$G/functions/acm.GS0"
+	mkdir "$G/functions/ecm.usb0"
+	# Fixed addresses, so the PC keeps its settings for the link
+	echo 02:52:47:33:35:01 > "$G/functions/ecm.usb0/dev_addr"
+	echo 02:52:47:33:35:02 > "$G/functions/ecm.usb0/host_addr"
+	mkdir "$G/functions/mass_storage.0"
+	# Removable, so the PC can eject it, which closes it here (see "ejected")
+	echo 1 > "$LUN/removable"
+
+	mkdir "$CONFIG"
+	echo 500 > "$CONFIG/MaxPower"
+	mkdir "$CONFIG/strings/0x409"
+	echo "Tetsu OS" > "$CONFIG/strings/0x409/configuration"
+}
+
+# Binds the gadget with the functions named, replacing the ones it had. The PC sees
+# the device unplugged and plugged in again.
+use() {
+	product="$1"
+	shift
+	[ -n "$(cat "$G/UDC")" ] && echo "" > "$G/UDC"
+	for link in "$CONFIG"/*.*; do
+		[ -L "$link" ] && rm "$link"
+	done
+	echo 0x0525 > "$G/idVendor"
+	echo "$product" > "$G/idProduct"
+	for function in "$@"; do
+		ln -s "$G/functions/$function" "$CONFIG/" || exit 1
+	done
+	ls /sys/class/udc | head -n 1 > "$G/UDC"
+}
+
+case "$1" in
+start)
+	setup
+	use 0xa4aa acm.GS0 ecm.usb0
+	;;
+storage)
+	setup
+	dev="$(data_device)"
+	[ -n "$dev" ] || { echo "usb-gadget: no $LABEL partition" >&2; exit 1; }
+	sync
+	if mountpoint -q "$DATA"; then
+		umount "$DATA" || { echo "usb-gadget: $LABEL is in use" >&2; exit 2; }
+	fi
+	echo "$dev" > "$LUN/file" || { /etc/init.d/S15data start; exit 1; }
+	use 0xa4a5 ecm.usb0 mass_storage.0
+	echo "usb-gadget: $dev is a USB drive"
+	;;
+network)
+	setup
+	# Closes the drive even if the PC still has it open
+	[ -n "$(cat "$LUN/file")" ] && echo 1 > "$LUN/forced_eject"
+	use 0xa4aa acm.GS0 ecm.usb0
+	if ! mountpoint -q "$DATA"; then
+		dev="$(data_device)"
+		# Repairs what a PC unplugged without ejecting may have left half written
+		[ -n "$dev" ] && fsck.fat -a -w "$dev"
+		/etc/init.d/S15data start
+	fi
+	echo "usb-gadget: back to serial and network"
+	;;
+ejected)
+	[ -z "$(cat "$LUN/file" 2>/dev/null)" ]
+	;;
+*)
+	echo "Usage: $0 {start|storage|network|ejected}"
+	exit 1
+	;;
+esac

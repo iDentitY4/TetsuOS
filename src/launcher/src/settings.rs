@@ -1,4 +1,4 @@
-//! Everything chosen in Settings, kept in `/mnt/data/settings.txt` on the RGDATA partition
+//! Everything chosen in Settings, kept in `/mnt/data/settings.txt` on the TETSU-DATA partition
 //! across reboots, plus the volume and brightness, which live in the hardware.
 //!
 //! The settings are read from the file once and kept in memory: `get` returns them, and

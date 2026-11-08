@@ -142,6 +142,14 @@ pub(crate) fn write_keyboard_preview(path: &str) -> io::Result<()> {
 
 /// Renders the button test to a PPM image. Up has been pressed and A is held, so the
 /// image shows each look a button can have.
+/// Settings > SYSTEM > USB STORAGE, with a PC using the drive.
+pub(crate) fn write_usb_drive_preview(path: &str) -> io::Result<()> {
+    let (width, height) = PREVIEW_SIZE;
+    let view = usb_drive_view(UsbLink::Connected, false);
+    let frame = screens::Frame { theme: current_theme(), battery: Some(Battery { percent: 80, charging: true }) };
+    write_ppm(&screens::usb_drive_screen(width, height, &view, &frame), path)
+}
+
 pub(crate) fn write_button_preview(path: &str) -> io::Result<()> {
     const BTN_DPAD_UP: u16 = 0x220;
     const BTN_EAST: u16 = 0x131;

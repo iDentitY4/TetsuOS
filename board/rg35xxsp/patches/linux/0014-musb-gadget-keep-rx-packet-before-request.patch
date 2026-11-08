@@ -1,0 +1,103 @@
+Subject: [PATCH] usb: musb: gadget: read an Rx packet that arrived before its request
+
+Commit 3fc137386c46 ("usb: musb: Fix hardware lockup on first Rx endpoint
+request") made musb_ep_restart() flush the Rx FIFO when a request is queued on
+an idle OUT endpoint, instead of calling rxstate(). A packet that arrived while
+no request was queued has already been acknowledged to the host, and its
+interrupt found no request to fill, so the flush loses it. f_mass_storage's
+next CBW often arrives this way, right after the CSW: the gadget then waits for
+a command the host has already sent, and the host resets the device after its
+30 s timeout. Traced on an Allwinner H700 (sunxi, PIO): Rx interrupt for the
+bulk OUT endpoint just after the request was queued, with RXCSR reading 0.
+
+Read such a packet from hard IRQ context through an irq_work, as the interrupt
+handler would. Completing the request in the caller's context is what the
+earlier commit avoided, since u_ether's rx_complete() calls netif_rx(), which
+must not run in task context with interrupts disabled. Leave the FIFO alone
+otherwise: flushing an empty single-buffered FIFO does nothing, and a packet
+arriving between the check and a flush would be lost the same way.
+---
+diff --color -ru a/drivers/usb/musb/musb_core.h b/drivers/usb/musb/musb_core.h
+--- a/drivers/usb/musb/musb_core.h	2026-11-08 22:50:36.091285510 +0100
++++ b/drivers/usb/musb/musb_core.h	2026-11-08 22:50:36.101130680 +0100
+@@ -23,6 +23,7 @@
+ #include <linux/usb/musb.h>
+ #include <linux/phy/phy.h>
+ #include <linux/workqueue.h>
++#include <linux/irq_work.h>
+ 
+ struct musb;
+ struct musb_hw_ep;
+@@ -288,6 +289,9 @@
+ 	struct delayed_work	deassert_reset_work;
+ 	struct delayed_work	finish_resume_work;
+ 	struct delayed_work	gadget_work;
++	/* Rx endpoints with a packet that arrived before a request was queued */
++	struct irq_work		g_rx_work;
++	u16			g_rx_pending;
+ 	u16			hwvers;
+ 
+ 	u16			intrrxe;
+diff --color -ru a/drivers/usb/musb/musb_gadget.c b/drivers/usb/musb/musb_gadget.c
+--- a/drivers/usb/musb/musb_gadget.c	2026-11-08 22:50:36.091315600 +0100
++++ b/drivers/usb/musb/musb_gadget.c	2026-11-08 22:50:36.110648968 +0100
+@@ -1170,13 +1170,40 @@
+ 	if (req->tx) {
+ 		txstate(musb, req);
+ 	} else {
++		/*
++		 * A packet that arrived while no request was queued has been
++		 * acknowledged to the host already, and its interrupt found
++		 * nothing to fill. Flushing it loses it: f_mass_storage's next
++		 * CBW often arrives this way, and the host then times out. Read
++		 * it from hard IRQ context instead, as the interrupt handler
++		 * would, because completing the request here, in the caller's
++		 * context, is what locked up u_ether's rx_complete().
++		 */
+ 		csr = musb_readw(epio, MUSB_RXCSR);
+-		csr |= MUSB_RXCSR_FLUSHFIFO | MUSB_RXCSR_P_WZC_BITS;
+-		musb_writew(epio, MUSB_RXCSR, csr);
+-		musb_writew(epio, MUSB_RXCSR, csr);
++		if (csr & MUSB_RXCSR_RXPKTRDY) {
++			musb->g_rx_pending |= BIT(req->epnum);
++			irq_work_queue(&musb->g_rx_work);
++		}
+ 	}
+ }
+ 
++/* Reads the packets that musb_ep_restart() found waiting. */
++static void musb_g_rx_pending_work(struct irq_work *work)
++{
++	struct musb *musb = container_of(work, struct musb, g_rx_work);
++	unsigned long flags;
++	u16 pending;
++	u8 epnum;
++
++	spin_lock_irqsave(&musb->lock, flags);
++	pending = musb->g_rx_pending;
++	musb->g_rx_pending = 0;
++	for (epnum = 1; epnum < musb->nr_endpoints; epnum++)
++		if (pending & BIT(epnum))
++			musb_g_rx(musb, epnum);
++	spin_unlock_irqrestore(&musb->lock, flags);
++}
++
+ static int musb_ep_restart_resume_work(struct musb *musb, void *data)
+ {
+ 	struct musb_request *req = data;
+@@ -1787,6 +1814,7 @@
+ 	/* don't support otg protocols */
+ 	musb->g.is_otg = 0;
+ 	INIT_DELAYED_WORK(&musb->gadget_work, musb_gadget_work);
++	init_irq_work(&musb->g_rx_work, musb_g_rx_pending_work);
+ 	musb_g_init_endpoints(musb);
+ 
+ 	musb->is_active = 0;
+@@ -1809,6 +1837,7 @@
+ 		return;
+ 
+ 	cancel_delayed_work_sync(&musb->gadget_work);
++	irq_work_sync(&musb->g_rx_work);
+ 	usb_del_gadget_udc(&musb->g);
+ }
+ 

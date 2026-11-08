@@ -775,6 +775,32 @@ pub fn resume_screen(width: usize, height: usize, icon: &Icon, name: &str, theme
 }
 
 /// A message on its own, such as while the device powers off.
+/// Settings > SYSTEM > USB STORAGE, while the card's TETSU-DATA partition is a USB drive.
+pub struct UsbDriveView<'a> {
+    pub status: &'a str,
+    pub hint: &'a str,
+}
+
+const USB_DRIVE_TOP: usize = 108;
+
+pub fn usb_drive_screen(width: usize, height: usize, view: &UsbDriveView, frame: &Frame) -> Canvas {
+    let mut canvas = Canvas::new(width, height, frame.theme);
+    header(&mut canvas, &icons::SYSTEM, "USB STORAGE", frame.battery);
+    canvas.text_at(view.status, LIST_LEFT, USB_DRIVE_TOP, TEXT_SCALE, canvas.theme.accent);
+    let lines = [
+        "THE CARD'S TETSU-DATA PARTITION IS A USB",
+        "DRIVE ON THE PC. GAMES GO IN ITS ROMS FOLDER.",
+        "",
+        "THE GAMES AND SETTINGS ARE BACK ON THE",
+        "DEVICE ONCE THE PC EJECTS THE DRIVE.",
+    ];
+    for (row, line) in lines.iter().enumerate() {
+        canvas.text_at(line, LIST_LEFT, USB_DRIVE_TOP + 50 + row * LIST_ROW, TEXT_SCALE, MUTED);
+    }
+    hint(&mut canvas, view.hint);
+    canvas
+}
+
 pub fn message_screen(width: usize, height: usize, message: &str, theme: Theme) -> Canvas {
     let mut canvas = Canvas::new(width, height, theme);
     canvas.text(message, height / 2 - font::HEIGHT * 2, 4, TEXT);

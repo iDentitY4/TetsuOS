@@ -34,16 +34,21 @@ tests, use `cargo test` in `src/launcher/`.
 
 ## Flash and boot
 
-Use a spare card of at least 6 GiB. Flashing erases it, except for the RGDATA
+Use a spare card of at least 6 GiB. Flashing erases it, except for the TETSU-DATA
 partition on a card flashed before, which keeps its games and saves.
 
 ```sh
-scripts/flash.sh            # lists disks
-scripts/flash.sh /dev/sdX   # checks the target, then asks you to confirm
+scripts/flash.sh                        # lists disks
+scripts/flash.sh /dev/sdX               # checks the target, then asks you to confirm
+scripts/flash.sh --format-data /dev/sdX # also erases TETSU-DATA's games and saves
 ```
 
-Put the card in the TF1 slot and power on. To add games, put the card in a PC and
-copy them to the `roms` folder on RGDATA, creating it if it isn't there yet. The
+A card with a data partition of another name, such as `RGDATA` from before the
+rename to Tetsu OS, needs `--format-data`.
+
+Put the card in the TF1 slot and power on. To add games, open Settings > SYSTEM >
+USB STORAGE with the device connected to a PC, which then shows TETSU-DATA as a USB
+drive, or put the card in a PC. Copy the games to the `roms` folder on TETSU-DATA. The
 launcher shows a tile for each console with games: NES (`.nes`), Game Boy (`.gb`),
 SNES (`.sfc`, `.smc`), Tamagotchi (`tama.b`), Game Boy Color (`.gbc`) and Game Boy
 Advance (`.gba`). Zipped games aren't supported. In a list, hold Up or Down to
@@ -77,7 +82,7 @@ starts, and kernel messages go to `ttynull`, so they stay off the screen; read t
 with `dmesg`. For a boot that fails
 before the logo, check the flash and the slot, then the board's RAM type.
 
-Once Linux boots, it writes `bootlog.txt` to the card's `RGBOOT` partition about 15
+Once Linux boots, it writes `bootlog.txt` to the card's `TETSU-BOOT` partition about 15
 seconds after init starts, and again about a minute after, so wait before powering
 off. It has connector, backlight, deferred probe, app and `dmesg` output. Without a
 `bootlog.txt`, Linux failed or didn't finish, and a USB-serial adapter on the UART is

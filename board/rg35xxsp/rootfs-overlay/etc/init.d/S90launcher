@@ -7,7 +7,7 @@ start)
 	;;
 stop)
 	killall launcher 2>/dev/null
-	# A running game saves as it exits, which must finish before RGDATA is unmounted.
+	# A running game saves as it exits, which must finish before TETSU-DATA is unmounted.
 	for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
 		pidof launcher >/dev/null || break
 		sleep 0.1

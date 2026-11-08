@@ -74,16 +74,23 @@ CONFIG_ARM_ALLWINNER_SUN50I_CPUFREQ_NVMEM=y
 CONFIG_DRM_PANFROST=y
 CONFIG_SUN50I_H6_PRCM_PPU=y
 
-# USB-C serial console and network link, as one composite gadget. The
-# controller has 4 IN and 4 OUT endpoints, and serial plus Ethernet need
-# 4 IN and 2 OUT.
+# USB-C gadget, set up by /usr/sbin/usb-gadget through configfs: serial console
+# plus network link, or network link plus a USB drive for Settings > SYSTEM >
+# USB STORAGE. The controller has 4 IN and 4 OUT endpoints, and serial plus
+# Ethernet need 4 IN and 2 OUT, so the drive replaces the serial port.
 CONFIG_USB=y
 CONFIG_USB_MUSB_HDRC=y
 CONFIG_USB_MUSB_SUNXI=y
 CONFIG_PHY_SUN4I_USB=y
 CONFIG_USB_GADGET=y
+# No legacy gadget, which would take the controller at boot
 # CONFIG_USB_G_SERIAL is not set
-CONFIG_USB_CDC_COMPOSITE=y
+# CONFIG_USB_CDC_COMPOSITE is not set
+CONFIG_CONFIGFS_FS=y
+CONFIG_USB_CONFIGFS=y
+CONFIG_USB_CONFIGFS_ACM=y
+CONFIG_USB_CONFIGFS_ECM=y
+CONFIG_USB_CONFIGFS_MASS_STORAGE=y
 
 # Wi-Fi: Realtek RTL8821CS on SDIO, ID 024C:C821. The firmware and the regulatory
 # database are built in, because the driver probes before the root filesystem is

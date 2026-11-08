@@ -139,6 +139,7 @@ impl Group {
                 &[
                     Setting::ButtonTest,
                     Setting::SystemInfo,
+                    Setting::UsbStorage,
                     Setting::IdleSleep,
                     Setting::SaveLogs,
                     Setting::Reboot,
@@ -184,6 +185,7 @@ pub enum Setting {
     ButtonTest,
     SystemInfo,
     IdleSleep,
+    UsbStorage,
     Reboot,
     PowerOff,
     Ssh,
@@ -223,6 +225,7 @@ impl Setting {
             Self::ButtonTest => "BUTTON TEST",
             Self::SystemInfo => "SYSTEM INFO",
             Self::IdleSleep => "SLEEP WHEN IDLE",
+            Self::UsbStorage => "USB STORAGE",
             Self::Reboot => "REBOOT",
             Self::PowerOff => "POWER OFF",
             Self::Ssh => "SSH",
@@ -246,6 +249,7 @@ impl Setting {
                 | Self::HomeTiles
                 | Self::ButtonTest
                 | Self::SystemInfo
+                | Self::UsbStorage
                 | Self::RootPassword
         )
     }
@@ -349,6 +353,8 @@ pub enum Command {
     ToggleBootMessages,
     ResetSettings,
     SaveLogs,
+    /// The card's TETSU-DATA partition as a USB drive on the PC.
+    UsbStorage,
     Reboot,
     PowerOff,
 }
@@ -668,6 +674,7 @@ impl Launcher {
                 Setting::HomeTiles => self.screen = Screen::HomeTiles,
                 Setting::ButtonTest => return Command::ButtonTest,
                 Setting::SystemInfo => self.screen = Screen::Info,
+                Setting::UsbStorage => return Command::UsbStorage,
                 Setting::Reboot => return Command::Reboot,
                 Setting::PowerOff => return Command::PowerOff,
                 Setting::RootPassword => return Command::EditRootPassword,
@@ -947,7 +954,10 @@ mod tests {
         assert_eq!(launcher.screen(), Screen::Info);
         launcher.press(Button::B, &library);
         launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::A, &library), Command::UsbStorage);
+        launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Left, &library), Command::IdleSleep(-1));
+        launcher.press(Button::Up, &library);
         launcher.press(Button::Up, &library);
         launcher.press(Button::A, &library);
         launcher.press(Button::B, &library);

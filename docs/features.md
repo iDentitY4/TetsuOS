@@ -26,7 +26,7 @@ Working on the test unit, confirmed by the user:
 - A libretro frontend in the same app, in `libretro.rs`, runs the mGBA core from
   `package/libretro-mgba`. Pokemon FireRed runs at 59.7 fps with clean sound and no tearing,
   at about 50 C. Holding Menu + Start leaves a game. `/var/log/launcher.log` has timings
-- Games and saves are in `roms` and `saves` on the RGDATA partition. They survive leaving a
+- Games and saves are in `roms` and `saves` on the TETSU-DATA partition. They survive leaving a
   game, rebooting and reflashing with `flash.sh`
 - CPU speed scaling, up to 1512 MHz on this chip. It was fixed at 1008 MHz before, which
   gave only 43 fps in the game
@@ -41,11 +41,30 @@ Working on the test unit, confirmed by the user:
   lid closed doesn't shut down (patch 0010), and the device goes back to sleep. The
   Tamagotchi carries on correctly after sleep
 - The battery level in the menu
-- Updating over USB. The gadget is `g_cdc`, serial plus CDC Ethernet, with fixed MACs set
-  in `extlinux.conf`. `S41usbnet` gives the device `10.35.35.1`, and `udhcpd` gives the
+- Updating over USB. The gadget is serial plus CDC Ethernet, set up through configfs by
+  `/usr/sbin/usb-gadget start` from `S41usbnet`, with the fixed MACs and the USB ID
+  (`0525:a4aa`) that the `g_cdc` gadget used before. `S41usbnet` gives the device `10.35.35.1`, and `udhcpd` gives the
   PC `10.35.35.2` with no router option. Over USB, dropbear allows root's empty
   password (`-B`); Settings > ADVANCED > SSH chooses where it listens (see below).
   `scripts/push.sh {app|rootfs|boot|all}` copies output over SSH with rsync
+- USB STORAGE, in Settings > SYSTEM, shows the card's TETSU-DATA partition to the PC as
+  a USB drive, so games can be copied without taking the card out. A drive is built in
+  on Windows, macOS and Linux, unlike MTP, and needs no program on the device.
+  `usb-gadget storage` syncs and unmounts `/mnt/data`, gives the partition to the
+  kernel's mass storage function as a removable drive, and binds Ethernet plus the drive
+  under another ID (`0525:a4a5`), because Windows remembers a device's interfaces by
+  its ID. The serial port is left out for the endpoints, so SSH keeps working. The PC
+  sees the partition as a disk with no partition table, which all three read.
+  Ejecting the drive on the PC empties the function's `lun.0/file`, which the screen
+  checks twice a second, and leaves the screen. B also leaves, and asks again while the
+  PC still has the drive. Leaving runs `usb-gadget network`: it closes the drive with
+  `forced_eject`, binds serial plus Ethernet again, repairs the partition with
+  `fsck.fat -a` (for a PC unplugged without ejecting), mounts it and the launcher reads
+  the settings and games again. Meanwhile the device doesn't sleep: closing the lid only
+  turns the screen off. Volume and brightness don't change, as they are saved on the
+  card. An empty battery leaves the screen, mounts the card and powers off. Writes need
+  patch 0014 (see the MUSB fact below). Mounting, copying and deleting games and ejecting
+  were checked by the user on Linux on 2026-11-08; Windows and macOS haven't been tried
 - USB stays connected through sleep, so SSH works after opening the lid (patch 0012).
   Before, the device dropped off the bus until the cable was re-plugged
 - The in-game menu (`pause.rs`, drawn by `canvas::pause_screen`). Tapping Menu alone
@@ -294,7 +313,7 @@ Built but not yet tested on the device:
     saw the charge level behave so far, but not yet over a whole charge
   - BOOT MESSAGES (`boot_partition.rs`): LOGO is `console=ttynull loglevel=5`, as before;
     TEXT is `console=tty1 loglevel=7`, so kernel and init messages show until the
-    launcher draws. The launcher mounts RGBOOT at `/run/launcher-rgboot`, changes only
+    launcher draws. The launcher mounts TETSU-BOOT at `/run/launcher-boot`, changes only
     those arguments on the `APPEND` line of `extlinux/extlinux.conf`, writes it as
     `extlinux.new`, reads it back and renames it over the old one. The value is read from
     the card the first time ADVANCED opens, then kept. `push.sh boot` and flashing put
@@ -308,7 +327,7 @@ Built but not yet tested on the device:
     stay. Checked on the device, then the user's settings were put back
 - Settings > SYSTEM > SAVE LOGS TO CARD (`boot_partition::save_logs`): writes
   `launcher.log`, `dmesg.txt` and `system.txt` (date, kernel, build, uptime, settings,
-  storage, memory, processes, network) to `logs` on RGBOOT, replacing the last ones, and
+  storage, memory, processes, network) to `logs` on TETSU-BOOT, replacing the last ones, and
   says where. Wi-Fi passwords, keys and the root password hash are in other files and
   left out. Checked on the device
 - System info (`system_info.rs`) shows 11 lines, as many as the screen has room for:
@@ -455,8 +474,12 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   ROCKNIX's `0151` and `0152` patches. Those also manage a 5V output on the port, so
   review them before use while the port is connected to a PC.
 - **The USB controller has 4 IN and 4 OUT endpoints,** besides the control endpoint.
-  Serial plus Ethernet (`g_cdc`) uses 4 IN and 2 OUT, so any further USB function,
-  like mass storage, needs another one dropped.
+  Serial and Ethernet take 2 IN and 1 OUT each, so together 4 IN and 2 OUT, and any
+  further USB function needs one of them dropped: USB STORAGE drops the serial port.
+- **Mainline's MUSB gadget driver throws away USB packets that arrive early.** Since
+  commit 3fc137386c46, `musb_ep_restart` flushes an RX packet that came before the gadget
+  queued its request. Mass storage lost commands that way, and the PC reset the device
+  every 30 seconds. Patch 0014 reads the packet instead.
 - **Save states keep mGBA's Super Game Boy border mode.** A state saved with the border
   on loads into the borderless frame offset and cut off, so such states can't be used
   since the border was turned off. Red's were deleted on 2026-11-08.
@@ -488,9 +511,9 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   counts, so give it open input: `sleep 30 | kmscube -D /dev/dri/card1 -c 600`.
 - **The GPU needs `CONFIG_SUN50I_H6_PRCM_PPU`.** It has no default, and without it
   Panfrost fails silently, with only `ignoring dependency` in the log.
-- **RGDATA starts at a fixed 4 GiB,** past the image, so writing the image can't reach it.
+- **TETSU-DATA starts at a fixed 4 GiB,** past the image, so writing the image can't reach it.
   Writing the image does replace the partition table, so `flash.sh` adds the entry back.
-  A plain `dd` of the image leaves RGDATA unreachable until `data-partition.sh` is run.
+  A plain `dd` of the image leaves TETSU-DATA unreachable until `data-partition.sh` is run.
 - **Panels:** ROCKNIX has a separate v2 panel device tree for the SP. This unit
   works with the mainline NV3052C driver, but another unit may not.
 - **Wi-Fi blocks sleep without `keep-power-in-suspend`.** rtw88 fails its SDIO

@@ -1,4 +1,4 @@
-//! The games played most recently, newest first, kept on the RGDATA partition.
+//! The games played most recently, newest first, kept on the TETSU-DATA partition.
 
 use crate::storage::write_atomic;
 use std::io;

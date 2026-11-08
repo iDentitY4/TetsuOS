@@ -138,7 +138,7 @@ pub(crate) const SYSTEMS: [System; 7] = [
     },
 ];
 
-/// `S15data` mounts the card's RGDATA partition here.
+/// `S15data` mounts the card's TETSU-DATA partition here.
 pub(crate) const ROM_DIR: &str = "/mnt/data/roms";
 
 pub(crate) const SAVE_DIR: &str = "/mnt/data/saves";

@@ -1,12 +1,13 @@
 #!/bin/sh
-# Mounts the card's RGDATA partition, which holds the games and saves.
+# Mounts the card's TETSU-DATA partition, which holds the games and saves.
 
 case "$1" in
 start)
-	dev="$(blkid | grep 'LABEL="RGDATA"' | head -n 1 | cut -d: -f1)"
+	dev="$(blkid | grep 'LABEL="TETSU-DATA"' | head -n 1 | cut -d: -f1)"
 	[ -n "$dev" ] || exit 1
 	mkdir -p /mnt/data
-	mount -t vfat "$dev" /mnt/data || exit 1
+	# Fixed permissions: vfat would otherwise take them from the caller's umask
+	mount -t vfat -o umask=022 "$dev" /mnt/data || exit 1
 	mkdir -p /mnt/data/roms /mnt/data/saves
 	;;
 stop)

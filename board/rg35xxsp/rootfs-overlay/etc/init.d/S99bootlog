@@ -3,7 +3,7 @@
 # debugged by reading the SD card on a PC. No serial adapter needed.
 
 write_log() {
-	dev="$(blkid | grep 'LABEL="RGBOOT"' | head -n 1 | cut -d: -f1)"
+	dev="$(blkid | grep 'LABEL="TETSU-BOOT"' | head -n 1 | cut -d: -f1)"
 	[ -n "$dev" ] || return 1
 
 	mkdir -p /mnt/boot

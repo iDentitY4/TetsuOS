@@ -1,4 +1,4 @@
-//! The card's FAT boot partition, RGBOOT, which a PC can read: Settings > SYSTEM > SAVE
+//! The card's FAT boot partition, TETSU-BOOT, which a PC can read: Settings > SYSTEM > SAVE
 //! LOGS TO CARD writes there, and Settings > ADVANCED > BOOT MESSAGES changes the kernel
 //! console in its `extlinux.conf`. It isn't mounted while the launcher runs, so each use
 //! mounts it, as `S99bootlog` does, and unmounts it again.
@@ -8,8 +8,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
 
-const LABEL: &str = "RGBOOT";
-const MOUNT_POINT: &str = "/run/launcher-rgboot";
+const LABEL: &str = "TETSU-BOOT";
+const MOUNT_POINT: &str = "/run/launcher-boot";
 const EXTLINUX: &str = "extlinux/extlinux.conf";
 pub const LOGS_DIR: &str = "logs";
 
@@ -45,7 +45,7 @@ impl BootMessages {
     }
 }
 
-/// The partition's device, from `blkid` output such as `/dev/mmcblk0p1: LABEL="RGBOOT" ...`.
+/// The partition's device, from `blkid` output such as `/dev/mmcblk0p1: LABEL="TETSU-BOOT" ...`.
 pub fn parse_blkid(output: &str) -> Option<String> {
     output
         .lines()
@@ -102,7 +102,7 @@ pub fn with_boot_messages(conf: &str, messages: BootMessages) -> Option<String> 
 fn with_mounted<T>(action: impl FnOnce(&Path) -> io::Result<T>) -> io::Result<T> {
     let output = Command::new("blkid").output()?;
     let device = parse_blkid(&String::from_utf8_lossy(&output.stdout))
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no RGBOOT partition"))?;
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no TETSU-BOOT partition"))?;
     std::fs::create_dir_all(MOUNT_POINT)?;
     let status = Command::new("mount").args(["-t", "vfat", &device, MOUNT_POINT]).status()?;
     if !status.success() {
@@ -209,20 +209,20 @@ pub fn save_logs() -> io::Result<String> {
 mod tests {
     use super::*;
 
-    const CONF: &str = "DEFAULT rg35xxsp\nTIMEOUT 0\n\nLABEL rg35xxsp\n  LINUX /Image\n  APPEND root=PARTUUID=52473335-02 rw console=ttynull loglevel=5 consoleblank=0 panic=0\n";
+    const CONF: &str = "DEFAULT rg35xxsp\nTIMEOUT 0\n\nLABEL rg35xxsp\n  LINUX /Image\n  APPEND root=PARTUUID=54455453-02 rw console=ttynull loglevel=5 consoleblank=0 panic=0\n";
 
     #[test]
     fn the_boot_partition_is_found_by_its_label() {
-        let blkid = "/dev/mmcblk0p2: UUID=\"x\" TYPE=\"ext4\"\n/dev/mmcblk0p1: LABEL=\"RGBOOT\" UUID=\"y\" TYPE=\"vfat\"\n";
+        let blkid = "/dev/mmcblk0p2: UUID=\"x\" TYPE=\"ext4\"\n/dev/mmcblk0p1: LABEL=\"TETSU-BOOT\" UUID=\"y\" TYPE=\"vfat\"\n";
         assert_eq!(parse_blkid(blkid).as_deref(), Some("/dev/mmcblk0p1"));
-        assert_eq!(parse_blkid("/dev/sda1: LABEL=\"RGDATA\"\n"), None);
+        assert_eq!(parse_blkid("/dev/sda1: LABEL=\"TETSU-DATA\"\n"), None);
     }
 
     #[test]
     fn boot_messages_switch_the_console_and_level_only() {
         assert_eq!(parse_boot_messages(CONF), Some(BootMessages::Logo));
         let text = with_boot_messages(CONF, BootMessages::Text).unwrap();
-        assert!(text.contains("  APPEND root=PARTUUID=52473335-02 rw console=tty1 loglevel=7 consoleblank=0 panic=0\n"));
+        assert!(text.contains("  APPEND root=PARTUUID=54455453-02 rw console=tty1 loglevel=7 consoleblank=0 panic=0\n"));
         assert_eq!(parse_boot_messages(&text), Some(BootMessages::Text));
         // And back to exactly what it was.
         assert_eq!(with_boot_messages(&text, BootMessages::Logo).unwrap(), CONF);

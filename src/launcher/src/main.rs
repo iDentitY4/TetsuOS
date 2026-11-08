@@ -36,6 +36,7 @@ mod ssh;
 mod storage;
 mod system_info;
 mod systems;
+mod usb_drive;
 mod wifi;
 mod wifi_menu;
 mod wifi_screen;
@@ -49,6 +50,7 @@ pub(crate) use previews::*;
 pub(crate) use sleep::*;
 pub(crate) use system_info::*;
 pub(crate) use systems::*;
+pub(crate) use usb_drive::*;
 pub(crate) use wifi_screen::*;
 
 use input::Button;
@@ -71,6 +73,7 @@ fn main() -> ExitCode {
             write_launcher_preview(path, &[Button::Start, Button::Up, Button::A])
         }
         [flag, path] if flag == "--preview-buttons" => write_button_preview(path),
+        [flag, path] if flag == "--preview-usb" => write_usb_drive_preview(path),
         [flag, path] if flag == "--preview-wifi" => write_wifi_preview(path),
         [flag, path] if flag == "--preview-keyboard" => write_keyboard_preview(path),
         [flag, path] if flag == "--preview-pause" => write_pause_preview(path),

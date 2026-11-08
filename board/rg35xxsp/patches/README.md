@@ -19,7 +19,7 @@ squashes multi-commit files, so the original commit boundaries are in ROCKNIX.
 | `linux/0005-sun4i-rgb-connector-type.patch` | `0155-sun4i-set-rgb-connector-as-DSI.patch` |
 | `linux/0010-axp20x-pek-ignore-wake-press.patch` | `0157-input-axp20x-pek-do-not-report-the-key-press-that-woke-the-system.patch` |
 
-Seven patches are specific to this project:
+Eight patches are specific to this project:
 
 - `linux/0006-rg35xx-sp-lpddr3-ram-voltage.patch` runs the RAM rail at 1.2V for
   LPDDR3 units.
@@ -40,3 +40,7 @@ Seven patches are specific to this project:
 - `linux/0013-rg35xx-sp-wifi-keep-power-in-suspend.patch` lets the Wi-Fi's SDIO host
   keep the card powered in system sleep, because rtw88 otherwise fails to suspend,
   which aborted every sleep, including lid sleep.
+- `linux/0014-musb-gadget-keep-rx-packet-before-request.patch` reads a USB packet that
+  arrives before the gadget queues its request, which mainline's MUSB driver flushes
+  since commit 3fc137386c46. USB STORAGE lost commands that way, and the PC reset the
+  device every 30 seconds.

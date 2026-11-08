@@ -58,17 +58,17 @@ push_boot() {
 	on_device mkdir -p /tmp/push-boot
 	copy "$IMAGES/Image" "$IMAGES/$DTB" "$IMAGES/extlinux.conf" "$DEVICE:/tmp/push-boot/"
 	on_device sh -es <<-EOF
-		dev="\$(blkid | grep 'LABEL="RGBOOT"' | head -n 1 | cut -d: -f1)"
-		[ -n "\$dev" ] || { echo "No RGBOOT partition found" >&2; exit 1; }
-		mkdir -p /tmp/rgboot
-		mount -t vfat "\$dev" /tmp/rgboot
-		cp /tmp/push-boot/Image /tmp/push-boot/$DTB /tmp/rgboot/
-		cp /tmp/push-boot/extlinux.conf /tmp/rgboot/extlinux/extlinux.conf
+		dev="\$(blkid | grep 'LABEL="TETSU-BOOT"' | head -n 1 | cut -d: -f1)"
+		[ -n "\$dev" ] || { echo "No TETSU-BOOT partition found" >&2; exit 1; }
+		mkdir -p /tmp/tetsu-boot
+		mount -t vfat "\$dev" /tmp/tetsu-boot
+		cp /tmp/push-boot/Image /tmp/push-boot/$DTB /tmp/tetsu-boot/
+		cp /tmp/push-boot/extlinux.conf /tmp/tetsu-boot/extlinux/extlinux.conf
 		sync
-		cmp /tmp/push-boot/Image /tmp/rgboot/Image
-		cmp /tmp/push-boot/$DTB /tmp/rgboot/$DTB
-		cmp /tmp/push-boot/extlinux.conf /tmp/rgboot/extlinux/extlinux.conf
-		umount /tmp/rgboot
+		cmp /tmp/push-boot/Image /tmp/tetsu-boot/Image
+		cmp /tmp/push-boot/$DTB /tmp/tetsu-boot/$DTB
+		cmp /tmp/push-boot/extlinux.conf /tmp/tetsu-boot/extlinux/extlinux.conf
+		umount /tmp/tetsu-boot
 		rm -r /tmp/push-boot
 	EOF
 	echo "Verified. Rebooting the device."
@@ -79,8 +79,8 @@ push_uboot() {
 	echo "Writing U-Boot to the card's boot area"
 	copy "$IMAGES/u-boot-sunxi-with-spl.bin" "$DEVICE:/tmp/u-boot.bin"
 	on_device sh -es <<-'EOF'
-		part="$(blkid | grep 'LABEL="RGBOOT"' | head -n 1 | cut -d: -f1)"
-		[ -n "$part" ] || { echo "No RGBOOT partition found" >&2; exit 1; }
+		part="$(blkid | grep 'LABEL="TETSU-BOOT"' | head -n 1 | cut -d: -f1)"
+		[ -n "$part" ] || { echo "No TETSU-BOOT partition found" >&2; exit 1; }
 		disk="/dev/$(basename "$(readlink -f "/sys/class/block/$(basename "$part")/..")")"
 		[ -b "$disk" ] || { echo "No disk found for $part" >&2; exit 1; }
 		size=$(wc -c < /tmp/u-boot.bin)

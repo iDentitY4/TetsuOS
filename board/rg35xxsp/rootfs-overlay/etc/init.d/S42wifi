@@ -1,5 +1,5 @@
 #!/bin/sh
-# Wi-Fi through the RTL8821CS. Networks are kept on RGDATA, so they survive
+# Wi-Fi through the RTL8821CS. Networks are kept on TETSU-DATA, so they survive
 # reflashing. Add one over SSH with:
 #   wpa_passphrase 'name' 'password' >> /mnt/data/wpa_supplicant.conf
 # then restart this script. wpa_cli can also add networks; update_config saves them.

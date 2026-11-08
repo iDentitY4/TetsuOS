@@ -1,4 +1,4 @@
-//! Games starred with Select, kept on the RGDATA partition.
+//! Games starred with Select, kept on the TETSU-DATA partition.
 
 use crate::storage::write_atomic;
 use std::io;
