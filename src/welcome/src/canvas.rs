@@ -2,6 +2,7 @@
 
 use crate::font;
 use crate::input::{Button, Controls};
+use crate::pause::{Item, PauseMenu, ITEMS};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Rgb(pub u8, pub u8, pub u8);
@@ -199,7 +200,102 @@ pub fn menu_screen(
         canvas.text("COPY GAMES TO THE ROMS FOLDER", 340, 2, MUTED);
         canvas.text("ON THE RGDATA PARTITION", 366, 2, MUTED);
     }
-    canvas.text("A STARTS - HOLD MENU + START LEAVES A GAME", 448, 2, MUTED);
+    canvas.text("A STARTS - MENU PAUSES A GAME", 448, 2, MUTED);
+    canvas
+}
+
+/// What the in-game menu shows besides its choices.
+pub struct PauseView<'a> {
+    pub menu: &'a PauseMenu,
+    /// Whether the selected slot holds a state.
+    pub slot_used: bool,
+    pub volume_percent: Option<u32>,
+    pub brightness_percent: Option<u32>,
+}
+
+const PAUSE_PANEL: (usize, usize, usize, usize) = (110, 60, 420, 360);
+const PAUSE_TOP: usize = 126;
+const PAUSE_ROW: usize = 36;
+const PAUSE_TEXT_SCALE: usize = 2;
+const PAUSE_BAR_WIDTH: usize = 120;
+
+// The rows, message and hint must fit inside the panel.
+const _: () = assert!(PAUSE_TOP + ITEMS.len() * PAUSE_ROW + 70 <= PAUSE_PANEL.1 + PAUSE_PANEL.3);
+
+/// Darkens the game frame, so the menu stands out while the game stays recognisable.
+fn dim(pixel: u32) -> Rgb {
+    Rgb((pixel >> 16) as u8 / 3, (pixel >> 8) as u8 / 3, pixel as u8 / 3)
+}
+
+/// Lays out the in-game menu over the paused game's last frame.
+pub fn pause_screen(
+    width: usize,
+    height: usize,
+    frame: &[u32],
+    (frame_w, frame_h): (usize, usize),
+    view: &PauseView,
+) -> Canvas {
+    let mut canvas = Canvas::new(width, height);
+    canvas.pixels.fill(Rgb(0, 0, 0));
+    let left = width.saturating_sub(frame_w) / 2;
+    let top = height.saturating_sub(frame_h) / 2;
+    if frame_w > 0 && frame.len() >= frame_w * frame_h {
+        for (y, row) in frame.chunks_exact(frame_w).take(height - top).enumerate() {
+            for (x, &pixel) in row.iter().take(width - left).enumerate() {
+                canvas.pixels[(top + y) * width + left + x] = dim(pixel);
+            }
+        }
+    }
+
+    let (panel_x, panel_y, panel_w, panel_h) = PAUSE_PANEL;
+    canvas.rect(panel_x, panel_y, panel_w, panel_h, BACKGROUND);
+    canvas.text("PAUSED", panel_y + 20, 3, TEXT);
+
+    let label_x = panel_x + 20;
+    let value_right = panel_x + panel_w - 20;
+    let menu = view.menu;
+    for (row, &item) in ITEMS.iter().enumerate() {
+        let y = PAUSE_TOP + row * PAUSE_ROW;
+        let selected = item == menu.selected();
+        let (text_color, bar_color) = if selected {
+            canvas.rect(panel_x, y, panel_w, PAUSE_ROW - 4, ACCENT);
+            (BACKGROUND, BACKGROUND)
+        } else {
+            (TEXT, ACCENT)
+        };
+        let text_y = y + (PAUSE_ROW - 4 - font::HEIGHT * PAUSE_TEXT_SCALE) / 2;
+        canvas.text_at(item.label(), label_x, text_y, PAUSE_TEXT_SCALE, text_color);
+
+        let level = match item {
+            Item::Volume => Some(view.volume_percent),
+            Item::Brightness => Some(view.brightness_percent),
+            _ => None,
+        };
+        if let Some(level) = level {
+            let bar_x = value_right - PAUSE_BAR_WIDTH;
+            let bar_y = y + (PAUSE_ROW - 4) / 2 - 6;
+            canvas.rect(bar_x, bar_y, PAUSE_BAR_WIDTH, 12, bar_color);
+            canvas.rect(bar_x + 2, bar_y + 2, PAUSE_BAR_WIDTH - 4, 8, if selected { ACCENT } else { BACKGROUND });
+            let fill = (PAUSE_BAR_WIDTH - 4) * level.unwrap_or(0).min(100) as usize / 100;
+            canvas.rect(bar_x + 2, bar_y + 2, fill, 8, bar_color);
+            continue;
+        }
+        let value = match item {
+            Item::SaveState => format!("SLOT {}", menu.slot()),
+            Item::LoadState if view.slot_used => format!("SLOT {}", menu.slot()),
+            Item::LoadState => format!("SLOT {} EMPTY", menu.slot()),
+            _ => continue,
+        };
+        let value = if selected { format!("< {value} >") } else { value };
+        let value_x = value_right - text_width(&value, PAUSE_TEXT_SCALE);
+        canvas.text_at(&value, value_x, text_y, PAUSE_TEXT_SCALE, text_color);
+    }
+
+    let message_y = PAUSE_TOP + ITEMS.len() * PAUSE_ROW + 12;
+    if let Some(message) = menu.message() {
+        canvas.text(message, message_y, PAUSE_TEXT_SCALE, ACCENT);
+    }
+    canvas.text("A SELECTS - B RESUMES", message_y + 30, PAUSE_TEXT_SCALE, MUTED);
     canvas
 }
 
@@ -346,6 +442,39 @@ mod tests {
             .collect();
         let (left, right) = (*columns.iter().min().unwrap(), *columns.iter().max().unwrap());
         assert!(left.abs_diff(639 - right) <= 8, "left {left}, right {right}");
+    }
+
+    fn pause_view(menu: &PauseMenu) -> PauseView<'_> {
+        PauseView { menu, slot_used: false, volume_percent: Some(80), brightness_percent: None }
+    }
+
+    #[test]
+    fn the_pause_menu_dims_the_frame_and_highlights_the_selection() {
+        let frame = vec![0x00FF_FFFFu32; 640 * 426];
+        let menu = PauseMenu::new();
+        let canvas = pause_screen(640, 480, &frame, (640, 426), &pause_view(&menu));
+        // Outside the panel, the frame shows dimmed. The bars above and below are black.
+        assert_eq!(pixel(&canvas, 5, 240), Rgb(85, 85, 85));
+        assert_eq!(pixel(&canvas, 5, 5), Rgb(0, 0, 0));
+        // Resume is selected first.
+        assert_eq!(pixel(&canvas, PAUSE_PANEL.0 + 2, PAUSE_TOP + 2), ACCENT);
+        assert_eq!(pixel(&canvas, PAUSE_PANEL.0 + 2, PAUSE_TOP + PAUSE_ROW + 2), BACKGROUND);
+    }
+
+    #[test]
+    fn the_pause_menu_survives_odd_sizes() {
+        let menu = PauseMenu::new();
+        let canvas = pause_screen(64, 48, &[0; 4], (2, 2), &pause_view(&menu));
+        assert_eq!(canvas.pixels.len(), 64 * 48);
+        let canvas = pause_screen(640, 480, &[], (0, 0), &pause_view(&menu));
+        assert_eq!(canvas.pixels.len(), 640 * 480);
+    }
+
+    #[test]
+    fn the_longest_slot_text_fits_beside_its_label() {
+        let value = text_width(&format!("< SLOT {} EMPTY >", crate::pause::SLOTS), PAUSE_TEXT_SCALE);
+        let label = text_width("LOAD STATE", PAUSE_TEXT_SCALE);
+        assert!(20 + label + 12 + value + 20 <= PAUSE_PANEL.2);
     }
 
     #[test]

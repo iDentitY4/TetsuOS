@@ -43,7 +43,8 @@ scripts/flash.sh /dev/sdX   # checks the target, then asks you to confirm
 
 Put the card in the TF1 slot and power on. To add games, put the card in a PC and
 copy Game Boy Advance `.gba` files to the `roms` folder on RGDATA, creating it if
-it isn't there yet. Hold Menu + Start to leave a game.
+it isn't there yet. In a game, tap Menu for save states, volume, brightness and
+quit, or hold Menu + Start to leave straight away.
 
 ## Updating over USB
 

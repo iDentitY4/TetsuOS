@@ -113,6 +113,14 @@ impl Event {
         self.event_type == EV_SW && self.code == SW_LID && self.value == VALUE_RELEASED
     }
 
+    /// The button this event released, if any.
+    pub fn released(&self) -> Option<Button> {
+        if self.value != VALUE_RELEASED {
+            return None;
+        }
+        Button::from_event(self.event_type, self.code)
+    }
+
     /// The button this event pressed, if any. Repeats and releases don't count.
     pub fn pressed(&self) -> Option<Button> {
         if self.value == VALUE_RELEASED || self.value == VALUE_REPEAT {
@@ -173,6 +181,12 @@ impl Controls {
 
     pub fn is_held(&self, button: Button) -> bool {
         self.held[button as usize]
+    }
+
+    /// Whether a button a game could see is held. The lid and volume buttons don't count.
+    pub fn any_held(&self) -> bool {
+        let ignored = [Button::Lid, Button::VolumeUp, Button::VolumeDown].map(|b| b as usize);
+        self.held.iter().enumerate().any(|(index, &held)| held && !ignored.contains(&index))
     }
 
     pub fn was_seen(&self, button: Button) -> bool {

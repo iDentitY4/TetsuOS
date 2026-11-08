@@ -3,6 +3,9 @@ mod fb;
 mod font;
 mod input;
 mod libretro;
+mod pause;
+mod settings;
+mod storage;
 
 use canvas::Battery;
 use input::{Button, Controls, Event};
@@ -53,7 +56,6 @@ const SYSTEMS: [System; 2] = [
 ];
 
 const BUTTON_TEST_LABEL: &str = "BUTTON TEST";
-const VOLUME_STEP: u32 = 2;
 const BATTERY_DIR: &str = "/sys/class/power_supply/axp20x-battery";
 /// How often the menu checks the battery, so plugging in a charger shows promptly.
 const BATTERY_REFRESH: Duration = Duration::from_secs(1);
@@ -149,10 +151,10 @@ fn sleep_until_lid_opens(events: &Receiver<Event>) {
 }
 
 fn change_volume(button: Button) {
-    let change = if button == Button::VolumeUp { "+" } else { "-" };
-    let level = format!("{VOLUME_STEP}{change}");
-    if let Err(error) = Command::new("amixer").args(["-q", "sset", "Line Out", &level]).status() {
-        eprintln!("warning: could not change the volume: {error}");
+    let direction = if button == Button::VolumeUp { 1 } else { -1 };
+    settings::change_volume(direction * settings::VOLUME_STEP);
+    if let Err(error) = settings::save() {
+        eprintln!("warning: could not save the settings: {error}");
     }
 }
 
@@ -180,6 +182,8 @@ fn play_game(rom: &Path, events: &Receiver<Event>) -> io::Result<()> {
             }
         }
     }
+    // In case the game ended while it held the CPU speed for its menu.
+    libretro::release_cpu_speed();
     // Presses made during the game shouldn't act on the menu.
     events.try_iter().for_each(drop);
     Ok(())
@@ -210,6 +214,7 @@ fn button_test(
 }
 
 fn run_launcher() -> io::Result<()> {
+    settings::restore();
     let mut framebuffer = open_framebuffer()?;
     // Non-fatal: at worst, console text could appear over the screen.
     let _console = fb::claim_console()
@@ -286,6 +291,31 @@ fn write_menu_preview(path: &str) -> io::Result<()> {
     write_ppm(&canvas::menu_screen(width, height, &labels, 1, false, battery), path)
 }
 
+/// Renders the in-game menu over a test pattern to a PPM image, on Load State with an
+/// empty slot and a message showing.
+fn write_pause_preview(path: &str) -> io::Result<()> {
+    let (width, height) = PREVIEW_SIZE;
+    let frame_size = (640, 426);
+    let frame: Vec<u32> = (0..frame_size.0 * frame_size.1)
+        .map(|i| {
+            let (x, y) = ((i % frame_size.0) as u32, (i / frame_size.0) as u32);
+            (x * 255 / 640) << 16 | (y * 255 / 426) << 8 | 0x80
+        })
+        .collect();
+    let mut menu = pause::PauseMenu::new();
+    menu.press(Button::Down);
+    menu.press(Button::Down);
+    menu.press(Button::Right);
+    menu.set_message("SAVED TO SLOT 2".to_string());
+    let view = canvas::PauseView {
+        menu: &menu,
+        slot_used: false,
+        volume_percent: Some(80),
+        brightness_percent: Some(50),
+    };
+    write_ppm(&canvas::pause_screen(width, height, &frame, frame_size, &view), path)
+}
+
 /// Renders the button test to a PPM image. Up has been pressed and A is held, so the
 /// image shows each look a button can have.
 fn write_button_preview(path: &str) -> io::Result<()> {
@@ -305,6 +335,7 @@ fn main() -> ExitCode {
         [] => run_launcher(),
         [flag, path] if flag == "--preview" => write_menu_preview(path),
         [flag, path] if flag == "--preview-buttons" => write_button_preview(path),
+        [flag, path] if flag == "--preview-pause" => write_pause_preview(path),
         [flag, core, rom, save, persistence] if flag == "--play" => parse_persistence(persistence)
             .and_then(|persistence| {
                 run_game(Path::new(core), Path::new(rom), Path::new(save), persistence)
@@ -325,6 +356,7 @@ fn main() -> ExitCode {
         _ => {
             eprintln!(
                 "usage: welcome [--preview FILE.ppm | --preview-buttons FILE.ppm\n\
+                 \x20              | --preview-pause FILE.ppm\n\
                  \x20              | --play CORE ROM SAVE battery|state\n\
                  \x20              | --render CORE ROM SAVE battery|state FRAMES FILE.ppm]"
             );

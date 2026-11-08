@@ -48,6 +48,15 @@ Working on the test unit, confirmed by the user:
   password. `scripts/push.sh {app|rootfs|boot|all}` copies output over SSH with rsync
 - USB stays connected through sleep, so SSH works after opening the lid (patch 0012).
   Before, the device dropped off the bus until the cable was re-plugged
+- The in-game menu (`pause.rs`, drawn by `canvas::pause_screen`). Tapping Menu alone
+  pauses, and Menu + Start still quits directly. Resume, 8 save state slots per game
+  (`saves/<game>.state1` to `.state8`), volume, brightness and quit. A game with battery
+  memory also saves `saves/<game>.resume` on leaving and loads it at the next start, so
+  in-game saves made after a slot are never rolled back. Volume and brightness are saved
+  in `/mnt/data/settings.txt` and restored by the launcher. Claude tested every item on
+  the device over SSH with injected presses and screenshots: saving, loading, levels,
+  quitting, resuming and Menu + Start. The user tried it with FireRed
+  on 2026-11-08 and confirmed it feels right
 
 Built but not yet tested on the device:
 
@@ -63,7 +72,8 @@ Not working yet:
 - USB host mode is disabled, so USB accessories don't work
 - Wi-Fi: since the kernel trim, `4021000.mmc` probes and finds the SDIO card, which it
   didn't before (cause not verified). There is no Wi-Fi driver or firmware yet
-- Audio volume is fixed at boot by `S20audio`, because nothing uses the volume buttons yet
+- An occasional single audio underrun during play, sometimes at the start, seen in
+  `/var/log/welcome.log`. It was there without the menu. Not yet investigated
 
 The kernel is trimmed to the Allwinner platform with modules off, and the user confirmed
 that it boots and that everything still works, including power-off. The image went from
@@ -84,10 +94,8 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
 
 Proposed, not yet confirmed by the user:
 
-1. An in-game menu with save states, volume, brightness and quit
-2. More systems, such as Game Boy / Game Boy Color, NES and SNES
-3. Remember volume and brightness across reboots
-4. Before any release: remove the U-Boot boot diagnostics and set a root password, which
+1. More systems, such as Game Boy / Game Boy Color, NES and SNES
+2. Before any release: remove the U-Boot boot diagnostics and set a root password, which
    SSH now also accepts empty
 
 ## Test hardware
@@ -120,6 +128,10 @@ Proposed, not yet confirmed by the user:
 - **The USB controller has 4 IN and 4 OUT endpoints,** besides the control endpoint.
   Serial plus Ethernet (`g_cdc`) uses 4 IN and 2 OUT, so any further USB function,
   like mass storage, needs another one dropped.
+- **The CPU governor raises the speed slowly from idle while a game runs,** because a
+  game waits for the panel between frames. After a pause, games ran at 30 fps with audio
+  underruns for about a second, so the menu holds `scaling_min_freq` at 1008 MHz until
+  two seconds after resuming.
 - **USB power may start the device,** according to ROCKNIX's notes on the AXP717.
   Test shutdown with the cable unplugged.
 - **Kernel power-off:** `axp20x_power_off` writes register `0x32`, but the AXP717
@@ -191,12 +203,15 @@ command make
 
 The targets are `linux-dirclean`, `uboot-dirclean` and `busybox-dirclean`. Kernel or
 U-Boot rebuilds take several minutes, so run them in the background. Overlay-only
-changes just need `command make`.
+changes just need `command make`. The welcome app is a `local` package, which Buildroot
+doesn't copy again once built, so app changes need `welcome-rebuild` before
+`command make`. Check with `strings output/target/usr/bin/welcome` that new text landed.
 
 ## Testing on the device
 
-Claude can push builds and run commands on the device over SSH, but can't see the
-screen or press buttons, so the user checks those:
+Claude can push builds, run commands, press buttons with `scripts/press.py` and take
+screenshots with `scripts/screenshot.py` over SSH. The user checks sound, feel, and
+anything physical like the lid:
 
 - **Flash:** the user runs `scripts/flash.sh /dev/sdX` in their own terminal, because
   it needs `sudo` and a typed confirmation. The card has been `/dev/sde`, but check

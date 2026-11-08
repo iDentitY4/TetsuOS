@@ -1,15 +1,21 @@
 //! A minimal libretro frontend: loads a core, and runs one game on the framebuffer.
 
+use crate::canvas::{self, PauseView};
 use crate::fb::Framebuffer;
-use crate::input::{self, Button, Controls};
+use crate::input::{self, Button, Controls, Event};
+use crate::pause::{Action, MenuTrigger, PauseMenu};
+use crate::settings;
+use crate::storage::write_atomic;
 use std::cell::RefCell;
 use std::ffi::{c_char, c_int, c_uint, c_void, CStr, CString};
 use std::io::{self, Write};
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread::sleep;
+use std::sync::Arc;
+use std::sync::mpsc::{Receiver, RecvTimeoutError};
+use std::thread::{sleep, spawn, JoinHandle};
 use std::time::{Duration, Instant};
 
 extern "C" {
@@ -62,6 +68,29 @@ impl Persistence {
 
 const STATS_FRAMES: u64 = 600;
 const CPU_SPEED_PATH: &str = "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq";
+const CPU_MIN_SPEED_PATH: &str = "/sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq";
+const CPU_LOWEST_SPEED_PATH: &str = "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_min_freq";
+/// The speed games normally run at, in kHz.
+const CPU_GAME_SPEED: &str = "1008000";
+/// How long the CPU stays at game speed after the menu closes, while the governor
+/// catches up. It raises the speed slowly from idle, because a game waits for the
+/// panel between frames, so the first second after a pause stuttered.
+const CPU_HOLD_FRAMES: u64 = 120;
+
+/// Keeps the CPU at game speed or faster, so it is ready when the menu closes.
+fn hold_cpu_speed() {
+    if let Err(error) = std::fs::write(CPU_MIN_SPEED_PATH, CPU_GAME_SPEED) {
+        eprintln!("warning: could not hold the CPU speed: {error}");
+    }
+}
+
+/// Lets the governor choose the CPU speed freely again.
+pub fn release_cpu_speed() {
+    let lowest = std::fs::read_to_string(CPU_LOWEST_SPEED_PATH).unwrap_or_default();
+    if let Err(error) = std::fs::write(CPU_MIN_SPEED_PATH, lowest.trim()) {
+        eprintln!("warning: could not release the CPU speed: {error}");
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum PixelFormat {
@@ -404,16 +433,32 @@ impl Core {
     fn snapshot(&mut self, persistence: Persistence) -> io::Result<Vec<u8>> {
         match persistence {
             Persistence::BatteryRam => Ok(self.save_ram().to_vec()),
-            Persistence::FullState => {
-                // SAFETY: the game is loaded, and the buffer has the size the core asked for.
-                unsafe {
-                    let mut state = vec![0u8; (self.serialize_size)()];
-                    if !(self.serialize)(state.as_mut_ptr() as *mut c_void, state.len()) {
-                        return Err(io::Error::other("the core could not save its state"));
-                    }
-                    Ok(state)
-                }
+            Persistence::FullState => self.save_state(),
+        }
+    }
+
+    /// The whole machine's state.
+    fn save_state(&mut self) -> io::Result<Vec<u8>> {
+        // SAFETY: the game is loaded, and the buffer has the size the core asked for.
+        unsafe {
+            let mut state = vec![0u8; (self.serialize_size)()];
+            if !(self.serialize)(state.as_mut_ptr() as *mut c_void, state.len()) {
+                return Err(io::Error::other("the core could not save its state"));
             }
+            Ok(state)
+        }
+    }
+
+    fn load_state(&mut self, state: &[u8]) -> io::Result<()> {
+        // SAFETY: the game is loaded, and the size is checked against the core's.
+        unsafe {
+            if state.len() != (self.serialize_size)() {
+                return Err(io::Error::other("the saved state has the wrong size"));
+            }
+            if !(self.unserialize)(state.as_ptr() as *const c_void, state.len()) {
+                return Err(io::Error::other("the core could not load the saved state"));
+            }
+            Ok(())
         }
     }
 
@@ -426,18 +471,7 @@ impl Core {
                 save_ram[..size].copy_from_slice(&saved[..size]);
                 Ok(())
             }
-            Persistence::FullState => {
-                // SAFETY: the game is loaded, and the size is checked against the core's.
-                unsafe {
-                    if saved.len() != (self.serialize_size)() {
-                        return Err(io::Error::other("the saved state has the wrong size"));
-                    }
-                    if !(self.unserialize)(saved.as_ptr() as *const c_void, saved.len()) {
-                        return Err(io::Error::other("the core could not load the saved state"));
-                    }
-                    Ok(())
-                }
-            }
+            Persistence::FullState => self.load_state(saved),
         }
     }
 
@@ -470,19 +504,37 @@ impl SaveFile {
         if self.written == progress {
             return Ok(());
         }
-        // The old save survives a power cut during the write.
-        let temporary = self.path.with_extension("tmp");
-        let mut file = std::fs::File::create(&temporary)?;
-        file.write_all(progress)?;
-        file.sync_all()?;
-        std::fs::rename(&temporary, &self.path)?;
-        // The rename itself must reach the card too.
-        if let Some(directory) = self.path.parent() {
-            std::fs::File::open(directory)?.sync_all()?;
-        }
+        write_atomic(&self.path, progress)?;
         self.written = progress.to_vec();
         Ok(())
     }
+}
+
+/// A save state slot's file, next to the game's save file.
+fn slot_path(save: &Path, slot: usize) -> PathBuf {
+    save.with_extension(format!("state{slot}"))
+}
+
+/// The state saved on leaving a game, which the next start resumes from. A game whose
+/// save file is already its whole state doesn't need one.
+fn resume_path(save: &Path, persistence: Persistence) -> Option<PathBuf> {
+    (persistence == Persistence::BatteryRam).then(|| save.with_extension("resume"))
+}
+
+/// Continues from where the game was left, if it was saved then.
+fn load_resume(core: &mut Core, path: &Path) -> io::Result<()> {
+    let state = match std::fs::read(path) {
+        Ok(state) => state,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    if let Err(error) = core.load_state(&state) {
+        // Keep it for a look, and start from the save file instead.
+        let kept = path.with_extension("resume.unreadable");
+        eprintln!("warning: {error}. Keeping it as {}", kept.display());
+        std::fs::rename(path, kept)?;
+    }
+    Ok(())
 }
 
 fn set_host(directory: &Path, target: (usize, usize)) -> io::Result<()> {
@@ -519,12 +571,156 @@ fn start_audio(sample_rate: f64) -> io::Result<Child> {
     Ok(child)
 }
 
+/// Keeps the audio stream running with silence while the game is paused. Left empty,
+/// it underruns, and then stutters for seconds after resuming, because the game only
+/// produces sound at the rate it plays. A thread writes it, so slow menu drawing can't
+/// let the stream run dry. The pipe goes back to the game when this is dropped.
+struct Silence {
+    stop: Arc<AtomicBool>,
+    writer: Option<JoinHandle<ChildStdin>>,
+}
+
+impl Silence {
+    fn start(sample_rate: f64) -> Self {
+        let stop = Arc::new(AtomicBool::new(false));
+        let stdin = with_host(|host| host.audio.as_mut().and_then(|audio| audio.stdin.take()));
+        let writer = stdin.map(|mut stdin| {
+            let stop = Arc::clone(&stop);
+            // 10 ms at a time. Writes wait while the pipe is full, which paces the loop.
+            let chunk = vec![0u8; (sample_rate / 100.0) as usize * 4];
+            spawn(move || {
+                while !stop.load(Ordering::Relaxed) {
+                    if stdin.write_all(&chunk).is_err() {
+                        break;
+                    }
+                }
+                stdin
+            })
+        });
+        Self { stop, writer }
+    }
+}
+
+impl Drop for Silence {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(stdin) = self.writer.take().and_then(|writer| writer.join().ok()) {
+            with_host(|host| {
+                if let Some(audio) = host.audio.as_mut() {
+                    audio.stdin = Some(stdin);
+                }
+            });
+        }
+    }
+}
+
+/// How the game continues after the menu closes.
+#[derive(PartialEq)]
+enum AfterMenu {
+    Resume,
+    Quit,
+}
+
+/// Shows the in-game menu over the paused game until it closes.
+fn pause(
+    core: &mut Core,
+    save: &Path,
+    menu: &mut PauseMenu,
+    framebuffer: &mut Framebuffer,
+    events: &Receiver<Event>,
+) -> io::Result<AfterMenu> {
+    let (width, height) = framebuffer.size();
+    let (frame, frame_size) = with_host(|host| (host.frame.clone(), host.frame_size));
+    let _silence = Silence::start(core.av_info.timing.sample_rate);
+    menu.open();
+    let mut settings_changed = false;
+    let mut redraw = true;
+    let after = loop {
+        if redraw {
+            let view = PauseView {
+                menu,
+                slot_used: slot_path(save, menu.slot()).exists(),
+                volume_percent: settings::volume_percent(),
+                brightness_percent: settings::brightness_percent(),
+            };
+            framebuffer.draw(&canvas::pause_screen(width, height, &frame, frame_size, &view))?;
+            redraw = false;
+        }
+        let event = match events.recv_timeout(Duration::from_millis(100)) {
+            Ok(event) => event,
+            Err(RecvTimeoutError::Timeout) if TERMINATING.load(Ordering::Relaxed) => break AfterMenu::Quit,
+            Err(RecvTimeoutError::Timeout) => continue,
+            Err(RecvTimeoutError::Disconnected) => break AfterMenu::Quit,
+        };
+        with_host(|host| host.controls.apply(&event));
+        let Some(button) = event.pressed() else { continue };
+        // The volume buttons change levels from the launcher, which this shows too.
+        redraw = true;
+        match menu.press(button) {
+            Action::Nothing => {}
+            Action::Resume => break AfterMenu::Resume,
+            Action::Quit => break AfterMenu::Quit,
+            Action::Save(slot) => {
+                let saved = core.save_state().and_then(|state| write_atomic(&slot_path(save, slot), &state));
+                menu.set_message(match saved {
+                    Ok(()) => format!("SAVED TO SLOT {slot}"),
+                    Err(error) => {
+                        eprintln!("warning: could not save to slot {slot}: {error}");
+                        format!("COULD NOT SAVE TO SLOT {slot}")
+                    }
+                });
+            }
+            Action::Load(slot) => match std::fs::read(slot_path(save, slot)) {
+                Ok(state) => match core.load_state(&state) {
+                    Ok(()) => break AfterMenu::Resume,
+                    Err(error) => {
+                        eprintln!("warning: could not load slot {slot}: {error}");
+                        menu.set_message(format!("COULD NOT LOAD SLOT {slot}"));
+                    }
+                },
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                    menu.set_message(format!("SLOT {slot} IS EMPTY"));
+                }
+                Err(error) => {
+                    eprintln!("warning: could not read slot {slot}: {error}");
+                    menu.set_message(format!("COULD NOT LOAD SLOT {slot}"));
+                }
+            },
+            Action::Volume(steps) => {
+                settings::change_volume(steps * settings::VOLUME_STEP);
+                settings_changed = true;
+            }
+            Action::Brightness(steps) => {
+                settings::change_brightness(steps);
+                settings_changed = true;
+            }
+        }
+    };
+    if settings_changed {
+        if let Err(error) = settings::save() {
+            eprintln!("warning: could not save the settings: {error}");
+        }
+    }
+    if after == AfterMenu::Resume {
+        // The press that closed the menu shouldn't reach the game.
+        while with_host(|host| host.controls.any_held()) && !TERMINATING.load(Ordering::Relaxed) {
+            if let Ok(event) = events.recv_timeout(Duration::from_millis(100)) {
+                with_host(|host| host.controls.apply(&event));
+            }
+        }
+        // The game only redraws its own area, so the menu would stay in the borders.
+        framebuffer.clear()?;
+    }
+    Ok(after)
+}
+
 fn wants_to_leave(controls: &Controls) -> bool {
     TERMINATING.load(Ordering::Relaxed)
         || (controls.is_held(Button::Menu) && controls.is_held(Button::Start))
 }
 
-/// Runs a game on the framebuffer until Menu and Start are held together.
+/// Runs a game on the framebuffer until it is quit from the menu, or Menu and Start are
+/// held together.
 pub fn play(
     core_path: &Path,
     rom: &Path,
@@ -538,6 +734,10 @@ pub fn play(
     set_host(directory, framebuffer.size())?;
     let mut core = Core::load(core_path, rom)?;
     let mut save_file = core.open_save(save, persistence)?;
+    let resume = resume_path(save, persistence);
+    if let Some(path) = &resume {
+        load_resume(&mut core, path)?;
+    }
     let (fps, sample_rate) = (core.av_info.timing.fps, core.av_info.timing.sample_rate);
     println!("playing {} at {fps:.2} fps, {sample_rate:.0} Hz", rom.display());
 
@@ -556,15 +756,38 @@ pub fn play(
     let mut vsync_time = Duration::ZERO;
     let mut vsync_works = true;
     let mut frames = 0u64;
+    let mut menu = PauseMenu::new();
+    let mut trigger = MenuTrigger::new();
+    let mut release_at = None;
     loop {
-        let leave = with_host(|host| {
+        let (leave, open_menu) = with_host(|host| {
+            let mut open_menu = false;
             for event in events.try_iter() {
                 host.controls.apply(&event);
+                open_menu |= trigger.update(&event);
             }
-            wants_to_leave(&host.controls)
+            (wants_to_leave(&host.controls), open_menu)
         });
         if leave {
             break;
+        }
+        if open_menu {
+            hold_cpu_speed();
+            if pause(&mut core, save, &mut menu, framebuffer, &events)? == AfterMenu::Quit {
+                break;
+            }
+            release_at = Some(frames - frames % STATS_FRAMES + CPU_HOLD_FRAMES);
+            // The pause shouldn't count as slow frames, or make the game catch up.
+            stats_start = Instant::now();
+            next_frame = stats_start;
+            frames -= frames % STATS_FRAMES;
+            run_time = Duration::ZERO;
+            screen_time = Duration::ZERO;
+            vsync_time = Duration::ZERO;
+            with_host(|host| {
+                host.scale_time = Duration::ZERO;
+                host.audio_time = Duration::ZERO;
+            });
         }
         // SAFETY: the game is loaded, and the callbacks run on this thread.
         let run_start = Instant::now();
@@ -590,6 +813,10 @@ pub fn play(
         })?;
 
         frames += 1;
+        if release_at == Some(frames) {
+            release_cpu_speed();
+            release_at = None;
+        }
         if frames.is_multiple_of(persistence.autosave_frames()) {
             let saved = core.snapshot(persistence).and_then(|progress| save_file.update(&progress));
             if let Err(error) = saved {
@@ -631,7 +858,13 @@ pub fn play(
         }
     }
 
+    if release_at.is_some() {
+        release_cpu_speed();
+    }
     save_file.update(&core.snapshot(persistence)?)?;
+    if let Some(path) = &resume {
+        core.save_state().and_then(|state| write_atomic(path, &state))?;
+    }
     let audio = with_host(|host| host.audio.take());
     if let Some(mut audio) = audio {
         drop(audio.stdin.take());
