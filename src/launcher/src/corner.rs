@@ -1,0 +1,70 @@
+//! The top-right corner: the battery level and the clock, and the time settings' note.
+
+use crate::*;
+use crate::canvas::{self, Battery};
+use std::path::Path;
+use std::time::Duration;
+
+/// How often the menu checks the battery, so plugging in a charger shows promptly.
+pub(crate) const BATTERY_REFRESH: Duration = Duration::from_secs(1);
+
+/// Reads the charge level from a power supply's folder in sysfs.
+pub(crate) fn read_battery(directory: &Path) -> Option<Battery> {
+    let read = |name: &str| std::fs::read_to_string(directory.join(name)).ok();
+    Some(Battery {
+        percent: read("capacity")?.trim().parse().ok()?,
+        charging: read("status")?.trim() == "Charging",
+    })
+}
+
+/// What `/usr/libexec/ntp-synced` logs each time ntpd sets the clock.
+pub(crate) const NTP_LOG: &str = "/var/log/ntp.log";
+
+/// The clock for the top-right corner, unless it is turned off.
+pub(crate) fn corner_clock() -> Option<String> {
+    let settings = settings::get();
+    clock::corner_text(jiff::Timestamp::now(), settings.time_zone(), settings.clock)
+}
+
+pub(crate) fn add_clock(canvas: &mut canvas::Canvas, battery: Option<Battery>) {
+    if let Some(text) = corner_clock() {
+        canvas.clock(&text, battery);
+    }
+}
+
+/// The time settings' note: the date and time there, and when the network last set it.
+pub(crate) fn time_note() -> String {
+    let settings = settings::get();
+    let (zone, format) = (settings.time_zone(), settings.clock);
+    let format = if format == clock::ClockFormat::Off { clock::ClockFormat::Hours24 } else { format };
+    let now = clock::date_text(&clock::local(jiff::Timestamp::now(), zone), format);
+    let synced = std::fs::read_to_string(NTP_LOG).ok().and_then(|log| clock::last_sync(&log));
+    let network = match synced {
+        Some(time) => format!("SET FROM THE NETWORK AT {}", clock::time_text(&clock::local(time, zone), format)),
+        None => "WAITING FOR THE TIME FROM THE NETWORK".into(),
+    };
+    format!("{now}\n{network}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_battery_is_read_from_sysfs_files() {
+        let dir = std::env::temp_dir().join(format!("launcher-battery-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(read_battery(&dir), None);
+
+        std::fs::write(dir.join("capacity"), "95\n").unwrap();
+        std::fs::write(dir.join("status"), "Charging\n").unwrap();
+        assert_eq!(read_battery(&dir), Some(Battery { percent: 95, charging: true }));
+
+        std::fs::write(dir.join("status"), "Discharging\n").unwrap();
+        assert_eq!(read_battery(&dir), Some(Battery { percent: 95, charging: false }));
+
+        std::fs::write(dir.join("capacity"), "not a number\n").unwrap();
+        assert_eq!(read_battery(&dir), None);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+}
