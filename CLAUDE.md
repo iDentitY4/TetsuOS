@@ -162,12 +162,14 @@ Built but not yet tested on the device:
   and labels are centred in it
 - Menu sounds: Settings > GENERAL > MENU SOUNDS, ON or OFF (default). Directions and
   volume keys tick, A, Start and Select make a rising blip, B a falling one, in the
-  launcher's own screens only (`menu_sound` in `main.rs`). `sounds.rs` makes them as
+  launcher's own screens (`menu_sound` in `main.rs`) and on the on-screen keyboard, for
+  Wi-Fi passwords and the title, where X and Y blip too (`keyboard_sound`). `sounds.rs` makes them as
   tones, 14 to 52 ms at 48 kHz, quiet next to games, and plays each through its own
   aplay, which holds the card about 70 ms; a sound is skipped while the last still plays,
   and `play_game` waits for it (`sounds::wait`), since the card takes one stream. Groups
   now have room for 6 settings. Claude checked on the device that presses play without
-  errors; nobody has heard them yet. Left ON on the test unit for the user to try
+  errors, and the user confirmed on 2026-11-08 that they work and are satisfying, in the
+  menus and on the keyboard
 - Sleep when idle: Settings > SYSTEM > SLEEP WHEN IDLE: OFF (default), 2, 5, 10 or 30
   minutes without a press in the launcher's own screens (home, lists, settings), not in
   games, the Wi-Fi screen, the keyboard or a download (`Wake::Idle`, `sleep_until_woken`).

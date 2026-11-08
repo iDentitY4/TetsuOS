@@ -428,18 +428,33 @@ fn read_battery(directory: &Path) -> Option<Battery> {
 
 /// The sound for a press in the menus, if it makes one.
 fn menu_sound(wake: &Wake) -> Option<sounds::Sound> {
+    match wake {
+        Wake::Event(event) => button_sound(event.pressed()?),
+        Wake::Repeat(button, _) => button_sound(*button),
+        _ => None,
+    }
+}
+
+fn button_sound(button: Button) -> Option<sounds::Sound> {
     use sounds::Sound;
-    let button = match wake {
-        Wake::Event(event) => event.pressed()?,
-        Wake::Repeat(button, _) => *button,
-        _ => return None,
-    };
     Some(match button {
         Button::Up | Button::Down | Button::Left | Button::Right | Button::VolumeUp | Button::VolumeDown => Sound::Move,
         Button::A | Button::Start | Button::Select => Sound::Select,
         Button::B => Sound::Back,
         _ => return None,
     })
+}
+
+/// Plays the sound for a press on the on-screen keyboard, where X and Y type too, for
+/// the letter case and a space.
+fn keyboard_sound(button: Button) {
+    let sound = match button {
+        Button::X | Button::Y => Some(sounds::Sound::Select),
+        other => button_sound(other),
+    };
+    if let Some(sound) = sound.filter(|_| settings::menu_sounds()) {
+        sounds::play(sound);
+    }
 }
 
 /// Sleeps until the lid opens. Anything else that wakes the device, like the power button
@@ -1033,6 +1048,9 @@ fn wifi_settings(framebuffer: &mut fb::Framebuffer, events: &Receiver<Event>) ->
         };
 
         for button in buttons {
+            if menu.keyboard.is_some() {
+                keyboard_sound(button);
+            }
             match menu.press(button) {
                 Request::Nothing => {}
                 Request::Back => {
@@ -1427,16 +1445,19 @@ fn edit_title(framebuffer: &mut fb::Framebuffer, events: &Receiver<Event>) -> io
         match event.pressed() {
             Some(Button::Lid) => sleep_until_lid_opens(events),
             Some(button @ (Button::VolumeUp | Button::VolumeDown)) => change_volume(button),
-            Some(button) => match keyboard.press(button) {
-                keyboard::Outcome::Typing => {}
-                keyboard::Outcome::Done(text) => {
-                    if let Err(error) = settings::set_title(&text) {
-                        eprintln!("warning: could not save the title: {error}");
+            Some(button) => {
+                keyboard_sound(button);
+                match keyboard.press(button) {
+                    keyboard::Outcome::Typing => {}
+                    keyboard::Outcome::Done(text) => {
+                        if let Err(error) = settings::set_title(&text) {
+                            eprintln!("warning: could not save the title: {error}");
+                        }
+                        break;
                     }
-                    break;
+                    keyboard::Outcome::Cancel => break,
                 }
-                keyboard::Outcome::Cancel => break,
-            },
+            }
             None => {}
         }
     }
