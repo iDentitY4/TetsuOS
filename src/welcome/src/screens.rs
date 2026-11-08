@@ -396,6 +396,49 @@ pub fn info_screen(width: usize, height: usize, lines: &[(String, String)], batt
     canvas
 }
 
+/// A home screen tile in the list that shows or hides them.
+pub struct TileToggle<'a> {
+    pub icon: &'a Icon,
+    pub label: &'a str,
+    pub shown: bool,
+}
+
+/// The home screen tiles, each SHOWN or HIDDEN, from Settings > THEME.
+pub fn home_tiles_screen(
+    width: usize,
+    height: usize,
+    rows: &[TileToggle],
+    selected: usize,
+    battery: Option<Battery>,
+) -> Canvas {
+    let mut canvas = Canvas::new(width, height);
+    header(&mut canvas, &icons::THEME, "HOME SCREEN TILES", battery);
+    let right = width.saturating_sub(SETTINGS_RIGHT);
+    let first = first_visible(selected);
+    for (line, (index, row)) in rows.iter().enumerate().skip(first).take(PAGE).enumerate() {
+        let y = LIST_TOP + line * LIST_ROW;
+        let (label_color, value_color) = if index == selected {
+            canvas.rect(0, y, width, LIST_ROW - 2, accent());
+            (BACKGROUND, BACKGROUND)
+        } else if row.shown {
+            (TEXT, TEXT)
+        } else {
+            (MUTED, MUTED)
+        };
+        canvas.icon(row.icon, LIST_ICON_LEFT, y + (LIST_ROW - 2 - icons::HEIGHT) / 2, 1);
+        let text_y = row_text_y(y, LIST_ROW - 2);
+        canvas.text_at(row.label, LIST_ICON_TEXT_LEFT, text_y, TEXT_SCALE, label_color);
+        let value = if row.shown { "SHOWN" } else { "HIDDEN" };
+        canvas.text_at(value, right.saturating_sub(text_width(value, TEXT_SCALE)), text_y, TEXT_SCALE, value_color);
+    }
+    // Hiding the settings tile is fine, but worth a reminder of the way back.
+    if rows.last().is_some_and(|settings| !settings.shown) {
+        canvas.text("START OPENS SETTINGS FROM ANYWHERE", LIST_TOP + rows.len().min(PAGE) * LIST_ROW + 10, TEXT_SCALE, MUTED);
+    }
+    hint(&mut canvas, "A SHOWS OR HIDES - B BACK");
+    canvas
+}
+
 /// The box art download, as `boxart_screen` shows it.
 pub struct BoxArtView<'a> {
     pub status: &'a str,
@@ -731,6 +774,17 @@ mod tests {
         // Game 14 is the third row of the second page.
         assert_eq!(pixel(&canvas, 639, LIST_TOP + 2 * LIST_ROW + 2), accent());
         assert_eq!(pixel(&canvas, 639, LIST_TOP + 2), BACKGROUND);
+    }
+
+    #[test]
+    fn the_tile_list_fits_every_tile_and_the_reminder() {
+        let mut rows: Vec<TileToggle> =
+            (0..10).map(|n| TileToggle { icon: &icons::NES, label: "GAME BOY ADVANCE", shown: n % 2 == 0 }).collect();
+        rows.last_mut().unwrap().shown = false;
+        assert!(LIST_TOP + rows.len() * LIST_ROW + 10 + font::HEIGHT * TEXT_SCALE <= HINT_Y);
+        let canvas = home_tiles_screen(640, 480, &rows, 3, None);
+        assert_eq!(pixel(&canvas, 2, LIST_TOP + 3 * LIST_ROW + 2), accent());
+        home_tiles_screen(60, 40, &rows, 9, None);
     }
 
     #[test]

@@ -219,6 +219,8 @@ struct Settings {
     title_hidden: bool,
     /// The home screen's title, if one was typed.
     title: Option<String>,
+    /// Home screen tiles turned off, by key, such as `recent` or `gba`.
+    hidden_tiles: Vec<String>,
 }
 
 /// Reads the first value from `amixer cget` output, such as `  : values=25,25`.
@@ -263,6 +265,9 @@ fn parse(text: &str) -> Settings {
             }
             "title_hidden" => settings.title_hidden = value == "yes",
             "title" => settings.title = clean_title(value),
+            "hidden_tiles" => {
+                settings.hidden_tiles = value.split(',').map(str::trim).filter(|key| !key.is_empty()).map(String::from).collect();
+            }
             "timezone" => settings.zone = clock::zone_named(value).map(|zone| zone.name),
             "clock" => {
                 if let Some(&format) = ClockFormat::ALL.iter().find(|choice| choice.key() == value) {
@@ -294,6 +299,9 @@ fn format(settings: &Settings) -> String {
     text += &format!("title_hidden={}\n", if settings.title_hidden { "yes" } else { "no" });
     if let Some(title) = &settings.title {
         text += &format!("title={title}\n");
+    }
+    if !settings.hidden_tiles.is_empty() {
+        text += &format!("hidden_tiles={}\n", settings.hidden_tiles.join(","));
     }
     text
 }
@@ -423,6 +431,21 @@ pub fn set_title(text: &str) -> io::Result<()> {
     store(&Settings { title: clean_title(text), ..load() })
 }
 
+/// The keys of the home screen tiles turned off.
+pub fn hidden_tiles() -> Vec<String> {
+    load().hidden_tiles
+}
+
+/// Turns a home screen tile off or on again, by its key.
+pub fn set_tile_hidden(key: &str, hidden: bool) -> io::Result<()> {
+    let mut settings = load();
+    settings.hidden_tiles.retain(|other| other != key);
+    if hidden {
+        settings.hidden_tiles.push(key.to_string());
+    }
+    store(&settings)
+}
+
 /// The chosen time zone, UTC until one is chosen.
 pub fn time_zone() -> &'static Zone {
     load().zone.and_then(clock::zone_named).unwrap_or(clock::UTC)
@@ -477,6 +500,7 @@ mod tests {
             accent: Accent::Pink,
             title_hidden: true,
             title: Some("Game = Fun & more".into()),
+            hidden_tiles: vec!["recent".into(), "gba".into()],
         };
         assert_eq!(parse(&format(&settings)), settings);
         // Files from before the time settings load with UTC and a 24 hour clock.
@@ -484,6 +508,8 @@ mod tests {
         assert_eq!((old.zone, old.clock), (None, ClockFormat::Hours24));
         assert_eq!(parse("timezone=Mars/Olympus\n").zone, None);
         assert_eq!((old.accent, old.title_hidden, old.title), (Accent::Teal, false, None));
+        assert!(old.hidden_tiles.is_empty());
+        assert_eq!(parse("hidden_tiles=nes,, snes ,\n").hidden_tiles, ["nes", "snes"]);
     }
 
     #[test]

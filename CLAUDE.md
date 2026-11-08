@@ -160,6 +160,14 @@ Built but not yet tested on the device:
   the title, the home grid starts at 36 instead of 84 pixels (`GRID_TOP_UNTITLED`, just
   below the clock), so 3 rows of tiles grow from 108 to 124 pixels, and each tile's icon
   and labels are centred in it
+- Hiding home screen tiles: Settings > THEME > HOME SCREEN TILES lists RECENT,
+  FAVORITES, every console (with games or not) and SETTINGS, each SHOWN or HIDDEN, toggled
+  with A (`Library::every_tile`, `screens::home_tiles_screen`). Saved as
+  `hidden_tiles=recent,tamagotchi,...` in `settings.txt`, using each system's `key` in
+  `SYSTEMS`. Games of a hidden console stay in RECENT and FAVORITES. If every tile is
+  hidden, SETTINGS shows anyway; hiding it shows a reminder that Start opens settings.
+  Fewer tiles can mean fewer rows, which makes the tiles larger. Claude hid and showed
+  tiles on the device; the test unit has none hidden
 - Time settings, a TIME tile in Settings: TIME ZONE (58 cities, west to east, Left and
   Right) and CLOCK (24 HOUR, 12 HOUR or OFF) for a clock left of the battery level on
   every screen that shows it. The group's note shows the date and when the network last

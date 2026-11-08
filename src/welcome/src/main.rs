@@ -49,6 +49,8 @@ const SAVE_DIR: &str = "/mnt/data/saves";
 struct System {
     /// The title of its list of games.
     console: &'static str,
+    /// Its name in the settings file, such as for a hidden tile.
+    key: &'static str,
     /// The name on its home screen tile, short enough to fit.
     label: &'static str,
     icon: &'static Icon,
@@ -74,6 +76,7 @@ const MGBA: &str = "/usr/lib/libretro/mgba_libretro.so";
 const SYSTEMS: [System; 7] = [
     System {
         console: "NES",
+        key: "nes",
         label: "NES",
         icon: &icons::NES,
         extensions: &["nes"],
@@ -87,6 +90,7 @@ const SYSTEMS: [System; 7] = [
     },
     System {
         console: "GAME BOY",
+        key: "gb",
         label: "GAME BOY",
         icon: &icons::GAME_BOY,
         extensions: &["gb"],
@@ -100,6 +104,7 @@ const SYSTEMS: [System; 7] = [
     },
     System {
         console: "SNES",
+        key: "snes",
         label: "SNES",
         icon: &icons::SNES,
         extensions: &["sfc", "smc"],
@@ -113,6 +118,7 @@ const SYSTEMS: [System; 7] = [
     },
     System {
         console: "PLAYSTATION",
+        key: "ps1",
         label: "PLAYSTATION",
         icon: &icons::PLAYSTATION,
         // A `.cue` names the disc's `.bin` files, which sit beside it and aren't listed.
@@ -129,6 +135,7 @@ const SYSTEMS: [System; 7] = [
     },
     System {
         console: "TAMAGOTCHI",
+        key: "tamagotchi",
         label: "TAMAGOTCHI",
         icon: &icons::TAMAGOTCHI,
         extensions: &["b"],
@@ -142,6 +149,7 @@ const SYSTEMS: [System; 7] = [
     },
     System {
         console: "GAME BOY COLOR",
+        key: "gbc",
         label: "GB COLOR",
         icon: &icons::GAME_BOY_COLOR,
         extensions: &["gbc"],
@@ -155,6 +163,7 @@ const SYSTEMS: [System; 7] = [
     },
     System {
         console: "GAME BOY ADVANCE",
+        key: "gba",
         label: "GB ADVANCE",
         icon: &icons::GAME_BOY_ADVANCE,
         extensions: &["gba"],
@@ -260,7 +269,37 @@ fn build_library(roms: &[PathBuf], recent: &[PathBuf], favorites: &[PathBuf]) ->
     let recent = pick(recent);
     let mut favorites = pick(favorites);
     favorites.sort_by_key(|game| game.name.to_ascii_lowercase());
-    Library { recent, favorites, shelves }
+    Library { recent, favorites, shelves, systems: SYSTEMS.len(), hidden: hidden_tiles() }
+}
+
+/// A home screen tile's name in the settings file.
+fn tile_key(tile: Tile) -> &'static str {
+    match tile {
+        Tile::Recent => "recent",
+        Tile::Favorites => "favorites",
+        Tile::System(system) => SYSTEMS[system].key,
+        Tile::Settings => "settings",
+    }
+}
+
+/// The tiles turned off in the settings.
+fn hidden_tiles() -> Vec<Tile> {
+    let keys = settings::hidden_tiles();
+    Library { systems: SYSTEMS.len(), ..Library::default() }
+        .every_tile()
+        .into_iter()
+        .filter(|&tile| keys.iter().any(|key| key == tile_key(tile)))
+        .collect()
+}
+
+/// A tile's pictogram and name, as the home screen shows it.
+fn tile_look(tile: Tile) -> (&'static icons::Icon, &'static str) {
+    match tile {
+        Tile::Recent => (&icons::RECENT, "RECENT"),
+        Tile::Favorites => (&icons::FAVORITES, "FAVORITES"),
+        Tile::System(system) => (SYSTEMS[system].icon, SYSTEMS[system].label),
+        Tile::Settings => (&icons::SETTINGS, "SETTINGS"),
+    }
 }
 
 fn load_library() -> Library {
@@ -1063,6 +1102,17 @@ fn launcher_canvas(
             screens::settings_screen(width, height, &view, battery)
         }
         Screen::Info => screens::info_screen(width, height, &system_info(battery), battery),
+        Screen::HomeTiles => {
+            let rows: Vec<screens::TileToggle> = library
+                .every_tile()
+                .into_iter()
+                .map(|tile| {
+                    let (icon, label) = tile_look(tile);
+                    screens::TileToggle { icon, label, shown: !library.hidden.contains(&tile) }
+                })
+                .collect();
+            screens::home_tiles_screen(width, height, &rows, launcher.home_tiles_selected(library), battery)
+        }
     };
     add_clock(&mut canvas, battery);
     (canvas, scrolling)
@@ -1187,6 +1237,14 @@ fn act(
             }
         }
         Action::EditTitle => edit_title(framebuffer, events)?,
+        Action::ToggleTile(tile) => {
+            let hidden = settings::hidden_tiles().iter().any(|key| key == tile_key(tile));
+            if let Err(error) = settings::set_tile_hidden(tile_key(tile), !hidden) {
+                eprintln!("warning: could not save the home screen tiles: {error}");
+            }
+            // The home screen's tiles are read again.
+            return Ok(true);
+        }
         Action::TimeZone(steps) => {
             if let Err(error) = settings::set_time_zone(clock::cycle_zone(settings::time_zone(), steps)) {
                 eprintln!("warning: could not save the time zone: {error}");

@@ -24,11 +24,16 @@ pub struct Shelf {
 }
 
 /// Everything the launcher can show, read from the card.
+#[derive(Default)]
 pub struct Library {
     pub recent: Vec<Game>,
     /// Starred games, sorted by name.
     pub favorites: Vec<Game>,
     pub shelves: Vec<Shelf>,
+    /// How many systems there are, with games or not, for the list of tiles to hide.
+    pub systems: usize,
+    /// Tiles turned off in Settings > THEME > HOME SCREEN TILES.
+    pub hidden: Vec<Tile>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -56,6 +61,8 @@ pub enum Screen {
     /// One group's settings.
     SettingsGroup(Group),
     Info,
+    /// The list of home screen tiles to show or hide.
+    HomeTiles,
 }
 
 /// A tile on the settings grid. Each opens a list of its settings, except Wi-Fi, which
@@ -96,7 +103,7 @@ impl Group {
             Self::GameScreen => &[Setting::Scaling, Setting::Effect, Setting::Ghosting],
             Self::Wifi => &[],
             Self::BoxArt => &[Setting::DownloadMissingArt, Setting::DownloadAllArt, Setting::DeleteArt],
-            Self::Theme => &[Setting::AccentColor, Setting::ShowTitle, Setting::TitleText],
+            Self::Theme => &[Setting::AccentColor, Setting::ShowTitle, Setting::TitleText, Setting::HomeTiles],
             Self::Time => &[Setting::TimeZone, Setting::ClockFormat],
             Self::System => &[Setting::ButtonTest, Setting::SystemInfo, Setting::Reboot, Setting::PowerOff],
         }
@@ -116,6 +123,7 @@ pub enum Setting {
     AccentColor,
     ShowTitle,
     TitleText,
+    HomeTiles,
     TimeZone,
     ClockFormat,
     ButtonTest,
@@ -138,6 +146,7 @@ impl Setting {
             Self::AccentColor => "COLOR",
             Self::ShowTitle => "TITLE",
             Self::TitleText => "TITLE TEXT",
+            Self::HomeTiles => "HOME SCREEN TILES",
             Self::TimeZone => "TIME ZONE",
             Self::ClockFormat => "CLOCK",
             Self::ButtonTest => "BUTTON TEST",
@@ -151,7 +160,12 @@ impl Setting {
     pub fn opens_screen(self) -> bool {
         matches!(
             self,
-            Self::DownloadMissingArt | Self::DownloadAllArt | Self::TitleText | Self::ButtonTest | Self::SystemInfo
+            Self::DownloadMissingArt
+                | Self::DownloadAllArt
+                | Self::TitleText
+                | Self::HomeTiles
+                | Self::ButtonTest
+                | Self::SystemInfo
         )
     }
 
@@ -219,6 +233,8 @@ pub enum Command {
     /// Shows the home screen's title if it is hidden, or hides it.
     ToggleTitle,
     EditTitle,
+    /// Turns a home screen tile off, or on again.
+    ToggleTile(Tile),
     TimeZone(i32),
     ClockFormat(i32),
     Reboot,
@@ -238,6 +254,8 @@ pub struct Launcher {
     group: usize,
     /// The selected setting in each group.
     group_rows: HashMap<Group, usize>,
+    /// The selected row in the list of home screen tiles.
+    home_tiles_row: usize,
     /// Where settings go back to.
     before_settings: Screen,
     /// A setting that can't be undone, waiting for a second press of A.
@@ -246,7 +264,8 @@ pub struct Launcher {
 
 impl Library {
     /// The home screen's tiles: recent and starred games if any, each console with games,
-    /// and settings.
+    /// and settings, leaving out those turned off. With all of them off, settings stays, so
+    /// the home screen is never empty.
     pub fn tiles(&self) -> Vec<Tile> {
         let mut tiles = Vec::new();
         if !self.recent.is_empty() {
@@ -256,6 +275,19 @@ impl Library {
             tiles.push(Tile::Favorites);
         }
         tiles.extend(self.shelves.iter().map(|shelf| Tile::System(shelf.system)));
+        tiles.push(Tile::Settings);
+        tiles.retain(|tile| !self.hidden.contains(tile));
+        if tiles.is_empty() {
+            tiles.push(Tile::Settings);
+        }
+        tiles
+    }
+
+    /// Every tile there could be, shown or not, in the home screen's order: the list in
+    /// Settings that turns them on and off.
+    pub fn every_tile(&self) -> Vec<Tile> {
+        let mut tiles = vec![Tile::Recent, Tile::Favorites];
+        tiles.extend((0..self.systems).map(Tile::System));
         tiles.push(Tile::Settings);
         tiles
     }
@@ -286,6 +318,7 @@ impl Launcher {
             lists: HashMap::new(),
             group: 0,
             group_rows: HashMap::new(),
+            home_tiles_row: 0,
             before_settings: Screen::Home,
             confirming: None,
         }
@@ -342,8 +375,13 @@ impl Launcher {
         }
     }
 
+    /// The selected row in the list of home screen tiles.
+    pub fn home_tiles_selected(&self, library: &Library) -> usize {
+        self.home_tiles_row.min(library.every_tile().len().saturating_sub(1))
+    }
+
     fn in_settings(&self) -> bool {
-        matches!(self.screen, Screen::Settings | Screen::SettingsGroup(_) | Screen::Info)
+        matches!(self.screen, Screen::Settings | Screen::SettingsGroup(_) | Screen::Info | Screen::HomeTiles)
     }
 
     fn open_settings(&mut self) {
@@ -377,7 +415,21 @@ impl Launcher {
                 }
                 Command::Nothing
             }
+            Screen::HomeTiles => self.press_home_tiles(button, library),
         }
+    }
+
+    fn press_home_tiles(&mut self, button: Button, library: &Library) -> Command {
+        let tiles = library.every_tile();
+        let selected = self.home_tiles_selected(library);
+        match button {
+            Button::Up => self.home_tiles_row = (selected + tiles.len() - 1) % tiles.len(),
+            Button::Down => self.home_tiles_row = (selected + 1) % tiles.len(),
+            Button::A | Button::Left | Button::Right => return Command::ToggleTile(tiles[selected]),
+            Button::B => self.screen = Screen::SettingsGroup(Group::Theme),
+            _ => {}
+        }
+        Command::Nothing
     }
 
     fn press_home(&mut self, button: Button, library: &Library) -> Command {
@@ -470,6 +522,7 @@ impl Launcher {
                 Setting::DownloadAllArt => return Command::DownloadBoxArt(ArtDownload::All),
                 Setting::DeleteArt => return Command::DeleteBoxArt,
                 Setting::TitleText => return Command::EditTitle,
+                Setting::HomeTiles => self.screen = Screen::HomeTiles,
                 Setting::ButtonTest => return Command::ButtonTest,
                 Setting::SystemInfo => self.screen = Screen::Info,
                 Setting::Reboot => return Command::Reboot,
@@ -508,6 +561,7 @@ mod tests {
                 Shelf { system: 2, games: (0..20).map(|i| game(&format!("g{i}"), 2)).collect() },
                 Shelf { system: 5, games: vec![game("x", 5), game("y", 5)] },
             ],
+            ..Library::default()
         }
     }
 
@@ -523,8 +577,47 @@ mod tests {
     fn tiles_are_recent_then_consoles_then_settings() {
         let tiles = library().tiles();
         assert_eq!(tiles, [Tile::Recent, Tile::System(0), Tile::System(2), Tile::System(5), Tile::Settings]);
-        let empty = Library { recent: vec![], favorites: vec![], shelves: vec![] };
+        let empty = Library::default();
         assert_eq!(empty.tiles(), [Tile::Settings]);
+    }
+
+    #[test]
+    fn hidden_tiles_are_left_out_but_the_home_screen_never_empties() {
+        let mut library = library();
+        library.hidden = vec![Tile::Recent, Tile::System(2), Tile::Settings, Tile::System(6)];
+        assert_eq!(library.tiles(), [Tile::System(0), Tile::System(5)]);
+        library.hidden.extend([Tile::System(0), Tile::System(5)]);
+        assert_eq!(library.tiles(), [Tile::Settings]);
+        library.systems = 3;
+        assert_eq!(
+            library.every_tile(),
+            [Tile::Recent, Tile::Favorites, Tile::System(0), Tile::System(1), Tile::System(2), Tile::Settings]
+        );
+    }
+
+    #[test]
+    fn the_tile_list_toggles_and_goes_back_to_theme() {
+        let mut library = library();
+        library.systems = 7;
+        let mut launcher = Launcher::new();
+        open_group(&mut launcher, &library, Group::Theme);
+        launcher.press(Button::Up, &library);
+        assert_eq!(launcher.setting_selected(Group::Theme), Some(Setting::HomeTiles));
+        launcher.press(Button::A, &library);
+        assert_eq!(launcher.screen(), Screen::HomeTiles);
+        assert_eq!(launcher.press(Button::A, &library), Command::ToggleTile(Tile::Recent));
+        launcher.press(Button::Down, &library);
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::Right, &library), Command::ToggleTile(Tile::System(0)));
+        // Up from the top wraps to settings, the last.
+        press_all(&mut launcher, &library, &[Button::Up, Button::Up, Button::Up]);
+        assert_eq!(launcher.press(Button::A, &library), Command::ToggleTile(Tile::Settings));
+        launcher.press(Button::B, &library);
+        assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::Theme));
+        // Start closes settings from the list too.
+        launcher.press(Button::A, &library);
+        launcher.press(Button::Start, &library);
+        assert_eq!(launcher.screen(), Screen::Home);
     }
 
     #[test]
@@ -763,7 +856,7 @@ mod tests {
 
     #[test]
     fn an_empty_list_goes_back_home() {
-        let library = Library { recent: vec![], favorites: vec![], shelves: vec![] };
+        let library = Library::default();
         let mut launcher = Launcher::new();
         launcher.screen = Screen::Games(List::System(3));
         launcher.press(Button::Down, &library);
