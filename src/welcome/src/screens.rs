@@ -225,6 +225,19 @@ pub fn battery_warning(percent: u32) -> Canvas {
     canvas
 }
 
+/// The game the launcher is about to resume after starting up.
+pub fn resume_screen(width: usize, height: usize, icon: &Icon, name: &str) -> Canvas {
+    let mut canvas = Canvas::new(width, height);
+    let scale = 4;
+    canvas.icon(icon, width.saturating_sub(icons::WIDTH * scale) / 2, 90, scale);
+    canvas.text("RESUMING", 90 + icons::HEIGHT * scale + 30, 3, ACCENT);
+    let columns = width.saturating_sub(32) / ((font::WIDTH + 1) * TEXT_SCALE);
+    let visible: String = name.chars().take(columns).collect();
+    canvas.text(&visible, 90 + icons::HEIGHT * scale + 76, TEXT_SCALE, TEXT);
+    hint(&mut canvas, "B CANCELS");
+    canvas
+}
+
 /// A message on its own, such as while the device powers off.
 pub fn message_screen(width: usize, height: usize, message: &str) -> Canvas {
     let mut canvas = Canvas::new(width, height);
@@ -314,6 +327,14 @@ mod tests {
         assert!(6 + warning.height <= 27, "shorter than the GBA border");
         assert!(6 + warning.width <= 46, "narrower than the SNES border");
         assert!(warning.pixels.contains(&LOW));
+    }
+
+    #[test]
+    fn the_resume_screen_fits_above_the_hint() {
+        assert!(90 + icons::HEIGHT * 4 + 76 + font::HEIGHT * TEXT_SCALE <= HINT_Y);
+        let long = "X".repeat(200);
+        assert_eq!(resume_screen(640, 480, &icons::GAME_BOY, &long).pixels.len(), 640 * 480);
+        assert_eq!(resume_screen(64, 48, &icons::GAME_BOY, &long).pixels.len(), 64 * 48);
     }
 
     #[test]

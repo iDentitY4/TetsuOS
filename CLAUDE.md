@@ -80,6 +80,13 @@ Working on the test unit, confirmed by the user:
 
 Built but not yet tested on the device:
 
+- Resuming at boot. Starting a game writes its path to `/mnt/data/playing.txt`; quitting
+  or a crash removes it, but shutting down mid-game stops the launcher before it can, and
+  an empty battery keeps it on purpose. At start, the launcher shows RESUMING with the
+  game for 1.5 seconds, where B cancels, then starts it, and its resume state continues
+  it. Claude tested quitting, cancelling, and a real reboot mid-game, after which the
+  game came back by itself. The user confirmed it works with the power button
+
 - Low-battery protection (`power.rs`). Running on battery, a game shows the charge in red
   in the top-left corner, which is border for every system, at 10% or below. At 3% or
   below, or under 3.35 V, read twice 5 seconds apart, the game saves as when quitting,
