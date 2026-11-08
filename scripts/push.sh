@@ -6,6 +6,8 @@
 #   boot    the kernel, device tree and extlinux.conf, then reboots
 #   all     rootfs, then boot
 #   uboot   U-Boot, into the card's boot area, checked by reading it back
+#   key     adds this PC's SSH public key (or the .pub file given) to the device,
+#           which SSH over Wi-Fi and a root password need, then restarts the server
 #
 # A device that doesn't boot, which a bad U-Boot causes, still needs scripts/flash.sh.
 set -euo pipefail
@@ -45,6 +47,8 @@ push_rootfs() {
 		--exclude=/tmp/ --exclude=/mnt/ --exclude=/media/ --exclude=/root/ \
 		--exclude=/var/ --exclude=/etc/dropbear \
 		"$TARGET/" "$DEVICE:/"
+	# The build's /etc/shadow has no root password: put back the one set on the device.
+	on_device /etc/init.d/S50dropbear restart >/dev/null
 	on_device /etc/init.d/S90launcher restart
 	echo "Changed init scripts take effect after a reboot."
 }
@@ -93,14 +97,37 @@ push_uboot() {
 	echo "Verified. It takes effect at the next boot."
 }
 
+push_key() {
+	local key="${1:-}"
+	if [ -z "$key" ]; then
+		for candidate in ~/.ssh/id_ed25519.pub ~/.ssh/id_ecdsa.pub ~/.ssh/id_rsa.pub; do
+			[ -f "$candidate" ] && { key="$candidate"; break; }
+		done
+	fi
+	[ -f "$key" ] || { echo "No SSH public key found: pass a .pub file" >&2; exit 1; }
+	echo "Adding $key"
+	# Kept on the data partition; S50dropbear copies it to /root/.ssh.
+	on_device sh -es <<-EOF
+		mkdir -p /mnt/data/ssh
+		touch /mnt/data/ssh/authorized_keys
+		line='$(head -n 1 "$key")'
+		grep -qxF "\$line" /mnt/data/ssh/authorized_keys ||
+			echo "\$line" >> /mnt/data/ssh/authorized_keys
+		sync
+		/etc/init.d/S50dropbear restart >/dev/null
+	EOF
+	echo "Done. Settings > ADVANCED > SSH KEYS shows the count."
+}
+
 case "${1:-}" in
 app) push_app ;;
 rootfs) push_rootfs ;;
 boot) push_boot ;;
 all) push_rootfs; push_boot ;;
 uboot) push_uboot ;;
+key) push_key "${2:-}" ;;
 *)
-	echo "usage: $0 {app|rootfs|boot|all|uboot}" >&2
+	echo "usage: $0 {app|rootfs|boot|all|uboot|key [FILE.pub]}" >&2
 	exit 2
 	;;
 esac

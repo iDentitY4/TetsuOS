@@ -12,7 +12,8 @@ Boot to the launcher in 3.6 s with a logo; power button on and off; USB console,
 updates over USB networking (`10.35.35.1`); audio with headphone switching; Panfrost GPU;
 CPU scaling to 1512 MHz; lid sleep (`s2idle`), with Wi-Fi and USB kept through it; Wi-Fi
 set up on the device; network time (`ntpd`) and a time zone setting; battery level,
-low-battery save and power-off.
+low-battery save and power-off; SSH over USB only by default, over Wi-Fi with a key or
+root password; a CPU performance setting.
 
 Games: NES (FCEUmm), SNES (Snes9x), Game Boy, Color and Advance (mGBA), PlayStation (PCSX
 ReARMed) and Tamagotchi (tamalib), with an in-game menu (8 save slots, levels, display
@@ -21,8 +22,8 @@ scaling with CRT and LCD effects.
 
 Launcher: a tile grid with RECENT and FAVORITES, lists with covers and scrolling names,
 box art downloaded on the device, and a settings grid (GENERAL, GAME SCREEN, WI-FI,
-BOX ART, THEME, TIME, SYSTEM) with colours, background, title, grid size, hidden tiles,
-start screen, game names, battery display, menu sounds and sleep when idle.
+BOX ART, THEME, TIME, SYSTEM, ADVANCED) with colours, background, title, grid size,
+hidden tiles, start screen, game names, battery display, menu sounds and sleep when idle.
 
 ## Not yet checked by the user
 
@@ -32,6 +33,8 @@ start screen, game names, battery display, menu sounds and sleep when idle.
 - The lid since input moved to the `evdev` crate; the lid during a box art download
 - A game's own clock (Pokemon's RTC) showing local time
 - A real empty battery, a wrong Wi-Fi password, a failing certificate check
+- Settings > ADVANCED: SSH from another machine over Wi-Fi, and games at BATTERY or
+  PERFORMANCE
 
 ## Known issues
 
@@ -43,7 +46,8 @@ start screen, game names, battery display, menu sounds and sleep when idle.
 ## Next steps
 
 1. Rewind, moved to the end by the user
-2. Proposed, not confirmed: before any release, set a root password (SSH accepts an empty one)
+2. Proposed, not confirmed: before a release, decide whether USB ONLY should keep root's
+   empty password, as the serial console does
 
 ## How the launcher is built
 
@@ -166,6 +170,13 @@ physical like the lid.
   `10.35.35.2` (`ip -br addr`) and that the device is awake with the cable in.
 - **Commands:** `ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
   root@10.35.35.1 '<command>'`. The launcher logs to `/var/log/launcher.log`.
+- **Claude logs in with root's empty password,** which only SSH USB ONLY with no root
+  password allows: the PC's `id_rsa` has a passphrase and no agent. USB + WI-FI or a
+  password locks Claude out, and pressing Right on SSH restarts the server mid-press.
+  To test them, add a passphrase-less key from the scratchpad with `push.sh key` and
+  pass it with `-i`. If locked out, the serial console still logs in (Python on
+  `/dev/ttyACM0` works; Claude is in `uucp`), and cycling SSH back to USB ONLY there with
+  injected presses fixes it. Leave the device on USB ONLY with no password and no keys.
 - **Pressing buttons:** take a screenshot before pressing A, because a wrong guess at
   where the selection is can start one of the user's games or change their settings.
   Groups remember their selected row, and Up and Down wrap. Starting a game moves its

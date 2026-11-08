@@ -240,6 +240,30 @@ choices! {
     }
 }
 
+choices! {
+    /// Where the SSH server listens. `S50dropbear` reads this line of the settings file
+    /// itself, at boot and when the launcher restarts it.
+    pub enum SshAccess (default Usb) {
+        Off => "off", "OFF";
+        /// Only over the cable, where an empty root password is allowed.
+        Usb => "usb", "USB ONLY";
+        /// On every network. It needs an SSH key or a root password.
+        Wifi => "wifi", "USB + WI-FI";
+    }
+}
+
+choices! {
+    /// How fast the CPU may run, traded against battery life and heat.
+    pub enum CpuLevel (default Balanced) {
+        /// The governor chooses, up to 1104 MHz.
+        Battery => "battery", "BATTERY";
+        /// The governor chooses, up to the fastest speed.
+        Balanced => "balanced", "BALANCED";
+        /// Always the fastest speed.
+        Performance => "performance", "PERFORMANCE";
+    }
+}
+
 /// The choices for sleeping when idle, in minutes without a press. 0 is off.
 pub const IDLE_SLEEP_MINUTES: [u32; 5] = [0, 2, 5, 10, 30];
 
@@ -290,6 +314,8 @@ pub struct Settings {
     /// Minutes without a press in the menus before sleeping, one of `IDLE_SLEEP_MINUTES`.
     pub idle_minutes: u32,
     pub menu_sounds: bool,
+    pub ssh: SshAccess,
+    pub performance: CpuLevel,
 }
 
 impl Settings {
@@ -364,6 +390,8 @@ fn parse(text: &str) -> Settings {
             "battery" => choose(&mut settings.battery, BatteryDisplay::from_key(value)),
             "idle" => choose(&mut settings.idle_minutes, IDLE_SLEEP_MINUTES.into_iter().find(|&m| value.parse() == Ok(m))),
             "sounds" => settings.menu_sounds = value == "on",
+            "ssh" => choose(&mut settings.ssh, SshAccess::from_key(value)),
+            "performance" => choose(&mut settings.performance, CpuLevel::from_key(value)),
             _ => {}
         }
     }
@@ -402,6 +430,8 @@ fn format(settings: &Settings) -> String {
     lines.push(format!("battery={}", settings.battery.key()));
     lines.push(format!("idle={}", settings.idle_minutes));
     lines.push(format!("sounds={}", on_off(settings.menu_sounds)));
+    lines.push(format!("ssh={}", settings.ssh.key()));
+    lines.push(format!("performance={}", settings.performance.key()));
     lines.iter().map(|line| format!("{line}\n")).collect()
 }
 
@@ -564,8 +594,12 @@ mod tests {
             battery: BatteryDisplay::WhenLow,
             idle_minutes: 10,
             menu_sounds: true,
+            ssh: SshAccess::Wifi,
+            performance: CpuLevel::Battery,
         };
         assert_eq!(parse(&format(&settings)), settings);
+        // S50dropbear reads the ssh line with sed, so it must be exactly this.
+        assert!(format(&settings).lines().any(|line| line == "ssh=wifi"));
     }
 
     #[test]

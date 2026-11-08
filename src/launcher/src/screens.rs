@@ -7,6 +7,7 @@ use crate::icons::{self, Icon};
 use crate::keyboard::{self, Key, Keyboard};
 use crate::launcher::{Group, Setting, COLUMNS, MAX_GROUP_SETTINGS, PAGE};
 use crate::settings::GridSize;
+use crate::ssh;
 use crate::wifi::Security;
 use crate::wifi_menu::{self, Entry};
 use std::time::Duration;
@@ -83,6 +84,8 @@ pub struct SettingsView<'a> {
     pub message: Option<&'a str>,
     /// Lines about the group, such as how many games have covers, split at newlines.
     pub note: Option<&'a str>,
+    /// Whether a root password and SSH keys are set, for the ADVANCED group.
+    pub login: ssh::Login,
 }
 
 fn row_text_y(top: usize, height: usize) -> usize {
@@ -162,6 +165,7 @@ pub fn group_icon(group: Group) -> &'static Icon {
         Group::Theme => &icons::THEME,
         Group::Time => &icons::TIME,
         Group::System => &icons::SYSTEM,
+        Group::Advanced => &icons::ADVANCED,
     }
 }
 
@@ -380,6 +384,8 @@ fn setting_value(setting: Setting, settings: &Settings) -> Option<String> {
         Setting::ShowCovers => on_off(!settings.covers_hidden),
         Setting::TimeZone => settings.time_zone().label,
         Setting::ClockFormat => settings.clock.label(),
+        Setting::Ssh => settings.ssh.label(),
+        Setting::Performance => settings.performance.label(),
         _ => return None,
     };
     Some(label.to_string())
@@ -407,6 +413,18 @@ pub fn settings_screen(width: usize, height: usize, view: &SettingsView, frame: 
             Setting::TitleText => {
                 let value = format!("{} >", view.settings.title());
                 canvas.text_cased_at(&value, right - text_width(&value, TEXT_SCALE), text_y, TEXT_SCALE, text_color);
+            }
+            Setting::RootPassword => {
+                let value = if view.login.password { "SET >" } else { "NOT SET >" };
+                canvas.text_at(value, right - text_width(value, TEXT_SCALE), text_y, TEXT_SCALE, text_color);
+            }
+            Setting::SshKeys => {
+                let value = match view.login.keys {
+                    0 => "NONE".to_string(),
+                    1 => "1 KEY".to_string(),
+                    keys => format!("{keys} KEYS"),
+                };
+                canvas.text_at(&value, right - text_width(&value, TEXT_SCALE), text_y, TEXT_SCALE, text_color);
             }
             _ if setting_value(setting, view.settings).is_some() => {
                 let label = setting_value(setting, view.settings).unwrap_or_default();
@@ -1080,6 +1098,7 @@ mod tests {
             settings: &Settings::default(),
             message: Some("PRESS A AGAIN TO POWER OFF"),
             note: None,
+            login: ssh::Login::default(),
         };
         let canvas = settings_screen(640, 480, &view, &frame());
         let row = Group::System.settings().iter().position(|&s| s == Setting::PowerOff).unwrap();
@@ -1144,6 +1163,7 @@ mod tests {
                 settings: &longest,
                 message: Some("PRESS A AGAIN TO DELETE ALL COVERS"),
                 note: Some("WEDNESDAY 30 SEPTEMBER 2026, 12:30 PM\nWAITING FOR THE TIME FROM THE NETWORK"),
+                login: ssh::Login { password: true, keys: 12 },
             };
             assert_eq!(settings_screen(640, 480, &view, &frame()).pixels.len(), 640 * 480);
         }

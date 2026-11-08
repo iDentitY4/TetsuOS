@@ -79,10 +79,19 @@ pub enum Group {
     Theme,
     Time,
     System,
+    Advanced,
 }
 
-pub const GROUPS: [Group; 7] =
-    [Group::General, Group::GameScreen, Group::Wifi, Group::BoxArt, Group::Theme, Group::Time, Group::System];
+pub const GROUPS: [Group; 8] = [
+    Group::General,
+    Group::GameScreen,
+    Group::Wifi,
+    Group::BoxArt,
+    Group::Theme,
+    Group::Time,
+    Group::System,
+    Group::Advanced,
+];
 
 /// The most settings a group has, which the settings screen makes room for.
 pub const MAX_GROUP_SETTINGS: usize = 6;
@@ -97,6 +106,7 @@ impl Group {
             Self::Theme => "THEME",
             Self::Time => "TIME",
             Self::System => "SYSTEM",
+            Self::Advanced => "ADVANCED",
         }
     }
 
@@ -128,6 +138,7 @@ impl Group {
             Self::System => {
                 &[Setting::ButtonTest, Setting::SystemInfo, Setting::IdleSleep, Setting::Reboot, Setting::PowerOff]
             }
+            Self::Advanced => &[Setting::Ssh, Setting::RootPassword, Setting::SshKeys, Setting::Performance],
         }
     }
 }
@@ -160,6 +171,10 @@ pub enum Setting {
     IdleSleep,
     Reboot,
     PowerOff,
+    Ssh,
+    RootPassword,
+    SshKeys,
+    Performance,
 }
 
 impl Setting {
@@ -191,6 +206,10 @@ impl Setting {
             Self::IdleSleep => "SLEEP WHEN IDLE",
             Self::Reboot => "REBOOT",
             Self::PowerOff => "POWER OFF",
+            Self::Ssh => "SSH",
+            Self::RootPassword => "ROOT PASSWORD",
+            Self::SshKeys => "SSH KEYS",
+            Self::Performance => "PERFORMANCE",
         }
     }
 
@@ -204,6 +223,7 @@ impl Setting {
                 | Self::HomeTiles
                 | Self::ButtonTest
                 | Self::SystemInfo
+                | Self::RootPassword
         )
     }
 
@@ -228,12 +248,14 @@ impl Setting {
                 | Self::GridSize
                 | Self::TimeZone
                 | Self::ClockFormat
+                | Self::Ssh
+                | Self::Performance
         )
     }
 
     /// Whether A must be pressed twice, because it can't be undone.
     fn needs_confirming(self) -> bool {
-        matches!(self, Self::DeleteArt | Self::Reboot | Self::PowerOff)
+        matches!(self, Self::DeleteArt | Self::Reboot | Self::PowerOff | Self::SshKeys)
     }
 }
 
@@ -293,6 +315,10 @@ pub enum Command {
     ToggleTile(Tile),
     TimeZone(i32),
     ClockFormat(i32),
+    SshAccess(i32),
+    EditRootPassword,
+    RemoveSshKeys,
+    Performance(i32),
     Reboot,
     PowerOff,
 }
@@ -444,6 +470,7 @@ impl Launcher {
             Setting::DeleteArt => Some("PRESS A AGAIN TO DELETE ALL COVERS"),
             Setting::Reboot => Some("PRESS A AGAIN TO REBOOT"),
             Setting::PowerOff => Some("PRESS A AGAIN TO POWER OFF"),
+            Setting::SshKeys => Some("PRESS A AGAIN TO REMOVE THE SSH KEYS"),
             _ => None,
         }
     }
@@ -592,6 +619,8 @@ impl Launcher {
                 Setting::GridSize => return Command::GridSize(step),
                 Setting::TimeZone => return Command::TimeZone(step),
                 Setting::ClockFormat => return Command::ClockFormat(step),
+                Setting::Ssh => return Command::SshAccess(step),
+                Setting::Performance => return Command::Performance(step),
                 _ => {}
             },
             Button::B => self.screen = Screen::Settings,
@@ -608,6 +637,8 @@ impl Launcher {
                 Setting::SystemInfo => self.screen = Screen::Info,
                 Setting::Reboot => return Command::Reboot,
                 Setting::PowerOff => return Command::PowerOff,
+                Setting::RootPassword => return Command::EditRootPassword,
+                Setting::SshKeys => return Command::RemoveSshKeys,
                 Setting::Volume
                 | Setting::Brightness
                 | Setting::StartScreen
@@ -624,7 +655,9 @@ impl Launcher {
                 | Setting::ShowTitle
                 | Setting::GridSize
                 | Setting::TimeZone
-                | Setting::ClockFormat => {}
+                | Setting::ClockFormat
+                | Setting::Ssh
+                | Setting::Performance => {}
             },
             _ => {}
         }
@@ -869,8 +902,8 @@ mod tests {
         assert_eq!(launcher.press(Button::A, &library), Command::DownloadBoxArt(ArtDownload::Missing));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::A, &library), Command::DownloadBoxArt(ArtDownload::All));
-        // System is the second tile of the second row.
-        press_all(&mut launcher, &library, &[Button::B, Button::Down, Button::Right, Button::A]);
+        // System is left of Advanced, below Box Art.
+        press_all(&mut launcher, &library, &[Button::B, Button::Down, Button::Left, Button::A]);
         assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::System));
         assert_eq!(launcher.press(Button::A, &library), Command::ButtonTest);
         press_all(&mut launcher, &library, &[Button::Down, Button::A]);
@@ -953,6 +986,23 @@ mod tests {
             assert!(group.settings().len() <= MAX_GROUP_SETTINGS, "{group:?}");
             assert_eq!(group.settings().is_empty(), group == Group::Wifi);
         }
+    }
+
+    #[test]
+    fn the_advanced_group_changes_ssh_and_performance() {
+        let library = library();
+        let mut launcher = Launcher::new();
+        open_group(&mut launcher, &library, Group::Advanced);
+        assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::Advanced));
+        assert_eq!(launcher.press(Button::Right, &library), Command::SshAccess(1));
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::A, &library), Command::EditRootPassword);
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::A, &library), Command::Nothing, "removing keys asks first");
+        assert_eq!(launcher.confirmation(), Some("PRESS A AGAIN TO REMOVE THE SSH KEYS"));
+        assert_eq!(launcher.press(Button::A, &library), Command::RemoveSshKeys);
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::Left, &library), Command::Performance(-1));
     }
 
     #[test]

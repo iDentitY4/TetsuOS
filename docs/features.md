@@ -43,8 +43,9 @@ Working on the test unit, confirmed by the user:
 - The battery level in the menu
 - Updating over USB. The gadget is `g_cdc`, serial plus CDC Ethernet, with fixed MACs set
   in `extlinux.conf`. `S41usbnet` gives the device `10.35.35.1`, and `udhcpd` gives the
-  PC `10.35.35.2` with no router option. Dropbear runs with `-B` for root's empty
-  password. `scripts/push.sh {app|rootfs|boot|all}` copies output over SSH with rsync
+  PC `10.35.35.2` with no router option. Over USB, dropbear allows root's empty
+  password (`-B`); Settings > ADVANCED > SSH chooses where it listens (see below).
+  `scripts/push.sh {app|rootfs|boot|all}` copies output over SSH with rsync
 - USB stays connected through sleep, so SSH works after opening the lid (patch 0012).
   Before, the device dropped off the bus until the cable was re-plugged
 - The in-game menu (`pause.rs`, drawn by `canvas::pause_screen`). Tapping Menu alone
@@ -233,13 +234,50 @@ Built but not yet tested on the device:
   on the test unit. A game's clock was not checked inside a game
 - Settings is a grid of group tiles, like the home screen (`settings_grid`): GENERAL
   (volume, brightness), GAME SCREEN (scaling, effect, ghosting), WI-FI (opens the Wi-Fi
-  screen directly), BOX ART, THEME, TIME and SYSTEM (button test, system info, reboot, power off). A
-  opens a group's list, B goes back to its tile, and Start closes settings from anywhere
+  screen directly), BOX ART, THEME, TIME, SYSTEM (button test, system info, reboot,
+  power off) and ADVANCED (SSH, root password, SSH keys, performance). A opens a group's
+  list, B goes back to its tile, and Start closes settings from anywhere
   in them. Groups and their settings are `GROUPS` and `Group::settings` in `launcher.rs`,
   so a new option is one more entry; `MAX_GROUP_SETTINGS` (6) is what the screen has
   room for. Settings that can't be undone (delete covers, reboot, power off) need A
   twice. Group icons are in `icons.rs`. Claude checked each screen on the device; not yet
   seen by the user
+- Settings > ADVANCED (2026-11-08):
+  - SSH: OFF, USB ONLY (default) or USB + WI-FI, in `settings.txt` as `ssh=`.
+    `S50dropbear` (in the overlay, replacing Buildroot's) reads that line itself at boot
+    and when the launcher runs `restart` after a change: USB ONLY listens on
+    `10.35.35.1:22` with `-B`; USB + WI-FI on every address without `-B`. dropbear can't
+    allow an empty password on one network and not another, so USB + WI-FI needs an SSH
+    key or a root password. Left and Right pass over it without one (`ssh::next_access`),
+    the screen says why, and the script falls back to USB ONLY too. Restarting stops only
+    the listener, so open sessions stay connected. Until this, dropbear listened on Wi-Fi
+    as well, with root's empty password
+  - ROOT PASSWORD: typed on the on-screen keyboard; empty removes it. R1 fills in a
+    made-up one (`ssh::random_password`): three groups of four from 27 lowercase letters
+    and digits without lookalikes (no 0, o, 1, i, l, and no g, p, q or y, which the font
+    draws without descenders, like 9, P and Y), about 57 bits, from `/dev/urandom`. It
+    shows in the field to note down or edit, and Start saves it. BusyBox `mkpasswd -m
+    sha512` hashes it from standard input. SSH KEYS: the count, and A twice removes them
+    all. `scripts/push.sh key [FILE.pub]` adds this PC's key (`id_ed25519`, `id_ecdsa` or
+    `id_rsa`) once. Both live in `/mnt/data/ssh` (`root-password`, `authorized_keys`), so
+    updates and new images keep them: `S50dropbear` copies them to `/etc/shadow` and
+    `/root/.ssh` at every start, which makes the password apply on the serial console too
+    and replaces one set with `passwd`. `push.sh rootfs` overwrites `/etc/shadow`, so it
+    restarts `S50dropbear` afterwards. Removing the last key or the password drops USB +
+    WI-FI back to USB ONLY (`login_changed` in `app.rs`)
+  - PERFORMANCE (`performance.rs`, `performance=`): BATTERY is `schedutil` up to 1104 MHz,
+    BALANCED (default) `schedutil` up to 1512 MHz, as before, and PERFORMANCE the
+    `performance` governor at 1512 MHz. The launcher sets them at start and on a change;
+    one cpufreq policy covers all four cores. The in-game menu's 1008 MHz hold stays below
+    every cap
+  - Claude checked on the device: OFF stops the server and USB ONLY brings it back; USB
+    + WI-FI is skipped with nothing set; with a key it listens on `0.0.0.0:22`, the key
+    works over Wi-Fi and USB, and an empty password is refused on both; a password typed
+    on the keyboard logs in over both and a wrong one is refused; after a reboot the
+    hash, keys and Wi-Fi mode came back; removing keys kept Wi-Fi (password still set),
+    and removing the password then fell back to USB ONLY with the empty password working
+    again; each PERFORMANCE level set the governor and cap. Not checked: a game at
+    BATTERY or PERFORMANCE, and how either feels or lasts
 - System info (`system_info.rs`) shows 11 lines, as many as the screen has room for:
   battery with voltage, game storage, game count (a `.cue` and its `.bin` count once),
   available memory, CPU speed and temperature, the Wi-Fi network and address (from

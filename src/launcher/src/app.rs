@@ -7,6 +7,7 @@ use crate::input::{self, Button, Controls, Event};
 use crate::launcher::{self, Command as Action, Group, Launcher, Library, List, Screen, Tile, GROUPS};
 use crate::libretro::Ending;
 use crate::repeat::Repeater;
+use crate::{performance, ssh};
 use std::io;
 use std::path::Path;
 use std::process::Command;
@@ -185,7 +186,10 @@ pub(crate) fn launcher_canvas(
             screens::settings_grid(width, height, &GROUPS, selected, &frame)
         }
         Screen::SettingsGroup(group) => {
-            let current = settings::get();
+            let mut current = settings::get();
+            let login = if group == Group::Advanced { ssh::Login::read() } else { ssh::Login::default() };
+            // As the server runs it, in case a key or password went missing.
+            current.ssh = ssh::effective(current.ssh, login);
             let note = match group {
                 Group::BoxArt => {
                     let (covered, total) = art_counts();
@@ -193,6 +197,7 @@ pub(crate) fn launcher_canvas(
                 }
                 Group::Time => Some(time_note()),
                 Group::System if current.idle_minutes > 0 => Some("THE POWER BUTTON WAKES IT FROM SLEEP".into()),
+                Group::Advanced => advanced_note(current.ssh, login),
                 _ => None,
             };
             let view = screens::SettingsView {
@@ -203,6 +208,7 @@ pub(crate) fn launcher_canvas(
                 brightness_percent: settings::brightness_percent(),
                 message: launcher.confirmation(),
                 note: note.as_deref(),
+                login,
             };
             screens::settings_screen(width, height, &view, &frame)
         }
@@ -224,6 +230,35 @@ pub(crate) fn launcher_canvas(
     };
     add_clock(&mut canvas, battery);
     (canvas, scrolling)
+}
+
+/// Under the ADVANCED settings: how to reach SSH, or what USB + WI-FI is missing.
+pub(crate) fn advanced_note(access: settings::SshAccess, login: ssh::Login) -> Option<String> {
+    let mut lines = Vec::new();
+    if !login.allows_wifi() {
+        lines.push("USB + WI-FI NEEDS A ROOT PASSWORD OR A KEY".to_string());
+    }
+    match access {
+        settings::SshAccess::Wifi => {
+            if let Some(address) = parse_ifconfig(&command_output("ifconfig", &["wlan0"])) {
+                lines.push(format!("SSH OVER WI-FI: ROOT@{address}"));
+            }
+        }
+        settings::SshAccess::Off => lines.push("THE USB CONSOLE STILL WORKS".to_string()),
+        settings::SshAccess::Usb => {}
+    }
+    (!lines.is_empty()).then(|| lines.join("\n"))
+}
+
+/// After the keys or password change: drops USB + WI-FI if nothing secures it any more,
+/// then restarts the SSH server with them.
+pub(crate) fn login_changed() {
+    let login = ssh::Login::read();
+    let access = settings::get().ssh;
+    if ssh::effective(access, login) != access {
+        change_settings(|s| s.ssh = ssh::effective(s.ssh, login));
+    }
+    ssh::restart_server();
 }
 
 /// The minute the launcher's screen shows, in the corner or in the time settings, so it is
@@ -347,6 +382,22 @@ pub(crate) fn act(
             change_settings(|s| s.zone = Some(clock::cycle_zone(s.time_zone(), steps).name));
         }
         Action::ClockFormat(steps) => change_settings(|s| s.clock = s.clock.cycle(steps)),
+        Action::SshAccess(steps) => {
+            let login = ssh::Login::read();
+            change_settings(|s| s.ssh = ssh::next_access(ssh::effective(s.ssh, login), steps, login));
+            ssh::restart_server();
+        }
+        Action::EditRootPassword => edit_root_password(framebuffer, events)?,
+        Action::RemoveSshKeys => {
+            if let Err(error) = ssh::remove_keys() {
+                eprintln!("warning: could not remove the SSH keys: {error}");
+            }
+            login_changed();
+        }
+        Action::Performance(steps) => {
+            change_settings(|s| s.performance = s.performance.cycle(steps));
+            performance::apply(settings::get().performance);
+        }
         Action::Reboot => shut_down(framebuffer, "REBOOTING", "reboot")?,
         Action::PowerOff => shut_down(framebuffer, "POWERING OFF", &power::poweroff_command())?,
     }
@@ -388,9 +439,63 @@ pub(crate) fn edit_title(framebuffer: &mut fb::Framebuffer, events: &Receiver<Ev
     Ok(())
 }
 
+/// Types the root password on the on-screen keyboard, from Settings > ADVANCED. Empty
+/// removes it. B leaves it as it was.
+pub(crate) fn edit_root_password(framebuffer: &mut fb::Framebuffer, events: &Receiver<Event>) -> io::Result<()> {
+    let (width, height) = framebuffer.size();
+    let mut keyboard = keyboard::Keyboard::new(ssh::MAX_PASSWORD_LENGTH, ssh::valid_password);
+    let subtitle = if ssh::Login::read().password {
+        "R1 MAKES ONE UP - EMPTY REMOVES IT"
+    } else {
+        "R1 MAKES ONE UP - FOR SSH AND THE CONSOLE"
+    };
+    let view = screens::KeyboardView { icon: &icons::ADVANCED, title: "ROOT PASSWORD", subtitle, valid_note: "" };
+    let battery = read_battery(&power::battery_dir());
+    loop {
+        let mut canvas = screens::keyboard_screen(width, height, &view, &keyboard, &screen_frame(battery));
+        add_clock(&mut canvas, battery);
+        framebuffer.draw(&canvas)?;
+        let Ok(event) = events.recv() else { return Ok(()) };
+        match event.pressed() {
+            Some(Button::Lid) => sleep_until_lid_opens(events),
+            Some(button @ (Button::VolumeUp | Button::VolumeDown)) => change_volume(button),
+            // Shown in the field to note down, edit or replace with another, and saved
+            // with Start like a typed one.
+            Some(Button::R1) => match ssh::random_password() {
+                Ok(password) => {
+                    keyboard_sound(Button::X);
+                    keyboard.text = password;
+                }
+                Err(error) => eprintln!("warning: could not make up a password: {error}"),
+            },
+            Some(button) => {
+                keyboard_sound(button);
+                match keyboard.press(button) {
+                    keyboard::Outcome::Typing => {}
+                    keyboard::Outcome::Done(password) => {
+                        let result =
+                            if password.is_empty() { ssh::remove_password() } else { ssh::set_password(&password) };
+                        match result {
+                            Ok(()) => println!("ssh: root password {}", if password.is_empty() { "removed" } else { "set" }),
+                            Err(error) => eprintln!("warning: could not change the root password: {error}"),
+                        }
+                        login_changed();
+                        break;
+                    }
+                    keyboard::Outcome::Cancel => break,
+                }
+            }
+            None => {}
+        }
+    }
+    events.try_iter().for_each(drop);
+    Ok(())
+}
+
 pub(crate) fn run_launcher() -> io::Result<()> {
     println!("launcher started {}", boot_time());
     settings::restore_levels();
+    performance::apply(settings::get().performance);
     let mut framebuffer = open_framebuffer()?;
     // Non-fatal: at worst, console text could appear over the screen.
     let _console = fb::claim_console()

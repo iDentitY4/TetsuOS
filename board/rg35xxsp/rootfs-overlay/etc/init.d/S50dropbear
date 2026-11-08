@@ -1,0 +1,103 @@
+#!/bin/sh
+# The SSH server, replacing Buildroot's script. Settings > ADVANCED chooses it, and
+# the launcher runs "restart" after a change:
+#
+#   ssh=usb    the default: only over the USB cable (10.35.35.1), where an empty root
+#              password is allowed, like the serial console
+#   ssh=wifi   on every network, so also over Wi-Fi, with no empty password: it needs
+#              an SSH key or a root password, and falls back to usb without either
+#   ssh=off    no SSH server
+#
+# The keys and the root password live in /mnt/data/ssh, so updates and new images
+# keep them: authorized_keys (scripts/push.sh key adds the PC's) and root-password,
+# a crypt(3) hash. They are copied to /root/.ssh and /etc/shadow here, so the
+# password also applies on the serial console. A password set some other way, such
+# as with passwd, lasts only until the next boot.
+
+DATA=/mnt/data/ssh
+PIDFILE=/var/run/dropbear.pid
+
+mode() {
+	mode=$(sed -n 's/^ssh=//p' /mnt/data/settings.txt 2>/dev/null | tail -n 1)
+	case "$mode" in
+	off | wifi) echo "$mode" ;;
+	*) echo usb ;;
+	esac
+}
+
+# Prints the stored hash, or nothing if there is none or it isn't one.
+password_hash() {
+	hash=$(head -n 1 "$DATA/root-password" 2>/dev/null)
+	case "$hash" in
+	*:*) ;;
+	'$'*) echo "$hash" ;;
+	esac
+}
+
+apply_login() {
+	if [ -s "$DATA/authorized_keys" ]; then
+		mkdir -p /root/.ssh
+		chmod 700 /root/.ssh
+		cp "$DATA/authorized_keys" /root/.ssh/authorized_keys
+		chmod 600 /root/.ssh/authorized_keys
+	else
+		rm -f /root/.ssh/authorized_keys
+	fi
+	hash=$(password_hash)
+	awk -F: -v OFS=: -v hash="$hash" '$1 == "root" { $2 = hash } { print }' \
+		/etc/shadow > /etc/shadow.new &&
+		chmod 600 /etc/shadow.new &&
+		mv /etc/shadow.new /etc/shadow
+}
+
+start() {
+	apply_login
+	mode=$(mode)
+	if [ "$mode" = wifi ] && [ ! -s "$DATA/authorized_keys" ] && [ -z "$(password_hash)" ]; then
+		echo "SSH over Wi-Fi needs a key or a root password: USB only"
+		mode=usb
+	fi
+	case "$mode" in
+	off)
+		echo "SSH is off"
+		return 0
+		;;
+	usb) args="-B -p 10.35.35.1:22" ;;
+	wifi) args="-p 22" ;;
+	esac
+	# Buildroot may make it a link into /var/run, which would lose the host keys.
+	[ -L /etc/dropbear ] && rm -f /etc/dropbear
+	mkdir -p /etc/dropbear
+	printf "Starting dropbear sshd (%s): " "$mode"
+	umask 077
+	# -R makes host keys on first use; they stay in /etc/dropbear.
+	# shellcheck disable=SC2086
+	start-stop-daemon -S -q -p "$PIDFILE" --exec /usr/sbin/dropbear -- -R $args
+	[ $? = 0 ] && echo "OK" || echo "FAIL"
+}
+
+# Stops the server only: open sessions are their own processes and stay connected.
+stop() {
+	pid=$(cat "$PIDFILE" 2>/dev/null)
+	printf "Stopping dropbear sshd: "
+	start-stop-daemon -K -q -p "$PIDFILE"
+	[ $? = 0 ] && echo "OK" || echo "FAIL"
+	# Wait until the port is free for a new server.
+	for _ in 1 2 3 4 5 6 7 8 9 10; do
+		[ -n "$pid" ] && [ -e "/proc/$pid" ] || break
+		sleep 0.1
+	done
+	rm -f "$PIDFILE"
+}
+
+case "$1" in
+start | stop) "$1" ;;
+restart | reload)
+	stop
+	start
+	;;
+*)
+	echo "Usage: $0 {start|stop|restart}"
+	exit 1
+	;;
+esac

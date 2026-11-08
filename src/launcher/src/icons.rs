@@ -498,11 +498,39 @@ pub const THEME: Icon = [
     "................................",
 ];
 
+/// Advanced settings: three sliders.
+pub const ADVANCED: Icon = [
+    "................................",
+    "................................",
+    "................................",
+    "...................KKKKKK.......",
+    "...................KCCCCK.......",
+    "....GGGGGGGGGGGGGGGKCCCCKGGGG...",
+    "....GGGGGGGGGGGGGGGKCCCCKGGGG...",
+    "...................KCCCCK.......",
+    "...................KKKKKK.......",
+    "................................",
+    ".........KKKKKK.................",
+    ".........KCCCCK.................",
+    "....GGGGGKCCCCKGGGGGGGGGGGGGG...",
+    "....GGGGGKCCCCKGGGGGGGGGGGGGG...",
+    ".........KCCCCK.................",
+    ".........KKKKKK.................",
+    "................................",
+    "......................KKKKKK....",
+    "......................KCCCCK....",
+    "....GGGGGGGGGGGGGGGGGGKCCCCKG...",
+    "....GGGGGGGGGGGGGGGGGGKCCCCKG...",
+    "......................KCCCCK....",
+    "......................KKKKKK....",
+    "................................",
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const ALL: [&Icon; 17] = [
+    const ALL: [&Icon; 18] = [
         &THEME,
         &TIME,
         &GENERAL,
@@ -520,6 +548,7 @@ mod tests {
         &FAVORITES,
         &SETTINGS,
         &WIFI,
+        &ADVANCED,
     ];
 
     #[test]
@@ -539,3 +568,4 @@ mod tests {
         }
     }
 }
+
