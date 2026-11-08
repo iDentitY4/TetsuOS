@@ -1,5 +1,5 @@
 LAUNCHER_VERSION = 0.1.0
-LAUNCHER_SITE = $(BR2_EXTERNAL_RG35XXSP_PATH)/src/launcher
+LAUNCHER_SITE = $(BR2_EXTERNAL_TETSU_PATH)/src/launcher
 LAUNCHER_SITE_METHOD = local
 LAUNCHER_LICENSE = MIT
 # The PC's own build output and vendored crates aren't copied.

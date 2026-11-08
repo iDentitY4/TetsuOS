@@ -1,6 +1,6 @@
 # Features in detail
 
-How each part of RG35XX SP Linux was built, measured and tested, moved out of
+How each part of Tetsu OS was built, measured and tested, moved out of
 `CLAUDE.md` on 2026-11-08 to keep that file short. Read the part you work on. Notes on who
 confirmed what are as of the date given; `CLAUDE.md` keeps the current list of what still
 needs checking.
@@ -151,7 +151,7 @@ Built but not yet tested on the device:
 - Theme settings, a THEME tile in Settings: COLOR (9 accent colours, all bright enough
   for the dark text on a selected row), TITLE (SHOWN or HIDDEN) and TITLE TEXT, typed on
   the on-screen keyboard (`screens::KeyboardView`, shared with Wi-Fi passwords), up to
-  24 characters with case kept; saving it empty brings back RG35XX SP LINUX. The accent
+  24 characters with case kept; saving it empty brings back TETSU OS. The accent
   is part of the `Theme` each canvas carries, so a game's menu uses it too. Saved as `accent=`, `title_hidden=` and
   `title=`. Claude checked the colour on the menus and a game's menu (from
   `--preview-pause` on the device), editing, hiding and resetting the title; the test

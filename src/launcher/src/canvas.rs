@@ -258,7 +258,7 @@ const TILES: [Tile; 18] = [
 pub fn button_screen(width: usize, height: usize, controls: &Controls, theme: Theme) -> Canvas {
     let mut canvas = Canvas::new(width, height, theme);
     canvas.text("BUTTON TEST", 20, 4, TEXT);
-    canvas.text("RG35XX SP LINUX", 58, 2, canvas.theme.accent);
+    canvas.text("TETSU OS", 58, 2, canvas.theme.accent);
     for tile in &TILES {
         canvas.tile(tile, controls);
     }

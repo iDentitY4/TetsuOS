@@ -31,6 +31,11 @@ done
 # RTL8821CS's is kept, because the kernel build reads it from here to build it in.
 find lib/firmware/rtw88 -type f ! -name rtw8821c_fw.bin -delete 2>/dev/null || true
 
+# Name the OS in os-release, which Buildroot writes as its own. VERSION, the git
+# revision that SYSTEM info shows, and VERSION_ID, the Buildroot release, are kept.
+sed -i -e 's/^NAME=.*/NAME="Tetsu OS"/' -e 's/^ID=.*/ID=tetsuos\nID_LIKE=buildroot/' \
+	-e 's/^PRETTY_NAME=.*/PRETTY_NAME="Tetsu OS"/' usr/lib/os-release
+
 # Fail the build if anything links to a library that isn't on the device.
 missing=0
 while IFS= read -r -d '' file; do

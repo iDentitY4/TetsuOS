@@ -752,7 +752,7 @@ pub fn fast_forward_sign(on: bool, theme: Theme) -> Canvas {
 /// with `launcher --preview-splash` and kept as `board/rg35xxsp/logo.ppm`, in the first
 /// theme colour whatever is chosen, since the kernel shows it.
 pub fn splash() -> Canvas {
-    let (title, subtitle) = ("RG35XX SP", "LINUX");
+    let (title, subtitle) = ("TETSU", "OS");
     let width = text_width(title, 6) + 16;
     let mut canvas = Canvas::new(width, font::HEIGHT * 6 + 12 + font::HEIGHT * 3 + 16, Theme::default());
     canvas.pixels.fill(Rgb(0, 0, 0));
@@ -809,7 +809,7 @@ mod tests {
                 let content = 4 * scale + icons::HEIGHT * scale + 4 * scale + 2 * font::HEIGHT * TEXT_SCALE + 2 * scale + 2;
                 assert!(content + TILE_BORDER <= height, "{count}: {content} > {height}");
             }
-            let canvas = home_screen(640, 480, Some("RG35XX SP LINUX"), GridSize::Normal, &tiles(count), count - 1, &frame());
+            let canvas = home_screen(640, 480, Some("TETSU OS"), GridSize::Normal, &tiles(count), count - 1, &frame());
             assert_eq!(canvas.pixels.len(), 640 * 480);
             // Without the title the tiles are at least as tall, and start higher.
             assert!(tile_size(rows, GRID_TOP_UNTITLED).0 >= tile_size(rows, GRID_TOP).0);
@@ -819,7 +819,7 @@ mod tests {
     #[test]
     fn without_a_title_the_grid_moves_up_below_the_corner() {
         let first_lit = |canvas: &Canvas| (0..480).find(|&y| (0..640).any(|x| pixel(canvas, x, y) == BODY)).unwrap();
-        let titled = home_screen(640, 480, Some("RG35XX SP LINUX"), GridSize::Normal, &tiles(10), 0, &frame());
+        let titled = home_screen(640, 480, Some("TETSU OS"), GridSize::Normal, &tiles(10), 0, &frame());
         let untitled = home_screen(640, 480, None, GridSize::Normal, &tiles(10), 0, &frame());
         assert!(first_lit(&untitled) < first_lit(&titled));
         assert!(first_lit(&untitled) >= GRID_TOP_UNTITLED);
@@ -865,7 +865,7 @@ mod tests {
 
     #[test]
     fn the_selected_tile_has_a_border() {
-        let canvas = home_screen(640, 480, Some("RG35XX SP LINUX"), GridSize::Normal, &tiles(5), 1, &frame());
+        let canvas = home_screen(640, 480, Some("TETSU OS"), GridSize::Normal, &tiles(5), 1, &frame());
         let grid_left = (640 - (COLUMNS * TILE_W + (COLUMNS - 1) * TILE_GAP)) / 2;
         let (tile_h, _) = tile_size(2, GRID_TOP);
         let top = GRID_TOP + (GRID_BOTTOM - GRID_TOP - (2 * tile_h + TILE_GAP)) / 2;
@@ -928,7 +928,7 @@ mod tests {
         let big = Image { width: 300, height: 400, pixels: vec![TEXT; 300 * 400] };
         let canvas = list_screen(640, 480, &view(Some(Art::Cover(&big)), 5000), &frame());
         assert_eq!(canvas.pixels.len(), 640 * 480);
-        assert_eq!(home_screen(64, 48, Some("RG35XX SP LINUX"), GridSize::Normal, &tiles(3), 0, &frame()).pixels.len(), 64 * 48);
+        assert_eq!(home_screen(64, 48, Some("TETSU OS"), GridSize::Normal, &tiles(3), 0, &frame()).pixels.len(), 64 * 48);
         // The longest title fits the width, a smaller size if need be, and so does none.
         let longest = "W".repeat(crate::settings::MAX_TITLE_LENGTH);
         assert!(text_width(&longest, TITLE_SCALE - 1) + 32 <= 640);
@@ -1065,7 +1065,7 @@ mod tests {
     #[test]
     fn the_battery_stays_clear_of_titles() {
         let widest = text_width("100%+", TEXT_SCALE);
-        let home_title_end = (640 + text_width("RG35XX SP LINUX", 4)) / 2;
+        let home_title_end = (640 + text_width("TETSU OS", 4)) / 2;
         assert!(640 - 16 - widest > home_title_end);
         let list_title_end = 16 + icons::WIDTH * 2 + 16 + text_width("GAME BOY ADVANCE", 3);
         assert!(640 - 16 - text_width("100 OF 100", TEXT_SCALE) > list_title_end);

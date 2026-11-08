@@ -299,7 +299,7 @@ pub fn idle_sleep_label(minutes: u32) -> String {
 }
 
 /// The home screen's title, until another is typed.
-pub const DEFAULT_TITLE: &str = "RG35XX SP LINUX";
+pub const DEFAULT_TITLE: &str = "TETSU OS";
 /// What fits across the home screen at its title size.
 pub const MAX_TITLE_LENGTH: usize = 24;
 
@@ -658,7 +658,7 @@ mod tests {
         // The test unit's settings.txt on 2026-11-08, before the settings were kept in
         // memory.
         let text = "volume=20\nbrightness=1503\nscaling=fit\neffect=crt\nghosting=off\ntimezone=Europe/Berlin\n\
-                    clock=24h\naccent=blue\ntitle_hidden=yes\ntitle=RG35XX SP LINUX\nstart=home\nnames=short\n\
+                    clock=24h\naccent=blue\ntitle_hidden=yes\ntitle=TETSU OS\nstart=home\nnames=short\n\
                     covers=on\nbattery=percent\nidle=0\nsounds=on\ngrid=normal\nbackground=dark\n";
         let settings = parse(text);
         assert_eq!((settings.volume, settings.brightness), (Some(20), Some(1503)));

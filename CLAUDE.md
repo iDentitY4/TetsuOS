@@ -1,9 +1,10 @@
-# RG35XX SP Linux
+# Tetsu OS
 
-A custom Linux OS for the Anbernic RG35XX SP (Allwinner H700), growing into a retro gaming
-OS: a Buildroot external tree with a Rust launcher and libretro frontend in `src/launcher`
-(named `welcome` until 2026-11-08). `README.md` covers building, flashing and failed-boot
-debugging. **`docs/features.md` has the details of every feature**: how it works, what was
+Tetsu OS (named so on 2026-11-08, before that RG35XX SP Linux) is a Linux distribution for
+retro handhelds, running on the Anbernic RG35XX SP (Allwinner H700) so far: a Buildroot
+external tree (`TETSU`) with a Rust launcher and libretro frontend in `src/launcher`
+(named `welcome` until 2026-11-08). The hostname is `tetsu-rg35xxsp`. `README.md` covers
+building, flashing and failed-boot debugging. **`docs/features.md` has the details of every feature**: how it works, what was
 measured and how it was tested. Read the part you work on.
 
 ## What works (2026-11-08)

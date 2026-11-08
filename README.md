@@ -1,7 +1,8 @@
-# RG35XX SP Linux
+# Tetsu OS
 
-A custom Linux OS for the Anbernic RG35XX SP (Allwinner H700). It currently
-boots to a game launcher, as the base for a retro gaming OS.
+Tetsu OS is a Linux distribution for retro handhelds. It currently runs on the
+Anbernic RG35XX SP (Allwinner H700) and boots to its own game launcher, written in
+Rust: *tetsu* (鉄) is Japanese for iron.
 
 **Status: boots to the launcher on an LPDDR3 RG35XX SP (first confirmed
 2026-11-06). The power button and USB-C console also work on that unit. USB host
