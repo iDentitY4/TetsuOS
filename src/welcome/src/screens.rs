@@ -72,6 +72,7 @@ pub struct SettingsView<'a> {
     pub time_zone: &'a str,
     pub clock_format: &'a str,
     pub accent: &'a str,
+    pub start_screen: &'a str,
     pub title_shown: &'a str,
     /// The home screen's title, shown as typed.
     pub title_text: &'a str,
@@ -350,9 +351,11 @@ pub fn settings_screen(width: usize, height: usize, view: &SettingsView, battery
             | Setting::Ghosting
             | Setting::AccentColor
             | Setting::ShowTitle
+            | Setting::StartScreen
             | Setting::TimeZone
             | Setting::ClockFormat => {
                 let label = match setting {
+                    Setting::StartScreen => view.start_screen,
                     Setting::Scaling => view.display.scaling.label(),
                     Setting::Effect => view.display.effect.label(),
                     Setting::Ghosting => view.display.ghosting.label(),
@@ -997,6 +1000,7 @@ mod tests {
             time_zone: "UTC",
             clock_format: "24 HOUR",
             accent: "TEAL",
+            start_screen: "HOME",
             title_shown: "SHOWN",
             title_text: "RG35XX SP LINUX",
             message: Some("PRESS A AGAIN TO POWER OFF"),
@@ -1032,6 +1036,7 @@ mod tests {
                 time_zone: "BUENOS AIRES",
                 clock_format: "24 HOUR",
                 accent: "PURPLE",
+                start_screen: "LAST GAME",
                 title_shown: "HIDDEN",
                 title_text: "XXXXXXXXXXXXXXXXXXXXXXXX",
                 message: Some("PRESS A AGAIN TO DELETE ALL COVERS"),

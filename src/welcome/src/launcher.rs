@@ -99,7 +99,7 @@ impl Group {
 
     pub fn settings(self) -> &'static [Setting] {
         match self {
-            Self::General => &[Setting::Volume, Setting::Brightness],
+            Self::General => &[Setting::Volume, Setting::Brightness, Setting::StartScreen],
             Self::GameScreen => &[Setting::Scaling, Setting::Effect, Setting::Ghosting],
             Self::Wifi => &[],
             Self::BoxArt => &[Setting::DownloadMissingArt, Setting::DownloadAllArt, Setting::DeleteArt],
@@ -114,6 +114,7 @@ impl Group {
 pub enum Setting {
     Volume,
     Brightness,
+    StartScreen,
     Scaling,
     Effect,
     Ghosting,
@@ -137,6 +138,7 @@ impl Setting {
         match self {
             Self::Volume => "VOLUME",
             Self::Brightness => "BRIGHTNESS",
+            Self::StartScreen => "START SCREEN",
             Self::Scaling => "SCALING",
             Self::Effect => "SCREEN EFFECT",
             Self::Ghosting => "LCD GHOSTING",
@@ -175,6 +177,7 @@ impl Setting {
             self,
             Self::Volume
                 | Self::Brightness
+                | Self::StartScreen
                 | Self::Scaling
                 | Self::Effect
                 | Self::Ghosting
@@ -226,6 +229,7 @@ pub enum Command {
     DeleteBoxArt,
     Volume(i32),
     Brightness(i32),
+    StartScreen(i32),
     Scaling(i32),
     Effect(i32),
     Ghosting(i32),
@@ -351,6 +355,23 @@ impl Launcher {
     pub fn list_selected(&self, library: &Library, list: List) -> usize {
         let count = library.games(list).len();
         self.lists.get(&list).copied().unwrap_or(0).min(count.saturating_sub(1))
+    }
+
+    /// Starts on a list instead of the home screen, with a game selected, or stays home if
+    /// the list has no games. The home screen's selection is that list's tile.
+    pub fn start_in(&mut self, library: &Library, list: List, game: Option<&std::path::Path>) {
+        let games = library.games(list);
+        if games.is_empty() {
+            return;
+        }
+        let index = game.and_then(|path| games.iter().position(|other| other.path == path)).unwrap_or(0);
+        self.lists.insert(list, index);
+        self.home = Some(match list {
+            List::Recent => Tile::Recent,
+            List::Favorites => Tile::Favorites,
+            List::System(system) => Tile::System(system),
+        });
+        self.screen = Screen::Games(list);
     }
 
     /// The selected tile on the settings grid.
@@ -504,6 +525,7 @@ impl Launcher {
             Button::Left | Button::Right => match setting {
                 Setting::Volume => return Command::Volume(step),
                 Setting::Brightness => return Command::Brightness(step),
+                Setting::StartScreen => return Command::StartScreen(step),
                 Setting::Scaling => return Command::Scaling(step),
                 Setting::Effect => return Command::Effect(step),
                 Setting::Ghosting => return Command::Ghosting(step),
@@ -529,6 +551,7 @@ impl Launcher {
                 Setting::PowerOff => return Command::PowerOff,
                 Setting::Volume
                 | Setting::Brightness
+                | Setting::StartScreen
                 | Setting::Scaling
                 | Setting::Effect
                 | Setting::Ghosting
@@ -579,6 +602,25 @@ mod tests {
         assert_eq!(tiles, [Tile::Recent, Tile::System(0), Tile::System(2), Tile::System(5), Tile::Settings]);
         let empty = Library::default();
         assert_eq!(empty.tiles(), [Tile::Settings]);
+    }
+
+    #[test]
+    fn starting_in_a_list_selects_its_game_and_b_goes_home_to_its_tile() {
+        let library = library();
+        let mut launcher = Launcher::new();
+        launcher.start_in(&library, List::System(2), Some(std::path::Path::new("/roms/g7")));
+        assert_eq!(launcher.screen(), Screen::Games(List::System(2)));
+        assert_eq!(launcher.list_selected(&library, List::System(2)), 7);
+        launcher.press(Button::B, &library);
+        assert_eq!(launcher.screen(), Screen::Home);
+        assert_eq!(library.tiles()[launcher.home_selected(&library)], Tile::System(2));
+        // A game no longer there selects the first; an empty list stays home.
+        let mut launcher = Launcher::new();
+        launcher.start_in(&library, List::Recent, Some(std::path::Path::new("/roms/gone")));
+        assert_eq!((launcher.screen(), launcher.list_selected(&library, List::Recent)), (Screen::Games(List::Recent), 0));
+        let mut launcher = Launcher::new();
+        launcher.start_in(&library, List::Favorites, None);
+        assert_eq!(launcher.screen(), Screen::Home);
     }
 
     #[test]
@@ -738,6 +780,8 @@ mod tests {
         assert_eq!(launcher.press(Button::Right, &library), Command::Volume(1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Left, &library), Command::Brightness(-1));
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::Right, &library), Command::StartScreen(1));
         press_all(&mut launcher, &library, &[Button::B, Button::Right, Button::A]);
         assert_eq!(launcher.press(Button::Right, &library), Command::Scaling(1));
         launcher.press(Button::Down, &library);

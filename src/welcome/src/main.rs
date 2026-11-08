@@ -272,6 +272,22 @@ fn build_library(roms: &[PathBuf], recent: &[PathBuf], favorites: &[PathBuf]) ->
     Library { recent, favorites, shelves, systems: SYSTEMS.len(), hidden: hidden_tiles() }
 }
 
+/// Opens the screen chosen in Settings > GENERAL > START SCREEN. A game resumed at boot
+/// comes back to it.
+fn open_start_screen(launcher: &mut Launcher, library: &Library) {
+    match settings::start_screen() {
+        settings::StartScreen::Home => {}
+        settings::StartScreen::Recent => launcher.start_in(library, List::Recent, None),
+        settings::StartScreen::Favorites => launcher.start_in(library, List::Favorites, None),
+        settings::StartScreen::LastGame => {
+            // The most recent game is first in the recent list.
+            if let Some(game) = library.recent.first() {
+                launcher.start_in(library, List::System(game.system), Some(&game.path));
+            }
+        }
+    }
+}
+
 /// A home screen tile's name in the settings file.
 fn tile_key(tile: Tile) -> &'static str {
     match tile {
@@ -1094,6 +1110,7 @@ fn launcher_canvas(
                 time_zone: settings::time_zone().label,
                 clock_format: settings::clock_format().label(),
                 accent: settings::accent().label(),
+                start_screen: settings::start_screen().label(),
                 title_shown: if settings::title_hidden() { "HIDDEN" } else { "SHOWN" },
                 title_text: &settings::title(),
                 message: launcher.confirmation(),
@@ -1224,6 +1241,11 @@ fn act(
         Action::Scaling(steps) => change_display(|display| display.scaling = display.scaling.cycle(steps)),
         Action::Effect(steps) => change_display(|display| display.effect = display.effect.cycle(steps)),
         Action::Ghosting(steps) => change_display(|display| display.ghosting = display.ghosting.cycle(steps)),
+        Action::StartScreen(steps) => {
+            if let Err(error) = settings::set_start_screen(settings::start_screen().cycle(steps)) {
+                eprintln!("warning: could not save the start screen: {error}");
+            }
+        }
         Action::Accent(steps) => {
             let accent = settings::accent().cycle(steps);
             canvas::set_accent(accent.rgb());
@@ -1345,6 +1367,7 @@ fn run_launcher() -> io::Result<()> {
     let mut library = load_library();
     let mut monitor = power::Monitor::new();
     let mut art = boxart::BoxArt::new();
+    open_start_screen(&mut launcher, &library);
 
     let noted = std::fs::read_to_string(PLAYING_PATH).unwrap_or_default();
     if let Some(game) = interrupted_game(&library, &noted) {

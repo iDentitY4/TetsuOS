@@ -160,6 +160,12 @@ Built but not yet tested on the device:
   the title, the home grid starts at 36 instead of 84 pixels (`GRID_TOP_UNTITLED`, just
   below the clock), so 3 rows of tiles grow from 108 to 124 pixels, and each tile's icon
   and labels are centred in it
+- Start screen: Settings > GENERAL > START SCREEN: HOME, RECENT, FAVORITES or LAST GAME,
+  the list of the last game's console with that game selected, from the first line of
+  `recent.txt` (`Launcher::start_in`, `open_start_screen` in `main.rs`). An empty list
+  stays home, and a game resumed at boot returns to it. Saved as `start=`. Claude checked
+  LAST GAME and RECENT on the device by restarting the launcher; the test unit is back on
+  HOME
 - Hiding home screen tiles: Settings > THEME > HOME SCREEN TILES lists RECENT,
   FAVORITES, every console (with games or not) and SETTINGS, each SHOWN or HIDDEN, toggled
   with A (`Library::every_tile`, `screens::home_tiles_screen`). Saved as

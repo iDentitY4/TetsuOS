@@ -194,6 +194,43 @@ impl Accent {
     }
 }
 
+/// What the launcher shows when it starts.
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub enum StartScreen {
+    #[default]
+    Home,
+    Recent,
+    Favorites,
+    /// The list of the last game's console, with that game selected.
+    LastGame,
+}
+
+impl StartScreen {
+    pub const ALL: [Self; 4] = [Self::Home, Self::Recent, Self::Favorites, Self::LastGame];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Home => "HOME",
+            Self::Recent => "RECENT",
+            Self::Favorites => "FAVORITES",
+            Self::LastGame => "LAST GAME",
+        }
+    }
+
+    pub fn cycle(self, steps: i32) -> Self {
+        cycle(&Self::ALL, self, steps)
+    }
+
+    fn key(self) -> &'static str {
+        match self {
+            Self::Home => "home",
+            Self::Recent => "recent",
+            Self::Favorites => "favorites",
+            Self::LastGame => "last",
+        }
+    }
+}
+
 /// The home screen's title, until another is typed.
 pub const DEFAULT_TITLE: &str = "RG35XX SP LINUX";
 /// What fits across the home screen at its title size.
@@ -221,6 +258,7 @@ struct Settings {
     title: Option<String>,
     /// Home screen tiles turned off, by key, such as `recent` or `gba`.
     hidden_tiles: Vec<String>,
+    start_screen: StartScreen,
 }
 
 /// Reads the first value from `amixer cget` output, such as `  : values=25,25`.
@@ -265,6 +303,11 @@ fn parse(text: &str) -> Settings {
             }
             "title_hidden" => settings.title_hidden = value == "yes",
             "title" => settings.title = clean_title(value),
+            "start" => {
+                if let Some(&start) = StartScreen::ALL.iter().find(|choice| choice.key() == value) {
+                    settings.start_screen = start;
+                }
+            }
             "hidden_tiles" => {
                 settings.hidden_tiles = value.split(',').map(str::trim).filter(|key| !key.is_empty()).map(String::from).collect();
             }
@@ -300,6 +343,7 @@ fn format(settings: &Settings) -> String {
     if let Some(title) = &settings.title {
         text += &format!("title={title}\n");
     }
+    text += &format!("start={}\n", settings.start_screen.key());
     if !settings.hidden_tiles.is_empty() {
         text += &format!("hidden_tiles={}\n", settings.hidden_tiles.join(","));
     }
@@ -431,6 +475,14 @@ pub fn set_title(text: &str) -> io::Result<()> {
     store(&Settings { title: clean_title(text), ..load() })
 }
 
+pub fn start_screen() -> StartScreen {
+    load().start_screen
+}
+
+pub fn set_start_screen(start_screen: StartScreen) -> io::Result<()> {
+    store(&Settings { start_screen, ..load() })
+}
+
 /// The keys of the home screen tiles turned off.
 pub fn hidden_tiles() -> Vec<String> {
     load().hidden_tiles
@@ -501,6 +553,7 @@ mod tests {
             title_hidden: true,
             title: Some("Game = Fun & more".into()),
             hidden_tiles: vec!["recent".into(), "gba".into()],
+            start_screen: StartScreen::LastGame,
         };
         assert_eq!(parse(&format(&settings)), settings);
         // Files from before the time settings load with UTC and a 24 hour clock.
@@ -509,6 +562,8 @@ mod tests {
         assert_eq!(parse("timezone=Mars/Olympus\n").zone, None);
         assert_eq!((old.accent, old.title_hidden, old.title), (Accent::Teal, false, None));
         assert!(old.hidden_tiles.is_empty());
+        assert_eq!(old.start_screen, StartScreen::Home);
+        assert_eq!(StartScreen::Home.cycle(-1), StartScreen::LastGame);
         assert_eq!(parse("hidden_tiles=nes,, snes ,\n").hidden_tiles, ["nes", "snes"]);
     }
 
