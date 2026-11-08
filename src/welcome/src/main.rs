@@ -1,13 +1,22 @@
 mod canvas;
 mod fb;
 mod font;
+mod icons;
 mod input;
+mod launcher;
 mod libretro;
+mod names;
 mod pause;
+mod recent;
+mod repeat;
+mod screens;
 mod settings;
 mod storage;
 
-use canvas::{Battery, MenuRow};
+use canvas::Battery;
+use icons::Icon;
+use launcher::{Command as Action, Game, Launcher, Library, List, Screen, Shelf, Tile};
+use repeat::Repeater;
 use input::{Button, Controls, Event};
 use libretro::Persistence;
 use std::ffi::OsString;
@@ -29,8 +38,11 @@ const SAVE_DIR: &str = "/mnt/data/saves";
 
 /// A kind of game the launcher can run.
 struct System {
-    /// The heading the launcher lists its games under.
+    /// The title of its list of games.
     console: &'static str,
+    /// The name on its home screen tile, short enough to fit.
+    label: &'static str,
+    icon: &'static Icon,
     /// Game file extensions, without the dot.
     extensions: &'static [&'static str],
     core: &'static str,
@@ -50,6 +62,8 @@ const MGBA: &str = "/usr/lib/libretro/mgba_libretro.so";
 const SYSTEMS: [System; 6] = [
     System {
         console: "NES",
+        label: "NES",
+        icon: &icons::NES,
         extensions: &["nes"],
         core: "/usr/lib/libretro/fceumm_libretro.so",
         persistence: Persistence::BatteryRam,
@@ -59,6 +73,8 @@ const SYSTEMS: [System; 6] = [
     },
     System {
         console: "GAME BOY",
+        label: "GAME BOY",
+        icon: &icons::GAME_BOY,
         extensions: &["gb"],
         core: MGBA,
         persistence: Persistence::BatteryRam,
@@ -68,6 +84,8 @@ const SYSTEMS: [System; 6] = [
     },
     System {
         console: "SNES",
+        label: "SNES",
+        icon: &icons::SNES,
         extensions: &["sfc", "smc"],
         core: "/usr/lib/libretro/snes9x_libretro.so",
         persistence: Persistence::BatteryRam,
@@ -77,6 +95,8 @@ const SYSTEMS: [System; 6] = [
     },
     System {
         console: "TAMAGOTCHI",
+        label: "TAMAGOTCHI",
+        icon: &icons::TAMAGOTCHI,
         extensions: &["b"],
         core: "/usr/lib/libretro/tamalibretro_libretro.so",
         persistence: Persistence::FullState,
@@ -86,6 +106,8 @@ const SYSTEMS: [System; 6] = [
     },
     System {
         console: "GAME BOY COLOR",
+        label: "GB COLOR",
+        icon: &icons::GAME_BOY_COLOR,
         extensions: &["gbc"],
         core: MGBA,
         persistence: Persistence::BatteryRam,
@@ -95,6 +117,8 @@ const SYSTEMS: [System; 6] = [
     },
     System {
         console: "GAME BOY ADVANCE",
+        label: "GB ADVANCE",
+        icon: &icons::GAME_BOY_ADVANCE,
         extensions: &["gba"],
         core: MGBA,
         persistence: Persistence::BatteryRam,
@@ -104,8 +128,6 @@ const SYSTEMS: [System; 6] = [
     },
 ];
 
-const BUTTON_TEST_LABEL: &str = "BUTTON TEST";
-const TOOLS_HEADING: &str = "TOOLS";
 const BATTERY_DIR: &str = "/sys/class/power_supply/axp20x-battery";
 /// How often the menu checks the battery, so plugging in a charger shows promptly.
 const BATTERY_REFRESH: Duration = Duration::from_secs(1);
@@ -148,56 +170,104 @@ fn rom_label(rom: &Path) -> String {
     rom.file_stem().unwrap_or_default().to_string_lossy().into_owned()
 }
 
-/// A row in the launcher.
-#[derive(Clone, PartialEq, Debug)]
-enum Entry {
-    Heading(&'static str),
-    Game(PathBuf),
-    ButtonTest,
+/// The index in `SYSTEMS` of the system that runs a game.
+fn system_index(rom: &Path) -> Option<usize> {
+    let system = system_for(rom)?;
+    SYSTEMS.iter().position(|other| std::ptr::eq(other, system))
 }
 
-impl Entry {
-    fn row(&self) -> MenuRow {
-        match self {
-            Self::Heading(name) => MenuRow { label: name.to_string(), heading: true },
-            Self::Game(rom) => MenuRow { label: rom_label(rom), heading: false },
-            Self::ButtonTest => MenuRow { label: BUTTON_TEST_LABEL.to_string(), heading: false },
+/// Sorts games into a shelf per system, in the order of `SYSTEMS`, with readable names.
+/// Recent games only count while they are still among the games.
+fn build_library(roms: &[PathBuf], recent: &[PathBuf]) -> Library {
+    let mut shelves = Vec::new();
+    for system in 0..SYSTEMS.len() {
+        let paths: Vec<&PathBuf> = roms.iter().filter(|rom| system_index(rom) == Some(system)).collect();
+        if paths.is_empty() {
+            continue;
         }
-    }
-}
-
-/// The games under a heading for each console that has any, then the tools.
-fn launcher_entries(roms: &[PathBuf]) -> Vec<Entry> {
-    let mut entries = Vec::new();
-    for system in &SYSTEMS {
-        let mut games = roms
+        let stems: Vec<String> = paths.iter().map(|rom| rom_label(rom)).collect();
+        let mut games: Vec<Game> = paths
             .iter()
-            .filter(|rom| system_for(rom).is_some_and(|found| std::ptr::eq(found, system)))
-            .peekable();
-        if games.peek().is_some() {
-            entries.push(Entry::Heading(system.console));
-            entries.extend(games.map(|rom| Entry::Game(rom.clone())));
-        }
+            .zip(names::display_names(&stems))
+            .map(|(path, name)| Game { path: path.to_path_buf(), name, system })
+            .collect();
+        games.sort_by_key(|game| game.name.to_ascii_lowercase());
+        shelves.push(Shelf { system, games });
     }
-    entries.push(Entry::Heading(TOOLS_HEADING));
-    entries.push(Entry::ButtonTest);
-    entries
+    let recent = recent
+        .iter()
+        .filter_map(|path| {
+            shelves.iter().flat_map(|shelf| &shelf.games).find(|game| &game.path == path).map(|game| Game {
+                path: game.path.clone(),
+                name: game.name.clone(),
+                system: game.system,
+            })
+        })
+        .collect();
+    Library { recent, shelves }
 }
 
-/// The first row that isn't a heading, starting `step` rows from `from` and carrying on
-/// in that direction, wrapping around. A `step` of 0 checks `from` itself first.
-fn selectable(entries: &[Entry], from: usize, step: isize) -> usize {
-    let count = entries.len() as isize;
-    let direction = if step < 0 { -1 } else { 1 };
-    let mut index = from as isize + step;
-    for _ in 0..count {
-        let wrapped = index.rem_euclid(count) as usize;
-        if !matches!(entries[wrapped], Entry::Heading(_)) {
-            return wrapped;
-        }
-        index += direction;
-    }
-    from
+fn load_library() -> Library {
+    build_library(&find_roms(Path::new(ROM_DIR)), &recent::load(Path::new(recent::RECENT_PATH)))
+}
+
+/// Reads free and total space from `df -k` output, in kilobytes.
+fn parse_df(output: &str) -> Option<(u64, u64)> {
+    let fields: Vec<&str> = output.lines().nth(1)?.split_whitespace().collect();
+    Some((fields.get(3)?.parse().ok()?, fields.get(1)?.parse().ok()?))
+}
+
+/// Reads the IPv4 address from `ifconfig` output, such as `inet addr:10.35.35.1`.
+fn parse_ifconfig(output: &str) -> Option<String> {
+    let rest = output.split("inet addr:").nth(1)?;
+    Some(rest.split_whitespace().next()?.to_string())
+}
+
+/// Reads the build date from `/proc/version`, which ends with it after the build flags.
+fn parse_kernel_date(version: &str) -> Option<String> {
+    let rest = version.trim().rsplit_once("PREEMPT ")?.1;
+    let words: Vec<&str> = rest.split_whitespace().collect();
+    // Like "Sun Nov 8 00:29:39 CET 2026": keep the day, month, date and year.
+    Some(format!("{} {} {}", words.get(1)?, words.get(2)?, words.last()?))
+}
+
+fn command_output(program: &str, args: &[&str]) -> String {
+    Command::new(program)
+        .args(args)
+        .output()
+        .map(|output| String::from_utf8_lossy(&output.stdout).into_owned())
+        .unwrap_or_default()
+}
+
+fn gigabytes(kilobytes: u64) -> String {
+    format!("{:.1} GB", kilobytes as f64 / 1024.0 / 1024.0)
+}
+
+/// The lines the system info screen shows.
+fn system_info(battery: Option<Battery>) -> Vec<(String, String)> {
+    let unknown = || "UNKNOWN".to_string();
+    let battery = battery.map_or_else(unknown, |Battery { percent, charging }| {
+        format!("{percent}%{}", if charging { " CHARGING" } else { "" })
+    });
+    let storage = parse_df(&command_output("df", &["-k", "/mnt/data"]))
+        .map_or_else(unknown, |(free, total)| format!("{} FREE OF {}", gigabytes(free), gigabytes(total)));
+    let address = parse_ifconfig(&command_output("ifconfig", &["usb0"])).unwrap_or_else(unknown);
+    let temperature = std::fs::read_to_string("/sys/class/thermal/thermal_zone0/temp")
+        .ok()
+        .and_then(|text| text.trim().parse::<i64>().ok())
+        .map_or_else(unknown, |millidegrees| format!("{} C", millidegrees / 1000));
+    let kernel = std::fs::read_to_string("/proc/version")
+        .ok()
+        .and_then(|version| parse_kernel_date(&version))
+        .unwrap_or_else(unknown);
+    vec![
+        ("BATTERY".to_string(), battery),
+        ("GAME STORAGE".to_string(), storage),
+        ("SSH OVER USB".to_string(), address),
+        ("CPU TEMPERATURE".to_string(), temperature),
+        ("KERNEL BUILT".to_string(), kernel),
+        ("APP VERSION".to_string(), env!("CARGO_PKG_VERSION").to_string()),
+    ]
 }
 
 /// The save file next to the others, named after the game.
@@ -271,6 +341,9 @@ fn play_game(rom: &Path, events: &Receiver<Event>) -> io::Result<()> {
         }
     }
     std::fs::create_dir_all(SAVE_DIR)?;
+    if let Err(error) = recent::record(Path::new(recent::RECENT_PATH), rom) {
+        eprintln!("warning: could not record the game as played: {error}");
+    }
     let mut game = Command::new(std::env::current_exe()?)
         .arg("--play")
         .args([Path::new(system.core), rom, &save_path(rom, system)])
@@ -316,6 +389,108 @@ fn button_test(
     Ok(())
 }
 
+/// Lays out the launcher's current screen.
+fn launcher_canvas(
+    (width, height): (usize, usize),
+    launcher: &Launcher,
+    library: &Library,
+    battery: Option<Battery>,
+) -> canvas::Canvas {
+    match launcher.screen() {
+        Screen::Home => {
+            let tiles: Vec<screens::TileView> = library
+                .tiles()
+                .iter()
+                .map(|tile| match *tile {
+                    Tile::Recent => screens::TileView { icon: &icons::RECENT, label: "RECENT", count: None },
+                    Tile::System(system) => screens::TileView {
+                        icon: SYSTEMS[system].icon,
+                        label: SYSTEMS[system].label,
+                        count: Some(library.games(List::System(system)).len()),
+                    },
+                    Tile::Settings => screens::TileView { icon: &icons::SETTINGS, label: "SETTINGS", count: None },
+                })
+                .collect();
+            screens::home_screen(width, height, &tiles, launcher.home_selected(library), battery)
+        }
+        Screen::Games(list) => {
+            let (icon, title) = match list {
+                List::Recent => (&icons::RECENT, "RECENT"),
+                List::System(system) => (SYSTEMS[system].icon, SYSTEMS[system].console),
+            };
+            let rows: Vec<screens::RowView> = library
+                .games(list)
+                .iter()
+                .map(|game| screens::RowView {
+                    name: &game.name,
+                    icon: (list == List::Recent).then_some(SYSTEMS[game.system].icon),
+                })
+                .collect();
+            let selected = launcher.list_selected(library, list);
+            screens::list_screen(width, height, icon, title, &rows, selected, battery)
+        }
+        Screen::Settings => {
+            let view = screens::SettingsView {
+                selected: launcher.settings_selected(),
+                volume_percent: settings::volume_percent(),
+                brightness_percent: settings::brightness_percent(),
+                message: launcher.confirmation(),
+            };
+            screens::settings_screen(width, height, &view, battery)
+        }
+        Screen::Info => screens::info_screen(width, height, &system_info(battery), battery),
+    }
+}
+
+/// What woke the launcher up.
+enum Wake {
+    Event(Event),
+    Repeat(Button, usize),
+    Redraw,
+}
+
+fn save_settings() {
+    if let Err(error) = settings::save() {
+        eprintln!("warning: could not save the settings: {error}");
+    }
+}
+
+/// Carries out what a press asked for. Returns whether the games on the card should be
+/// read again, as they are after playing.
+fn act(
+    action: Action,
+    framebuffer: &mut fb::Framebuffer,
+    events: &Receiver<Event>,
+) -> io::Result<bool> {
+    match action {
+        Action::Nothing => {}
+        Action::Play(rom) => {
+            if let Err(error) = play_game(&rom, events) {
+                eprintln!("welcome: could not start the game: {error}");
+            }
+            return Ok(true);
+        }
+        Action::ButtonTest => button_test(framebuffer, events)?,
+        Action::Volume(steps) => {
+            settings::change_volume(steps * settings::VOLUME_STEP);
+            save_settings();
+        }
+        Action::Brightness(steps) => {
+            settings::change_brightness(steps);
+            save_settings();
+        }
+        Action::Reboot | Action::PowerOff => {
+            let (width, height) = framebuffer.size();
+            let (message, program) =
+                if action == Action::Reboot { ("REBOOTING", "reboot") } else { ("POWERING OFF", "poweroff") };
+            framebuffer.draw(&screens::message_screen(width, height, message))?;
+            // Init stops this app as part of shutting down.
+            Command::new(program).status()?;
+        }
+    }
+    Ok(false)
+}
+
 fn run_launcher() -> io::Result<()> {
     settings::restore();
     let mut framebuffer = open_framebuffer()?;
@@ -323,53 +498,73 @@ fn run_launcher() -> io::Result<()> {
     let _console = fb::claim_console()
         .inspect_err(|error| eprintln!("warning: could not claim console: {error}"));
     let events = input::spawn_readers();
-    let (width, height) = framebuffer.size();
-    let mut selected = 0;
+    let mut launcher = Launcher::new();
+    let mut repeater = Repeater::new();
+    let mut library = load_library();
 
     loop {
-        let roms = find_roms(Path::new(ROM_DIR));
-        let entries = launcher_entries(&roms);
-        // The list may have changed since the last visit.
-        selected = selectable(&entries, selected.min(entries.len() - 1), 0);
-        let rows: Vec<MenuRow> = entries.iter().map(Entry::row).collect();
         let battery = read_battery(Path::new(BATTERY_DIR));
-        framebuffer.draw(&canvas::menu_screen(
-            width,
-            height,
-            &rows,
-            selected,
-            roms.is_empty(),
-            battery,
-        ))?;
+        framebuffer.draw(&launcher_canvas(framebuffer.size(), &launcher, &library, battery))?;
 
-        // Wait for input, redrawing only when the battery reading changes.
-        let event = loop {
-            match events.recv_timeout(BATTERY_REFRESH) {
-                Ok(event) => break Some(event),
+        // Wait for input or a held button's repeat, redrawing when the battery changes.
+        let wake = loop {
+            let now = Instant::now();
+            if let Some((button, count)) = repeater.due(now) {
+                break Wake::Repeat(button, count);
+            }
+            let timeout = repeater.wait(now).map_or(BATTERY_REFRESH, |wait| wait.min(BATTERY_REFRESH));
+            match events.recv_timeout(timeout) {
+                Ok(event) => break Wake::Event(event),
+                Err(RecvTimeoutError::Timeout) if repeater.wait(Instant::now()).is_some() => {}
                 Err(RecvTimeoutError::Timeout) => {
                     if read_battery(Path::new(BATTERY_DIR)) != battery {
-                        break None;
+                        break Wake::Redraw;
                     }
                 }
                 Err(RecvTimeoutError::Disconnected) => return Ok(()),
             }
         };
-        let Some(event) = event else { continue };
-        match event.pressed() {
-            Some(Button::Lid) => sleep_until_lid_opens(&events),
-            Some(Button::Up) => selected = selectable(&entries, selected, -1),
-            Some(Button::Down) => selected = selectable(&entries, selected, 1),
-            Some(button @ (Button::VolumeUp | Button::VolumeDown)) => change_volume(button),
-            Some(Button::A) => match &entries[selected] {
-                Entry::Game(rom) => {
-                    if let Err(error) = play_game(rom, &events) {
-                        eprintln!("welcome: could not start the game: {error}");
+        let action = match wake {
+            Wake::Redraw => Action::Nothing,
+            Wake::Repeat(button, count) => {
+                for _ in 0..count {
+                    let action = launcher.press(button, &library);
+                    // Holding Left or Right on a level keeps changing it. Nothing else
+                    // that a press asks for repeats.
+                    if matches!(action, Action::Volume(_) | Action::Brightness(_)) {
+                        act(action, &mut framebuffer, &events)?;
                     }
                 }
-                Entry::ButtonTest => button_test(&mut framebuffer, &events)?,
-                Entry::Heading(_) => {}
-            },
-            _ => {}
+                Action::Nothing
+            }
+            Wake::Event(event) => {
+                if let Some(button) = event.released() {
+                    repeater.release(button);
+                }
+                match event.pressed() {
+                    Some(Button::Lid) => {
+                        repeater.stop();
+                        sleep_until_lid_opens(&events);
+                        Action::Nothing
+                    }
+                    Some(button @ (Button::VolumeUp | Button::VolumeDown)) => {
+                        change_volume(button);
+                        Action::Nothing
+                    }
+                    Some(button) => {
+                        repeater.press(button, Instant::now());
+                        launcher.press(button, &library)
+                    }
+                    None => Action::Nothing,
+                }
+            }
+        };
+        if !matches!(action, Action::Nothing | Action::Volume(_) | Action::Brightness(_)) {
+            // A game or the button test takes over the buttons until it ends.
+            repeater.stop();
+        }
+        if act(action, &mut framebuffer, &events)? {
+            library = load_library();
         }
     }
 }
@@ -388,15 +583,30 @@ fn write_ppm(canvas: &canvas::Canvas, path: &str) -> io::Result<()> {
     file.flush()
 }
 
-/// Renders the menu to a PPM image, to check the layout without the device.
-fn write_menu_preview(path: &str) -> io::Result<()> {
-    let (width, height) = PREVIEW_SIZE;
-    let roms = ["FIRST GAME.nes", "SECOND GAME (WITH A LONG NAME).gba", "THIRD GAME.gba"]
-        .map(PathBuf::from)
-        .to_vec();
-    let rows: Vec<MenuRow> = launcher_entries(&roms).iter().map(Entry::row).collect();
+/// Renders a launcher screen to a PPM image, to check the layout without the device.
+/// The screen is the one reached by pressing `buttons` from the start, with a sample
+/// set of games.
+fn write_launcher_preview(path: &str, buttons: &[Button]) -> io::Result<()> {
+    let mut roms: Vec<PathBuf> = [
+        "Super Mario Bros. (World).nes",
+        "Legend of Zelda, The (USA) (Rev 1).nes",
+        "Tetris (World) (Rev 1).gb",
+        "Super Mario World (USA).sfc",
+        "tama.b",
+        "Tetris DX (World) (SGB Enhanced).gbc",
+        "Pokemon - Smaragd-Edition (Germany).gba",
+    ]
+    .map(PathBuf::from)
+    .to_vec();
+    roms.extend((1..=14).map(|i| PathBuf::from(format!("Game Boy Game {i:02} (USA).gb"))));
+    let recent = [&roms[3], &roms[2], &roms[6]].map(PathBuf::clone);
+    let library = build_library(&roms, &recent);
+    let mut launcher = Launcher::new();
+    for &button in buttons {
+        launcher.press(button, &library);
+    }
     let battery = Some(Battery { percent: 95, charging: true });
-    write_ppm(&canvas::menu_screen(width, height, &rows, 4, false, battery), path)
+    write_ppm(&launcher_canvas(PREVIEW_SIZE, &launcher, &library, battery), path)
 }
 
 /// Renders the in-game menu over a test pattern to a PPM image, on Load State with an
@@ -441,7 +651,14 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.as_slice() {
         [] => run_launcher(),
-        [flag, path] if flag == "--preview" => write_menu_preview(path),
+        [flag, path] if flag == "--preview" => write_launcher_preview(path, &[Button::Right]),
+        [flag, path] if flag == "--preview-list" => {
+            write_launcher_preview(path, &[Button::Right, Button::Right, Button::A, Button::Down])
+        }
+        [flag, path] if flag == "--preview-recent" => write_launcher_preview(path, &[Button::A]),
+        [flag, path] if flag == "--preview-settings" => {
+            write_launcher_preview(path, &[Button::Start, Button::Up, Button::A])
+        }
         [flag, path] if flag == "--preview-buttons" => write_button_preview(path),
         [flag, path] if flag == "--preview-pause" => write_pause_preview(path),
         [flag, core, rom, save, persistence] if flag == "--play" => parse_persistence(persistence)
@@ -463,7 +680,8 @@ fn main() -> ExitCode {
         }
         _ => {
             eprintln!(
-                "usage: welcome [--preview FILE.ppm | --preview-buttons FILE.ppm\n\
+                "usage: welcome [--preview | --preview-list | --preview-recent | --preview-settings FILE.ppm\n\
+                 \x20              | --preview-buttons FILE.ppm\n\
                  \x20              | --preview-pause FILE.ppm\n\
                  \x20              | --play CORE ROM SAVE battery|state\n\
                  \x20              | --render CORE ROM SAVE battery|state FRAMES FILE.ppm]"
@@ -534,47 +752,47 @@ mod tests {
         }
     }
 
-    fn entries_for(names: &[&str]) -> Vec<Entry> {
-        launcher_entries(&names.iter().map(PathBuf::from).collect::<Vec<_>>())
+    fn library_for(names: &[&str], recent: &[&str]) -> Library {
+        let roms: Vec<PathBuf> = names.iter().map(PathBuf::from).collect();
+        let recent: Vec<PathBuf> = recent.iter().map(PathBuf::from).collect();
+        build_library(&roms, &recent)
     }
 
     #[test]
-    fn games_are_grouped_by_console_in_release_order() {
-        let entries = entries_for(&["/r/a.gba", "/r/b.nes", "/r/c.gba", "/r/d.sfc"]);
-        let game = |name: &str| Entry::Game(PathBuf::from(name));
-        assert_eq!(
-            entries,
-            [
-                Entry::Heading("NES"),
-                game("/r/b.nes"),
-                Entry::Heading("SNES"),
-                game("/r/d.sfc"),
-                Entry::Heading("GAME BOY ADVANCE"),
-                game("/r/a.gba"),
-                game("/r/c.gba"),
-                Entry::Heading(TOOLS_HEADING),
-                Entry::ButtonTest,
-            ]
-        );
+    fn games_are_shelved_by_console_in_release_order() {
+        let library = library_for(&["/r/b.gba", "/r/z.nes", "/r/a.gba", "/r/d.sfc"], &[]);
+        let systems: Vec<&str> = library.shelves.iter().map(|shelf| SYSTEMS[shelf.system].console).collect();
+        assert_eq!(systems, ["NES", "SNES", "GAME BOY ADVANCE"]);
+        let gba: Vec<&str> = library.shelves[2].games.iter().map(|game| game.name.as_str()).collect();
+        assert_eq!(gba, ["a", "b"]);
     }
 
     #[test]
-    fn without_games_only_the_tools_are_listed() {
-        assert_eq!(entries_for(&[]), [Entry::Heading(TOOLS_HEADING), Entry::ButtonTest]);
+    fn games_are_sorted_by_their_short_names() {
+        let library = library_for(&["/r/Legend of Zelda, The (USA).nes", "/r/Super Mario Bros. (World).nes"], &[]);
+        let names: Vec<&str> = library.shelves[0].games.iter().map(|game| game.name.as_str()).collect();
+        assert_eq!(names, ["Super Mario Bros.", "The Legend of Zelda"]);
     }
 
     #[test]
-    fn the_selection_skips_headings_and_wraps() {
-        // NES, game, SNES, game, TOOLS, button test
-        let entries = entries_for(&["/r/b.nes", "/r/d.sfc"]);
-        assert_eq!(selectable(&entries, 0, 0), 1);
-        assert_eq!(selectable(&entries, 1, 1), 3);
-        assert_eq!(selectable(&entries, 3, 1), 5);
-        assert_eq!(selectable(&entries, 5, 1), 1);
-        assert_eq!(selectable(&entries, 1, -1), 5);
-        assert_eq!(selectable(&entries, 5, -1), 3);
-        // The last game removed while selected: the next row is a heading.
-        assert_eq!(selectable(&entries, 4, 0), 5);
+    fn recent_games_keep_their_order_and_drop_missing_ones() {
+        let library = library_for(&["/r/a.gb", "/r/b.nes"], &["/r/b.nes", "/r/gone.gba", "/r/a.gb"]);
+        let recent: Vec<&str> = library.recent.iter().map(|game| game.name.as_str()).collect();
+        assert_eq!(recent, ["b", "a"]);
+        assert_eq!(SYSTEMS[library.recent[0].system].console, "NES");
+    }
+
+    #[test]
+    fn system_info_parses_tool_output() {
+        let df = "Filesystem 1K-blocks Used Available Use% Mounted on\n/dev/mmcblk0p3 58195968 83392 58112576 0% /mnt/data\n";
+        assert_eq!(parse_df(df), Some((58112576, 58195968)));
+        assert_eq!(parse_df(""), None);
+        let ifconfig = "usb0      Link encap:Ethernet  HWaddr 02:52:47:33:35:01\n          inet addr:10.35.35.1  Bcast:10.35.35.255  Mask:255.255.255.0\n";
+        assert_eq!(parse_ifconfig(ifconfig).as_deref(), Some("10.35.35.1"));
+        assert_eq!(parse_ifconfig("usb0 down"), None);
+        let version = "Linux version 7.2.15 (user@cachy) (gcc 15) #1 SMP PREEMPT Sun Nov  8 00:29:39 CET 2026\n";
+        assert_eq!(parse_kernel_date(version).as_deref(), Some("Nov 8 2026"));
+        assert_eq!(gigabytes(58112576), "55.4 GB");
     }
 
     #[test]

@@ -1,18 +1,19 @@
 //! Device-independent drawing, which keeps the screen testable away from the hardware.
 
 use crate::font;
+use crate::icons::{self, Icon};
 use crate::input::{Button, Controls};
 use crate::pause::{Item, PauseMenu, ITEMS};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Rgb(pub u8, pub u8, pub u8);
 
-const BACKGROUND: Rgb = Rgb(0x12, 0x14, 0x1C);
-const BODY: Rgb = Rgb(0x2B, 0x30, 0x3F);
-const ACCENT: Rgb = Rgb(0x4F, 0xD1, 0xC5);
-const TEXT: Rgb = Rgb(0xF2, 0xF4, 0xF8);
-const MUTED: Rgb = Rgb(0x8A, 0x92, 0xA6);
-const LOW: Rgb = Rgb(0xF0, 0x64, 0x64);
+pub(crate) const BACKGROUND: Rgb = Rgb(0x12, 0x14, 0x1C);
+pub(crate) const BODY: Rgb = Rgb(0x2B, 0x30, 0x3F);
+pub(crate) const ACCENT: Rgb = Rgb(0x4F, 0xD1, 0xC5);
+pub(crate) const TEXT: Rgb = Rgb(0xF2, 0xF4, 0xF8);
+pub(crate) const MUTED: Rgb = Rgb(0x8A, 0x92, 0xA6);
+pub(crate) const LOW: Rgb = Rgb(0xF0, 0x64, 0x64);
 
 pub struct Canvas {
     pub width: usize,
@@ -30,7 +31,7 @@ impl Canvas {
     }
 
     /// Fills a rectangle, clipping anything outside the canvas.
-    fn rect(&mut self, x: usize, y: usize, w: usize, h: usize, color: Rgb) {
+    pub(crate) fn rect(&mut self, x: usize, y: usize, w: usize, h: usize, color: Rgb) {
         for row in y.min(self.height)..(y + h).min(self.height) {
             for col in x.min(self.width)..(x + w).min(self.width) {
                 self.pixels[row * self.width + col] = color;
@@ -39,12 +40,12 @@ impl Canvas {
     }
 
     /// Draws one line of text centred horizontally at `y`.
-    fn text(&mut self, text: &str, y: usize, scale: usize, color: Rgb) {
+    pub(crate) fn text(&mut self, text: &str, y: usize, scale: usize, color: Rgb) {
         let x = self.width.saturating_sub(text_width(text, scale)) / 2;
         self.text_at(text, x, y, scale, color);
     }
 
-    fn text_at(&mut self, text: &str, mut x: usize, y: usize, scale: usize, color: Rgb) {
+    pub(crate) fn text_at(&mut self, text: &str, mut x: usize, y: usize, scale: usize, color: Rgb) {
         let advance = (font::WIDTH + 1) * scale;
         for c in text.chars() {
             for (row, bits) in font::glyph(c).iter().enumerate() {
@@ -56,6 +57,26 @@ impl Canvas {
             }
             x += advance;
         }
+    }
+
+    /// Draws a pictogram with its top left corner at `x`, `y`.
+    pub(crate) fn icon(&mut self, icon: &Icon, x: usize, y: usize, scale: usize) {
+        for (row, line) in icon.iter().enumerate() {
+            for (col, c) in line.chars().enumerate() {
+                if let Some(color) = icons::color(c) {
+                    self.rect(x + col * scale, y + row * scale, scale, scale, color);
+                }
+            }
+        }
+    }
+
+    /// The charge level in the top right corner, in red when low and not charging.
+    pub(crate) fn battery(&mut self, battery: Option<Battery>) {
+        let Some(Battery { percent, charging }) = battery else { return };
+        let label = format!("{percent}%{}", if charging { "+" } else { "" });
+        let color = if percent <= LOW_BATTERY_PERCENT && !charging { LOW } else { MUTED };
+        let x = self.width.saturating_sub(text_width(&label, BATTERY_TEXT_SCALE) + BATTERY_RIGHT);
+        self.text_at(&label, x, BATTERY_TOP, BATTERY_TEXT_SCALE, color);
     }
 
     /// One control: filled while held, outlined once it has been seen working.
@@ -79,7 +100,7 @@ impl Canvas {
     }
 }
 
-fn text_width(text: &str, scale: usize) -> usize {
+pub(crate) fn text_width(text: &str, scale: usize) -> usize {
     (text.chars().count() * (font::WIDTH + 1) * scale).saturating_sub(scale)
 }
 
@@ -135,34 +156,6 @@ pub fn button_screen(width: usize, height: usize, controls: &Controls) -> Canvas
     canvas
 }
 
-const MENU_TOP: usize = 76;
-const MENU_ROW: usize = 30;
-const MENU_ROWS: usize = 12;
-const MENU_LEFT: usize = 16;
-/// Games sit this far in from their console's heading.
-const MENU_INDENT: usize = 24;
-const MENU_TEXT_SCALE: usize = 2;
-/// How many characters of a game's name fit in a row, with a margin on both sides.
-const MENU_COLUMNS: usize = 47;
-
-// The rows must end above the hint line, and the text inside the side margins.
-const _: () = assert!(MENU_TOP + MENU_ROWS * MENU_ROW <= 448);
-const _: () = assert!(
-    MENU_LEFT + MENU_INDENT + MENU_COLUMNS * (font::WIDTH + 1) * MENU_TEXT_SCALE
-        <= 640 - MENU_LEFT + MENU_TEXT_SCALE
-);
-
-/// A line in the launcher: a console heading, or something to pick.
-pub struct MenuRow {
-    pub label: String,
-    pub heading: bool,
-}
-
-/// The first row to show, keeping the selection in view.
-fn first_visible(selected: usize) -> usize {
-    (selected + 1).saturating_sub(MENU_ROWS)
-}
-
 /// The charge level, and whether it is rising.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Battery {
@@ -173,49 +166,8 @@ pub struct Battery {
 /// At or below this level, while not charging, the level is shown as a warning.
 const LOW_BATTERY_PERCENT: u32 = 15;
 const BATTERY_TOP: usize = 8;
+const BATTERY_RIGHT: usize = 16;
 const BATTERY_TEXT_SCALE: usize = 2;
-
-/// Lays out the list of games. `no_games` adds a note on where to put them.
-pub fn menu_screen(
-    width: usize,
-    height: usize,
-    rows: &[MenuRow],
-    selected: usize,
-    no_games: bool,
-    battery: Option<Battery>,
-) -> Canvas {
-    let mut canvas = Canvas::new(width, height);
-    canvas.text("RG35XX SP LINUX", 20, 4, TEXT);
-    if let Some(Battery { percent, charging }) = battery {
-        let label = format!("{percent}%{}", if charging { "+" } else { "" });
-        let color = if percent <= LOW_BATTERY_PERCENT && !charging { LOW } else { MUTED };
-        let x = width.saturating_sub(text_width(&label, BATTERY_TEXT_SCALE) + MENU_LEFT);
-        canvas.text_at(&label, x, BATTERY_TOP, BATTERY_TEXT_SCALE, color);
-    }
-    let first = first_visible(selected);
-    for (line, (index, row)) in rows.iter().enumerate().skip(first).take(MENU_ROWS).enumerate() {
-        let y = MENU_TOP + line * MENU_ROW;
-        let text_y = y + (MENU_ROW - 2 - font::HEIGHT * MENU_TEXT_SCALE) / 2;
-        if row.heading {
-            canvas.text_at(&row.label, MENU_LEFT, text_y, MENU_TEXT_SCALE, ACCENT);
-            continue;
-        }
-        let color = if index == selected {
-            canvas.rect(0, y, width, MENU_ROW - 2, ACCENT);
-            BACKGROUND
-        } else {
-            TEXT
-        };
-        let visible: String = row.label.chars().take(MENU_COLUMNS).collect();
-        canvas.text_at(&visible, MENU_LEFT + MENU_INDENT, text_y, MENU_TEXT_SCALE, color);
-    }
-    if no_games {
-        canvas.text("COPY GAMES TO THE ROMS FOLDER", 340, 2, MUTED);
-        canvas.text("ON THE RGDATA PARTITION", 366, 2, MUTED);
-    }
-    canvas.text("A STARTS - MENU PAUSES A GAME", 448, 2, MUTED);
-    canvas
-}
 
 /// What the in-game menu shows besides its choices.
 pub struct PauseView<'a> {
@@ -327,76 +279,6 @@ mod tests {
         assert_eq!(canvas.pixels.len(), 640 * 480);
         assert!(count(&canvas, TEXT) > 0);
         assert!(count(&canvas, ACCENT) > 0);
-    }
-
-    fn labels(count: usize) -> Vec<MenuRow> {
-        (0..count).map(|i| MenuRow { label: format!("GAME {i}"), heading: false }).collect()
-    }
-
-    #[test]
-    fn the_selection_stays_in_view() {
-        assert_eq!(first_visible(0), 0);
-        assert_eq!(first_visible(MENU_ROWS - 1), 0);
-        assert_eq!(first_visible(MENU_ROWS), 1);
-        assert_eq!(first_visible(29), 29 + 1 - MENU_ROWS);
-    }
-
-    #[test]
-    fn the_selected_row_is_highlighted() {
-        let canvas = menu_screen(640, 480, &labels(3), 1, false, None);
-        let row = |index: usize| pixel(&canvas, 639, MENU_TOP + index * MENU_ROW + 2);
-        assert_eq!(row(0), BACKGROUND);
-        assert_eq!(row(1), ACCENT);
-        assert_eq!(row(2), BACKGROUND);
-    }
-
-    #[test]
-    fn headings_are_not_highlighted_and_games_are_indented() {
-        let mut rows = labels(3);
-        rows[0] = MenuRow { label: "NES".into(), heading: true };
-        let canvas = menu_screen(640, 480, &rows, 1, false, None);
-        let row_y = |index: usize| MENU_TOP + index * MENU_ROW;
-        assert_eq!(pixel(&canvas, 639, row_y(0) + 2), BACKGROUND);
-        assert_eq!(pixel(&canvas, 639, row_y(1) + 2), ACCENT);
-        // A heading's text starts at the margin, a game's further in.
-        let first_text = |index: usize, color: Rgb| {
-            (0..640).find(|&x| (row_y(index)..row_y(index) + MENU_ROW - 2).any(|y| pixel(&canvas, x, y) == color))
-        };
-        assert_eq!(first_text(0, ACCENT), Some(MENU_LEFT));
-        assert_eq!(first_text(2, TEXT), Some(MENU_LEFT + MENU_INDENT));
-    }
-
-    #[test]
-    fn a_very_long_name_and_list_are_safe() {
-        let mut names = labels(40);
-        names[39].label = "X".repeat(500);
-        let canvas = menu_screen(640, 480, &names, 39, false, None);
-        assert_eq!(canvas.pixels.len(), 640 * 480);
-    }
-
-    #[test]
-    fn the_menu_survives_a_small_screen() {
-        let battery = Some(Battery { percent: 100, charging: true });
-        let canvas = menu_screen(64, 48, &labels(3), 2, true, battery);
-        assert_eq!(canvas.pixels.len(), 64 * 48);
-    }
-
-    #[test]
-    fn the_battery_warns_only_when_low_and_not_charging() {
-        let shown = |percent, charging| {
-            let battery = Some(Battery { percent, charging });
-            count(&menu_screen(640, 480, &labels(1), 0, false, battery), LOW) > 0
-        };
-        assert!(shown(15, false));
-        assert!(!shown(16, false));
-        assert!(!shown(15, true));
-    }
-
-    #[test]
-    fn the_battery_stays_clear_of_the_title() {
-        let widest = text_width("100%+", BATTERY_TEXT_SCALE);
-        let title_end = (640 + text_width("RG35XX SP LINUX", 4)) / 2;
-        assert!(640 - MENU_LEFT - widest > title_end);
     }
 
     fn pixel(canvas: &Canvas, x: usize, y: usize) -> Rgb {

@@ -58,19 +58,28 @@ Working on the test unit, confirmed by the user:
   quitting, resuming and Menu + Start. The user tried it with FireRed
   on 2026-11-08 and confirmed it feels right
 - NES through `package/libretro-fceumm`, SNES through `package/libretro-snes9x` (free for
-  non-commercial use only), and Game Boy and Game Boy Color through mGBA. The launcher
-  lists games under console headings in release order, set by the order of `SYSTEMS` in
-  `main.rs`. New systems name saves with the full file name, such as `Tetris.gb.srm`;
+  non-commercial use only), and Game Boy and Game Boy Color through mGBA. Consoles
+  appear in release order, set by the order of `SYSTEMS` in `main.rs`. New systems name saves with the full file name, such as `Tetris.gb.srm`;
   GBA and Tamagotchi keep `<name>.srm` and `tama.state`, so existing saves still load.
   Cores faster than the panel's 59.94 Hz, like NES and SNES at 60.10, play sound at a
   matching lower rate (`playback_rate`), or they would underrun every few seconds. The
   user confirmed all of their games play well. Headless, Yoshi's Island, Chrono Trigger
   and A Link to the Past emulate at 134 to 143 fps
+- The launcher redesign. The home screen is a grid of tiles with pixel-art pictograms
+  (`icons.rs`, drawn for this project): RECENT (the last 8 games, in
+  `/mnt/data/recent.txt`), each console with games, and SETTINGS. A console opens its list
+  of games, with short names from `names.rs`. Holding a direction repeats (`repeat.rs`),
+  Left and Right page, B goes back, and Start opens settings anywhere. Settings has volume,
+  brightness, the button test, system info, reboot and power off, which need A twice.
+  Screens and button handling are in `launcher.rs` and `screens.rs`. Claude checked every
+  screen on the device with injected presses and screenshots, and the user confirmed on
+  2026-11-08 that it feels very good
 - Game Boy games fill the screen height. `CORE_OPTIONS` in `libretro.rs` turns off
   mGBA's Super Game Boy border, which shrank SGB-enhanced games to half the screen. Not
   yet seen by the user
 
 Built but not yet tested on the device:
+
 
 
 - The menu checks the battery every second and redraws when it changes. Before, charging
