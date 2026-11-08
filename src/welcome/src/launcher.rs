@@ -106,7 +106,9 @@ impl Group {
             Self::BoxArt => &[Setting::ShowCovers, Setting::DownloadMissingArt, Setting::DownloadAllArt, Setting::DeleteArt],
             Self::Theme => &[Setting::AccentColor, Setting::ShowTitle, Setting::TitleText, Setting::HomeTiles],
             Self::Time => &[Setting::TimeZone, Setting::ClockFormat],
-            Self::System => &[Setting::ButtonTest, Setting::SystemInfo, Setting::Reboot, Setting::PowerOff],
+            Self::System => {
+                &[Setting::ButtonTest, Setting::SystemInfo, Setting::IdleSleep, Setting::Reboot, Setting::PowerOff]
+            }
         }
     }
 }
@@ -133,6 +135,7 @@ pub enum Setting {
     ClockFormat,
     ButtonTest,
     SystemInfo,
+    IdleSleep,
     Reboot,
     PowerOff,
 }
@@ -160,6 +163,7 @@ impl Setting {
             Self::ClockFormat => "CLOCK",
             Self::ButtonTest => "BUTTON TEST",
             Self::SystemInfo => "SYSTEM INFO",
+            Self::IdleSleep => "SLEEP WHEN IDLE",
             Self::Reboot => "REBOOT",
             Self::PowerOff => "POWER OFF",
         }
@@ -187,6 +191,7 @@ impl Setting {
                 | Self::StartScreen
                 | Self::GameNames
                 | Self::Battery
+                | Self::IdleSleep
                 | Self::ShowCovers
                 | Self::Scaling
                 | Self::Effect
@@ -244,6 +249,7 @@ pub enum Command {
     StartScreen(i32),
     GameNames(i32),
     BatteryDisplay(i32),
+    IdleSleep(i32),
     Scaling(i32),
     Effect(i32),
     Ghosting(i32),
@@ -542,6 +548,7 @@ impl Launcher {
                 Setting::StartScreen => return Command::StartScreen(step),
                 Setting::GameNames => return Command::GameNames(step),
                 Setting::Battery => return Command::BatteryDisplay(step),
+                Setting::IdleSleep => return Command::IdleSleep(step),
                 Setting::ShowCovers => return Command::ToggleCovers,
                 Setting::Scaling => return Command::Scaling(step),
                 Setting::Effect => return Command::Effect(step),
@@ -571,6 +578,7 @@ impl Launcher {
                 | Setting::StartScreen
                 | Setting::GameNames
                 | Setting::Battery
+                | Setting::IdleSleep
                 | Setting::ShowCovers
                 | Setting::Scaling
                 | Setting::Effect
@@ -827,6 +835,11 @@ mod tests {
         assert_eq!(launcher.press(Button::A, &library), Command::ButtonTest);
         press_all(&mut launcher, &library, &[Button::Down, Button::A]);
         assert_eq!(launcher.screen(), Screen::Info);
+        launcher.press(Button::B, &library);
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::Left, &library), Command::IdleSleep(-1));
+        launcher.press(Button::Up, &library);
+        launcher.press(Button::A, &library);
         launcher.press(Button::B, &library);
         assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::System));
         assert_eq!(launcher.setting_selected(Group::System), Some(Setting::SystemInfo));

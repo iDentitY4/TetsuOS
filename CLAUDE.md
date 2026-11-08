@@ -160,6 +160,17 @@ Built but not yet tested on the device:
   the title, the home grid starts at 36 instead of 84 pixels (`GRID_TOP_UNTITLED`, just
   below the clock), so 3 rows of tiles grow from 108 to 124 pixels, and each tile's icon
   and labels are centred in it
+- Sleep when idle: Settings > SYSTEM > SLEEP WHEN IDLE: OFF (default), 2, 5, 10 or 30
+  minutes without a press in the launcher's own screens (home, lists, settings), not in
+  games, the Wi-Fi screen, the keyboard or a download (`Wake::Idle`, `sleep_until_woken`).
+  It turns the backlight off through `bl_power`, leaves Wi-Fi as lid sleep does, and
+  sleeps with `freeze`. The power button wakes it: only it and the lid are wakeup
+  sources, and patch 0010 drops the waking press so it doesn't shut down. If the lid
+  closes during it, that wakes it too, and it carries on as lid sleep. Saved as `idle=`.
+  Claude checked it on the device at 2 minutes with an RTC alarm as the waker: it slept
+  2 minutes after the last press (`PM: suspend entry (s2idle)`), woke 50 s later, turned
+  the backlight back on and rejoined Wi-Fi. Not yet checked by the user: that the screen
+  is dark while asleep, and waking with the power button. The test unit is back on OFF
 - Battery display: Settings > GENERAL > BATTERY: PERCENT, WHEN LOW (only at 15% or below
   while not charging, in red) or HIDDEN, for the menus' top-right corner; the clock takes
   its place. Games' low-battery warning and shutdown don't change. Like the accent, it is

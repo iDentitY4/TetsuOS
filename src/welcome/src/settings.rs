@@ -266,6 +266,17 @@ impl BatteryDisplay {
     }
 }
 
+/// The choices for sleeping when idle, in minutes without a press. 0 is off.
+pub const IDLE_SLEEP_MINUTES: [u32; 5] = [0, 2, 5, 10, 30];
+
+pub fn idle_sleep_label(minutes: u32) -> String {
+    if minutes == 0 {
+        "OFF".into()
+    } else {
+        format!("{minutes} MIN")
+    }
+}
+
 /// How games are named in lists.
 #[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub enum GameNames {
@@ -330,6 +341,8 @@ struct Settings {
     /// Lists leave out the cover panel, so names have the whole width.
     covers_hidden: bool,
     battery: BatteryDisplay,
+    /// Minutes without a press in the menus before sleeping, one of `IDLE_SLEEP_MINUTES`.
+    idle_minutes: u32,
 }
 
 /// Reads the first value from `amixer cget` output, such as `  : values=25,25`.
@@ -375,6 +388,11 @@ fn parse(text: &str) -> Settings {
             "title_hidden" => settings.title_hidden = value == "yes",
             "title" => settings.title = clean_title(value),
             "covers" => settings.covers_hidden = value == "off",
+            "idle" => {
+                if let Some(&minutes) = IDLE_SLEEP_MINUTES.iter().find(|&&choice| value.parse() == Ok(choice)) {
+                    settings.idle_minutes = minutes;
+                }
+            }
             "battery" => {
                 if let Some(&battery) = BatteryDisplay::ALL.iter().find(|choice| choice.key() == value) {
                     settings.battery = battery;
@@ -429,6 +447,7 @@ fn format(settings: &Settings) -> String {
     text += &format!("names={}\n", settings.game_names.key());
     text += &format!("covers={}\n", if settings.covers_hidden { "off" } else { "on" });
     text += &format!("battery={}\n", settings.battery.key());
+    text += &format!("idle={}\n", settings.idle_minutes);
     if !settings.hidden_tiles.is_empty() {
         text += &format!("hidden_tiles={}\n", settings.hidden_tiles.join(","));
     }
@@ -560,6 +579,18 @@ pub fn set_title(text: &str) -> io::Result<()> {
     store(&Settings { title: clean_title(text), ..load() })
 }
 
+/// Minutes without a press before the menus sleep, or 0 for never.
+pub fn idle_minutes() -> u32 {
+    load().idle_minutes
+}
+
+/// Moves along `IDLE_SLEEP_MINUTES` and saves the choice.
+pub fn change_idle_minutes(steps: i32) -> io::Result<()> {
+    let settings = load();
+    let idle_minutes = cycle(&IDLE_SLEEP_MINUTES, settings.idle_minutes, steps);
+    store(&Settings { idle_minutes, ..settings })
+}
+
 pub fn battery_display() -> BatteryDisplay {
     load().battery
 }
@@ -667,6 +698,7 @@ mod tests {
             game_names: GameNames::Full,
             covers_hidden: true,
             battery: BatteryDisplay::WhenLow,
+            idle_minutes: 10,
         };
         assert_eq!(parse(&format(&settings)), settings);
         // Files from before the time settings load with UTC and a 24 hour clock.
@@ -679,6 +711,11 @@ mod tests {
         assert_eq!(old.game_names, GameNames::Short);
         assert!(!old.covers_hidden, "covers show until turned off");
         assert_eq!(old.battery, BatteryDisplay::Percent);
+        assert_eq!(old.idle_minutes, 0, "no sleeping until chosen");
+        assert_eq!(parse("idle=7\n").idle_minutes, 0, "only the offered choices");
+        assert_eq!(cycle(&IDLE_SLEEP_MINUTES, 0, -1), 30);
+        assert_eq!(idle_sleep_label(0), "OFF");
+        assert_eq!(idle_sleep_label(5), "5 MIN");
         assert_eq!(StartScreen::Home.cycle(-1), StartScreen::LastGame);
         assert_eq!(parse("hidden_tiles=nes,, snes ,\n").hidden_tiles, ["nes", "snes"]);
     }

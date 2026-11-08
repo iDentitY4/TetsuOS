@@ -428,20 +428,58 @@ fn read_battery(directory: &Path) -> Option<Battery> {
 /// Sleeps until the lid opens. Anything else that wakes the device, like the power button
 /// being pressed in a bag, only leads to sleeping again.
 fn sleep_until_lid_opens(events: &Receiver<Event>) {
-    // Wi-Fi must be disconnected first, or the device hangs going to sleep. Without
-    // wpa_supplicant there is nothing to disconnect.
+    without_wifi(|| sleep_until_lid_opens_inner(events));
+}
+
+/// Runs `sleep` off the Wi-Fi network. Wi-Fi must be disconnected first, or the device
+/// hangs going to sleep. Without wpa_supplicant there is nothing to disconnect.
+fn without_wifi(sleep: impl FnOnce()) {
     let wifi = wifi::Control::open(Path::new(wifi::CONTROL_PATH)).ok();
     if let Some(control) = &wifi {
         if let Err(error) = control.disconnect() {
             eprintln!("warning: could not leave the Wi-Fi network before sleep: {error}");
         }
     }
-    sleep_until_lid_opens_inner(events);
+    sleep();
     if let Some(control) = &wifi {
         if let Err(error) = control.reconnect() {
             eprintln!("warning: could not rejoin the Wi-Fi network: {error}");
         }
     }
+}
+
+const BACKLIGHT_POWER: &str = "/sys/class/backlight/backlight/bl_power";
+
+/// Sleeps with the lid open, after the menus were idle, until something wakes the device:
+/// the power button, whose waking press patch 0010 keeps from shutting down. If the lid
+/// closes meanwhile, which also wakes it, this becomes lid sleep and lasts until it opens.
+fn sleep_until_woken(events: &Receiver<Event>) {
+    events.try_iter().for_each(drop);
+    // The panel stays lit in sleep with the lid open, so it is turned off first.
+    if let Err(error) = std::fs::write(BACKLIGHT_POWER, "4") {
+        eprintln!("warning: could not turn the screen off: {error}");
+    }
+    without_wifi(|| {
+        if let Err(error) = std::fs::write(SLEEP_CONTROL, "freeze") {
+            eprintln!("warning: could not sleep: {error}");
+            return;
+        }
+        let deadline = Instant::now() + LID_WAKE_WAIT;
+        while let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
+            match events.recv_timeout(remaining) {
+                Ok(event) if event.pressed() == Some(Button::Lid) => {
+                    sleep_until_lid_opens_inner(events);
+                    break;
+                }
+                Ok(_) => {}
+                Err(_) => break,
+            }
+        }
+    });
+    if let Err(error) = std::fs::write(BACKLIGHT_POWER, "0") {
+        eprintln!("warning: could not turn the screen on: {error}");
+    }
+    events.try_iter().for_each(drop);
 }
 
 fn sleep_until_lid_opens_inner(events: &Receiver<Event>) {
@@ -1107,6 +1145,7 @@ fn launcher_canvas(
                     Some(format!("{covered} OF {total} GAMES HAVE A COVER"))
                 }
                 Group::Time => Some(time_note()),
+                Group::System if settings::idle_minutes() > 0 => Some("THE POWER BUTTON WAKES IT FROM SLEEP".into()),
                 _ => None,
             };
             let view = screens::SettingsView {
@@ -1122,6 +1161,7 @@ fn launcher_canvas(
                 game_names: settings::game_names().label(),
                 covers: if settings::covers_shown() { "ON" } else { "OFF" },
                 battery: settings::battery_display().label(),
+                idle_sleep: &settings::idle_sleep_label(settings::idle_minutes()),
                 title_shown: if settings::title_hidden() { "HIDDEN" } else { "SHOWN" },
                 title_text: &settings::title(),
                 message: launcher.confirmation(),
@@ -1187,6 +1227,8 @@ enum Wake {
     Event(Event),
     Repeat(Button, usize),
     Redraw,
+    /// No press for as long as Settings > SYSTEM > SLEEP WHEN IDLE allows.
+    Idle,
 }
 
 /// Changes how games are shown, and saves the choice.
@@ -1252,6 +1294,11 @@ fn act(
         Action::Scaling(steps) => change_display(|display| display.scaling = display.scaling.cycle(steps)),
         Action::Effect(steps) => change_display(|display| display.effect = display.effect.cycle(steps)),
         Action::Ghosting(steps) => change_display(|display| display.ghosting = display.ghosting.cycle(steps)),
+        Action::IdleSleep(steps) => {
+            if let Err(error) = settings::change_idle_minutes(steps) {
+                eprintln!("warning: could not save the idle sleep setting: {error}");
+            }
+        }
         Action::BatteryDisplay(steps) => {
             let display = settings::battery_display().cycle(steps);
             canvas::set_battery_display(display);
@@ -1424,6 +1471,8 @@ fn run_launcher() -> io::Result<()> {
     let mut battery_read = Instant::now();
     // The minute shown, to redraw when it changes. The time settings show it too.
     let mut shown_clock: Option<String>;
+    // Since when no button has been pressed, for sleeping when idle.
+    let mut last_press = Instant::now();
 
     loop {
         if monitor.check(Instant::now()) == Some(power::Level::Critical) {
@@ -1458,6 +1507,7 @@ fn run_launcher() -> io::Result<()> {
 
         // Wait for input or a held button's repeat, redrawing when the battery changes and
         // a few times a second while a long name scrolls.
+        let idle_after = Duration::from_secs(u64::from(settings::idle_minutes()) * 60);
         let wake = loop {
             let now = Instant::now();
             if let Some((button, count)) = repeater.due(now) {
@@ -1472,6 +1522,10 @@ fn run_launcher() -> io::Result<()> {
                 Ok(event) => break Wake::Event(event),
                 Err(RecvTimeoutError::Timeout) if repeater.wait(Instant::now()).is_some() => {}
                 Err(RecvTimeoutError::Timeout) => {
+                    // Checked at least once a second, with the battery.
+                    if !idle_after.is_zero() && last_press.elapsed() >= idle_after {
+                        break Wake::Idle;
+                    }
                     if battery_read.elapsed() >= BATTERY_REFRESH {
                         battery_read = Instant::now();
                         let reading = read_battery(&power::battery_dir());
@@ -1491,8 +1545,19 @@ fn run_launcher() -> io::Result<()> {
                 Err(RecvTimeoutError::Disconnected) => return Ok(()),
             }
         };
+        if matches!(wake, Wake::Event(_) | Wake::Repeat(..)) {
+            last_press = Instant::now();
+        }
         let action = match wake {
             Wake::Redraw => Action::Nothing,
+            Wake::Idle => {
+                repeater.stop();
+                println!("sleeping after {} idle minutes {}", idle_after.as_secs() / 60, boot_time());
+                sleep_until_woken(&events);
+                println!("woke {}", boot_time());
+                last_press = Instant::now();
+                Action::Nothing
+            }
             Wake::Repeat(button, count) => {
                 for _ in 0..count {
                     let action = launcher.press(button, &library);
