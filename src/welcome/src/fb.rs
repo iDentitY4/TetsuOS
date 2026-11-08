@@ -128,15 +128,26 @@ impl Framebuffer {
     /// Writes XRGB8888 pixels to the middle of the screen, leaving the rest alone.
     pub fn blit_centred(&mut self, pixels: &[u32], width: usize, height: usize) -> io::Result<()> {
         let (screen_w, screen_h) = self.size();
-        let bytes_per_pixel = self.var.bits_per_pixel as usize / 8;
-        let left = screen_w.saturating_sub(width) / 2 * bytes_per_pixel;
+        let left = screen_w.saturating_sub(width) / 2;
         let top = screen_h.saturating_sub(height) / 2;
-        let row_bytes = width.min(screen_w) * bytes_per_pixel;
+        self.blit(pixels, width, height, left, top)
+    }
+
+    /// Writes XRGB8888 pixels with their top left corner at `left`, `top`, clipped to the
+    /// screen, leaving the rest alone.
+    pub fn blit(&mut self, pixels: &[u32], width: usize, height: usize, left: usize, top: usize) -> io::Result<()> {
+        let (screen_w, screen_h) = self.size();
+        if left >= screen_w || top >= screen_h || width == 0 {
+            return Ok(());
+        }
+        let bytes_per_pixel = self.var.bits_per_pixel as usize / 8;
+        let row_bytes = width.min(screen_w - left) * bytes_per_pixel;
+        let left = left * bytes_per_pixel;
         let is_xrgb = bytes_per_pixel == 4
             && (self.var.red.offset, self.var.green.offset, self.var.blue.offset) == (16, 8, 0);
 
         let mut row_buffer = vec![0u8; if is_xrgb { 0 } else { row_bytes }];
-        for (y, row) in pixels.chunks_exact(width).take(screen_h - top).enumerate() {
+        for (y, row) in pixels.chunks_exact(width).take(height.min(screen_h - top)).enumerate() {
             let offset = self.screen_offset() + ((top + y) * self.line_length + left) as u64;
             if is_xrgb {
                 // SAFETY: the bytes of a u32 are always valid, and row_bytes is within the

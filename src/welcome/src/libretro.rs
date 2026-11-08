@@ -4,6 +4,8 @@ use crate::canvas::{self, PauseView};
 use crate::fb::Framebuffer;
 use crate::input::{self, Button, Controls, Event};
 use crate::pause::{Action, MenuTrigger, PauseMenu};
+use crate::power::{self, Level};
+use crate::screens;
 use crate::settings;
 use crate::storage::write_atomic;
 use std::cell::RefCell;
@@ -658,6 +660,44 @@ impl Drop for Silence {
     }
 }
 
+/// How a game ended.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Ending {
+    /// Left from the menu, with Menu + Start, or because the system asked.
+    Quit,
+    /// The battery ran out, so the device should power off now that the game is saved.
+    BatteryEmpty,
+}
+
+/// Where the battery warning goes: a corner that is border for every system's picture.
+const WARNING_POSITION: (usize, usize) = (6, 6);
+
+/// Shows the charge level in the corner while the battery is low.
+fn draw_battery_warning(framebuffer: &mut Framebuffer, percent: u32) -> io::Result<()> {
+    let canvas = screens::battery_warning(percent);
+    let pixels: Vec<u32> = canvas
+        .pixels
+        .iter()
+        .map(|color| u32::from(color.0) << 16 | u32::from(color.1) << 8 | u32::from(color.2))
+        .collect();
+    let (x, y) = WARNING_POSITION;
+    framebuffer.blit(&pixels, canvas.width, canvas.height, x, y)
+}
+
+/// Writes the game's save file, and the state to resume from where there is one.
+fn save_progress(
+    core: &mut Core,
+    persistence: Persistence,
+    save_file: &mut SaveFile,
+    resume: Option<&Path>,
+) -> io::Result<()> {
+    save_file.update(&core.snapshot(persistence)?)?;
+    if let Some(path) = resume {
+        core.save_state().and_then(|state| write_atomic(path, &state))?;
+    }
+    Ok(())
+}
+
 /// How the game continues after the menu closes.
 #[derive(PartialEq)]
 enum AfterMenu {
@@ -771,7 +811,7 @@ pub fn play(
     save: &Path,
     persistence: Persistence,
     framebuffer: &mut Framebuffer,
-) -> io::Result<()> {
+) -> io::Result<Ending> {
     // SAFETY: the handler only stores to an atomic.
     unsafe { signal(SIGTERM, on_terminate as extern "C" fn(c_int) as usize) };
     let directory = save.parent().unwrap_or(Path::new("."));
@@ -803,17 +843,38 @@ pub fn play(
     let mut menu = PauseMenu::new();
     let mut trigger = MenuTrigger::new();
     let mut release_at = None;
+    let mut battery = power::Monitor::new();
+    let mut ending = Ending::Quit;
     loop {
-        let (leave, open_menu) = with_host(|host| {
-            let mut open_menu = false;
+        let (leave, open_menu, lid_closed) = with_host(|host| {
+            let (mut open_menu, mut lid_closed) = (false, false);
             for event in events.try_iter() {
                 host.controls.apply(&event);
                 open_menu |= trigger.update(&event);
+                lid_closed |= event.pressed() == Some(Button::Lid);
             }
-            (wants_to_leave(&host.controls), open_menu)
+            (wants_to_leave(&host.controls), open_menu, lid_closed)
         });
         if leave {
             break;
+        }
+        if lid_closed {
+            // The launcher puts the device to sleep shortly. The battery can run out while
+            // it sleeps, so save where the game is first.
+            if let Err(error) = save_progress(&mut core, persistence, &mut save_file, resume.as_deref()) {
+                eprintln!("warning: could not save before sleeping: {error}");
+            }
+        }
+        match battery.check(Instant::now()) {
+            Some(Level::Critical) => {
+                eprintln!("the battery is empty: saving and powering off");
+                let (width, height) = framebuffer.size();
+                framebuffer.draw(&screens::message_screen(width, height, "BATTERY EMPTY"))?;
+                ending = Ending::BatteryEmpty;
+                break;
+            }
+            Some(Level::Low(percent)) => draw_battery_warning(framebuffer, percent)?,
+            Some(Level::Fine) | None => {}
         }
         if open_menu {
             hold_cpu_speed();
@@ -905,10 +966,7 @@ pub fn play(
     if release_at.is_some() {
         release_cpu_speed();
     }
-    save_file.update(&core.snapshot(persistence)?)?;
-    if let Some(path) = &resume {
-        core.save_state().and_then(|state| write_atomic(path, &state))?;
-    }
+    save_progress(&mut core, persistence, &mut save_file, resume.as_deref())?;
     let audio = with_host(|host| host.audio.take());
     if let Some(mut audio) = audio {
         drop(audio.stdin.take());
@@ -919,7 +977,7 @@ pub fn play(
         (core.unload_game)();
         (core.deinit)();
     }
-    Ok(())
+    Ok(ending)
 }
 
 /// Runs a game with no display, audio or pacing, to check a core away from the device.

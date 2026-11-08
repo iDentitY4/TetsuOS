@@ -80,6 +80,16 @@ Working on the test unit, confirmed by the user:
 
 Built but not yet tested on the device:
 
+- Low-battery protection (`power.rs`). Running on battery, a game shows the charge in red
+  in the top-left corner, which is border for every system, at 10% or below. At 3% or
+  below, or under 3.35 V, read twice 5 seconds apart, the game saves as when quitting,
+  shows BATTERY EMPTY and exits with code 3, and the launcher powers off. The launcher
+  also powers off when it reads empty. Closing the lid in a game saves its resume state,
+  and the launcher waits 500 ms before sleeping. `WELCOME_BATTERY_DIR` and
+  `WELCOME_POWEROFF` point the battery reading at test files and replace `poweroff`.
+  Claude tested the warning, the empty path and the lid save on the device with those;
+  a real empty battery hasn't been tried
+
 
 
 - The menu checks the battery every second and redraws when it changes. Before, charging

@@ -7,6 +7,7 @@ mod launcher;
 mod libretro;
 mod names;
 mod pause;
+mod power;
 mod recent;
 mod repeat;
 mod screens;
@@ -18,7 +19,7 @@ use icons::Icon;
 use launcher::{Command as Action, Game, Launcher, Library, List, Screen, Shelf, Tile};
 use repeat::Repeater;
 use input::{Button, Controls, Event};
-use libretro::Persistence;
+use libretro::{Ending, Persistence};
 use std::ffi::OsString;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -128,10 +129,13 @@ const SYSTEMS: [System; 6] = [
     },
 ];
 
-const BATTERY_DIR: &str = "/sys/class/power_supply/axp20x-battery";
 /// How often the menu checks the battery, so plugging in a charger shows promptly.
 const BATTERY_REFRESH: Duration = Duration::from_secs(1);
 const SLEEP_CONTROL: &str = "/sys/power/state";
+/// The exit code of a game process that stopped because the battery ran out.
+const BATTERY_EMPTY_EXIT: u8 = 3;
+/// How long a running game gets to save after the lid closes, before the device sleeps.
+const SAVE_BEFORE_SLEEP: Duration = Duration::from_millis(500);
 /// After a wake, how long the lid gets to report opening before sleeping again.
 const LID_WAKE_WAIT: Duration = Duration::from_millis(300);
 
@@ -332,7 +336,7 @@ fn change_volume(button: Button) {
 }
 
 /// Runs the game in its own process, so a core crash only ends the game.
-fn play_game(rom: &Path, events: &Receiver<Event>) -> io::Result<()> {
+fn play_game(rom: &Path, events: &Receiver<Event>) -> io::Result<Ending> {
     let system = system_for(rom).ok_or_else(|| io::Error::other("no core for this game"))?;
     if let Some(size) = system.rom_size {
         let actual = std::fs::metadata(rom)?.len();
@@ -349,19 +353,35 @@ fn play_game(rom: &Path, events: &Receiver<Event>) -> io::Result<()> {
         .args([Path::new(system.core), rom, &save_path(rom, system)])
         .arg(persistence_arg(system.persistence))
         .spawn()?;
-    while game.try_wait()?.is_none() {
+    let status = loop {
+        if let Some(status) = game.try_wait()? {
+            break status;
+        }
         if let Ok(event) = events.recv_timeout(Duration::from_millis(100)) {
             match event.pressed() {
                 Some(button @ (Button::VolumeUp | Button::VolumeDown)) => change_volume(button),
-                Some(Button::Lid) => sleep_until_lid_opens(events),
+                Some(Button::Lid) => {
+                    // The game saves where it is when it sees the lid close.
+                    sleep(SAVE_BEFORE_SLEEP);
+                    sleep_until_lid_opens(events);
+                }
                 _ => {}
             }
         }
-    }
+    };
     // In case the game ended while it held the CPU speed for its menu.
     libretro::release_cpu_speed();
     // Presses made during the game shouldn't act on the menu.
     events.try_iter().for_each(drop);
+    Ok(if status.code() == Some(i32::from(BATTERY_EMPTY_EXIT)) { Ending::BatteryEmpty } else { Ending::Quit })
+}
+
+/// Shows a message, then runs the command that reboots or powers off. Init stops this app
+/// as part of shutting down.
+fn shut_down(framebuffer: &mut fb::Framebuffer, message: &str, program: &str) -> io::Result<()> {
+    let (width, height) = framebuffer.size();
+    framebuffer.draw(&screens::message_screen(width, height, message))?;
+    Command::new(program).status()?;
     Ok(())
 }
 
@@ -465,8 +485,10 @@ fn act(
     match action {
         Action::Nothing => {}
         Action::Play(rom) => {
-            if let Err(error) = play_game(&rom, events) {
-                eprintln!("welcome: could not start the game: {error}");
+            match play_game(&rom, events) {
+                Ok(Ending::BatteryEmpty) => shut_down(framebuffer, "BATTERY EMPTY", &power::poweroff_command())?,
+                Ok(Ending::Quit) => {}
+                Err(error) => eprintln!("welcome: could not start the game: {error}"),
             }
             return Ok(true);
         }
@@ -479,14 +501,8 @@ fn act(
             settings::change_brightness(steps);
             save_settings();
         }
-        Action::Reboot | Action::PowerOff => {
-            let (width, height) = framebuffer.size();
-            let (message, program) =
-                if action == Action::Reboot { ("REBOOTING", "reboot") } else { ("POWERING OFF", "poweroff") };
-            framebuffer.draw(&screens::message_screen(width, height, message))?;
-            // Init stops this app as part of shutting down.
-            Command::new(program).status()?;
-        }
+        Action::Reboot => shut_down(framebuffer, "REBOOTING", "reboot")?,
+        Action::PowerOff => shut_down(framebuffer, "POWERING OFF", &power::poweroff_command())?,
     }
     Ok(false)
 }
@@ -501,9 +517,14 @@ fn run_launcher() -> io::Result<()> {
     let mut launcher = Launcher::new();
     let mut repeater = Repeater::new();
     let mut library = load_library();
+    let mut monitor = power::Monitor::new();
 
     loop {
-        let battery = read_battery(Path::new(BATTERY_DIR));
+        if monitor.check(Instant::now()) == Some(power::Level::Critical) {
+            eprintln!("the battery is empty: powering off");
+            shut_down(&mut framebuffer, "BATTERY EMPTY", &power::poweroff_command())?;
+        }
+        let battery = read_battery(&power::battery_dir());
         framebuffer.draw(&launcher_canvas(framebuffer.size(), &launcher, &library, battery))?;
 
         // Wait for input or a held button's repeat, redrawing when the battery changes.
@@ -517,7 +538,7 @@ fn run_launcher() -> io::Result<()> {
                 Ok(event) => break Wake::Event(event),
                 Err(RecvTimeoutError::Timeout) if repeater.wait(Instant::now()).is_some() => {}
                 Err(RecvTimeoutError::Timeout) => {
-                    if read_battery(Path::new(BATTERY_DIR)) != battery {
+                    if read_battery(&power::battery_dir()) != battery {
                         break Wake::Redraw;
                     }
                 }
@@ -570,7 +591,7 @@ fn run_launcher() -> io::Result<()> {
 }
 
 /// The separate process that `play_game` starts.
-fn run_game(core: &Path, rom: &Path, save: &Path, persistence: Persistence) -> io::Result<()> {
+fn run_game(core: &Path, rom: &Path, save: &Path, persistence: Persistence) -> io::Result<Ending> {
     libretro::play(core, rom, save, persistence, &mut open_framebuffer()?)
 }
 
@@ -661,10 +682,16 @@ fn main() -> ExitCode {
         }
         [flag, path] if flag == "--preview-buttons" => write_button_preview(path),
         [flag, path] if flag == "--preview-pause" => write_pause_preview(path),
-        [flag, core, rom, save, persistence] if flag == "--play" => parse_persistence(persistence)
-            .and_then(|persistence| {
+        [flag, core, rom, save, persistence] if flag == "--play" => {
+            let ending = parse_persistence(persistence).and_then(|persistence| {
                 run_game(Path::new(core), Path::new(rom), Path::new(save), persistence)
-            }),
+            });
+            match ending {
+                Ok(Ending::BatteryEmpty) => return ExitCode::from(BATTERY_EMPTY_EXIT),
+                Ok(Ending::Quit) => Ok(()),
+                Err(error) => Err(error),
+            }
+        }
         [flag, core, rom, save, persistence, frames, output] if flag == "--render" => {
             parse_persistence(persistence).and_then(|persistence| {
                 let frames = frames.parse().map_err(io::Error::other)?;

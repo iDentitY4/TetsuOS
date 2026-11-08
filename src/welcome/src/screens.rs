@@ -1,6 +1,6 @@
 //! Lays out the launcher's screens: the console grid, game lists, settings and system info.
 
-use crate::canvas::{text_width, Battery, Canvas, Rgb, ACCENT, BACKGROUND, BODY, MUTED, TEXT};
+use crate::canvas::{text_width, Battery, Canvas, Rgb, ACCENT, BACKGROUND, BODY, LOW, MUTED, TEXT};
 use crate::font;
 use crate::icons::{self, Icon};
 use crate::launcher::{Setting, COLUMNS, PAGE, SETTINGS};
@@ -216,6 +216,15 @@ pub fn info_screen(width: usize, height: usize, lines: &[(String, String)], batt
     canvas
 }
 
+/// The charge level in red, small enough for the border around a game's picture.
+pub fn battery_warning(percent: u32) -> Canvas {
+    let text = format!("{percent}%");
+    let mut canvas = Canvas::new(text_width(&text, TEXT_SCALE) + 4, font::HEIGHT * TEXT_SCALE + 4);
+    canvas.pixels.fill(Rgb(0, 0, 0));
+    canvas.text_at(&text, 2, 2, TEXT_SCALE, LOW);
+    canvas
+}
+
 /// A message on its own, such as while the device powers off.
 pub fn message_screen(width: usize, height: usize, message: &str) -> Canvas {
     let mut canvas = Canvas::new(width, height);
@@ -295,6 +304,16 @@ mod tests {
         assert!(640 - 16 - widest > home_title_end);
         let list_title_end = 16 + icons::WIDTH * 2 + 16 + text_width("GAME BOY ADVANCE", 3);
         assert!(640 - 16 - text_width("100 OF 100", TEXT_SCALE) > list_title_end);
+    }
+
+    #[test]
+    fn the_battery_warning_fits_inside_every_border() {
+        // It shows at 10% or below. The GBA picture leaves 27 pixels above it, and the
+        // narrowest side border is the SNES picture's, at 46.
+        let warning = battery_warning(10);
+        assert!(6 + warning.height <= 27, "shorter than the GBA border");
+        assert!(6 + warning.width <= 46, "narrower than the SNES border");
+        assert!(warning.pixels.contains(&LOW));
     }
 
     #[test]
