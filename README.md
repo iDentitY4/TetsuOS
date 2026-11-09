@@ -1,5 +1,7 @@
 # Tetsu OS
 
+![The Tetsu OS logo: a pixel-art iron kettle with a gamepad's D-pad and buttons on its side](docs/logo.png)
+
 Tetsu OS is a Linux distribution for retro handhelds. It currently runs on the
 Anbernic RG35XX SP (Allwinner H700) and boots to its own game launcher, written in
 Rust: *tetsu* (鉄) is Japanese for iron.
