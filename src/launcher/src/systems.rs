@@ -1,11 +1,31 @@
 //! The consoles the launcher runs games for: their cores, files and save names.
 
 use crate::icons::{self, Icon};
-use crate::libretro::{CoreSetup, Persistence};
 use crate::rom_zip;
 use std::ffi::OsString;
 use std::io;
 use std::path::{Path, PathBuf};
+
+/// How a game keeps its progress between runs.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Persistence {
+    /// The cartridge's battery-backed memory, which only changes when the game saves.
+    BatteryRam,
+    /// The whole machine, for hardware with no separate save memory.
+    FullState,
+}
+
+/// How the frontend sets up a core for one console.
+#[derive(Clone, Copy, Default, Debug)]
+pub struct CoreSetup {
+    /// The shape the game is shown at, for consoles whose pixels aren't square.
+    pub aspect: Option<(usize, usize)>,
+    /// Answers the core's own defaults for options nobody chose. Without, a core keeps
+    /// whatever it set up internally, which for PCSX `ReARMed` means no memory card and no
+    /// disc read-ahead. The first cores were set up and checked without this, so they
+    /// keep that, until an option is chosen in the menu.
+    pub declared_defaults: bool,
+}
 
 /// A kind of game the launcher can run.
 pub(crate) struct System {

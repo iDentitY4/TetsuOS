@@ -5,8 +5,8 @@
 //! a cover are skipped, so running it again only fetches new games.
 
 use crate::i18n::tr;
-use crate::boxart::Image;
-use crate::canvas::Rgb;
+use crate::image::Image;
+use crate::color::Rgb;
 use crate::png;
 use crate::storage::write_atomic;
 use serde::Deserialize;
@@ -58,20 +58,14 @@ pub trait Source {
     fn get(&self, url: &str) -> Result<Option<Vec<u8>>, String>;
 }
 
-/// Downloads over HTTPS inside the app: `ureq` with rustls, checking certificates against
-/// the Mozilla roots built in by `webpki-roots`, so the device needs no certificate files.
+/// Downloads over HTTPS, as `http` sets it up.
 pub struct Https {
     agent: ureq::Agent,
 }
 
 impl Https {
     pub fn new() -> Self {
-        let config = ureq::Agent::config_builder()
-            .https_only(true)
-            .timeout_connect(Some(Duration::from_secs(15)))
-            .timeout_global(Some(Duration::from_secs(60)))
-            .build();
-        Self { agent: config.into() }
+        Self { agent: crate::http::config(Duration::from_secs(60)).build().into() }
     }
 }
 

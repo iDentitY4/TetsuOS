@@ -16,6 +16,7 @@ use crate::screens;
 use crate::screenshot;
 use crate::settings::{self, Effect, GameDisplay, Ghosting, Scaling};
 use crate::storage::write_atomic;
+use crate::systems::{CoreSetup, Persistence};
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::ffi::{c_char, c_int, c_uint, c_void, CStr, CString, OsStr};
@@ -54,22 +55,11 @@ const ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK: c_uint = 69;
 const DEVICE_JOYPAD: c_uint = 1;
 const MEMORY_SAVE_RAM: c_uint = 0;
 
-/// How a game keeps its progress between runs.
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum Persistence {
-    /// The cartridge's battery-backed memory, which only changes when the game saves.
-    BatteryRam,
-    /// The whole machine, for hardware with no separate save memory.
-    FullState,
-}
-
-impl Persistence {
-    /// Frames between saves. A full state changes constantly, so it is saved less often.
-    fn autosave_frames(self) -> u64 {
-        match self {
-            Self::BatteryRam => 120,
-            Self::FullState => 3600,
-        }
+/// Frames between saves. A full state changes constantly, so it is saved less often.
+fn autosave_frames(persistence: Persistence) -> u64 {
+    match persistence {
+        Persistence::BatteryRam => 120,
+        Persistence::FullState => 3600,
     }
 }
 
@@ -232,18 +222,6 @@ unsafe fn read_options_v2(options: &CoreOptionsV2) -> Declarations {
 }
 
 const GHOSTING_OPTION: &str = core_options::FRONTEND_OWNED[0];
-
-/// How the frontend sets up a core for one console.
-#[derive(Clone, Copy, Default, Debug)]
-pub struct CoreSetup {
-    /// The shape the game is shown at, for consoles whose pixels aren't square.
-    pub aspect: Option<(usize, usize)>,
-    /// Answers the core's own defaults for options nobody chose. Without, a core keeps
-    /// whatever it set up internally, which for PCSX `ReARMed` means no memory card and no
-    /// disc read-ahead. The first cores were set up and checked without this, so they
-    /// keep that, until an option is chosen in the menu.
-    pub declared_defaults: bool,
-}
 
 /// `struct retro_system_info`.
 #[repr(C)]
@@ -2157,7 +2135,7 @@ pub fn play(
             }
             release_at = None;
         }
-        if frames.is_multiple_of(persistence.autosave_frames()) {
+        if frames.is_multiple_of(autosave_frames(persistence)) {
             let saved = core.snapshot(persistence).and_then(|progress| save_file.update(&progress));
             if let Err(error) = saved {
                 eprintln!("warning: could not save: {error}");
@@ -2608,8 +2586,8 @@ mod tests {
 
     #[test]
     fn a_full_state_is_saved_less_often_than_battery_memory() {
-        assert_eq!(Persistence::BatteryRam.autosave_frames(), 120);
-        assert_eq!(Persistence::FullState.autosave_frames(), 3600);
+        assert_eq!(autosave_frames(Persistence::BatteryRam), 120);
+        assert_eq!(autosave_frames(Persistence::FullState), 3600);
     }
 
     #[test]

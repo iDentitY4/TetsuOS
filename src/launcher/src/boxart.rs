@@ -3,19 +3,14 @@
 //! its newest screenshot, unless Settings > BOX ART turns that off. Downloading a cover
 //! then takes the screenshot's place.
 
-use crate::canvas::Rgb;
+use crate::color::Rgb;
+use crate::image::Image;
 use crate::{screenshot, settings};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 pub const ART_DIR: &str = "/mnt/data/boxart";
-
-pub struct Image {
-    pub width: usize,
-    pub height: usize,
-    pub pixels: Vec<Rgb>,
-}
 
 /// Reads a binary PPM (P6) image with 8-bit channels.
 pub fn parse_ppm(bytes: &[u8]) -> Option<Image> {

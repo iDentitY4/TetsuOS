@@ -3,7 +3,8 @@
 use crate::*;
 use crate::input::{Button, Event};
 use crate::launcher::{Game, Library};
-use crate::libretro::{self, Ending, Persistence};
+use crate::libretro::{self, Ending};
+use crate::systems::Persistence;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::io::Write;

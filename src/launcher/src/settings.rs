@@ -7,7 +7,7 @@
 //! The file is lines of `key=value`; unknown lines are ignored, and missing ones keep their
 //! defaults, so files from older versions still load.
 
-use crate::canvas::Rgb;
+use crate::color::Rgb;
 use crate::clock::{self, Zone};
 use crate::controls::Layout;
 use crate::storage::write_atomic;

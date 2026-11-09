@@ -125,7 +125,7 @@ batches 1, 5 and 7.
 - [x] **1. FFI guards** — S1, S2, S3, S4, S8, C1, C2. Only changes what happens on input that is UB or a panic today.
 - [x] **2. Unsafe documentation** — S5, S6, S7, S9, I3. Comments, `debug_assert`s, pointer-cast spelling, `deny(undocumented_unsafe_blocks)`.
 - [x] **3. Clippy mechanical** — C6, C7, I4, B4. No moves. Left: `play`'s 8 arguments and its by-value `cheat_source` (batch 8), P3 (with the paths, batch 9), `controls.rs:74` (the inner `Option` is the target "none"), `&self` on `in_flight`/`memory_found`, and the lints whose fixes read worse here (`single_match_else`, `manual_let_else`, `format_push_string`).
-- [ ] **4. Layering, small moves** — A2, A4, A8, C4, and `Rgb` → `color.rs` from A3.
+- [x] **4. Layering, small moves** — A2 (`image.rs`), A4 (`CoreSetup`, `Persistence` → `systems.rs`), A8 (`http.rs`), and `Rgb` → `color.rs` from A3. Not done, on a closer look: C4 (the `#[cfg(test)]` fake server and the one `cfg!(test)` are short and clear as they are) and `systems` ⇄ `rom_zip` (breaking it means a predicate through 11 call sites, for a relation that is mutual by nature).
 - [ ] **5. `canvas` split** — A1: in-game menu drawing out of `canvas.rs`.
 - [ ] **6. Explicit imports and visibility** — A6, I1, rest of A3, P1.
 - [ ] **7. `libretro` split** — A5 as file moves first (one commit), function extraction second (another).

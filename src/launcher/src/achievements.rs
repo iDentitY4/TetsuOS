@@ -12,8 +12,8 @@
 //! callbacks only ever run on that thread. The callbacks' state lives in `STATE`, one per
 //! thread, which is never held while calling into rcheevos.
 
-use crate::boxart::Image;
-use crate::canvas::Rgb;
+use crate::image::Image;
+use crate::color::Rgb;
 use crate::i18n::{tr, trf};
 use crate::storage::write_atomic;
 use std::cell::RefCell;
@@ -540,13 +540,7 @@ unsafe extern "C" fn server_call(
 /// Sends a request, returning the HTTP status and body. A request that never reached the
 /// server is retried by rcheevos where that makes sense, as unlocks do.
 fn send(url: &str, post: Option<&str>, content_type: &str, user_agent: &str) -> (c_int, Vec<u8>) {
-    let agent: ureq::Agent = ureq::Agent::config_builder()
-        .https_only(true)
-        .http_status_as_error(false)
-        .timeout_connect(Some(Duration::from_secs(15)))
-        .timeout_global(Some(Duration::from_secs(30)))
-        .build()
-        .into();
+    let agent: ureq::Agent = crate::http::config(Duration::from_secs(30)).http_status_as_error(false).build().into();
     let result = match post {
         Some(body) => {
             let content_type = if content_type.is_empty() { "application/x-www-form-urlencoded" } else { content_type };

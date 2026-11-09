@@ -1,7 +1,7 @@
 //! Pixel-art pictograms for the launcher, drawn for this project as generic shapes.
 //! Each is 32 by 24 pixels, one character per pixel, coloured by `color`.
 
-use crate::canvas::Rgb;
+use crate::color::Rgb;
 
 pub const WIDTH: usize = 32;
 pub const HEIGHT: usize = 24;

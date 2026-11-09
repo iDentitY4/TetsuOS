@@ -4,7 +4,7 @@
 //! They are named after the game's save file, as that already tells apart `Tetris.gb` and
 //! `Tetris.nes` and stays the same when a game is zipped: `Tetris.gb 001.png`.
 
-use crate::boxart::Image;
+use crate::image::Image;
 use crate::boxart_fetch::{fit_size, resize};
 use crate::storage::write_atomic;
 use crate::{png, save_path, system_for};
@@ -77,7 +77,7 @@ pub fn cover(directory: &Path, rom: &Path) -> Option<Image> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::canvas::Rgb;
+    use crate::color::Rgb;
 
     fn folder(test: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("launcher-shots-{test}-{}", std::process::id()));

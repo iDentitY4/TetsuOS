@@ -2,7 +2,8 @@
 
 use crate::font;
 use crate::i18n::{tr, trf};
-use crate::boxart::Image;
+use crate::color::Rgb;
+use crate::image::Image;
 use crate::icons::{self, Icon};
 use crate::input::{Button, Controls};
 use crate::controls::{self, ControlsMenu, Row};
@@ -12,9 +13,6 @@ use crate::core_options::OptionsPage;
 use crate::screens::{self, OptionsLayout};
 use crate::pause::{Item, PauseMenu, ITEMS};
 use crate::settings::{BatteryDisplay, GameDisplay, Settings};
-
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub struct Rgb(pub u8, pub u8, pub u8);
 
 pub(crate) const BODY: Rgb = Rgb(0x2B, 0x30, 0x3F);
 /// How the menus look, from Settings > THEME and GENERAL > BATTERY. Each canvas carries

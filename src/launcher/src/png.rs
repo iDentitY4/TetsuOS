@@ -2,8 +2,8 @@
 //! encodes screenshots. Every colour type and bit depth becomes 8-bit RGB, and transparency
 //! is dropped, as covers have none that matters.
 
-use crate::boxart::Image;
-use crate::canvas::Rgb;
+use crate::image::Image;
+use crate::color::Rgb;
 use png::{BitDepth, ColorType, Decoder, Encoder, Limits, Transformations};
 use std::io::Cursor;
 

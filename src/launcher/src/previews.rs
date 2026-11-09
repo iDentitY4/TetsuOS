@@ -316,7 +316,7 @@ pub(crate) fn write_notice_preview(path: &str) -> io::Result<()> {
     let mut canvas = canvas::Canvas::new(width, height, current_theme());
     for (index, pixel) in canvas.pixels.iter_mut().enumerate() {
         let (x, y) = (index % width, index / width);
-        *pixel = canvas::Rgb((x * 255 / width) as u8, (y * 255 / height) as u8, 0x80);
+        *pixel = color::Rgb((x * 255 / width) as u8, (y * 255 / height) as u8, 0x80);
     }
     let (left, top) = ((width - sign.width) / 2, height - sign.height - 8);
     for (row, line) in sign.pixels.chunks_exact(sign.width).enumerate() {

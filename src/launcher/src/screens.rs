@@ -1,9 +1,10 @@
 //! Lays out the launcher's screens: the console grid, game lists, settings and system info.
 
-use crate::boxart::Image;
+use crate::image::Image;
 use crate::cheats::{self, CheatsPage};
 use crate::core_options::{OptionsPage, Row as OptionRow};
-use crate::canvas::{text_width, Battery, Canvas, Rgb, Theme, BODY, LOW, MUTED, TEXT};
+use crate::canvas::{text_width, Battery, Canvas, Theme, BODY, LOW, MUTED, TEXT};
+use crate::color::Rgb;
 use crate::font;
 use crate::i18n::{tr, trf};
 use crate::icons::{self, Icon};

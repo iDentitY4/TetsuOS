@@ -1,6 +1,7 @@
 //! Minimal Linux framebuffer access, through its ioctls.
 
-use crate::canvas::{Canvas, Rgb};
+use crate::canvas::Canvas;
+use crate::color::Rgb;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Seek, SeekFrom, Write};
 use std::os::fd::AsRawFd;
