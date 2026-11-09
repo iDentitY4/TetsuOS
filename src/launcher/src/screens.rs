@@ -827,7 +827,9 @@ pub fn usb_drive_screen(width: usize, height: usize, view: &UsbDriveView, frame:
 
 pub fn message_screen(width: usize, height: usize, message: &str, theme: Theme) -> Canvas {
     let mut canvas = Canvas::new(width, height, theme);
-    canvas.text(message, height / 2 - font::HEIGHT * 2, 4, TEXT);
+    // Large, unless that would run off the screen.
+    let scale = [4, 3].into_iter().find(|&scale| text_width(message, scale) + 32 <= width).unwrap_or(TEXT_SCALE);
+    canvas.text(message, (height / 2).saturating_sub(font::HEIGHT * scale / 2), scale, TEXT);
     canvas
 }
 
@@ -846,6 +848,24 @@ mod tests {
 
     fn tiles(count: usize) -> Vec<TileView<'static>> {
         (0..count).map(|_| TileView { icon: &icons::NES, label: "GB ADVANCE", count: Some(14) }).collect()
+    }
+
+    #[test]
+    fn a_long_message_gets_smaller_and_stays_on_the_screen() {
+        let lit_columns = |message: &str| {
+            let canvas = message_screen(640, 480, message, Theme::default());
+            let lit = |x: usize| (0..480).any(|y| canvas.pixels[y * 640 + x] == TEXT);
+            ((0..640).find(|&x| lit(x)).unwrap(), (0..640).rfind(|&x| lit(x)).unwrap())
+        };
+        // Each of these is wider than the screen at the large size.
+        for message in ["COULD NOT START USB STORAGE", "THE CARD IS IN USE - TRY AGAIN", "LOGS SAVED TO TETSU-BOOT/LOGS"] {
+            assert!(text_width(message, 4) > 640, "{message}");
+            let (left, right) = lit_columns(message);
+            assert!(left >= 16 && right < 624, "{message} runs from {left} to {right}");
+        }
+        // A short one stays large: its letters are 4 pixels to a dot.
+        let (left, right) = lit_columns("REBOOTING");
+        assert_eq!(right - left + 1, text_width("REBOOTING", 4));
     }
 
     #[test]

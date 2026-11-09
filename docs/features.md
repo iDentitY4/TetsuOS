@@ -596,6 +596,9 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   by Claude and hasn't been read by a German speaker. Not seen on the device: USB
   STORAGE's screens, the box art download, the keyboard, full-screen messages such as
   powering off, and the in-game menu inside a running game.
+  A full-screen message drops from the large text to a smaller size when it wouldn't
+  fit (`screens::message_screen`), which some English ones already needed: `THE CARD IS IN
+  USE - TRY AGAIN` ran off both sides. Checked by a unit test, not seen on the device.
 
 ## Hardware facts in full
 
