@@ -117,10 +117,10 @@ impl Framebuffer {
         let mut fix = FixScreenInfo::default();
         // SAFETY: both structs match the kernel layouts, and outlive the calls.
         unsafe {
-            if ioctl(file.as_raw_fd(), FBIOGET_VSCREENINFO, &mut var as *mut VarScreenInfo) != 0 {
+            if ioctl(file.as_raw_fd(), FBIOGET_VSCREENINFO, &raw mut var) != 0 {
                 return Err(io::Error::last_os_error());
             }
-            if ioctl(file.as_raw_fd(), FBIOGET_FSCREENINFO, &mut fix as *mut FixScreenInfo) != 0 {
+            if ioctl(file.as_raw_fd(), FBIOGET_FSCREENINFO, &raw mut fix) != 0 {
                 return Err(io::Error::last_os_error());
             }
         }
@@ -233,7 +233,7 @@ impl Framebuffer {
         if same_layout {
             // SAFETY: the bytes of a u32 are always valid. The check above makes sure this
             // machine's byte order is the format's.
-            let bytes = unsafe { std::slice::from_raw_parts(row.as_ptr() as *const u8, row.len() * 4) };
+            let bytes = unsafe { std::slice::from_raw_parts(row.as_ptr().cast::<u8>(), row.len() * 4) };
             return self.file.write_all_at(bytes, offset);
         }
         let mut buffer = vec![0u8; row.len() * bytes_per_pixel];
@@ -250,7 +250,7 @@ impl Framebuffer {
     pub fn wait_for_vsync(&self) -> io::Result<()> {
         let crtc: u32 = 0;
         // SAFETY: the request reads one u32, which outlives the call.
-        if unsafe { ioctl(self.file.as_raw_fd(), FBIO_WAITFORVSYNC, &crtc as *const u32) } != 0 {
+        if unsafe { ioctl(self.file.as_raw_fd(), FBIO_WAITFORVSYNC, &raw const crtc) } != 0 {
             return Err(io::Error::last_os_error());
         }
         Ok(())

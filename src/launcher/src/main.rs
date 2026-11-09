@@ -2,6 +2,8 @@
 //! framebuffer. With no arguments it runs the menus (`app`); `--play` runs one game in its
 //! own process (`game`), and the `--preview` options render screens on the PC (`previews`).
 
+#![deny(unsafe_op_in_unsafe_fn, clippy::undocumented_unsafe_blocks)]
+
 mod achievements;
 mod app;
 mod boot_partition;

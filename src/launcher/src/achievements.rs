@@ -58,7 +58,7 @@ pub fn console_id(key: &str) -> Option<u32> {
     })
 }
 
-#[allow(non_camel_case_types, dead_code)]
+#[allow(non_camel_case_types)]
 mod ffi {
     use std::ffi::{c_char, c_int, c_void};
 
@@ -422,6 +422,8 @@ thread_local! {
     static CORE_MEMORY: std::cell::Cell<Option<CoreMemory>> = const { std::cell::Cell::new(None) };
 }
 
+/// Runs `action` with the state, if a client has one. rcheevos' callbacks use this, so
+/// nothing may call into rcheevos from inside `action`.
 fn with_state<T>(action: impl FnOnce(&mut State) -> T) -> Option<T> {
     STATE.with(|state| state.borrow_mut().as_mut().map(action))
 }
@@ -444,18 +446,22 @@ struct MemoryMap {
 /// # Safety
 /// `data` must point to a `retro_memory_map` as libretro.h has it.
 pub unsafe fn keep_memory_map(data: *const c_void) {
-    let map = &*(data as *const ffi::retro_memory_map);
     let mut descriptors = Vec::new();
     let mut names = Vec::new();
-    if !map.descriptors.is_null() {
-        for index in 0..map.num_descriptors as usize {
-            let mut descriptor = *map.descriptors.add(index);
-            if !descriptor.addrspace.is_null() {
-                let name = CStr::from_ptr(descriptor.addrspace).to_owned();
-                descriptor.addrspace = name.as_ptr();
-                names.push(name);
+    // SAFETY: the caller promises a `retro_memory_map`, whose `descriptors` has
+    // `num_descriptors` entries, each with a name that is null or a C string.
+    unsafe {
+        let map = &*data.cast::<ffi::retro_memory_map>();
+        if !map.descriptors.is_null() {
+            for index in 0..map.num_descriptors as usize {
+                let mut descriptor = *map.descriptors.add(index);
+                if !descriptor.addrspace.is_null() {
+                    let name = CStr::from_ptr(descriptor.addrspace).to_owned();
+                    descriptor.addrspace = name.as_ptr();
+                    names.push(name);
+                }
+                descriptors.push(descriptor);
             }
-            descriptors.push(descriptor);
         }
     }
     println!("achievements: the core gave {} memory descriptors", descriptors.len());
@@ -463,29 +469,51 @@ pub unsafe fn keep_memory_map(data: *const c_void) {
     MAP_CHANGED.with(|changed| changed.set(true));
 }
 
+/// Tells rcheevos where one of the core's memory areas is.
+///
+/// # Safety
+/// Called by rcheevos, on the thread that runs the core, with an `info` to fill in.
 unsafe extern "C" fn core_memory_info(id: u32, info: *mut ffi::rc_libretro_core_memory_info_t) {
     let (data, size) = match CORE_MEMORY.with(|memory| memory.get()) {
-        Some(memory) => ((memory.data)(id) as *mut u8, (memory.size)(id)),
+        // SAFETY: the core's own functions, which stay valid while it is loaded. This is
+        // the thread that runs it.
+        Some(memory) => unsafe { ((memory.data)(id).cast::<u8>(), (memory.size)(id)) },
         None => (std::ptr::null_mut(), 0),
     };
-    (*info).data = data;
-    (*info).size = if data.is_null() { 0 } else { size };
+    // SAFETY: rcheevos passes a struct of its own to fill in.
+    unsafe {
+        (*info).data = data;
+        (*info).size = if data.is_null() { 0 } else { size };
+    }
 }
 
+/// Reads the game's memory for rcheevos.
+///
+/// # Safety
+/// Called by rcheevos, on the thread that runs the core, with room for `count` bytes at
+/// `buffer`.
 unsafe extern "C" fn read_memory(address: u32, buffer: *mut u8, count: u32, _: *mut ffi::rc_client_t) -> u32 {
     STATE.with(|state| match state.borrow().as_ref().and_then(|state| state.regions.as_deref()) {
-        Some(regions) => ffi::rc_libretro_memory_read(regions, address, buffer, count),
+        // SAFETY: the regions were laid out from the loaded core's memory, and rcheevos
+        // copies at most `count` bytes into its own buffer.
+        Some(regions) => unsafe { ffi::rc_libretro_memory_read(regions, address, buffer, count) },
         None => 0,
     })
 }
 
+/// Sends a request for rcheevos on a thread of its own. The answer comes back to the
+/// thread that runs the core, which hands it to `callback`.
+///
+/// # Safety
+/// Called by rcheevos with a `request` that is valid for the call.
 unsafe extern "C" fn server_call(
     request: *const ffi::rc_api_request_t,
     callback: ffi::ServerCallback,
     data: *mut c_void,
     _: *mut ffi::rc_client_t,
 ) {
-    let request = &*request;
+    // SAFETY: rcheevos passes a request that is valid for the call.
+    let request = unsafe { &*request };
     let url = text(request.url);
     let post = (!request.post_data.is_null()).then(|| text(request.post_data));
     let content_type = text(request.content_type);
@@ -558,10 +586,18 @@ unsafe extern "C" fn media_changed(result: c_int, message: *const c_char, _: *mu
     }
 }
 
+/// Keeps what rcheevos reports, to show it.
+///
+/// # Safety
+/// Called by rcheevos with an `event` that is valid for the call.
 unsafe extern "C" fn event_handler(event: *const ffi::rc_client_event_t, _: *mut ffi::rc_client_t) {
-    let event = &*event;
-    let achievement = event.achievement.as_ref();
-    let leaderboard = event.leaderboard.as_ref().map(|leaderboard| text(leaderboard.title)).unwrap_or_default();
+    // SAFETY: rcheevos passes an event that is valid for the call. Each of its pointers is
+    // null or points to something that lasts as long.
+    let (event, achievement, board, server_error) = unsafe {
+        let event = &*event;
+        (event, event.achievement.as_ref(), event.leaderboard.as_ref(), event.server_error.as_ref())
+    };
+    let leaderboard = board.map(|leaderboard| text(leaderboard.title)).unwrap_or_default();
     let happening = match event.type_ {
         ffi::EVENT_ACHIEVEMENT_TRIGGERED => achievement.map(|achievement| Happening::Unlocked {
             title: text(achievement.title),
@@ -578,12 +614,12 @@ unsafe extern "C" fn event_handler(event: *const ffi::rc_client_event_t, _: *mut
         ffi::EVENT_LEADERBOARD_STARTED => Some(Happening::LeaderboardStarted(leaderboard)),
         ffi::EVENT_LEADERBOARD_FAILED => Some(Happening::LeaderboardFailed(leaderboard)),
         ffi::EVENT_LEADERBOARD_SUBMITTED => Some(Happening::LeaderboardSubmitted {
-            value: event.leaderboard.as_ref().map(|leaderboard| text(leaderboard.tracker_value)).unwrap_or_default(),
+            value: board.map(|leaderboard| text(leaderboard.tracker_value)).unwrap_or_default(),
             title: leaderboard,
         }),
         ffi::EVENT_GAME_COMPLETED => Some(Happening::Completed),
         ffi::EVENT_SERVER_ERROR => {
-            Some(Happening::ServerError(event.server_error.as_ref().map(|error| text(error.error_message)).unwrap_or_default()))
+            Some(Happening::ServerError(server_error.map(|error| text(error.error_message)).unwrap_or_default()))
         }
         ffi::EVENT_DISCONNECTED => Some(Happening::Disconnected),
         ffi::EVENT_RECONNECTED => Some(Happening::Reconnected),
@@ -636,13 +672,13 @@ impl Client {
         for response in self.responses.try_iter() {
             with_state(|state| state.in_flight = state.in_flight.saturating_sub(1));
             let answer = ffi::rc_api_server_response_t {
-                body: response.body.as_ptr() as *const c_char,
+                body: response.body.as_ptr().cast::<c_char>(),
                 body_length: response.body.len(),
                 http_status_code: response.status,
             };
             // SAFETY: rcheevos gave this callback and its data with the request, and the
             // client that made the request still exists.
-            unsafe { (response.callback)(&answer, response.data as *mut c_void) };
+            unsafe { (response.callback)(&raw const answer, response.data as *mut c_void) };
         }
     }
 
@@ -889,9 +925,9 @@ fn init_regions(console: u32) -> Box<ffi::rc_libretro_memory_regions_t> {
             descriptors: map.descriptors.as_ptr(),
             num_descriptors: map.descriptors.len() as u32,
         });
-        let raw = raw.as_ref().map_or(std::ptr::null(), |raw| raw as *const _);
+        let raw = raw.as_ref().map_or(std::ptr::null(), std::ptr::from_ref);
         // SAFETY: the map and its descriptors outlive the call, which copies what it needs.
-        unsafe { ffi::rc_libretro_memory_init(&mut *regions, raw, core_memory_info, console) };
+        unsafe { ffi::rc_libretro_memory_init(&raw mut *regions, raw, core_memory_info, console) };
     });
     regions
 }
@@ -1084,6 +1120,7 @@ impl Session {
                 self.find_memory();
             }
         }
+        debug_assert!(STATE.with(|state| state.try_borrow_mut().is_ok()));
         // SAFETY: the client exists while the session does.
         unsafe { ffi::rc_client_do_frame(self.client.raw) };
     }
@@ -1121,7 +1158,7 @@ impl Session {
     pub fn summary(&self) -> Summary {
         let mut raw = ffi::rc_client_user_game_summary_t::default();
         // SAFETY: the client exists while the session does, and the struct matches.
-        unsafe { ffi::rc_client_get_user_game_summary(self.client.raw, &mut raw) };
+        unsafe { ffi::rc_client_get_user_game_summary(self.client.raw, &raw mut raw) };
         Summary {
             unlocked: raw.num_unlocked_achievements,
             total: raw.num_core_achievements,
@@ -1415,7 +1452,7 @@ mod tests {
     static mut RAM: [u8; 2048] = [0; 2048];
 
     unsafe extern "C" fn ram_data(id: u32) -> *mut c_void {
-        if id == 2 { std::ptr::addr_of_mut!(RAM) as *mut c_void } else { std::ptr::null_mut() }
+        if id == 2 { std::ptr::addr_of_mut!(RAM).cast::<c_void>() } else { std::ptr::null_mut() }
     }
 
     unsafe extern "C" fn ram_size(id: u32) -> usize {
@@ -1484,7 +1521,7 @@ mod tests {
         // As mGBA does in its first frame.
         let descriptor = ffi::retro_memory_descriptor {
             flags: 0,
-            ptr: std::ptr::addr_of_mut!(MAPPED) as *mut c_void,
+            ptr: std::ptr::addr_of_mut!(MAPPED).cast::<c_void>(),
             offset: 0,
             start: 0,
             select: 0,
@@ -1492,9 +1529,9 @@ mod tests {
             len: 2048,
             addrspace: std::ptr::null(),
         };
-        let map = ffi::retro_memory_map { descriptors: &descriptor, num_descriptors: 1 };
+        let map = ffi::retro_memory_map { descriptors: &raw const descriptor, num_descriptors: 1 };
         // SAFETY: the map is a retro_memory_map.
-        unsafe { keep_memory_map(&map as *const _ as *const c_void) };
+        unsafe { keep_memory_map((&raw const map).cast::<c_void>()) };
         // Achievements already true when the game loads wait to be false first.
         for _ in 0..10 {
             session.do_frame();
@@ -1664,5 +1701,35 @@ mod tests {
         assert_ne!(unsafe { rc_hash_generate_from_buffer(hash.as_mut_ptr(), 4, rom.as_ptr(), rom.len()) }, 0);
         // The MD5 of 32 KiB of zeros, as rcheevos hashes a Game Boy game: all of it.
         assert_eq!(field_text(&hash), "bb7df04e1b0a2570657527a7e108ae23");
+    }
+
+    /// The structs declared by hand in `ffi` have the sizes the C compiler gives them. A
+    /// field added or dropped by a newer rcheevos shows here. Two are only ever read through
+    /// a pointer from rcheevos and declare just their first fields, so they may be shorter.
+    #[test]
+    fn the_declared_structs_have_the_c_sizes() {
+        macro_rules! c_size {
+            ($name:ident) => {{
+                extern "C" {
+                    #[link_name = concat!("launcher_sizeof_", stringify!($name))]
+                    static SIZE: usize;
+                }
+                // SAFETY: a constant in rcheevos_layout.c, which build.rs compiles in.
+                unsafe { SIZE }
+            }};
+        }
+        macro_rules! whole {
+            ($($name:ident)*) => {$(assert_eq!(size_of::<ffi::$name>(), c_size!($name), stringify!($name));)*};
+        }
+        macro_rules! start_of {
+            ($($name:ident)*) => {$(assert!(size_of::<ffi::$name>() <= c_size!($name), stringify!($name));)*};
+        }
+        whole!(
+            rc_api_server_response_t rc_client_game_t rc_client_user_game_summary_t rc_client_achievement_t
+            rc_client_achievement_bucket_t rc_client_achievement_list_t rc_client_leaderboard_t
+            rc_client_server_error_t rc_client_event_t rc_libretro_memory_regions_t
+            rc_libretro_core_memory_info_t retro_memory_descriptor retro_memory_map
+        );
+        start_of!(rc_api_request_t rc_client_user_t);
     }
 }

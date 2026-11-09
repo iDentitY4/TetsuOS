@@ -171,7 +171,11 @@ type UpdateDisplay = unsafe extern "C" fn() -> bool;
 /// # Safety
 /// `text` is null or points to a C string.
 unsafe fn c_text(text: *const c_char) -> String {
-    if text.is_null() { String::new() } else { CStr::from_ptr(text).to_string_lossy().into_owned() }
+    if text.is_null() {
+        return String::new();
+    }
+    // SAFETY: it isn't null, so the caller promises a C string.
+    unsafe { CStr::from_ptr(text) }.to_string_lossy().into_owned()
 }
 
 /// What a core declares with `retro_core_options_v2`. Inside a known category, an option
@@ -180,47 +184,51 @@ unsafe fn c_text(text: *const c_char) -> String {
 /// # Safety
 /// `options` points to a `retro_core_options_v2` whose lists end in an entry without a key.
 unsafe fn read_options_v2(options: &CoreOptionsV2) -> Declarations {
-    let mut declarations = Declarations::default();
-    let mut category = options.categories;
-    while !category.is_null() && !(*category).key.is_null() {
-        declarations.categories.push(Category {
-            key: c_text((*category).key),
-            label: c_text((*category).desc),
-            info: c_text((*category).info),
-        });
-        category = category.add(1);
+    // SAFETY: the caller promises lists that end in an entry without a key, which is where
+    // each loop stops. Their strings are null or C strings, as `c_text` needs.
+    unsafe {
+        let mut declarations = Declarations::default();
+        let mut category = options.categories;
+        while !category.is_null() && !(*category).key.is_null() {
+            declarations.categories.push(Category {
+                key: c_text((*category).key),
+                label: c_text((*category).desc),
+                info: c_text((*category).info),
+            });
+            category = category.add(1);
+        }
+        let mut definition = options.definitions;
+        while !definition.is_null() && !(*definition).key.is_null() {
+            let item = &*definition;
+            let category = c_text(item.category_key);
+            let in_category = declarations.categories.iter().any(|known| known.key == category);
+            let pick = |categorized: *const c_char, plain: *const c_char| {
+                if in_category && !categorized.is_null() { c_text(categorized) } else { c_text(plain) }
+            };
+            let choices: Vec<Choice> = item
+                .values
+                .iter()
+                .take_while(|value| !value.value.is_null())
+                .map(|value| Choice { value: c_text(value.value), label: c_text(value.label) })
+                .collect();
+            // Without one, the first choice is the default.
+            let default = if item.default_value.is_null() {
+                choices.first().map(|choice| choice.value.clone()).unwrap_or_default()
+            } else {
+                c_text(item.default_value)
+            };
+            declarations.options.push(Declared {
+                key: c_text(item.key),
+                label: pick(item.desc_categorized, item.desc),
+                info: pick(item.info_categorized, item.info),
+                category,
+                choices,
+                default,
+            });
+            definition = definition.add(1);
+        }
+        declarations
     }
-    let mut definition = options.definitions;
-    while !definition.is_null() && !(*definition).key.is_null() {
-        let item = &*definition;
-        let category = c_text(item.category_key);
-        let in_category = declarations.categories.iter().any(|known| known.key == category);
-        let pick = |categorized: *const c_char, plain: *const c_char| {
-            if in_category && !categorized.is_null() { c_text(categorized) } else { c_text(plain) }
-        };
-        let choices: Vec<Choice> = item
-            .values
-            .iter()
-            .take_while(|value| !value.value.is_null())
-            .map(|value| Choice { value: c_text(value.value), label: c_text(value.label) })
-            .collect();
-        // Without one, the first choice is the default.
-        let default = if item.default_value.is_null() {
-            choices.first().map(|choice| choice.value.clone()).unwrap_or_default()
-        } else {
-            c_text(item.default_value)
-        };
-        declarations.options.push(Declared {
-            key: c_text(item.key),
-            label: pick(item.desc_categorized, item.desc),
-            info: pick(item.info_categorized, item.info),
-            category,
-            choices,
-            default,
-        });
-        definition = definition.add(1);
-    }
-    declarations
 }
 
 const GHOSTING_OPTION: &str = core_options::FRONTEND_OWNED[0];
@@ -308,8 +316,9 @@ struct DiskControl {
     get_image_path: Option<unsafe extern "C" fn(c_uint, *mut c_char, usize) -> bool>,
 }
 
-// SAFETY for each call below: the core set these, and they stay valid while it is loaded,
-// which is as long as the process lasts. They are called on the thread that runs the core.
+// Why each call below is sound: the core set these functions, and they stay valid while it
+// is loaded, which is as long as the process lasts. They are called on the thread that runs
+// the core, and never while the host is borrowed, as the core may call back into it.
 impl DiskControl {
     /// None if the core left out a function that changing discs needs.
     fn from_raw(raw: &RawDiskControl) -> Option<Self> {
@@ -323,10 +332,14 @@ impl DiskControl {
     }
 
     fn count(&self) -> usize {
+        debug_assert!(host_is_free());
+        // SAFETY: see the note on this impl.
         unsafe { (self.get_num_images)() as usize }
     }
 
     fn current(&self) -> usize {
+        debug_assert!(host_is_free());
+        // SAFETY: see the note on this impl.
         unsafe { (self.get_image_index)() as usize }
     }
 
@@ -335,6 +348,8 @@ impl DiskControl {
     fn is_present(&self, index: usize) -> bool {
         let Some(get_image_path) = self.get_image_path else { return true };
         let mut path = [0 as c_char; 4096];
+        debug_assert!(host_is_free());
+        // SAFETY: see the note on this impl. The core is given the buffer's real length.
         let known = unsafe { get_image_path(index as c_uint, path.as_mut_ptr(), path.len()) };
         // SAFETY: the buffer starts zeroed and ends in a zero the core was told not to touch.
         known && Path::new(OsStr::from_bytes(unsafe { CStr::from_ptr(path.as_ptr()) }.to_bytes())).exists()
@@ -345,6 +360,7 @@ impl DiskControl {
     /// one that was in goes back.
     fn change(&self, index: usize) -> bool {
         let previous = self.current();
+        // SAFETY: see the note on this impl.
         unsafe {
             (self.set_eject_state)(true);
             let changed = (self.set_image_index)(index as c_uint);
@@ -409,8 +425,16 @@ thread_local! {
     static HOST: RefCell<Option<Host>> = const { RefCell::new(None) };
 }
 
+/// Runs `action` with the host. The callbacks use this, so nothing may call into the core
+/// from inside `action`: the core would call back, find the host borrowed and panic, which
+/// aborts inside the core's frames. Copy what a call needs out first.
 fn with_host<T>(action: impl FnOnce(&mut Host) -> T) -> T {
     HOST.with(|host| action(host.borrow_mut().as_mut().expect("host is set before the core runs")))
+}
+
+/// Whether the host isn't borrowed, as it must be before every call into the core.
+fn host_is_free() -> bool {
+    HOST.with(|host| host.try_borrow_mut().is_ok())
 }
 
 impl Host {
@@ -482,112 +506,122 @@ unsafe extern "C" fn environment(command: c_uint, data: *mut c_void) -> bool {
     if data.is_null() && needs_data(command & !ENVIRONMENT_EXPERIMENTAL) {
         return false;
     }
-    match command & !ENVIRONMENT_EXPERIMENTAL {
-        ENVIRONMENT_GET_CAN_DUPE => {
-            *(data as *mut bool) = true;
-            true
-        }
-        ENVIRONMENT_GET_SYSTEM_DIRECTORY | ENVIRONMENT_GET_SAVE_DIRECTORY => {
-            let directory = with_host(|host| host.directory.as_ptr());
-            *(data as *mut *const c_char) = directory;
-            true
-        }
-        ENVIRONMENT_SET_PIXEL_FORMAT => {
-            let format = match *(data as *const c_int) {
-                0 => PixelFormat::Rgb1555,
-                1 => PixelFormat::Xrgb8888,
-                2 => PixelFormat::Rgb565,
-                _ => return false,
-            };
-            with_host(|host| host.format = format);
-            true
-        }
-        ENVIRONMENT_GET_VARIABLE => {
-            let variable = &mut *(data as *mut Variable);
-            if variable.key.is_null() {
-                return false;
+    // SAFETY: `data` isn't null where an arm reads or writes through it: `needs_data` covers
+    // the arms that don't check it themselves. The core promises that it points to what
+    // libretro.h gives for the command, with lists that end as it says there.
+    unsafe {
+        match command & !ENVIRONMENT_EXPERIMENTAL {
+            ENVIRONMENT_GET_CAN_DUPE => {
+                *data.cast::<bool>() = true;
+                true
             }
-            let key = c_text(variable.key);
-            match with_host(|host| host.option_value(&key).map(|value| host.answer(value))) {
-                Some(value) => {
-                    variable.value = value;
-                    true
+            ENVIRONMENT_GET_SYSTEM_DIRECTORY | ENVIRONMENT_GET_SAVE_DIRECTORY => {
+                let directory = with_host(|host| host.directory.as_ptr());
+                *data.cast::<*const c_char>() = directory;
+                true
+            }
+            ENVIRONMENT_SET_PIXEL_FORMAT => {
+                let format = match *(data as *const c_int) {
+                    0 => PixelFormat::Rgb1555,
+                    1 => PixelFormat::Xrgb8888,
+                    2 => PixelFormat::Rgb565,
+                    _ => return false,
+                };
+                with_host(|host| host.format = format);
+                true
+            }
+            ENVIRONMENT_GET_VARIABLE => {
+                let variable = &mut *data.cast::<Variable>();
+                if variable.key.is_null() {
+                    return false;
                 }
-                None => false,
-            }
-        }
-        ENVIRONMENT_SET_VARIABLES => {
-            let mut variables = Vec::new();
-            let mut variable = data as *const Variable;
-            while !variable.is_null() && !(*variable).key.is_null() {
-                variables.push((c_text((*variable).key), c_text((*variable).value)));
-                variable = variable.add(1);
-            }
-            with_host(|host| host.declarations = Declarations::from_legacy(&variables));
-            true
-        }
-        ENVIRONMENT_GET_CORE_OPTIONS_VERSION => {
-            *(data as *mut c_uint) = 2;
-            true
-        }
-        ENVIRONMENT_SET_CORE_OPTIONS_V2 | ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL => {
-            let options = if command & !ENVIRONMENT_EXPERIMENTAL == ENVIRONMENT_SET_CORE_OPTIONS_V2 {
-                data as *const CoreOptionsV2
-            } else if data.is_null() {
-                std::ptr::null()
-            } else {
-                (*(data as *const CoreOptionsV2Intl)).us
-            };
-            if options.is_null() {
-                return false;
-            }
-            let declarations = read_options_v2(&*options);
-            with_host(|host| host.declarations = declarations);
-            true
-        }
-        ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY => {
-            if data.is_null() {
-                return false;
-            }
-            let display = &*(data as *const OptionDisplay);
-            let key = c_text(display.key);
-            with_host(|host| {
-                host.hidden.retain(|hidden| *hidden != key);
-                if !display.visible {
-                    host.hidden.push(key);
+                let key = c_text(variable.key);
+                match with_host(|host| host.option_value(&key).map(|value| host.answer(value))) {
+                    Some(value) => {
+                        variable.value = value;
+                        true
+                    }
+                    None => false,
                 }
-            });
-            true
+            }
+            ENVIRONMENT_SET_VARIABLES => {
+                let mut variables = Vec::new();
+                let mut variable = data as *const Variable;
+                while !variable.is_null() && !(*variable).key.is_null() {
+                    variables.push((c_text((*variable).key), c_text((*variable).value)));
+                    variable = variable.add(1);
+                }
+                with_host(|host| host.declarations = Declarations::from_legacy(&variables));
+                true
+            }
+            ENVIRONMENT_GET_CORE_OPTIONS_VERSION => {
+                *data.cast::<c_uint>() = 2;
+                true
+            }
+            ENVIRONMENT_SET_CORE_OPTIONS_V2 | ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL => {
+                let options = if command & !ENVIRONMENT_EXPERIMENTAL == ENVIRONMENT_SET_CORE_OPTIONS_V2 {
+                    data as *const CoreOptionsV2
+                } else if data.is_null() {
+                    std::ptr::null()
+                } else {
+                    (*(data as *const CoreOptionsV2Intl)).us
+                };
+                if options.is_null() {
+                    return false;
+                }
+                let declarations = read_options_v2(&*options);
+                with_host(|host| host.declarations = declarations);
+                true
+            }
+            ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY => {
+                if data.is_null() {
+                    return false;
+                }
+                let display = &*(data as *const OptionDisplay);
+                let key = c_text(display.key);
+                with_host(|host| {
+                    host.hidden.retain(|hidden| *hidden != key);
+                    if !display.visible {
+                        host.hidden.push(key);
+                    }
+                });
+                true
+            }
+            ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK => {
+                let callback = if data.is_null() { None } else { *(data as *const Option<UpdateDisplay>) };
+                with_host(|host| host.update_display = callback);
+                true
+            }
+            ENVIRONMENT_GET_VARIABLE_UPDATE => {
+                *data.cast::<bool>() = with_host(|host| std::mem::take(&mut host.options_changed));
+                true
+            }
+            ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION => {
+                *data.cast::<c_uint>() = 1;
+                true
+            }
+            ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE => {
+                let Some(control) = DiskControl::from_raw(&*(data as *const RawDiskControl)) else {
+                    return false;
+                };
+                with_host(|host| host.disk_control = Some(control));
+                true
+            }
+            ENVIRONMENT_SET_MEMORY_MAPS => {
+                achievements::keep_memory_map(data);
+                true
+            }
+            // Everything else is optional for a core.
+            _ => false,
         }
-        ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK => {
-            let callback = if data.is_null() { None } else { *(data as *const Option<UpdateDisplay>) };
-            with_host(|host| host.update_display = callback);
-            true
-        }
-        ENVIRONMENT_GET_VARIABLE_UPDATE => {
-            *(data as *mut bool) = with_host(|host| std::mem::take(&mut host.options_changed));
-            true
-        }
-        ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION => {
-            *(data as *mut c_uint) = 1;
-            true
-        }
-        ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE => {
-            let Some(control) = DiskControl::from_raw(&*(data as *const RawDiskControl)) else {
-                return false;
-            };
-            with_host(|host| host.disk_control = Some(control));
-            true
-        }
-        ENVIRONMENT_SET_MEMORY_MAPS => {
-            achievements::keep_memory_map(data);
-            true
-        }
-        // Everything else is optional for a core.
-        _ => false,
     }
 }
 
+/// `retro_video_refresh_t`.
+///
+/// # Safety
+/// Called by the core, on the thread that runs it, with `height` rows of `pitch` bytes at a
+/// `data` that isn't null.
 unsafe extern "C" fn video_refresh(
     data: *const c_void,
     width: c_uint,
@@ -605,11 +639,10 @@ unsafe extern "C" fn video_refresh(
         }
         let start = Instant::now();
         let bytes_per_pixel = if host.format == PixelFormat::Xrgb8888 { 4 } else { 2 };
-        // SAFETY: the core guarantees `height` rows of `pitch` bytes.
-        let source = std::slice::from_raw_parts(
-            data as *const u8,
-            pitch * (height - 1) + width * bytes_per_pixel,
-        );
+        // SAFETY: the core guarantees `height` rows of `pitch` bytes, and neither is zero.
+        let source = unsafe {
+            std::slice::from_raw_parts(data.cast::<u8>(), pitch * (height - 1) + width * bytes_per_pixel)
+        };
         let size = picture_size((width, height), host.target, host.display.scaling, host.setup.aspect);
         host.frame.resize(size.0 * size.1, 0);
         host.frame_size = size;
@@ -637,24 +670,31 @@ fn write_audio(host: &mut Host, bytes: &[u8]) {
     host.audio_time += start.elapsed();
 }
 
+/// `retro_audio_sample_t`. Unsafe only to have the type the core takes.
 unsafe extern "C" fn audio_sample(left: i16, right: i16) {
     let [l0, l1] = left.to_le_bytes();
     let [r0, r1] = right.to_le_bytes();
     with_host(|host| write_audio(host, &[l0, l1, r0, r1]));
 }
 
+/// `retro_audio_sample_batch_t`.
+///
+/// # Safety
+/// Called by the core, on the thread that runs it, with `frames` stereo pairs at `data`.
 unsafe extern "C" fn audio_batch(data: *const i16, frames: usize) -> usize {
     if data.is_null() || frames == 0 {
         return frames;
     }
-    // SAFETY: the core provides `frames` stereo pairs of 16-bit samples.
-    let bytes = std::slice::from_raw_parts(data as *const u8, frames * 4);
+    // SAFETY: the core provides `frames` stereo pairs of 16-bit samples, and `data` isn't null.
+    let bytes = unsafe { std::slice::from_raw_parts(data.cast::<u8>(), frames * 4) };
     with_host(|host| write_audio(host, bytes));
     frames
 }
 
+/// `retro_input_poll_t`. The buttons are read once a frame, before the core runs.
 unsafe extern "C" fn input_poll() {}
 
+/// `retro_input_state_t`. Unsafe only to have the type the core takes.
 unsafe extern "C" fn input_state(port: c_uint, device: c_uint, _: c_uint, id: c_uint) -> i16 {
     if port != 0 || device != DEVICE_JOYPAD {
         return 0;
@@ -1003,6 +1043,7 @@ impl Core {
     /// Runs one frame of the game, with the buttons as they are now.
     fn run_frame(&self) {
         with_host(|host| host.pad.update(&host.layout, &host.controls));
+        debug_assert!(host_is_free());
         // SAFETY: the game is loaded, and the callbacks run on this thread.
         unsafe { (self.run)() };
     }
@@ -1033,21 +1074,21 @@ impl Core {
                 need_fullpath: false,
                 block_extract: false,
             };
-            function!(c"retro_get_system_info", unsafe extern "C" fn(*mut SystemInfo))(&mut info);
+            function!(c"retro_get_system_info", unsafe extern "C" fn(*mut SystemInfo))(&raw mut info);
             // A disc image can be hundreds of megabytes, and such cores read it themselves.
             let rom = if info.need_fullpath { Vec::new() } else { std::fs::read(rom_path)? };
             let rom_name = c_path(rom_path)?;
             let game = GameInfo {
                 path: rom_name.as_ptr(),
-                data: if rom.is_empty() { std::ptr::null() } else { rom.as_ptr() as *const c_void },
+                data: if rom.is_empty() { std::ptr::null() } else { rom.as_ptr().cast::<c_void>() },
                 size: rom.len(),
                 meta: std::ptr::null(),
             };
-            if !function!(c"retro_load_game", unsafe extern "C" fn(*const GameInfo) -> bool)(&game) {
+            if !function!(c"retro_load_game", unsafe extern "C" fn(*const GameInfo) -> bool)(&raw const game) {
                 return Err(io::Error::other("the core could not load this game"));
             }
             let mut av_info = AvInfo::default();
-            function!(c"retro_get_system_av_info", unsafe extern "C" fn(*mut AvInfo))(&mut av_info);
+            function!(c"retro_get_system_av_info", unsafe extern "C" fn(*mut AvInfo))(&raw mut av_info);
             Ok(Self {
                 run: function!(c"retro_run", unsafe extern "C" fn()),
                 unload_game: function!(c"retro_unload_game", unsafe extern "C" fn()),
@@ -1075,11 +1116,13 @@ impl Core {
         achievements::CoreMemory { data: self.memory_data, size: self.memory_size }
     }
 
-    /// The game's battery-backed memory. Empty if it has none.
+    /// The game's battery-backed memory. Empty if it has none. The memory is the core's:
+    /// use the slice at once, and never keep it over a frame or a state load, when the core
+    /// may move or free it.
     fn save_ram(&mut self) -> &mut [u8] {
         // SAFETY: the core keeps this memory valid while the game is loaded.
         unsafe {
-            let data = (self.memory_data)(MEMORY_SAVE_RAM) as *mut u8;
+            let data = (self.memory_data)(MEMORY_SAVE_RAM).cast::<u8>();
             let size = (self.memory_size)(MEMORY_SAVE_RAM);
             if data.is_null() || size == 0 {
                 return &mut [];
@@ -1115,7 +1158,7 @@ impl Core {
         // SAFETY: the game is loaded, and the buffer has the size the core asked for.
         unsafe {
             let mut state = vec![0u8; (self.serialize_size)()];
-            if !(self.serialize)(state.as_mut_ptr() as *mut c_void, state.len()) {
+            if !(self.serialize)(state.as_mut_ptr().cast::<c_void>(), state.len()) {
                 return Err(io::Error::other("the core could not save its state"));
             }
             Ok(state)
@@ -1128,7 +1171,7 @@ impl Core {
             if state.len() != (self.serialize_size)() {
                 return Err(io::Error::other("the saved state has the wrong size"));
             }
-            if !(self.unserialize)(state.as_ptr() as *const c_void, state.len()) {
+            if !(self.unserialize)(state.as_ptr().cast::<c_void>(), state.len()) {
                 return Err(io::Error::other("the core could not load the saved state"));
             }
             Ok(())
@@ -1488,6 +1531,7 @@ fn apply_core_options(page: &mut OptionsPage, save: &Path) {
         (host.console, host.update_display)
     });
     if let Some(update_display) = update_display {
+        debug_assert!(host_is_free());
         // SAFETY: the core gave this, and it stays valid while the core is loaded. It reads
         // the options through the environment, which doesn't hold the host meanwhile.
         unsafe { update_display() };
@@ -2447,7 +2491,7 @@ mod tests {
     fn get(key: &CStr) -> Option<String> {
         let mut variable = Variable { key: key.as_ptr(), value: std::ptr::null() };
         // SAFETY: the value is a C string the host keeps.
-        call(ENVIRONMENT_GET_VARIABLE, &mut variable as *mut Variable as *mut c_void).then(|| unsafe { c_text(variable.value) })
+        call(ENVIRONMENT_GET_VARIABLE, (&raw mut variable).cast::<c_void>()).then(|| unsafe { c_text(variable.value) })
     }
 
     fn definition(key: &CStr, desc: &CStr, categorized: Option<&CStr>, category: Option<&CStr>, values: &[&CStr]) -> OptionDefinition {
@@ -2483,15 +2527,15 @@ mod tests {
             end,
         ];
         let us = CoreOptionsV2 { categories: categories.as_ptr(), definitions: definitions.as_ptr() };
-        let mut intl = CoreOptionsV2Intl { us: &us, local: std::ptr::null() };
-        assert!(call(ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL, &mut intl as *mut CoreOptionsV2Intl as *mut c_void));
+        let mut intl = CoreOptionsV2Intl { us: &raw const us, local: std::ptr::null() };
+        assert!(call(ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL, (&raw mut intl).cast::<c_void>()));
     }
 
     #[test]
     fn a_core_declares_version_2_options_with_categories() {
         test_host(false);
         let mut version: c_uint = 0;
-        assert!(call(ENVIRONMENT_GET_CORE_OPTIONS_VERSION, &mut version as *mut c_uint as *mut c_void));
+        assert!(call(ENVIRONMENT_GET_CORE_OPTIONS_VERSION, (&raw mut version).cast::<c_void>()));
         assert_eq!(version, 2);
         declare_like_mgba();
         let declarations = with_host(|host| host.declarations.clone());
@@ -2542,11 +2586,11 @@ mod tests {
     fn a_core_can_hide_options_and_show_them_again() {
         test_host(false);
         let mut display = OptionDisplay { key: c"mgba_skip_bios".as_ptr(), visible: false };
-        assert!(call(ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, &mut display as *mut OptionDisplay as *mut c_void));
-        assert!(call(ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, &mut display as *mut OptionDisplay as *mut c_void));
+        assert!(call(ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, (&raw mut display).cast::<c_void>()));
+        assert!(call(ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, (&raw mut display).cast::<c_void>()));
         assert_eq!(with_host(|host| host.hidden.clone()), ["mgba_skip_bios"]);
         display.visible = true;
-        call(ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, &mut display as *mut OptionDisplay as *mut c_void);
+        call(ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, (&raw mut display).cast::<c_void>());
         assert!(with_host(|host| host.hidden.is_empty()));
     }
 
@@ -2557,7 +2601,7 @@ mod tests {
             Variable { key: c"tama_speed".as_ptr(), value: c"Speed; 1x|2x".as_ptr() },
             Variable { key: std::ptr::null(), value: std::ptr::null() },
         ];
-        assert!(call(ENVIRONMENT_SET_VARIABLES, variables.as_mut_ptr() as *mut c_void));
+        assert!(call(ENVIRONMENT_SET_VARIABLES, variables.as_mut_ptr().cast::<c_void>()));
         assert_eq!(with_host(|host| host.declarations.options[0].label.clone()), "Speed");
         assert_eq!(get(c"tama_speed").as_deref(), Some("1x"));
     }

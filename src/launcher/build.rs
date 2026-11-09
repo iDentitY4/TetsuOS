@@ -13,6 +13,8 @@ fn main() {
         }
     }
     files.sort();
+    // Only the layout test uses this one.
+    files.push("rcheevos_layout.c".into());
     cc::Build::new()
         .files(&files)
         .include(root.join("include"))
@@ -23,4 +25,5 @@ fn main() {
         .warnings(false)
         .compile("rcheevos");
     println!("cargo:rerun-if-changed=rcheevos");
+    println!("cargo:rerun-if-changed=rcheevos_layout.c");
 }
