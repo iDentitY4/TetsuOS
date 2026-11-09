@@ -31,6 +31,7 @@ mod recent;
 mod repeat;
 mod screens;
 mod settings;
+mod setup;
 mod sleep;
 mod sounds;
 mod ssh;
@@ -48,6 +49,7 @@ pub(crate) use corner::*;
 pub(crate) use game::*;
 pub(crate) use library::*;
 pub(crate) use previews::*;
+pub(crate) use setup::run_setup;
 pub(crate) use sleep::*;
 pub(crate) use system_info::*;
 pub(crate) use systems::*;
@@ -82,6 +84,10 @@ fn main() -> ExitCode {
         [flag, path] if flag == "--preview-usb" => write_usb_drive_preview(path),
         [flag, path] if flag == "--preview-wifi" => write_wifi_preview(path),
         [flag, path] if flag == "--preview-keyboard" => write_keyboard_preview(path),
+        [flag, step, path] if flag == "--preview-setup" => match step.parse() {
+            Ok(step) if step < setup::STEPS.len() => write_setup_preview(step, path),
+            _ => Err(io::Error::other("the setup's steps are numbered from 0 to 3")),
+        },
         [flag, path] if flag == "--preview-pause" => write_pause_preview(path),
         [flag, path] if flag == "--preview-splash" => write_plain_ppm(&screens::splash(), path),
         [flag, path] if flag == "--preview-volume" => write_ppm(&screens::volume_sign(80, current_theme()), path),
@@ -114,7 +120,7 @@ fn main() -> ExitCode {
                 "usage: launcher [--preview | --preview-list | --preview-recent | --preview-settings FILE.ppm\n\
                  \x20              | --preview-buttons | --preview-wifi | --preview-keyboard FILE.ppm\n\
                  \x20              | --preview-pause FILE.ppm | --preview-splash FILE.ppm\n\
-                 \x20              | --preview-volume FILE.ppm\n\
+                 \x20              | --preview-volume FILE.ppm | --preview-setup STEP FILE.ppm\n\
                  \x20              | --play CORE ROM SAVE battery|state\n\
                  \x20              | --render CORE ROM SAVE battery|state FRAMES FILE.ppm]"
             );

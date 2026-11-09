@@ -30,6 +30,8 @@ box art downloaded on the device, and a settings grid (GENERAL, GAME SCREEN, WI-
 BOX ART, THEME, TIME, SYSTEM, ADVANCED) with colours, background, title, grid size,
 hidden tiles, start screen, game names, battery display, menu sounds, the boot jingle and sleep when idle.
 The launcher and in-game menu are in English or German (Settings > GENERAL > LANGUAGE).
+A new install starts with a setup (language, Wi-Fi, time, adding games), which Settings >
+ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Not yet checked by the user
 
@@ -41,6 +43,7 @@ The launcher and in-game menu are in English or German (Settings > GENERAL > LAN
 - A real empty battery, a wrong Wi-Fi password, a failing certificate check
 - USB STORAGE on Windows and macOS (Linux is checked)
 - The German wording, written by Claude; USB STORAGE, the box art download and messages in German
+- The lid during the setup
 - Settings > ADVANCED: SSH from another machine over Wi-Fi, games at BATTERY or
   PERFORMANCE, and the battery gauge over a whole charge with CHARGE TO below FULL
 
@@ -151,6 +154,7 @@ In short here; `docs/features.md` has them in full.
 - `package/launcher/`, `package/libretro-*/`: Buildroot packages for the app and the cores
 - `src/launcher/`: the Rust launcher; `testdata/` has the PNG test images, `lang/` the
   translations
+- `src/launcher/src/setup.rs`: the setup on a new install
 - `scripts/`: `flash.sh`, `push.sh`, `press.py`, `screenshot.py`, `boxart.py`,
   `data-partition.sh`
 - `docs/features.md`: every feature in detail
@@ -202,6 +206,9 @@ physical like the lid.
   Groups remember their selected row, and Up and Down wrap. Starting a game moves its
   resume point and puts it first in RECENT, so say when that happens. Menu + Start needs
   both held in one write to the input device, which `press.py` can't do.
+- **The setup:** it runs when `settings.txt` is missing. To see it as a new install, stop
+  the launcher, move the file aside, start the launcher, and move the file back with the
+  launcher stopped afterwards. Check `setup: started` in the log before pressing anything.
 - **Test hooks:** `LAUNCHER_BATTERY_DIR` points the battery reading at test files,
   `LAUNCHER_POWEROFF` replaces `poweroff` and `LAUNCHER_PREVIEW_LANGUAGE=de` renders
   `--preview*` in German. An RTC alarm can wake the device from sleep:

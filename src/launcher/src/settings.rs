@@ -356,6 +356,8 @@ pub struct Settings {
     pub ssh: SshAccess,
     pub performance: CpuLevel,
     pub charge: ChargeLimit,
+    /// The setup hasn't finished: there was no settings file, or it was left partway.
+    pub setup_pending: bool,
 }
 
 impl Settings {
@@ -444,6 +446,7 @@ fn parse(text: &str) -> Settings {
             "ssh" => choose(&mut settings.ssh, SshAccess::from_key(value)),
             "performance" => choose(&mut settings.performance, CpuLevel::from_key(value)),
             "charge" => choose(&mut settings.charge, ChargeLimit::from_key(value)),
+            "setup" => settings.setup_pending = value == "pending",
             _ => {}
         }
     }
@@ -487,6 +490,9 @@ fn format(settings: &Settings) -> String {
     lines.push(format!("ssh={}", settings.ssh.key()));
     lines.push(format!("performance={}", settings.performance.key()));
     lines.push(format!("charge={}", settings.charge.key()));
+    if settings.setup_pending {
+        lines.push("setup=pending".to_string());
+    }
     lines.iter().map(|line| format!("{line}\n")).collect()
 }
 
@@ -502,7 +508,17 @@ pub fn clean_title(text: &str) -> Option<String> {
 static CURRENT: Mutex<Option<Settings>> = Mutex::new(None);
 
 fn read_file() -> Settings {
-    std::fs::read_to_string(SETTINGS_PATH).map(|text| parse(&text)).unwrap_or_default()
+    from_file(std::fs::read_to_string(SETTINGS_PATH))
+}
+
+/// The settings from reading the file. Only a new install has no file, so that is what
+/// asks for the setup: a file from before the setup existed has no `setup` line and doesn't.
+fn from_file(read: io::Result<String>) -> Settings {
+    match read {
+        Ok(text) => parse(&text),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Settings { setup_pending: true, ..Settings::default() },
+        Err(_) => Settings::default(),
+    }
 }
 
 fn with_current<T>(action: impl FnOnce(&mut Settings) -> T) -> T {
@@ -677,6 +693,7 @@ mod tests {
             ssh: SshAccess::Wifi,
             performance: CpuLevel::Battery,
             charge: ChargeLimit::Less,
+            setup_pending: true,
         };
         assert_eq!(parse(&format(&settings)), settings);
         let reset = settings.reset();
@@ -698,6 +715,18 @@ mod tests {
         assert!(!old.covers_hidden && !old.menu_sounds && !old.jingle_off && old.idle_minutes == 0);
         assert_eq!((old.grid, old.background, old.battery), (GridSize::Normal, Background::Dark, BatteryDisplay::Percent));
         assert_eq!((old.start_screen, old.game_names), (StartScreen::Home, GameNames::Short));
+    }
+
+    #[test]
+    fn only_a_missing_file_or_an_unfinished_setup_asks_for_the_setup() {
+        let missing = io::Error::from(io::ErrorKind::NotFound);
+        assert!(from_file(Err(missing)).setup_pending, "a new install");
+        let unreadable = io::Error::from(io::ErrorKind::InvalidData);
+        assert!(!from_file(Err(unreadable)).setup_pending);
+        assert!(!from_file(Ok("volume=20\n".into())).setup_pending, "a file from before the setup");
+        let unfinished = Settings { setup_pending: true, ..Settings::default() };
+        assert!(from_file(Ok(format(&unfinished))).setup_pending, "left partway");
+        assert!(!format(&Settings::default()).contains("setup"), "finished: no line at all");
     }
 
     #[test]

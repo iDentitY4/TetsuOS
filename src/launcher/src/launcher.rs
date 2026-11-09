@@ -156,6 +156,7 @@ impl Group {
                 Setting::Performance,
                 Setting::ChargeLimit,
                 Setting::BootMessages,
+                Setting::RunSetup,
                 Setting::ResetSettings,
             ],
         }
@@ -199,6 +200,7 @@ pub enum Setting {
     Performance,
     ChargeLimit,
     BootMessages,
+    RunSetup,
     ResetSettings,
     SaveLogs,
 }
@@ -241,6 +243,7 @@ impl Setting {
             Self::Performance => "PERFORMANCE",
             Self::ChargeLimit => "CHARGE TO",
             Self::BootMessages => "BOOT MESSAGES",
+            Self::RunSetup => "RUN SETUP AGAIN",
             Self::ResetSettings => "RESET SETTINGS",
             Self::SaveLogs => "SAVE LOGS TO CARD",
         })
@@ -258,6 +261,7 @@ impl Setting {
                 | Self::SystemInfo
                 | Self::UsbStorage
                 | Self::RootPassword
+                | Self::RunSetup
         )
     }
 
@@ -363,6 +367,7 @@ pub enum Command {
     ChargeLimit(i32),
     /// Switches the boot between the logo alone and the kernel's messages.
     ToggleBootMessages,
+    RunSetup,
     ResetSettings,
     SaveLogs,
     /// The card's TETSU-DATA partition as a USB drive on the PC.
@@ -693,6 +698,7 @@ impl Launcher {
                 Setting::PowerOff => return Command::PowerOff,
                 Setting::RootPassword => return Command::EditRootPassword,
                 Setting::SshKeys => return Command::RemoveSshKeys,
+                Setting::RunSetup => return Command::RunSetup,
                 Setting::ResetSettings => return Command::ResetSettings,
                 Setting::SaveLogs => return Command::SaveLogs,
                 Setting::Volume
@@ -1074,6 +1080,8 @@ mod tests {
         assert_eq!(launcher.press(Button::Right, &library), Command::ChargeLimit(1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Left, &library), Command::ToggleBootMessages);
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::A, &library), Command::RunSetup);
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::A, &library), Command::Nothing, "resetting asks first");
         assert_eq!(launcher.press(Button::A, &library), Command::ResetSettings);

@@ -48,7 +48,8 @@ scripts/flash.sh --format-data /dev/sdX # also erases TETSU-DATA's games and sav
 A card with a data partition of another name, such as `RGDATA` from before the
 rename to Tetsu OS, needs `--format-data`.
 
-Put the card in the TF1 slot and power on. To add games, open Settings > SYSTEM >
+Put the card in the TF1 slot and power on. A new install starts with a short setup:
+language, Wi-Fi, time and adding games. To add games later, open Settings > SYSTEM >
 USB STORAGE with the device connected to a PC, which then shows TETSU-DATA as a USB
 drive, or put the card in a PC. Copy the games to the `roms` folder on TETSU-DATA, in
 folders of your choice or none. The launcher shows a tile for each console with games: NES (`.nes`), Game Boy (`.gb`),

@@ -140,6 +140,21 @@ pub(crate) fn write_keyboard_preview(path: &str) -> io::Result<()> {
     write_ppm(&screens::keyboard_screen(width, height, &view, &keyboard, &screen_frame(battery)), path)
 }
 
+/// Renders a step of the setup, with sample text under its rows.
+pub(crate) fn write_setup_preview(step: usize, path: &str) -> io::Result<()> {
+    let (width, height) = PREVIEW_SIZE;
+    let setup = setup::Setup::at(step);
+    let status = match setup.step() {
+        setup::Step::Language => String::new(),
+        setup::Step::Wifi => i18n::tr("NOT CONNECTED").to_string(),
+        setup::Step::Time => time_note(),
+        setup::Step::Games => i18n::trf("GAMES ON THE CARD: {}", &[&0]),
+    };
+    let view = setup::setup_view(&setup, &settings::get(), status);
+    let battery = Some(Battery { percent: 95, charging: true });
+    write_ppm(&screens::setup_screen(width, height, &view, &screen_frame(battery)), path)
+}
+
 /// Renders the button test to a PPM image. Up has been pressed and A is held, so the
 /// image shows each look a button can have.
 /// Settings > SYSTEM > USB STORAGE, with a PC using the drive.

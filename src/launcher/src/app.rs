@@ -439,6 +439,11 @@ pub(crate) fn act(
                 }
             }
         }
+        Action::RunSetup => {
+            run_setup(framebuffer, events)?;
+            // USB STORAGE may have changed the games.
+            return Ok(true);
+        }
         Action::ResetSettings => {
             change_settings(|s| *s = s.reset());
             let current = settings::get();
@@ -587,10 +592,14 @@ pub(crate) fn run_launcher() -> io::Result<()> {
     let mut library = load_library();
     let mut monitor = power::Monitor::new();
     let mut art = boxart::BoxArt::new();
-    open_start_screen(&mut launcher, &library);
     // Nothing has been drawn yet, so the boot logo is still up. A game resumed below also
     // needs the sound card free.
     sounds::wait_for_boot_jingle();
+    if settings::get().setup_pending {
+        run_setup(&mut framebuffer, &events)?;
+        library = load_library();
+    }
+    open_start_screen(&mut launcher, &library);
 
     let noted = std::fs::read_to_string(PLAYING_PATH).unwrap_or_default();
     if let Some(game) = interrupted_game(&library, &noted) {

@@ -600,6 +600,35 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   fit (`screens::message_screen`), which some English ones already needed: `THE CARD IS IN
   USE - TRY AGAIN` ran off both sides. Checked by a unit test, not seen on the device.
 
+- **Setup on a new install** (2026-11-09): before the first home screen, four steps on one
+  screen each (`setup.rs`, drawn by `screens::setup_screen`): LANGUAGE, WI-FI, TIME and
+  GAMES. Up and Down on the language step switch the language at once. WI-FI opens the
+  normal Wi-Fi screen and GAMES opens USB STORAGE, and coming back from either selects the
+  way on. TIME has the time zone and the clock format, and shows the time as it will read.
+  A goes on, B goes back, and Start leaves from any step, because everything chosen here is
+  also in Settings. Choosing German preselects Berlin when no zone is set yet; English
+  stays on UTC. Settings > ADVANCED > RUN SETUP AGAIN starts it again.
+  It runs when `settings.txt` doesn't exist (`settings::from_file`), which only a new install
+  has. A file from before the setup has no `setup` line, so existing devices don't get it
+  after an update, and an unreadable file doesn't ask either. While it runs the file has
+  `setup=pending`, removed on finishing, so powering off partway starts it over, with the
+  choices so far kept. RESET SETTINGS doesn't start it. If TETSU-DATA can't be mounted the
+  file is also missing, so the setup shows on each boot until the card is fixed.
+  The screen has no clock in the corner, as the time may be wrong until the network sets
+  it. It doesn't sleep when idle, like the Wi-Fi screen; the lid, the volume buttons and
+  powering off on an empty battery work as elsewhere.
+  `launcher --preview-setup 0..3 FILE.ppm` renders a step on the PC. Tested on the device
+  on 2026-11-09 by removing `settings.txt` with the launcher stopped and restarting it,
+  with screenshots: language switching, the Wi-Fi screen and its way back, Berlin
+  preselected, changing the zone and clock, a restart partway coming back to the first step
+  with `setup=pending` and the choices kept, Start finishing it, no setup after the next
+  restart, and RUN SETUP AGAIN. The user then went through it on a card with an empty
+  TETSU-DATA, the same day, and the logs showed: setup on screen 5.77 s after power on, a
+  Wi-Fi network joined and saved, the clock set by ntpd, USB STORAGE ejected by the PC with
+  a clean check of the card, and the setup finished. The user confirmed that the game count
+  went up after USB STORAGE, the menus were silent with menu sounds off, the setup stayed
+  away after a reboot, and its German wording reads well. Not tried: the lid during it.
+
 ## Hardware facts in full
 
 - **Don't trust the model name for hardware details.** This unit has LPDDR3 at
