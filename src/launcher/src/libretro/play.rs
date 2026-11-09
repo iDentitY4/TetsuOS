@@ -195,6 +195,118 @@ fn wants_to_leave(controls: &Controls) -> bool {
         || (controls.is_held(Button::Menu) && controls.is_held(Button::Start))
 }
 
+/// Turns on the cheats that were on when the game was last played.
+fn apply_saved_cheats(core: &mut Core, source: &CheatSource, save: &Path) {
+    // Only codes still in the file, should it have changed or gone since.
+    let enabled = cheats::read_enabled(save);
+    let codes: Vec<String> = cheats::read(source).into_iter().map(|cheat| cheat.code).filter(|code| enabled.contains(code)).collect();
+    if !codes.is_empty() {
+        core.apply_cheats(&codes.iter().map(String::as_str).collect::<Vec<_>>());
+        println!("cheats: {} on", codes.len());
+    }
+}
+
+/// Where the time of the frames since the last statistics line went.
+struct Stats {
+    start: Instant,
+    run_time: Duration,
+    screen_time: Duration,
+    vsync_time: Duration,
+    /// Extra frames run by fast-forward.
+    fast_frames: u64,
+}
+
+impl Stats {
+    fn new(start: Instant) -> Stats {
+        Stats { start, run_time: Duration::ZERO, screen_time: Duration::ZERO, vsync_time: Duration::ZERO, fast_frames: 0 }
+    }
+
+    /// Starts the times over from now. The count of fast-forward frames stays.
+    fn restart(&mut self) {
+        self.start = Instant::now();
+        self.run_time = Duration::ZERO;
+        self.screen_time = Duration::ZERO;
+        self.vsync_time = Duration::ZERO;
+    }
+
+    /// Prints the statistics line for the last `STATS_FRAMES` frames, and starts over.
+    fn print(&mut self) {
+        let fps = STATS_FRAMES as f64 / self.start.elapsed().as_secs_f64();
+        let (scale, audio) = with_host(|host| {
+            (std::mem::take(&mut host.scale_time), std::mem::take(&mut host.audio_time))
+        });
+        let per_frame = |time: Duration| time.as_secs_f64() * 1000.0 / STATS_FRAMES as f64;
+        let emulate = self.run_time.saturating_sub(scale + audio);
+        let speed = std::fs::read_to_string(CPU_SPEED_PATH).unwrap_or_default();
+        println!(
+            "{fps:.2} fps, ms per frame: emulate {:.1}, scale {:.1}, screen {:.1}, audio wait {:.1}, vsync wait {:.1}, cpu {} kHz, speed {:.1}x",
+            per_frame(emulate),
+            per_frame(scale),
+            per_frame(self.screen_time),
+            per_frame(audio),
+            per_frame(self.vsync_time),
+            speed.trim(),
+            (STATS_FRAMES + self.fast_frames) as f64 / STATS_FRAMES as f64,
+        );
+        self.fast_frames = 0;
+        self.restart();
+    }
+}
+
+/// Runs fast-forward's extra frames, with only the last one's picture and sound kept, and
+/// gives how many there were.
+fn run_extra_frames(core: &mut Core, session: &mut Option<Session>, run_start: Instant) -> u32 {
+    with_host(|host| host.skip_output = true);
+    let mut extra = 0;
+    while extra + 1 < FAST_FORWARD_MAX && run_start.elapsed() < FAST_FORWARD_BUDGET {
+        core.run_frame();
+        if let Some(session) = session.as_mut() {
+            session.do_frame();
+        }
+        extra += 1;
+    }
+    with_host(|host| host.skip_output = false);
+    extra
+}
+
+/// Shows the frame the core made, if it made one, once the panel is ready for it.
+fn show_frame(framebuffer: &mut Framebuffer, stats: &mut Stats, vsync_works: &mut bool) -> io::Result<()> {
+    with_host(|host| {
+        if host.frame_ready {
+            if *vsync_works {
+                let vsync_start = Instant::now();
+                if let Err(error) = framebuffer.wait_for_vsync() {
+                    eprintln!("warning: can't wait for the panel, so the game may tear: {error}");
+                    *vsync_works = false;
+                }
+                stats.vsync_time += vsync_start.elapsed();
+            }
+            let screen_start = Instant::now();
+            let (width, height) = host.frame_size;
+            framebuffer.blit_centred(&host.frame, width, height)?;
+            host.frame_ready = false;
+            stats.screen_time += screen_start.elapsed();
+        }
+        Ok(())
+    })
+}
+
+/// Starts the sound, at a rate from what the game's first frames made.
+fn start_probed_audio(sample_rate: f64, fps: f64) {
+    let measured = with_host(|host| host.audio_bytes) as f64 / 4.0 / AUDIO_PROBE_FRAMES as f64;
+    // Starting games can make less sound than they do later, so the measurement
+    // can only raise the amount the core's timing says, as Super Game Boy games
+    // need. LeafGreen measured 1065 against 1097 from its timing, and lowering the
+    // rate to match made it wait on the audio at 58.1 fps.
+    let samples_per_frame = measured.max(sample_rate / fps);
+    let rate = playback_rate(sample_rate, samples_per_frame);
+    println!("{samples_per_frame:.1} samples per frame: playing sound at {rate:.0} Hz");
+    match start_audio(rate) {
+        Ok(audio) => with_host(|host| host.audio = Some(audio)),
+        Err(error) => eprintln!("warning: no audio: {error}"),
+    }
+}
+
 /// Runs a game on the framebuffer until it is quit from the menu, or Menu and Start are
 /// held together.
 pub fn play(
@@ -226,13 +338,7 @@ pub fn play(
         None => {}
     }
     if let Some(source) = cheat_source.as_ref().filter(|_| !restricted) {
-        // Only codes still in the file, should it have changed or gone since.
-        let enabled = cheats::read_enabled(save);
-        let codes: Vec<String> = cheats::read(source).into_iter().map(|cheat| cheat.code).filter(|code| enabled.contains(code)).collect();
-        if !codes.is_empty() {
-            core.apply_cheats(&codes.iter().map(String::as_str).collect::<Vec<_>>());
-            println!("cheats: {} on", codes.len());
-        }
+        apply_saved_cheats(&mut core, source, save);
     }
     let (fps, sample_rate) = (core.av_info.timing.fps, core.av_info.timing.sample_rate);
     println!("playing {} at {fps:.2} fps, {sample_rate:.0} Hz", rom.display());
@@ -244,10 +350,7 @@ pub fn play(
 
     let mut next_frame = Instant::now();
     let mut play_clock = PlayClock::start(save, next_frame);
-    let mut stats_start = next_frame;
-    let mut run_time = Duration::ZERO;
-    let mut screen_time = Duration::ZERO;
-    let mut vsync_time = Duration::ZERO;
+    let mut stats = Stats::new(next_frame);
     let mut vsync_works = true;
     let mut frames = 0u64;
     let discs = with_host(|host| host.disk_control).map_or(0, |control| control.count());
@@ -256,8 +359,6 @@ pub fn play(
     let mut release_at = None;
     let mut battery = power::Monitor::new();
     let mut fast_forwarding = false;
-    // Extra frames run by fast-forward since the last statistics line.
-    let mut fast_frames = 0u64;
     let mut ending = Ending::Quit;
     loop {
         let (leave, open_menu, lid_closed) = with_host(|host| {
@@ -306,12 +407,9 @@ pub fn play(
             }
             release_at = Some(frames - frames % STATS_FRAMES + CPU_HOLD_FRAMES);
             // The pause shouldn't count as slow frames, or make the game catch up.
-            stats_start = Instant::now();
-            next_frame = stats_start;
+            stats.restart();
+            next_frame = stats.start;
             frames -= frames % STATS_FRAMES;
-            run_time = Duration::ZERO;
-            screen_time = Duration::ZERO;
-            vsync_time = Duration::ZERO;
             with_host(|host| {
                 host.scale_time = Duration::ZERO;
                 host.audio_time = Duration::ZERO;
@@ -332,60 +430,21 @@ pub fn play(
         }
         let run_start = Instant::now();
         if fast {
-            // Extra frames, with only the last one's picture and sound kept.
-            with_host(|host| host.skip_output = true);
-            let mut extra = 0;
-            while extra + 1 < FAST_FORWARD_MAX && run_start.elapsed() < FAST_FORWARD_BUDGET {
-                core.run_frame();
-                if let Some(session) = session.as_mut() {
-                    session.do_frame();
-                }
-                extra += 1;
-            }
-            with_host(|host| host.skip_output = false);
-            fast_frames += u64::from(extra);
+            stats.fast_frames += u64::from(run_extra_frames(&mut core, &mut session, run_start));
         }
         core.run_frame();
         if let Some(session) = session.as_mut() {
             session.do_frame();
         }
-        run_time += run_start.elapsed();
-        with_host(|host| -> io::Result<()> {
-            if host.frame_ready {
-                if vsync_works {
-                    let vsync_start = Instant::now();
-                    if let Err(error) = framebuffer.wait_for_vsync() {
-                        eprintln!("warning: can't wait for the panel, so the game may tear: {error}");
-                        vsync_works = false;
-                    }
-                    vsync_time += vsync_start.elapsed();
-                }
-                let screen_start = Instant::now();
-                let (width, height) = host.frame_size;
-                framebuffer.blit_centred(&host.frame, width, height)?;
-                host.frame_ready = false;
-                screen_time += screen_start.elapsed();
-            }
-            Ok(())
-        })?;
+        stats.run_time += run_start.elapsed();
+        show_frame(framebuffer, &mut stats, &mut vsync_works)?;
 
         frames += 1;
         if play_clock.tick(Instant::now()) {
             save_play_time(&mut play_clock);
         }
         if frames == AUDIO_PROBE_FRAMES && with_host(|host| host.audio.is_none()) {
-            let measured = with_host(|host| host.audio_bytes) as f64 / 4.0 / AUDIO_PROBE_FRAMES as f64;
-            // Starting games can make less sound than they do later, so the measurement
-            // can only raise the amount the core's timing says, as Super Game Boy games
-            // need. LeafGreen measured 1065 against 1097 from its timing, and lowering the
-            // rate to match made it wait on the audio at 58.1 fps.
-            let samples_per_frame = measured.max(sample_rate / fps);
-            let rate = playback_rate(sample_rate, samples_per_frame);
-            println!("{samples_per_frame:.1} samples per frame: playing sound at {rate:.0} Hz");
-            match start_audio(rate) {
-                Ok(audio) => with_host(|host| host.audio = Some(audio)),
-                Err(error) => eprintln!("warning: no audio: {error}"),
-            }
+            start_probed_audio(sample_rate, fps);
         }
         if release_at == Some(frames) {
             // Fast-forward keeps holding it until the button is let go.
@@ -401,28 +460,7 @@ pub fn play(
             }
         }
         if frames.is_multiple_of(STATS_FRAMES) {
-            let fps = STATS_FRAMES as f64 / stats_start.elapsed().as_secs_f64();
-            let (scale, audio) = with_host(|host| {
-                (std::mem::take(&mut host.scale_time), std::mem::take(&mut host.audio_time))
-            });
-            let per_frame = |time: Duration| time.as_secs_f64() * 1000.0 / STATS_FRAMES as f64;
-            let emulate = run_time.saturating_sub(scale + audio);
-            let speed = std::fs::read_to_string(CPU_SPEED_PATH).unwrap_or_default();
-            println!(
-                "{fps:.2} fps, ms per frame: emulate {:.1}, scale {:.1}, screen {:.1}, audio wait {:.1}, vsync wait {:.1}, cpu {} kHz, speed {:.1}x",
-                per_frame(emulate),
-                per_frame(scale),
-                per_frame(screen_time),
-                per_frame(audio),
-                per_frame(vsync_time),
-                speed.trim(),
-                (STATS_FRAMES + fast_frames) as f64 / STATS_FRAMES as f64,
-            );
-            fast_frames = 0;
-            run_time = Duration::ZERO;
-            screen_time = Duration::ZERO;
-            vsync_time = Duration::ZERO;
-            stats_start = Instant::now();
+            stats.print();
         }
 
         // The panel and audio pace the game. This only covers them both failing.
