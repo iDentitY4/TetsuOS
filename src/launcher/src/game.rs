@@ -5,7 +5,7 @@ use crate::input::{Button, Event};
 use crate::launcher::{Game, Library};
 use crate::libretro::{self, Ending, Persistence};
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::io::Write;
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
@@ -40,6 +40,12 @@ pub(crate) fn play_game(rom: &Path, events: &Receiver<Event>) -> io::Result<Endi
     }
     if let Err(error) = storage::write_atomic(Path::new(PLAYING_PATH), rom.to_string_lossy().as_bytes()) {
         eprintln!("warning: could not note the game as running: {error}");
+    }
+    if is_m3u(rom) {
+        let disc_saves: Vec<_> = read_m3u(rom).iter().map(|disc| save_path(disc, system)).collect();
+        if let Err(error) = adopt_disc_save(&save_path(rom, system), &disc_saves) {
+            eprintln!("warning: could not copy the memory card of a disc: {error}");
+        }
     }
     // The sound card takes one stream, so a menu sound must end before the game's starts.
     sounds::wait();
@@ -92,6 +98,23 @@ pub(crate) fn play_game(rom: &Path, events: &Receiver<Event>) -> io::Result<Endi
     Ok(Ending::Quit)
 }
 
+/// A game whose discs were separate games until now keeps its progress: with no memory card
+/// of its own yet, it starts with a copy of the newest of theirs, which stay as they are.
+fn adopt_disc_save(save: &Path, disc_saves: &[PathBuf]) -> io::Result<()> {
+    if save.exists() {
+        return Ok(());
+    }
+    let newest = disc_saves
+        .iter()
+        .filter_map(|path| Some((std::fs::metadata(path).ok()?.modified().ok()?, path)))
+        .max_by_key(|&(time, _)| time);
+    if let Some((_, path)) = newest {
+        storage::write_atomic(save, &std::fs::read(path)?)?;
+        println!("memory card copied from {}", path.display());
+    }
+    Ok(())
+}
+
 pub(crate) fn forget_running_game() {
     match std::fs::remove_file(PLAYING_PATH) {
         Err(error) if error.kind() != io::ErrorKind::NotFound => {
@@ -131,7 +154,26 @@ pub(crate) fn run_game(core: &Path, rom: &Path, save: &Path, persistence: Persis
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
+
+    #[test]
+    fn a_grouped_game_copies_the_newest_disc_card_once() {
+        let dir = std::env::temp_dir().join(format!("launcher-adopt-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (save, one, two, gone) = (dir.join("G.m3u.srm"), dir.join("1.srm"), dir.join("2.srm"), dir.join("3.srm"));
+        std::fs::write(&one, "old").unwrap();
+        std::fs::write(&two, "new").unwrap();
+        let hour_ago = std::time::SystemTime::now() - Duration::from_secs(3600);
+        std::fs::File::options().write(true).open(&one).unwrap().set_modified(hour_ago).unwrap();
+        let discs = [one.clone(), two.clone(), gone];
+        adopt_disc_save(&save, &discs).unwrap();
+        assert_eq!(std::fs::read_to_string(&save).unwrap(), "new");
+        assert_eq!(std::fs::read_to_string(&two).unwrap(), "new", "the disc's card stays");
+        // The game's own card is never replaced.
+        std::fs::write(&save, "own").unwrap();
+        adopt_disc_save(&save, &discs).unwrap();
+        assert_eq!(std::fs::read_to_string(&save).unwrap(), "own");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn only_a_game_still_on_the_card_is_resumed() {

@@ -11,6 +11,7 @@ pub enum Item {
     Resume,
     SaveState,
     LoadState,
+    Disc,
     Volume,
     Brightness,
     Scaling,
@@ -19,10 +20,12 @@ pub enum Item {
     Quit,
 }
 
-pub const ITEMS: [Item; 9] = [
+/// Every choice, as a game with several discs shows them. Others go without `Item::Disc`.
+pub const ITEMS: [Item; 10] = [
     Item::Resume,
     Item::SaveState,
     Item::LoadState,
+    Item::Disc,
     Item::Volume,
     Item::Brightness,
     Item::Scaling,
@@ -37,6 +40,7 @@ impl Item {
             Self::Resume => "RESUME",
             Self::SaveState => "SAVE STATE",
             Self::LoadState => "LOAD STATE",
+            Self::Disc => "CHANGE DISC",
             Self::Volume => "VOLUME",
             Self::Brightness => "BRIGHTNESS",
             Self::Scaling => "SCALING",
@@ -55,6 +59,8 @@ pub enum Action {
     Quit,
     Save(usize),
     Load(usize),
+    /// Counted from 0, as the core does.
+    Disc(usize),
     Volume(i32),
     Brightness(i32),
     Scaling(i32),
@@ -63,25 +69,45 @@ pub enum Action {
 }
 
 pub struct PauseMenu {
+    items: Vec<Item>,
     selected: usize,
     /// From 1 to `SLOTS`. Kept while the game runs, so saving again uses the same slot.
     slot: usize,
+    discs: usize,
+    /// The disc `Item::Disc` shows, counted from 0.
+    disc: usize,
     message: Option<String>,
 }
 
 impl PauseMenu {
-    pub fn new() -> Self {
-        Self { selected: 0, slot: 1, message: None }
+    /// `discs` is how many the game has. With one or none, the menu doesn't offer changing.
+    pub fn new(discs: usize) -> Self {
+        let items = ITEMS.into_iter().filter(|&item| item != Item::Disc || discs > 1).collect();
+        Self { items, selected: 0, slot: 1, discs, disc: 0, message: None }
     }
 
-    /// Starts each visit on Resume, so pressing A twice by accident does nothing harmful.
-    pub fn open(&mut self) {
+    /// Starts each visit on Resume, so pressing A twice by accident does nothing harmful,
+    /// and on the disc that is in, which loading a state may have changed.
+    pub fn open(&mut self, disc: usize) {
         self.selected = 0;
+        self.disc = disc;
         self.message = None;
     }
 
+    pub fn items(&self) -> &[Item] {
+        &self.items
+    }
+
     pub fn selected(&self) -> Item {
-        ITEMS[self.selected]
+        self.items[self.selected]
+    }
+
+    pub fn disc(&self) -> usize {
+        self.disc
+    }
+
+    pub fn discs(&self) -> usize {
+        self.discs
     }
 
     pub fn slot(&self) -> usize {
@@ -100,14 +126,15 @@ impl PauseMenu {
         self.message = None;
         let item = self.selected();
         match button {
-            Button::Up => self.selected = (self.selected + ITEMS.len() - 1) % ITEMS.len(),
-            Button::Down => self.selected = (self.selected + 1) % ITEMS.len(),
+            Button::Up => self.selected = (self.selected + self.items.len() - 1) % self.items.len(),
+            Button::Down => self.selected = (self.selected + 1) % self.items.len(),
             Button::Left | Button::Right => {
                 let step = if button == Button::Left { -1 } else { 1 };
                 match item {
                     Item::SaveState | Item::LoadState => {
                         self.slot = (self.slot as i32 - 1 + step).rem_euclid(SLOTS as i32) as usize + 1;
                     }
+                    Item::Disc => self.disc = (self.disc as i32 + step).rem_euclid(self.discs as i32) as usize,
                     Item::Volume => return Action::Volume(step),
                     Item::Brightness => return Action::Brightness(step),
                     Item::Scaling => return Action::Scaling(step),
@@ -121,6 +148,7 @@ impl PauseMenu {
                     Item::Resume => Action::Resume,
                     Item::SaveState => Action::Save(self.slot),
                     Item::LoadState => Action::Load(self.slot),
+                    Item::Disc => Action::Disc(self.disc),
                     Item::Quit => Action::Quit,
                     Item::Volume | Item::Brightness | Item::Scaling | Item::Effect | Item::Ghosting => {
                         Action::Nothing
@@ -168,7 +196,7 @@ mod tests {
     const BTN_START: u16 = 0x13B;
 
     fn menu_at(item: Item) -> PauseMenu {
-        let mut menu = PauseMenu::new();
+        let mut menu = PauseMenu::new(2);
         while menu.selected() != item {
             menu.press(Button::Down);
         }
@@ -177,7 +205,7 @@ mod tests {
 
     #[test]
     fn up_and_down_wrap_around() {
-        let mut menu = PauseMenu::new();
+        let mut menu = PauseMenu::new(1);
         menu.press(Button::Up);
         assert_eq!(menu.selected(), Item::Quit);
         menu.press(Button::Down);
@@ -215,7 +243,7 @@ mod tests {
 
     #[test]
     fn a_message_lasts_until_the_next_press() {
-        let mut menu = PauseMenu::new();
+        let mut menu = PauseMenu::new(1);
         menu.set_message("SAVED TO SLOT 1".into());
         assert_eq!(menu.message(), Some("SAVED TO SLOT 1"));
         menu.press(Button::Down);
@@ -226,9 +254,39 @@ mod tests {
     fn opening_again_starts_on_resume_and_keeps_the_slot() {
         let mut menu = menu_at(Item::SaveState);
         menu.press(Button::Right);
-        menu.open();
+        menu.open(0);
         assert_eq!(menu.selected(), Item::Resume);
         assert_eq!(menu.slot(), 2);
+    }
+
+    #[test]
+    fn only_a_game_with_several_discs_offers_changing() {
+        assert!(!PauseMenu::new(0).items().contains(&Item::Disc));
+        assert!(!PauseMenu::new(1).items().contains(&Item::Disc));
+        assert!(PauseMenu::new(2).items().contains(&Item::Disc));
+    }
+
+    #[test]
+    fn discs_wrap_and_a_chooses_one() {
+        let mut menu = PauseMenu::new(3);
+        menu.open(0);
+        while menu.selected() != Item::Disc {
+            menu.press(Button::Down);
+        }
+        menu.press(Button::Left);
+        assert_eq!(menu.press(Button::A), Action::Disc(2));
+        menu.press(Button::Right);
+        assert_eq!(menu.press(Button::A), Action::Disc(0));
+    }
+
+    #[test]
+    fn opening_shows_the_disc_that_is_in() {
+        let mut menu = menu_at(Item::Disc);
+        menu.press(Button::Right);
+        menu.open(0);
+        assert_eq!(menu.disc(), 0);
+        menu.open(1);
+        assert_eq!(menu.disc(), 1);
     }
 
     #[test]

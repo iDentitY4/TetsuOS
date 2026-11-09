@@ -10,9 +10,10 @@ use crate::screens;
 use crate::settings::{self, Effect, GameDisplay, Ghosting, Scaling};
 use crate::storage::write_atomic;
 use std::cell::RefCell;
-use std::ffi::{c_char, c_int, c_uint, c_void, CStr, CString};
+use std::ffi::{c_char, c_int, c_uint, c_void, CStr, CString, OsStr};
 use std::io::{self, Read, Write};
 use std::os::fd::AsRawFd;
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -32,6 +33,8 @@ const ENVIRONMENT_GET_VARIABLE: c_uint = 15;
 const ENVIRONMENT_SET_VARIABLES: c_uint = 16;
 const ENVIRONMENT_GET_VARIABLE_UPDATE: c_uint = 17;
 const ENVIRONMENT_GET_SAVE_DIRECTORY: c_uint = 31;
+const ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION: c_uint = 57;
+const ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE: c_uint = 58;
 
 const DEVICE_JOYPAD: c_uint = 1;
 const MEMORY_SAVE_RAM: c_uint = 0;
@@ -186,6 +189,62 @@ struct AvInfo {
     timing: Timing,
 }
 
+/// `struct retro_disk_control_ext_callback`: how a core changes discs. Only what the
+/// frontend uses has its type.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct DiskControl {
+    set_eject_state: unsafe extern "C" fn(bool) -> bool,
+    get_eject_state: *const c_void,
+    get_image_index: unsafe extern "C" fn() -> c_uint,
+    set_image_index: unsafe extern "C" fn(c_uint) -> bool,
+    get_num_images: unsafe extern "C" fn() -> c_uint,
+    replace_image_index: *const c_void,
+    add_image_index: *const c_void,
+    set_initial_image: *const c_void,
+    /// Optional for a core.
+    get_image_path: Option<unsafe extern "C" fn(c_uint, *mut c_char, usize) -> bool>,
+    get_image_label: *const c_void,
+}
+
+// SAFETY for each call below: the core set these, and they stay valid while it is loaded,
+// which is as long as the process lasts. They are called on the thread that runs the core.
+impl DiskControl {
+    fn count(&self) -> usize {
+        unsafe { (self.get_num_images)() as usize }
+    }
+
+    fn current(&self) -> usize {
+        unsafe { (self.get_image_index)() as usize }
+    }
+
+    /// Whether a disc's file is there. A core's change to a missing one leaves it without
+    /// any disc, so this is checked first. A core that can't tell gets to try.
+    fn is_present(&self, index: usize) -> bool {
+        let Some(get_image_path) = self.get_image_path else { return true };
+        let mut path = [0 as c_char; 4096];
+        let known = unsafe { get_image_path(index as c_uint, path.as_mut_ptr(), path.len()) };
+        // SAFETY: the buffer starts zeroed and ends in a zero the core was told not to touch.
+        known && Path::new(OsStr::from_bytes(unsafe { CStr::from_ptr(path.as_ptr()) }.to_bytes())).exists()
+    }
+
+    /// Opens the lid, swaps the disc and closes it. PCSX ReARMed reports the lid as open for
+    /// two more seconds, which is how a game notices the change. If the new disc fails, the
+    /// one that was in goes back.
+    fn change(&self, index: usize) -> bool {
+        let previous = self.current();
+        unsafe {
+            (self.set_eject_state)(true);
+            let changed = (self.set_image_index)(index as c_uint);
+            if !changed {
+                (self.set_image_index)(previous as c_uint);
+            }
+            (self.set_eject_state)(false);
+            changed
+        }
+    }
+}
+
 /// What the C callbacks need. The core calls them on the thread that runs it.
 struct Host {
     format: PixelFormat,
@@ -209,6 +268,8 @@ struct Host {
     display: GameDisplay,
     /// Set when a core option changed, until the core asks and reads them again.
     options_changed: bool,
+    /// Copied out before calling it, as the core may call back into the host meanwhile.
+    disk_control: Option<DiskControl>,
 }
 
 thread_local! {
@@ -281,6 +342,15 @@ unsafe extern "C" fn environment(command: c_uint, data: *mut c_void) -> bool {
         }
         ENVIRONMENT_GET_VARIABLE_UPDATE => {
             *(data as *mut bool) = with_host(|host| std::mem::take(&mut host.options_changed));
+            true
+        }
+        ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION => {
+            *(data as *mut c_uint) = 1;
+            true
+        }
+        ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE => {
+            let control = *(data as *const DiskControl);
+            with_host(|host| host.disk_control = Some(control));
             true
         }
         // Everything else is optional for a core.
@@ -864,6 +934,7 @@ fn set_host(directory: &Path, target: (usize, usize), setup: CoreSetup) -> io::R
         skip_output: false,
         display: settings::get().display,
         options_changed: false,
+            disk_control: None,
     };
     HOST.with(|slot| *slot.borrow_mut() = Some(host));
     Ok(())
@@ -1076,7 +1147,8 @@ fn pause(
     let (width, height) = framebuffer.size();
     let (frame, frame_size) = with_host(|host| (host.frame.clone(), host.frame_size));
     let _silence = Silence::start(core.av_info.timing.sample_rate);
-    menu.open();
+    let disk_control = with_host(|host| host.disk_control);
+    menu.open(disk_control.map_or(0, |control| control.current()));
     let mut settings_changed = false;
     let mut redraw = true;
     let after = loop {
@@ -1136,6 +1208,23 @@ fn pause(
                     menu.set_message(trf("COULD NOT LOAD SLOT {}", &[&slot]));
                 }
             },
+            Action::Disc(disc) => {
+                // The menu offers discs only for a core that gave this.
+                let Some(control) = disk_control else { continue };
+                let number = disc + 1;
+                if disc == control.current() {
+                    menu.set_message(trf("DISC {} IS ALREADY IN", &[&number]));
+                } else if !control.is_present(disc) {
+                    eprintln!("warning: the file of disc {number} is missing");
+                    menu.set_message(trf("DISC {} IS MISSING", &[&number]));
+                } else if control.change(disc) {
+                    println!("changed to disc {number}");
+                    break AfterMenu::Resume;
+                } else {
+                    eprintln!("warning: the core could not change to disc {number}");
+                    menu.set_message(tr("COULD NOT CHANGE DISC").to_string());
+                }
+            }
             Action::Volume(steps) => {
                 settings::change_volume(steps * settings::VOLUME_STEP);
                 settings_changed = true;
@@ -1208,7 +1297,7 @@ pub fn play(
     let mut vsync_time = Duration::ZERO;
     let mut vsync_works = true;
     let mut frames = 0u64;
-    let mut menu = PauseMenu::new();
+    let mut menu = PauseMenu::new(with_host(|host| host.disk_control).map_or(0, |control| control.count()));
     let mut trigger = MenuTrigger::new();
     let mut release_at = None;
     let mut battery = power::Monitor::new();

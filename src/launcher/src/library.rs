@@ -4,16 +4,146 @@ use crate::i18n::tr;
 use crate::*;
 use crate::icons;
 use crate::launcher::{Game, Launcher, Library, List, Shelf, Tile};
-use std::path::{Path, PathBuf};
+use std::collections::{BTreeMap, HashSet};
+use std::ffi::OsStr;
+use std::os::unix::ffi::OsStrExt;
+use std::path::{Component, Path, PathBuf};
 
 /// The games in a folder and the folders inside it, sorted by path. A game's file extension
 /// decides its console, so folders can be arranged in any way. Hidden files and folders are
 /// left out, like the `._` files macOS leaves on a card, which end in a game's extension.
+/// So are the discs an `.m3u` names, and discs told apart only by a number in their names,
+/// so that a game with several shows once.
 pub(crate) fn find_roms(directory: &Path) -> Vec<PathBuf> {
     let mut roms = Vec::new();
     add_roms(directory, &mut roms);
+    let discs: HashSet<String> = roms
+        .iter()
+        .filter(|rom| is_m3u(rom))
+        .flat_map(|m3u| read_m3u(m3u))
+        .map(|disc| path_key(&disc))
+        .collect();
+    roms.retain(|rom| !discs.contains(&path_key(rom)));
+    roms.sort();
+    group_discs(directory, &mut roms);
     roms.sort();
     roms
+}
+
+pub(crate) fn is_m3u(rom: &Path) -> bool {
+    rom.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("m3u"))
+}
+
+/// Where the lists of `group_discs` go. It starts with a dot, so the search skips it.
+const DISC_LISTS: &str = ".discs";
+
+/// As many discs as PCSX ReARMed holds for a game.
+const MOST_DISCS: usize = 8;
+
+/// Replaces discs of one game by an `.m3u` the launcher writes, for games without their own.
+/// Games are matched by name across all folders, as some sets give each disc a folder. Of
+/// two copies of a disc the first is used and the other stays a game of its own. If the
+/// list can't be written, the discs stay separate games.
+fn group_discs(directory: &Path, roms: &mut Vec<PathBuf>) {
+    let mut games: BTreeMap<String, (String, BTreeMap<u32, PathBuf>)> = BTreeMap::new();
+    for rom in roms.iter() {
+        let takes_lists = system_for(rom).is_some_and(|system| system.extensions.contains(&"m3u"));
+        if let Some((name, number)) = takes_lists.then(|| split_disc_number(&rom_label(rom))).flatten() {
+            let (_, discs) = games.entry(name.to_lowercase()).or_insert_with(|| (name, BTreeMap::new()));
+            discs.entry(number).or_insert_with(|| rom.clone());
+        }
+    }
+    for (name, discs) in games.values().filter(|(_, discs)| discs.len() > 1) {
+        let discs: Vec<&PathBuf> = discs.values().take(MOST_DISCS).collect();
+        match write_disc_list(&directory.join(DISC_LISTS), name, &discs) {
+            Ok(list) => {
+                roms.retain(|rom| !discs.contains(&rom));
+                roms.push(list);
+            }
+            Err(error) => eprintln!("warning: could not group the discs of {name}: {error}"),
+        }
+    }
+}
+
+fn write_disc_list(folder: &Path, name: &str, discs: &[&PathBuf]) -> std::io::Result<PathBuf> {
+    let list = folder.join(format!("{name}.m3u"));
+    let mut contents = Vec::new();
+    for disc in discs {
+        contents.extend_from_slice(disc.as_os_str().as_bytes());
+        contents.push(b'\n');
+    }
+    // Every look at the card's games comes here, and most find nothing has changed.
+    if std::fs::read(&list).ok().as_ref() != Some(&contents) {
+        std::fs::create_dir_all(folder)?;
+        storage::write_atomic(&list, &contents)?;
+    }
+    Ok(list)
+}
+
+/// Splits "Final Fantasy VII (USA) (Disc 2)" into "Final Fantasy VII (USA)" and 2. The number
+/// may be in brackets anywhere, or at the end of the name, as in "Riven CD2".
+fn split_disc_number(stem: &str) -> Option<(String, u32)> {
+    for (open, close) in [('(', ')'), ('[', ']')] {
+        for (start, _) in stem.match_indices(open) {
+            let Some(length) = stem[start..].find(close) else { continue };
+            if let Some(number) = disc_number(&stem[start + 1..start + length]) {
+                let rest = format!("{}{}", &stem[..start], &stem[start + length + 1..]);
+                return Some((rest.split_whitespace().collect::<Vec<_>>().join(" "), number));
+            }
+        }
+    }
+    // Same byte offsets as `stem`, since only ASCII changes.
+    let lower = stem.to_ascii_lowercase();
+    ["disc", "disk", "cd"].iter().find_map(|word| {
+        let start = lower.rfind(word).filter(|&start| start > 0 && b" -_".contains(&lower.as_bytes()[start - 1]))?;
+        let number = disc_number(&lower[start..])?;
+        let name = stem[..start].trim_end_matches([' ', '-', '_']);
+        (!name.is_empty()).then(|| (name.to_string(), number))
+    })
+}
+
+/// The number in "Disc 2", "disk2", "CD 2" or "Disc 2 of 3".
+fn disc_number(text: &str) -> Option<u32> {
+    let text = text.to_ascii_lowercase();
+    let rest = ["disc", "disk", "cd"].iter().find_map(|word| text.strip_prefix(word))?;
+    let rest = rest.trim_start();
+    let digits = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
+    let after = rest[digits..].trim();
+    let total = after.strip_prefix("of").map(str::trim);
+    let ends_well = after.is_empty() || total.is_some_and(|total| !total.is_empty() && total.bytes().all(|byte| byte.is_ascii_digit()));
+    if ends_well { rest[..digits].parse().ok() } else { None }
+}
+
+/// The files an `.m3u` lists, or none if it can't be read.
+pub(crate) fn read_m3u(m3u: &Path) -> Vec<PathBuf> {
+    std::fs::read(m3u).map(|contents| m3u_discs(m3u, &contents)).unwrap_or_default()
+}
+
+/// The files an `.m3u` lists, read as PCSX ReARMed reads them: a line starting with `#` is
+/// a comment, and a name that isn't a full path starts from the `.m3u`'s folder.
+fn m3u_discs(m3u: &Path, contents: &[u8]) -> Vec<PathBuf> {
+    let folder = m3u.parent().unwrap_or(Path::new(""));
+    contents
+        .split(|&byte| byte == b'\n')
+        .map(|line| line.split(|&byte| byte == b'\r').next().unwrap_or_default())
+        .filter(|line| !line.is_empty() && !line.starts_with(b"#"))
+        .map(|line| folder.join(OsStr::from_bytes(line)))
+        .collect()
+}
+
+/// For telling whether two paths name one file on TETSU-DATA, which ignores case.
+fn path_key(path: &Path) -> String {
+    let mut clean = PathBuf::new();
+    for part in path.components() {
+        match part {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                clean.pop();
+            }
+            _ => clean.push(part),
+        }
+    }
+    clean.to_string_lossy().to_lowercase()
 }
 
 fn add_roms(directory: &Path, roms: &mut Vec<PathBuf>) {
@@ -208,6 +338,114 @@ mod tests {
         let names: Vec<String> = find_roms(&dir).iter().map(|rom| rom_label(rom)).collect();
         assert_eq!(names, ["Tetris", "Metal Slug X", "top"]);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn m3u_lines_are_read_as_the_core_reads_them() {
+        let discs = m3u_discs(Path::new("/r/PS1/FF.m3u"), b"#Final Fantasy\r\nFF 1.cue\r\n\r\nCDs/FF 2.cue\n/abs/FF 3.cue");
+        let discs: Vec<&str> = discs.iter().map(|disc| disc.to_str().unwrap()).collect();
+        assert_eq!(discs, ["/r/PS1/FF 1.cue", "/r/PS1/CDs/FF 2.cue", "/abs/FF 3.cue"]);
+    }
+
+    #[test]
+    fn a_game_with_an_m3u_shows_once() {
+        let dir = std::env::temp_dir().join(format!("launcher-m3u-test-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("FF/CDs")).unwrap();
+        for name in ["FF/FF 1.cue", "FF/CDs/FF 2.cue", "Other.cue"] {
+            std::fs::write(dir.join(name), []).unwrap();
+        }
+        // Another case and a roundabout path still name the same files, as on FAT.
+        std::fs::write(dir.join("FF/FF.m3u"), "ff 1.CUE\n./CDs/../CDs/FF 2.cue\nFF 3.cue\n").unwrap();
+        let names: Vec<String> = find_roms(&dir).iter().map(|rom| rom_label(rom)).collect();
+        assert_eq!(names, ["FF", "Other"]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn disc_numbers_are_found_in_the_usual_spellings() {
+        for (stem, name, number) in [
+            ("Final Fantasy VII (USA) (Disc 2)", "Final Fantasy VII (USA)", 2),
+            ("Final Fantasy VII (Disc 2) (USA) (Rev 1)", "Final Fantasy VII (USA) (Rev 1)", 2),
+            ("Game [disk 3 of 4]", "Game", 3),
+            ("Game (CD1)", "Game", 1),
+            ("Game Disc 2", "Game", 2),
+            ("Game - CD 2", "Game", 2),
+            ("Game_disc2", "Game", 2),
+        ] {
+            assert_eq!(split_disc_number(stem), Some((name.to_string(), number)), "{stem}");
+        }
+        for stem in ["Game", "Discworld (USA)", "Discworld 2", "CD 2", "Game (Disc)", "Game (Disc A)", "Game (CDi)", "Game (Disc 1 and 2)"] {
+            assert_eq!(split_disc_number(stem), None, "{stem}");
+        }
+    }
+
+    fn temporary_roms(test: &str, files: &[&str]) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("launcher-{test}-{}", std::process::id()));
+        for name in files {
+            let path = dir.join(name);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, []).unwrap();
+        }
+        dir
+    }
+
+    fn labels(roms: &[PathBuf]) -> Vec<String> {
+        roms.iter().map(|rom| rom_label(rom)).collect()
+    }
+
+    #[test]
+    fn discs_of_one_game_become_one_game_in_disc_order() {
+        let dir = temporary_roms("group", &["A/FF (USA) (Disc 2).cue", "B/FF (USA) (Disc 10).cue", "ff (usa) (disc 1).CHD", "Alone (Disc 1).cue", "Other.cue"]);
+        let roms = find_roms(&dir);
+        assert_eq!(labels(&roms), ["FF (USA)", "Alone (Disc 1)", "Other"]);
+        assert_eq!(labels(&read_m3u(&roms[0])), ["ff (usa) (disc 1)", "FF (USA) (Disc 2)", "FF (USA) (Disc 10)"]);
+        assert!(roms[0].starts_with(dir.join(DISC_LISTS)));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_disc_added_later_joins_the_list() {
+        let dir = temporary_roms("group-later", &["G (Disc 1).cue", "G (Disc 2).cue"]);
+        let list = find_roms(&dir).remove(0);
+        assert_eq!(read_m3u(&list).len(), 2);
+        std::fs::write(dir.join("G (Disc 3).cue"), []).unwrap();
+        assert_eq!(find_roms(&dir), [list.clone()]);
+        assert_eq!(read_m3u(&list).len(), 3);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_second_copy_of_a_disc_stays_a_game_of_its_own() {
+        let dir = temporary_roms("group-copy", &["A/G (Disc 1).cue", "A/G (Disc 2).cue", "B/G (Disc 1).cue"]);
+        let roms = find_roms(&dir);
+        assert_eq!(labels(&roms), ["G", "G (Disc 1)"]);
+        assert!(roms[1].starts_with(dir.join("B")));
+        assert_eq!(read_m3u(&roms[0])[0], dir.join("A/G (Disc 1).cue"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn only_consoles_with_discs_are_grouped_and_a_games_own_m3u_comes_first() {
+        let dir = temporary_roms("group-others", &["G (Disc 1).gb", "G (Disc 2).gb", "H (Disc 1).cue", "H (Disc 2).cue"]);
+        std::fs::write(dir.join("H.m3u"), "H (Disc 2).cue\nH (Disc 1).cue\n").unwrap();
+        let roms = find_roms(&dir);
+        assert_eq!(labels(&roms), ["G (Disc 1)", "G (Disc 2)", "H"]);
+        assert!(!dir.join(DISC_LISTS).exists());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn discs_stay_separate_if_their_list_cannot_be_written() {
+        let dir = temporary_roms("group-fail", &["G (Disc 1).cue", "G (Disc 2).cue"]);
+        // A file where the folder should go.
+        std::fs::write(dir.join(DISC_LISTS), []).unwrap();
+        assert_eq!(labels(&find_roms(&dir)), ["G (Disc 1)", "G (Disc 2)"]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn an_m3u_is_a_playstation_game() {
+        assert_eq!(SYSTEMS[system_index(Path::new("/r/FF.M3U")).unwrap()].console, "PLAYSTATION");
     }
 
     #[test]

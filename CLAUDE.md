@@ -19,7 +19,7 @@ root password; a CPU performance setting; USB STORAGE, which shows TETSU-DATA to
 a drive.
 
 Games: NES (FCEUmm), SNES (Snes9x), Game Boy, Color and Advance (mGBA), PlayStation (PCSX
-ReARMed), Mega Drive, Master System and Game Gear (Genesis Plus GX), PC Engine (Beetle PCE
+ReARMed, with discs grouped by name or an `.m3u`, and CHANGE DISC), Mega Drive, Master System and Game Gear (Genesis Plus GX), PC Engine (Beetle PCE
 Fast), Neo Geo Pocket and Color (Beetle NeoPop), WonderSwan and Color (Beetle Cygne), Lynx
 (Handy) and Tamagotchi (tamalib), with an in-game menu (8 save slots, levels, display
 options), resume on leaving and after power-off, fast-forward on R2, sharp-bilinear
@@ -36,6 +36,7 @@ ADVANCED > RUN SETUP AGAIN repeats.
 ## Not yet checked by the user
 
 - Game Boy SGB games without their border; PlayStation sound and feel
+- A real multi-disc PlayStation game asking for its next disc; a multi-disc `.pbp`
 - Neo Geo Pocket, WonderSwan and Lynx sound and controls; a Neo Geo Pocket game that saves
 - Sleep when idle: the screen dark while asleep, and waking with the power button
 - The lid since input moved to the `evdev` crate; the lid during a box art download
@@ -55,9 +56,16 @@ ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Next steps
 
-1. Rewind, moved to the end by the user
-2. Proposed, not confirmed: before a release, decide whether USB ONLY should keep root's
+1. ZIP ROMs: load zipped cartridge games directly
+2. Jump and search in game lists: L/R jumps by letter, search reuses the title keyboard
+3. A game details screen: cover, console, file size, last played, star, and delete the
+   game and its saves
+4. Per-game or per-console display settings (scaling, effect, ghosting)
+5. Play time per game, shown in the details screen
+6. Sort options for lists: name, last played, play time
+7. Proposed, not confirmed: before a release, decide whether USB ONLY should keep root's
    empty password, as the serial console does
+8. Rewind, moved to the end by the user
 
 ## How the launcher is built
 

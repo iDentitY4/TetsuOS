@@ -440,6 +440,12 @@ mod tests {
     }
 
     #[test]
+    fn an_m3u_without_a_disc_number_gets_the_first_discs_cover() {
+        let names: Vec<String> = ["Final Fantasy VII (USA) (Disc 1)", "Final Fantasy VII (USA) (Disc 2)"].map(String::from).into();
+        assert_eq!(closest_cover(&names, "Final Fantasy VII (USA)"), Some(names[0].as_str()));
+    }
+
+    #[test]
     fn shrinking_keeps_the_shape_and_averages() {
         assert_eq!(fit_size((512, 512), MAX_SIZE), (200, 200));
         assert_eq!(fit_size((512, 724), MAX_SIZE), (200, 283));

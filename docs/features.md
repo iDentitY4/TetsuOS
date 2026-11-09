@@ -145,6 +145,51 @@ Working on the test unit, confirmed by the user:
   the lowest 480 MHz and 44 C with no underruns, FF7 sees a formatted card, and save
   states (4.4 MB) save and load. 50 Hz games can't match the 59.94 Hz panel, so some
   frames show twice. The user hasn't tried it yet, so sound and feel are unchecked
+- Multi-disc PlayStation games. An `.m3u` is a text file with one disc per line, such as
+  `Final Fantasy VII (Europe) (Disc 1).cue`; names start from the `.m3u`'s folder, and
+  lines starting with `#` are comments. `library::find_roms` reads every `.m3u` and leaves
+  out the discs it names, ignoring case as FAT does, so the game shows once under the
+  `.m3u`'s name. The core reads the file itself and holds up to 8 discs. All discs share
+  one memory card and one set of states, in `saves/<game>.m3u.*`. A cover comes from the
+  collection's first disc (`closest_cover`).
+
+  Discs group by themselves without an `.m3u` (`library::group_discs`). Names that differ
+  only by a disc number count as one game, across all folders, as some sets give each disc
+  its own: `(Disc 2)`, `[Disk 2 of 3]` or `(CD2)` anywhere in brackets, or `Disc 2` or
+  `CD2` at the end of the name. Tags must match, so `(Europe) (Disc 1)` and `(USA) (Disc 2)`
+  stay two games. Of two copies of a disc, the first by path joins and the other stays its
+  own game. The launcher writes the list to `roms/.discs/<game>.m3u` with full paths, only
+  when it changed, which leaves the game folders as they are; a dot folder isn't scanned.
+  If it can't be written, the discs stay separate. An old list of a game that no longer
+  groups stays in `.discs` unused. Only PlayStation games group.
+
+  Going from separate discs to one game changes the save name. So when an `.m3u` game has
+  no memory card, `game::adopt_disc_save` copies the newest card of its discs, leaving
+  theirs. States aren't copied, because each records its own disc number. A starred or
+  recent disc no longer shows, because that path isn't a game any more.
+
+  CHANGE DISC in the in-game menu (`Item::Disc`) appears when the core reports more than
+  one disc, so multi-disc `.pbp` files should get it too; no such file has been tried.
+  Left and Right choose a disc and A inserts it and resumes. The frontend answers the
+  core's `SET_DISK_CONTROL_EXT_INTERFACE` (`DiskControl` in `libretro.rs`): it opens the
+  lid, sets the disc and closes it, and PCSX ReARMed reports the lid as open for two more
+  seconds, which is how a game notices. A disc whose file is missing is refused first,
+  because the core would otherwise be left with no disc. If the core fails anyway, the
+  previous disc goes back. The disc in use is part of a save state, so resuming and
+  loading a slot bring back that state's disc, and the menu follows.
+
+  Claude tested on the device on 2026-11-09 with generated discs of 300 sectors holding
+  only a boot file and a looping program, as no PlayStation game was on the device. The
+  list showed one game; the same disc and a missing third disc gave their messages;
+  changing to disc 2 and back opened that disc's file (`/proc/<pid>/fd`); loading a slot
+  and quitting and restarting both returned to disc 2; and starting from the list used
+  `saves/Disc Test.m3u.*`. Grouping was tested the same way: two discs showed as one game,
+  and the new card matched the newer disc's with both originals kept. With the user's
+  real Final Fantasy VII (USA) discs 2 and 3, grouped from a folder each and run with a
+  save in `/tmp`, changing disc during the intro opened disc 3 at about 60 fps with no
+  underruns, and the intro carried on. A dummy disc's run logged one 15 s underrun after
+  its change, which the real game didn't. No real game has asked for its next disc yet, so
+  whether a game accepts the change at that prompt is unchecked
 - Mega Drive, Master System and Game Gear through `package/libretro-genesis-plus-gx`, and
   PC Engine cards through `package/libretro-beetle-pce-fast`. Files are `.md`, `.gen` and
   `.smd`; `.sms`; `.gg`; and `.pce`. Mega Drive `.bin` isn't listed, because the launcher

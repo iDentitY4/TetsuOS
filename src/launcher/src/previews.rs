@@ -71,7 +71,8 @@ pub(crate) fn write_pause_preview(path: &str) -> io::Result<()> {
             (x * 255 / 640) << 16 | (y * 255 / 426) << 8 | 0x80
         })
         .collect();
-    let mut menu = pause::PauseMenu::new();
+    // With several discs, the fullest the menu gets.
+    let mut menu = pause::PauseMenu::new(3);
     menu.press(Button::Down);
     menu.press(Button::Down);
     menu.press(Button::Right);

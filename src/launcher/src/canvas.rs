@@ -310,7 +310,7 @@ pub struct PauseView<'a> {
 }
 
 const PAUSE_PANEL: (usize, usize, usize, usize) = (110, 30, 420, 420);
-const PAUSE_TOP: usize = 96;
+const PAUSE_TOP: usize = 80;
 const PAUSE_ROW: usize = 30;
 const PAUSE_TEXT_SCALE: usize = 2;
 const PAUSE_BAR_WIDTH: usize = 120;
@@ -351,7 +351,7 @@ pub fn pause_screen(
     let label_x = panel_x + 20;
     let value_right = panel_x + panel_w - 20;
     let menu = view.menu;
-    for (row, &item) in ITEMS.iter().enumerate() {
+    for (row, &item) in menu.items().iter().enumerate() {
         let y = PAUSE_TOP + row * PAUSE_ROW;
         let selected = item == menu.selected();
         let (text_color, bar_color) = if selected {
@@ -384,6 +384,7 @@ pub fn pause_screen(
             Item::SaveState => trf("SLOT {}", &[&menu.slot()]),
             Item::LoadState if view.slot_used => trf("SLOT {}", &[&menu.slot()]),
             Item::LoadState => trf("SLOT {} EMPTY", &[&menu.slot()]),
+            Item::Disc => trf("DISC {} OF {}", &[&(menu.disc() + 1), &menu.discs()]),
             _ => continue,
         };
         let value = if selected { format!("< {value} >") } else { value };
@@ -391,7 +392,7 @@ pub fn pause_screen(
         canvas.text_at(&value, value_x, text_y, PAUSE_TEXT_SCALE, text_color);
     }
 
-    let message_y = PAUSE_TOP + ITEMS.len() * PAUSE_ROW + 12;
+    let message_y = PAUSE_TOP + menu.items().len() * PAUSE_ROW + 12;
     if let Some(message) = menu.message() {
         canvas.text(message, message_y, PAUSE_TEXT_SCALE, canvas.theme.accent);
     }
@@ -531,7 +532,7 @@ mod tests {
     #[test]
     fn the_pause_menu_dims_the_frame_and_highlights_the_selection() {
         let frame = vec![0x00FF_FFFFu32; 640 * 426];
-        let menu = PauseMenu::new();
+        let menu = PauseMenu::new(1);
         let canvas = pause_screen(640, 480, &frame, (640, 426), &pause_view(&menu), Theme::default());
         // Outside the panel, the frame shows dimmed. The bars above and below are black.
         assert_eq!(pixel(&canvas, 5, 240), Rgb(85, 85, 85));
@@ -543,7 +544,7 @@ mod tests {
 
     #[test]
     fn the_pause_menu_survives_odd_sizes() {
-        let menu = PauseMenu::new();
+        let menu = PauseMenu::new(1);
         let canvas = pause_screen(64, 48, &[0; 4], (2, 2), &pause_view(&menu), Theme::default());
         assert_eq!(canvas.pixels.len(), 64 * 48);
         let canvas = pause_screen(640, 480, &[], (0, 0), &pause_view(&menu), Theme::default());
@@ -554,6 +555,13 @@ mod tests {
     fn the_longest_slot_text_fits_beside_its_label() {
         let value = text_width(&format!("< SLOT {} EMPTY >", crate::pause::SLOTS), PAUSE_TEXT_SCALE);
         let label = text_width("LOAD STATE", PAUSE_TEXT_SCALE);
+        assert!(20 + label + 12 + value + 20 <= PAUSE_PANEL.2);
+    }
+
+    #[test]
+    fn the_longest_disc_text_fits_beside_its_label() {
+        let value = text_width("< DISC 8 OF 8 >", PAUSE_TEXT_SCALE);
+        let label = text_width("CHANGE DISC", PAUSE_TEXT_SCALE);
         assert!(20 + label + 12 + value + 20 <= PAUSE_PANEL.2);
     }
 

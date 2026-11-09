@@ -156,8 +156,9 @@ pub(crate) const SYSTEMS: [System; 16] = [
         key: "ps1",
         label: "PLAYSTATION",
         icon: &icons::PLAYSTATION,
-        // A `.cue` names the disc's `.bin` files, which sit beside it and aren't listed.
-        extensions: &["cue", "chd", "pbp"],
+        // A `.cue` names the disc's `.bin` files, which sit beside it and aren't listed. An
+        // `.m3u` names the discs of one game, which `library::find_roms` then doesn't list.
+        extensions: &["cue", "chd", "pbp", "m3u"],
         core: "/usr/lib/libretro/pcsx_rearmed_libretro.so",
         // The memory card, which the core keeps as its save memory.
         persistence: Persistence::BatteryRam,
