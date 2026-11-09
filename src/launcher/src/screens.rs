@@ -1,6 +1,7 @@
 //! Lays out the launcher's screens: the console grid, game lists, settings and system info.
 
 use crate::boxart::Image;
+use crate::core_options::{OptionsPage, Row as OptionRow};
 use crate::canvas::{text_width, Battery, Canvas, Rgb, Theme, BODY, LOW, MUTED, TEXT};
 use crate::font;
 use crate::i18n::{tr, trf};
@@ -172,6 +173,7 @@ pub fn group_icon(group: Group) -> &'static Icon {
         Group::Time => &icons::TIME,
         Group::System => &icons::SYSTEM,
         Group::Advanced => &icons::ADVANCED,
+        Group::Cores => &icons::CORES,
     }
 }
 
@@ -607,6 +609,136 @@ pub fn home_tiles_screen(
     canvas
 }
 
+/// Where the CORE OPTIONS page puts its rows: across `left..right` from `top`, `shown` rows
+/// of `row` lines at a time, with their text `pad` in from each side.
+pub(crate) struct OptionsLayout {
+    pub left: usize,
+    pub right: usize,
+    pub pad: usize,
+    pub top: usize,
+    pub row: usize,
+    pub shown: usize,
+}
+
+/// Lines of the selected option's note under the rows.
+pub(crate) const OPTION_NOTE_LINES: usize = 3;
+const OPTION_NOTE_LINE: usize = 18;
+/// The most characters of a choice shown, so a long one leaves room for its option's name.
+const OPTION_VALUE_COLUMNS: usize = 16;
+
+/// `text` cut to `columns` characters, ending in `..` when it was longer.
+fn cut(text: &str, columns: usize) -> String {
+    if text.chars().count() <= columns {
+        return text.to_string();
+    }
+    let kept: String = text.chars().take(columns.saturating_sub(2)).collect();
+    format!("{}..", kept.trim_end())
+}
+
+/// The room the rows and the note take, from the top of the rows.
+pub(crate) const fn option_rows_height(layout: &OptionsLayout) -> usize {
+    layout.shown * layout.row + 10 + OPTION_NOTE_LINES * OPTION_NOTE_LINE
+}
+
+/// Draws the page's rows, a page of them at a time with arrows for more, and under them
+/// what the selected option does. A name too long for the room its choice leaves is cut.
+pub(crate) fn option_rows(canvas: &mut Canvas, page: &OptionsPage, layout: &OptionsLayout) {
+    let OptionsLayout { left, right, pad, top, row: row_h, shown } = *layout;
+    let advance = (font::WIDTH + 1) * TEXT_SCALE;
+    let (label_x, value_right) = (left + pad, right.saturating_sub(pad));
+    let rows = page.rows();
+    let selected = page.selected_index();
+    let first = selected / shown * shown;
+    if first > 0 {
+        more_arrow(canvas, (left + right) / 2, top.saturating_sub(10), true);
+    }
+    if first + shown < rows.len() {
+        more_arrow(canvas, (left + right) / 2, top + shown * row_h, false);
+    }
+    for (line, (index, &row)) in rows.iter().enumerate().skip(first).take(shown).enumerate() {
+        let y = top + line * row_h;
+        let color = if index == selected {
+            canvas.rect(left, y, right - left, row_h - 2, canvas.theme.accent);
+            canvas.theme.background
+        } else {
+            TEXT
+        };
+        let text_y = row_text_y(y, row_h - 2);
+        let value = page.value(row).map(|value| {
+            let value = cut(&value, OPTION_VALUE_COLUMNS);
+            if index == selected && !matches!(row, OptionRow::Category(_)) { format!("< {value} >") } else { value }
+        });
+        // Two characters between the name and its choice.
+        let value_w = value.as_deref().map_or(0, |value| text_width(value, TEXT_SCALE) + 2 * advance);
+        let label = cut(&page.label(row), value_right.saturating_sub(label_x + value_w) / advance);
+        canvas.text_at(&label, label_x, text_y, TEXT_SCALE, color);
+        if let Some(value) = value {
+            canvas.text_at(&value, value_right.saturating_sub(text_width(&value, TEXT_SCALE)), text_y, TEXT_SCALE, color);
+        }
+    }
+    let below = top + shown.min(rows.len()) * row_h + 10;
+    let columns = (right - left).saturating_sub(2 * pad) / advance;
+    let note = if page.has_options() { page.note() } else { Some(tr("THIS CORE HAS NO OPTIONS")) };
+    let mut lines = note.map(|note| wrapped_lines(note, columns, OPTION_NOTE_LINES + 1)).unwrap_or_default();
+    if lines.len() > OPTION_NOTE_LINES {
+        lines.truncate(OPTION_NOTE_LINES);
+        // More follows, which the room doesn't allow.
+        if let Some(last) = lines.last_mut() {
+            *last = cut(&format!("{last} ..."), columns);
+            if !last.ends_with("..") {
+                last.push_str("..");
+            }
+        }
+    }
+    for (line, text) in lines.iter().enumerate() {
+        canvas.text_at(text, label_x, below + line * OPTION_NOTE_LINE, TEXT_SCALE, MUTED);
+    }
+}
+
+/// The CORE OPTIONS rows on the settings screens, with room for the note above the hint.
+const SETTINGS_OPTIONS: OptionsLayout =
+    OptionsLayout { left: 0, right: 640, pad: SETTINGS_LEFT, top: LIST_TOP, row: 28, shown: 10 };
+const _: () = assert!(SETTINGS_OPTIONS.top + option_rows_height(&SETTINGS_OPTIONS) <= HINT_Y);
+
+/// A console's CORE OPTIONS, from Settings > CORES.
+pub fn core_options_screen(width: usize, height: usize, icon: &Icon, console: &str, page: &OptionsPage, frame: &Frame) -> Canvas {
+    let mut canvas = Canvas::new(width, height, frame.theme);
+    let title: String = page.category_label().unwrap_or(console).chars().take(21).collect();
+    header(&mut canvas, icon, &title, frame.battery);
+    option_rows(&mut canvas, page, &OptionsLayout { right: width, ..SETTINGS_OPTIONS });
+    hint(&mut canvas, tr("LEFT RIGHT CHANGES - A OPENS - B BACK"));
+    canvas
+}
+
+/// The consoles in Settings > CORES, each opening its core's options.
+pub fn core_consoles_screen(width: usize, height: usize, rows: &[(&Icon, &str)], selected: usize, frame: &Frame) -> Canvas {
+    let mut canvas = Canvas::new(width, height, frame.theme);
+    header(&mut canvas, &icons::CORES, tr("CORE OPTIONS"), frame.battery);
+    let right = width.saturating_sub(SETTINGS_RIGHT);
+    let first = first_visible(selected);
+    if first > 0 {
+        more_arrow(&mut canvas, width / 2, LIST_TOP - 10, true);
+    }
+    if first + PAGE < rows.len() {
+        more_arrow(&mut canvas, width / 2, LIST_TOP + PAGE * LIST_ROW, false);
+    }
+    for (line, (index, &(icon, label))) in rows.iter().enumerate().skip(first).take(PAGE).enumerate() {
+        let y = LIST_TOP + line * LIST_ROW;
+        let color = if index == selected {
+            canvas.rect(0, y, width, LIST_ROW - 2, canvas.theme.accent);
+            canvas.theme.background
+        } else {
+            TEXT
+        };
+        canvas.icon(icon, LIST_ICON_LEFT, y + (LIST_ROW - 2 - icons::HEIGHT) / 2, 1);
+        let text_y = row_text_y(y, LIST_ROW - 2);
+        canvas.text_at(label, LIST_ICON_TEXT_LEFT, text_y, TEXT_SCALE, color);
+        canvas.text_at(">", right.saturating_sub(text_width(">", TEXT_SCALE)), text_y, TEXT_SCALE, color);
+    }
+    hint(&mut canvas, tr("A OPENS - B BACK"));
+    canvas
+}
+
 /// The box art download, as `boxart_screen` shows it.
 pub struct BoxArtView<'a> {
     pub status: &'a str,
@@ -978,6 +1110,13 @@ pub fn message_screen(width: usize, height: usize, message: &str, theme: Theme) 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn long_text_is_cut_with_dots() {
+        assert_eq!(super::cut("SHORT", 8), "SHORT");
+        assert_eq!(super::cut("HARDWARE PRESET", 10), "HARDWARE..");
+        assert_eq!(super::cut("ABCDEFGHIJ", 6), "ABCD..");
+    }
+
     use super::*;
 
     /// The first look, with no battery reading.

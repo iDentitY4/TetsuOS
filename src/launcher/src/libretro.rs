@@ -3,6 +3,7 @@
 use crate::i18n::{tr, trf};
 use crate::canvas::{self, PauseView};
 use crate::controls::{self, ControlsMenu, Layout, PageAction, Pad, Scope};
+use crate::core_options::{self, current, default_value, Category, Choice, Choices, Declarations, Declared, OptionsPage};
 use crate::fb::Framebuffer;
 use crate::input::{self, Button, Controls, Event};
 use crate::pause::{Action, MenuTrigger, PauseMenu};
@@ -37,8 +38,13 @@ const ENVIRONMENT_GET_VARIABLE: c_uint = 15;
 const ENVIRONMENT_SET_VARIABLES: c_uint = 16;
 const ENVIRONMENT_GET_VARIABLE_UPDATE: c_uint = 17;
 const ENVIRONMENT_GET_SAVE_DIRECTORY: c_uint = 31;
+const ENVIRONMENT_GET_CORE_OPTIONS_VERSION: c_uint = 52;
+const ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY: c_uint = 55;
 const ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION: c_uint = 57;
 const ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE: c_uint = 58;
+const ENVIRONMENT_SET_CORE_OPTIONS_V2: c_uint = 67;
+const ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL: c_uint = 68;
+const ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK: c_uint = 69;
 
 const DEVICE_JOYPAD: c_uint = 1;
 const MEMORY_SAVE_RAM: c_uint = 0;
@@ -102,52 +108,128 @@ struct Variable {
     value: *const c_char,
 }
 
-/// Core options that differ from the cores' defaults. Any other option keeps its default.
-const CORE_OPTIONS: [(&CStr, &CStr); 4] = [
-    // Super Game Boy games would otherwise fill only half the screen, inside a border.
-    (c"mgba_sgb_borders", c"OFF"),
-    // The original screens were dim and washed out, so games chose strong colours to make
-    // up for it. This shows them as they looked on the hardware, not garish.
-    (c"mgba_color_correction", c"Auto"),
-    // A palette measured from real consoles, where the default is a rough guess.
-    (c"fceumm_palette", c"smooth-v2-fbx"),
-    // The PlayStation's second memory card would be a file shared by all games, which
-    // nothing uses. The first is the game's save memory, in its `.srm` file.
-    (c"pcsx_rearmed_memcard2", c"none"),
-];
+/// `struct retro_core_option_value`.
+#[repr(C)]
+struct OptionValue {
+    value: *const c_char,
+    label: *const c_char,
+}
 
-const GHOSTING_OPTION: &CStr = c"mgba_interframe_blending";
+/// `struct retro_core_option_v2_category`.
+#[repr(C)]
+struct OptionCategory {
+    key: *const c_char,
+    desc: *const c_char,
+    info: *const c_char,
+}
+
+/// `struct retro_core_option_v2_definition`.
+#[repr(C)]
+struct OptionDefinition {
+    key: *const c_char,
+    desc: *const c_char,
+    /// A shorter name, for inside its category.
+    desc_categorized: *const c_char,
+    info: *const c_char,
+    info_categorized: *const c_char,
+    category_key: *const c_char,
+    values: [OptionValue; 128],
+    default_value: *const c_char,
+}
+
+/// `struct retro_core_options_v2`.
+#[repr(C)]
+struct CoreOptionsV2 {
+    categories: *const OptionCategory,
+    definitions: *const OptionDefinition,
+}
+
+/// `struct retro_core_options_v2_intl`. Only `us` is read, as the frontend reports no
+/// language, so `local` stays empty.
+#[repr(C)]
+struct CoreOptionsV2Intl {
+    us: *const CoreOptionsV2,
+    local: *const CoreOptionsV2,
+}
+
+/// `struct retro_core_option_display`.
+#[repr(C)]
+struct OptionDisplay {
+    key: *const c_char,
+    visible: bool,
+}
+
+type UpdateDisplay = unsafe extern "C" fn() -> bool;
+
+/// A C string from a core, or empty for none.
+///
+/// # Safety
+/// `text` is null or points to a C string.
+unsafe fn c_text(text: *const c_char) -> String {
+    if text.is_null() { String::new() } else { CStr::from_ptr(text).to_string_lossy().into_owned() }
+}
+
+/// What a core declares with `retro_core_options_v2`. Inside a known category, an option
+/// takes the shorter name and text the core gives for there.
+///
+/// # Safety
+/// `options` points to a `retro_core_options_v2` whose lists end in an entry without a key.
+unsafe fn read_options_v2(options: &CoreOptionsV2) -> Declarations {
+    let mut declarations = Declarations::default();
+    let mut category = options.categories;
+    while !category.is_null() && !(*category).key.is_null() {
+        declarations.categories.push(Category {
+            key: c_text((*category).key),
+            label: c_text((*category).desc),
+            info: c_text((*category).info),
+        });
+        category = category.add(1);
+    }
+    let mut definition = options.definitions;
+    while !definition.is_null() && !(*definition).key.is_null() {
+        let item = &*definition;
+        let category = c_text(item.category_key);
+        let in_category = declarations.categories.iter().any(|known| known.key == category);
+        let pick = |categorized: *const c_char, plain: *const c_char| {
+            if in_category && !categorized.is_null() { c_text(categorized) } else { c_text(plain) }
+        };
+        let choices: Vec<Choice> = item
+            .values
+            .iter()
+            .take_while(|value| !value.value.is_null())
+            .map(|value| Choice { value: c_text(value.value), label: c_text(value.label) })
+            .collect();
+        // Without one, the first choice is the default.
+        let default = if item.default_value.is_null() {
+            choices.first().map(|choice| choice.value.clone()).unwrap_or_default()
+        } else {
+            c_text(item.default_value)
+        };
+        declarations.options.push(Declared {
+            key: c_text(item.key),
+            label: pick(item.desc_categorized, item.desc),
+            info: pick(item.info_categorized, item.info),
+            category,
+            choices,
+            default,
+        });
+        definition = definition.add(1);
+    }
+    declarations
+}
+
+const GHOSTING_OPTION: &str = core_options::FRONTEND_OWNED[0];
 
 /// How the frontend sets up a core for one console.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct CoreSetup {
     /// The shape the game is shown at, for consoles whose pixels aren't square.
     pub aspect: Option<(usize, usize)>,
-    /// Answers the core's own defaults for options not in `CORE_OPTIONS`. Without, a core
-    /// keeps whatever it set up internally, which for PCSX ReARMed means no memory card
-    /// and no disc read-ahead. The first cores were set up and checked without this, so
-    /// they keep that.
+    /// Answers the core's own defaults for options nobody chose. Without, a core keeps
+    /// whatever it set up internally, which for PCSX ReARMed means no memory card and no
+    /// disc read-ahead. The first cores were set up and checked without this, so they
+    /// keep that, until an option is chosen in the menu.
     pub declared_defaults: bool,
-}
-
-/// The default in a `retro_variable` value, "Description; default|other|...".
-fn declared_default(value: &CStr) -> Option<CString> {
-    let value = value.to_bytes();
-    let start = value.windows(2).position(|pair| pair == b"; ")? + 2;
-    let choices = &value[start..];
-    let end = choices.iter().position(|&byte| byte == b'|').unwrap_or(choices.len());
-    CString::new(&choices[..end]).ok()
-}
-
-fn core_option(key: &CStr, display: GameDisplay) -> Option<&'static CStr> {
-    if key == GHOSTING_OPTION {
-        return Some(match display.ghosting {
-            Ghosting::Off => c"OFF",
-            Ghosting::Smart => c"mix_smart",
-            Ghosting::Full => c"lcd_ghosting",
-        });
-    }
-    CORE_OPTIONS.iter().find(|(name, _)| *name == key).map(|(_, value)| *value)
 }
 
 /// `struct retro_system_info`.
@@ -261,8 +343,20 @@ struct Host {
     source: Vec<u8>,
     target: (usize, usize),
     setup: CoreSetup,
-    /// Each option the core declared, with its default.
-    defaults: Vec<(CString, CString)>,
+    /// The options the core declared, as it last declared them.
+    declarations: Declarations,
+    /// Options the core asked not to show now.
+    hidden: Vec<String>,
+    /// The console's or the game's choices.
+    choices: Choices,
+    /// Options answered with a choice since the game started. A core without
+    /// `declared_defaults` gets the default for them afterwards, so it doesn't keep the
+    /// last choice when the menu goes back to the default.
+    answered: Vec<String>,
+    /// Every value given to the core, which may keep pointing at it.
+    answers: Vec<CString>,
+    /// What the core asks to be called after its options change, to show or hide others.
+    update_display: Option<UpdateDisplay>,
     frame_ready: bool,
     audio: Option<Child>,
     audio_bytes: u64,
@@ -293,6 +387,48 @@ fn with_host<T>(action: impl FnOnce(&mut Host) -> T) -> T {
     HOST.with(|host| action(host.borrow_mut().as_mut().expect("host is set before the core runs")))
 }
 
+impl Host {
+    /// What a core option is set to, or None to leave it to the core.
+    fn option_value(&mut self, key: &str) -> Option<String> {
+        if key == GHOSTING_OPTION {
+            return Some(
+                match self.display.ghosting {
+                    Ghosting::Off => "OFF",
+                    Ghosting::Smart => "mix_smart",
+                    Ghosting::Full => "lcd_ghosting",
+                }
+                .to_string(),
+            );
+        }
+        if let Some(option) = self.declarations.option(key) {
+            if let Some(value) = self.choices.get(key).filter(|_| current(option, &self.choices) != default_value(option)) {
+                if !self.answered.iter().any(|answered| answered == key) {
+                    self.answered.push(key.to_string());
+                }
+                return Some(value.to_string());
+            }
+        }
+        if let Some((_, value)) = core_options::FRONTEND_DEFAULTS.iter().find(|(name, _)| *name == key) {
+            return Some(value.to_string());
+        }
+        let answer_default = self.setup.declared_defaults || self.answered.iter().any(|answered| answered == key);
+        self.declarations.option(key).filter(|_| answer_default).map(|option| option.default.clone())
+    }
+
+    /// A pointer to `value` that stays valid while the host lasts, which outlives the core.
+    fn answer(&mut self, value: String) -> *const c_char {
+        let value = CString::new(value).unwrap_or_default();
+        let index = match self.answers.iter().position(|known| *known == value) {
+            Some(index) => index,
+            None => {
+                self.answers.push(value);
+                self.answers.len() - 1
+            }
+        };
+        self.answers[index].as_ptr()
+    }
+}
+
 unsafe extern "C" fn environment(command: c_uint, data: *mut c_void) -> bool {
     match command & !ENVIRONMENT_EXPERIMENTAL {
         ENVIRONMENT_GET_CAN_DUPE => {
@@ -319,17 +455,8 @@ unsafe extern "C" fn environment(command: c_uint, data: *mut c_void) -> bool {
             if variable.key.is_null() {
                 return false;
             }
-            let key = CStr::from_ptr(variable.key);
-            let display = with_host(|host| host.display);
-            if let Some(value) = core_option(key, display) {
-                variable.value = value.as_ptr();
-                return true;
-            }
-            // The defaults live as long as the host, which outlives the core.
-            let default = with_host(|host| {
-                host.defaults.iter().find(|(name, _)| name.as_c_str() == key).map(|(_, value)| value.as_ptr())
-            });
-            match default {
+            let key = c_text(variable.key);
+            match with_host(|host| host.option_value(&key).map(|value| host.answer(value))) {
                 Some(value) => {
                     variable.value = value;
                     true
@@ -338,19 +465,51 @@ unsafe extern "C" fn environment(command: c_uint, data: *mut c_void) -> bool {
             }
         }
         ENVIRONMENT_SET_VARIABLES => {
-            if !with_host(|host| host.setup.declared_defaults) {
-                return false;
-            }
-            let mut defaults = Vec::new();
+            let mut variables = Vec::new();
             let mut variable = data as *const Variable;
-            while !(*variable).key.is_null() {
-                let (key, value) = (CStr::from_ptr((*variable).key), (*variable).value);
-                if let Some(default) = (!value.is_null()).then(|| declared_default(CStr::from_ptr(value))).flatten() {
-                    defaults.push((key.to_owned(), default));
-                }
+            while !variable.is_null() && !(*variable).key.is_null() {
+                variables.push((c_text((*variable).key), c_text((*variable).value)));
                 variable = variable.add(1);
             }
-            with_host(|host| host.defaults = defaults);
+            with_host(|host| host.declarations = Declarations::from_legacy(&variables));
+            true
+        }
+        ENVIRONMENT_GET_CORE_OPTIONS_VERSION => {
+            *(data as *mut c_uint) = 2;
+            true
+        }
+        ENVIRONMENT_SET_CORE_OPTIONS_V2 | ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL => {
+            let options = if command & !ENVIRONMENT_EXPERIMENTAL == ENVIRONMENT_SET_CORE_OPTIONS_V2 {
+                data as *const CoreOptionsV2
+            } else if data.is_null() {
+                std::ptr::null()
+            } else {
+                (*(data as *const CoreOptionsV2Intl)).us
+            };
+            if options.is_null() {
+                return false;
+            }
+            let declarations = read_options_v2(&*options);
+            with_host(|host| host.declarations = declarations);
+            true
+        }
+        ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY => {
+            if data.is_null() {
+                return false;
+            }
+            let display = &*(data as *const OptionDisplay);
+            let key = c_text(display.key);
+            with_host(|host| {
+                host.hidden.retain(|hidden| *hidden != key);
+                if !display.visible {
+                    host.hidden.push(key);
+                }
+            });
+            true
+        }
+        ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK => {
+            let callback = if data.is_null() { None } else { *(data as *const Option<UpdateDisplay>) };
+            with_host(|host| host.update_display = callback);
             true
         }
         ENVIRONMENT_GET_VARIABLE_UPDATE => {
@@ -744,6 +903,32 @@ struct Core {
     _rom: Vec<u8>,
 }
 
+/// Loads a core's library. Never unloaded, as a core's threads, like PCSX ReARMed's GPU
+/// thread, can outlive retro_deinit. The game process ends soon after the game anyway.
+fn open_core(core_path: &Path) -> io::Result<&'static libloading::os::unix::Library> {
+    use libloading::os::unix::{Library, RTLD_LOCAL, RTLD_NOW};
+    // SAFETY: loading a core runs its initialisers, which only set up the core.
+    let library = unsafe { Library::open(Some(core_path), RTLD_NOW | RTLD_LOCAL) }.map_err(io::Error::other)?;
+    Ok(Box::leak(Box::new(library)))
+}
+
+/// Prints the options a core declares, for `core_options::declarations_for`. Every core
+/// here declares them when it is given the environment, before any game is loaded.
+pub fn print_core_options(core_path: &Path) -> io::Result<()> {
+    set_host(Path::new("/tmp"), (640, 480), CoreSetup::default(), None, Layout::default())?;
+    let library = open_core(core_path)?;
+    // SAFETY: the symbol has the signature in libretro.h.
+    unsafe {
+        let set_environment = library
+            .get::<unsafe extern "C" fn(*const c_void)>(b"retro_set_environment\0")
+            .map_err(io::Error::other)?;
+        set_environment(environment as *const c_void);
+    }
+    let declarations = with_host(|host| Declarations { hidden: host.hidden.clone(), ..host.declarations.clone() });
+    print!("{}", declarations.to_text());
+    io::stdout().flush()
+}
+
 fn c_path(path: &Path) -> io::Result<CString> {
     use std::os::unix::ffi::OsStrExt;
     CString::new(path.as_os_str().as_bytes()).map_err(io::Error::other)
@@ -758,12 +943,7 @@ impl Core {
     }
 
     fn load(core_path: &Path, rom_path: &Path) -> io::Result<Self> {
-        use libloading::os::unix::{Library, RTLD_LOCAL, RTLD_NOW};
-        // SAFETY: loading a core runs its initialisers, which only set up the core.
-        let library = unsafe { Library::open(Some(core_path), RTLD_NOW | RTLD_LOCAL) }.map_err(io::Error::other)?;
-        // Never unloaded, as a core's threads, like PCSX ReARMed's GPU thread, can outlive
-        // retro_deinit. The game process ends soon after the game anyway.
-        let library: &'static Library = Box::leak(Box::new(library));
+        let library = open_core(core_path)?;
         // SAFETY: the symbols have the signatures in libretro.h.
         unsafe {
             macro_rules! function {
@@ -949,7 +1129,12 @@ fn set_host(directory: &Path, target: (usize, usize), setup: CoreSetup, console:
         source: Vec::new(),
         target,
         setup,
-        defaults: Vec::new(),
+        declarations: Declarations::default(),
+        hidden: Vec::new(),
+        choices: Choices::default(),
+        answered: Vec::new(),
+        answers: Vec::new(),
+        update_display: None,
         frame_ready: false,
         audio: None,
         audio_bytes: 0,
@@ -962,7 +1147,7 @@ fn set_host(directory: &Path, target: (usize, usize), setup: CoreSetup, console:
         display: console.map_or(settings::get().display, |console| settings::get().display_for(console)),
         console,
         options_changed: false,
-            disk_control: None,
+        disk_control: None,
     };
     HOST.with(|slot| *slot.borrow_mut() = Some(host));
     Ok(())
@@ -1201,6 +1386,35 @@ fn apply_controls(page: &ControlsMenu, save: &Path) {
     }
 }
 
+/// Uses what the CORE OPTIONS page shows, from the next frame, and saves it: a game's own
+/// choices in its file, or the console's in theirs, which ends any the game had. A core
+/// that asked to hear about changes may then show or hide options, which the page follows.
+fn apply_core_options(page: &mut OptionsPage, save: &Path) {
+    let choices = page.choices().clone();
+    let (console, update_display) = with_host(|host| {
+        host.choices = choices.clone();
+        host.options_changed = true;
+        (host.console, host.update_display)
+    });
+    if let Some(update_display) = update_display {
+        // SAFETY: the core gave this, and it stays valid while the core is loaded. It reads
+        // the options through the environment, which doesn't hold the host meanwhile.
+        unsafe { update_display() };
+        page.set_hidden(with_host(|host| host.hidden.clone()));
+    }
+    let dir = Path::new(core_options::CONSOLE_DIR);
+    let saved = match (page.scope(), console) {
+        (Scope::Game, _) => core_options::write_game(save, &choices),
+        (Scope::Console, Some(console)) => {
+            core_options::remove_game(save).and_then(|()| core_options::write_console(dir, console, &choices))
+        }
+        (Scope::Console, None) => core_options::remove_game(save),
+    };
+    if let Err(error) = saved {
+        eprintln!("warning: could not save the core options: {error}");
+    }
+}
+
 /// The layout a game starts with: its own, or its console's.
 fn layout_for(save: &Path, console: Option<&str>) -> Layout {
     controls::read_game_layout(save)
@@ -1238,6 +1452,8 @@ fn pause(
     let mut settings_changed = false;
     // The CONTROLS page, while it is open.
     let mut controls_page: Option<ControlsMenu> = None;
+    // The CORE OPTIONS page, while it is open.
+    let mut options_page: Option<OptionsPage> = None;
     let mut redraw = true;
     let after = loop {
         if let Some(percent) = volume_levels.try_iter().last() {
@@ -1248,9 +1464,10 @@ fn pause(
         redraw |= framebuffer.sign_wait().is_zero();
         if redraw {
             let theme = crate::current_theme();
-            let screen = match &controls_page {
-                Some(page) => canvas::controls_screen(width, height, &frame, frame_size, page, theme),
-                None => {
+            let screen = match (&controls_page, &options_page) {
+                (Some(page), _) => canvas::controls_screen(width, height, &frame, frame_size, page, theme),
+                (None, Some(page)) => canvas::core_options_screen(width, height, &frame, frame_size, page, theme),
+                (None, None) => {
                     let view = PauseView {
                         menu,
                         slot_used: slot_path(save, menu.slot()).exists(),
@@ -1278,6 +1495,14 @@ fn pause(
                 PageAction::Nothing => {}
                 PageAction::Changed => apply_controls(page, save),
                 PageAction::Back => controls_page = None,
+            }
+            continue;
+        }
+        if let Some(page) = options_page.as_mut() {
+            match page.press(button) {
+                PageAction::Nothing => {}
+                PageAction::Changed => apply_core_options(page, save),
+                PageAction::Back => options_page = None,
             }
             continue;
         }
@@ -1357,6 +1582,14 @@ fn pause(
                 let console = console.map_or(Layout::default(), |console| settings::get().controls_for(console));
                 controls_page = Some(ControlsMenu::new(console, controls::read_game_layout(save)));
             }
+            Action::CoreOptions => {
+                let (declarations, hidden, console) =
+                    with_host(|host| (host.declarations.clone(), host.hidden.clone(), host.console));
+                let console = console.map_or_else(Choices::default, |console| {
+                    core_options::read_console(Path::new(core_options::CONSOLE_DIR), console)
+                });
+                options_page = Some(OptionsPage::for_game(declarations, hidden, console, core_options::read_game(save)));
+            }
         }
     };
     if settings_changed {
@@ -1398,6 +1631,7 @@ pub fn play(
     }
     let directory = save.parent().unwrap_or(Path::new("."));
     set_host(directory, framebuffer.size(), setup, console, layout_for(save, console))?;
+    with_host(|host| host.choices = core_options::choices_for(save, console));
     let mut core = Core::load(core_path, rom)?;
     let mut save_file = core.open_save(save, persistence)?;
     let resume = resume_path(save, persistence);
@@ -1678,13 +1912,6 @@ mod tests {
     }
 
     #[test]
-    fn the_default_is_the_first_choice() {
-        assert_eq!(declared_default(c"CD read-ahead; 12|0|1|2").as_deref(), Some(c"12"));
-        assert_eq!(declared_default(c"Memory card; libretro").as_deref(), Some(c"libretro"));
-        assert_eq!(declared_default(c"No choices"), None);
-    }
-
-    #[test]
     fn playstation_modes_all_fill_a_4_3_picture() {
         let panel = (640, 480);
         let four_three = Some((4, 3));
@@ -1864,22 +2091,132 @@ mod tests {
         assert!(nes < produced && nes > produced * 0.998, "{nes} vs {produced}");
     }
 
-    #[test]
-    fn super_game_boy_borders_are_off_and_other_options_default() {
-        let display = GameDisplay::default();
-        assert_eq!(core_option(c"mgba_sgb_borders", display), Some(c"OFF"));
-        assert_eq!(core_option(c"mgba_color_correction", display), Some(c"Auto"));
-        assert_eq!(core_option(c"mgba_skip_bios", display), None);
+    fn test_host(declared_defaults: bool) {
+        set_host(Path::new("/tmp"), (640, 480), CoreSetup { aspect: None, declared_defaults }, Some("gb"), Layout::default()).unwrap();
+    }
+
+    fn call(command: c_uint, data: *mut c_void) -> bool {
+        // SAFETY: each test passes the structure the command takes.
+        unsafe { environment(command, data) }
+    }
+
+    /// What the core gets when it asks for an option, if anything.
+    fn get(key: &CStr) -> Option<String> {
+        let mut variable = Variable { key: key.as_ptr(), value: std::ptr::null() };
+        // SAFETY: the value is a C string the host keeps.
+        call(ENVIRONMENT_GET_VARIABLE, &mut variable as *mut Variable as *mut c_void).then(|| unsafe { c_text(variable.value) })
+    }
+
+    fn definition(key: &CStr, desc: &CStr, categorized: Option<&CStr>, category: Option<&CStr>, values: &[&CStr]) -> OptionDefinition {
+        let none = std::ptr::null();
+        OptionDefinition {
+            key: key.as_ptr(),
+            desc: desc.as_ptr(),
+            desc_categorized: categorized.map_or(none, CStr::as_ptr),
+            info: c"What it does.".as_ptr(),
+            info_categorized: none,
+            category_key: category.map_or(none, CStr::as_ptr),
+            values: std::array::from_fn(|index| OptionValue {
+                value: values.get(index).map_or(none, |value| value.as_ptr()),
+                label: none,
+            }),
+            // The first choice, as the core leaves it out.
+            default_value: none,
+        }
+    }
+
+    /// Declares two options in a VIDEO category and one outside it, as mGBA does.
+    fn declare_like_mgba() {
+        let categories = [
+            OptionCategory { key: c"video".as_ptr(), desc: c"Video".as_ptr(), info: c"Picture.".as_ptr() },
+            OptionCategory { key: std::ptr::null(), desc: std::ptr::null(), info: std::ptr::null() },
+        ];
+        let mut end = definition(c"x", c"x", None, None, &[]);
+        end.key = std::ptr::null();
+        let definitions = [
+            definition(c"mgba_sgb_borders", c"Super Game Boy Borders", Some(c"Borders"), Some(c"video"), &[c"ON", c"OFF"]),
+            definition(c"mgba_interframe_blending", c"Interframe Blending", None, Some(c"video"), &[c"OFF", c"mix_smart"]),
+            definition(c"mgba_skip_bios", c"Skip BIOS Intro", None, None, &[c"OFF", c"ON"]),
+            end,
+        ];
+        let us = CoreOptionsV2 { categories: categories.as_ptr(), definitions: definitions.as_ptr() };
+        let mut intl = CoreOptionsV2Intl { us: &us, local: std::ptr::null() };
+        assert!(call(ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL, &mut intl as *mut CoreOptionsV2Intl as *mut c_void));
     }
 
     #[test]
-    fn ghosting_follows_the_setting() {
-        let mut display = GameDisplay::default();
-        assert_eq!(core_option(GHOSTING_OPTION, display), Some(c"mix_smart"));
-        display.ghosting = Ghosting::Off;
-        assert_eq!(core_option(GHOSTING_OPTION, display), Some(c"OFF"));
-        display.ghosting = Ghosting::Full;
-        assert_eq!(core_option(GHOSTING_OPTION, display), Some(c"lcd_ghosting"));
+    fn a_core_declares_version_2_options_with_categories() {
+        test_host(false);
+        let mut version: c_uint = 0;
+        assert!(call(ENVIRONMENT_GET_CORE_OPTIONS_VERSION, &mut version as *mut c_uint as *mut c_void));
+        assert_eq!(version, 2);
+        declare_like_mgba();
+        let declarations = with_host(|host| host.declarations.clone());
+        assert_eq!(declarations.categories[0].label, "Video");
+        let [borders, _, bios] = &declarations.options[..] else { panic!("{declarations:?}") };
+        assert_eq!((borders.label.as_str(), borders.category.as_str(), borders.default.as_str()), ("Borders", "video", "ON"));
+        assert_eq!((bios.label.as_str(), bios.default.as_str()), ("Skip BIOS Intro", "OFF"));
+        assert_eq!(bios.choices.iter().map(|choice| choice.value.as_str()).collect::<Vec<_>>(), ["OFF", "ON"]);
+    }
+
+    #[test]
+    fn options_get_the_choice_then_the_frontends_default_then_nothing() {
+        test_host(false);
+        declare_like_mgba();
+        assert_eq!(get(c"mgba_sgb_borders").as_deref(), Some("OFF"), "the frontend's default");
+        assert_eq!(get(c"mgba_color_correction").as_deref(), Some("Auto"), "even when not declared");
+        assert_eq!(get(c"mgba_skip_bios"), None, "left to a core without declared defaults");
+        with_host(|host| host.choices.set("mgba_skip_bios", "ON", "OFF"));
+        assert_eq!(get(c"mgba_skip_bios").as_deref(), Some("ON"));
+        with_host(|host| host.choices = Choices::default());
+        assert_eq!(get(c"mgba_skip_bios").as_deref(), Some("OFF"), "back to the default, not left at ON");
+        with_host(|host| host.choices.set("mgba_sgb_borders", "ON", "OFF"));
+        assert_eq!(get(c"mgba_sgb_borders").as_deref(), Some("ON"), "a choice beats the frontend's default");
+        with_host(|host| host.choices.set("mgba_skip_bios", "MAYBE", "OFF"));
+        assert_eq!(get(c"mgba_skip_bios").as_deref(), Some("OFF"), "a value the core doesn't offer");
+    }
+
+    #[test]
+    fn a_core_with_declared_defaults_gets_them() {
+        test_host(true);
+        declare_like_mgba();
+        assert_eq!(get(c"mgba_skip_bios").as_deref(), Some("OFF"));
+        assert_eq!(get(c"not_declared"), None);
+    }
+
+    #[test]
+    fn ghosting_follows_the_setting_whatever_is_chosen() {
+        test_host(false);
+        declare_like_mgba();
+        with_host(|host| host.choices.set(GHOSTING_OPTION, "OFF", "mix_smart"));
+        for (ghosting, value) in [(Ghosting::Smart, "mix_smart"), (Ghosting::Off, "OFF"), (Ghosting::Full, "lcd_ghosting")] {
+            with_host(|host| host.display.ghosting = ghosting);
+            assert_eq!(get(c"mgba_interframe_blending").as_deref(), Some(value));
+        }
+    }
+
+    #[test]
+    fn a_core_can_hide_options_and_show_them_again() {
+        test_host(false);
+        let mut display = OptionDisplay { key: c"mgba_skip_bios".as_ptr(), visible: false };
+        assert!(call(ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, &mut display as *mut OptionDisplay as *mut c_void));
+        assert!(call(ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, &mut display as *mut OptionDisplay as *mut c_void));
+        assert_eq!(with_host(|host| host.hidden.clone()), ["mgba_skip_bios"]);
+        display.visible = true;
+        call(ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, &mut display as *mut OptionDisplay as *mut c_void);
+        assert!(with_host(|host| host.hidden.is_empty()));
+    }
+
+    #[test]
+    fn legacy_variables_are_declarations_too() {
+        test_host(true);
+        let mut variables = [
+            Variable { key: c"tama_speed".as_ptr(), value: c"Speed; 1x|2x".as_ptr() },
+            Variable { key: std::ptr::null(), value: std::ptr::null() },
+        ];
+        assert!(call(ENVIRONMENT_SET_VARIABLES, variables.as_mut_ptr() as *mut c_void));
+        assert_eq!(with_host(|host| host.declarations.options[0].label.clone()), "Speed");
+        assert_eq!(get(c"tama_speed").as_deref(), Some("1x"));
     }
 
     #[test]

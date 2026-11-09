@@ -19,11 +19,12 @@ pub enum Item {
     Effect,
     Ghosting,
     Controls,
+    CoreOptions,
     Quit,
 }
 
 /// Every choice, as a game with several discs shows them. Others go without `Item::Disc`.
-pub const ITEMS: [Item; 12] = [
+pub const ITEMS: [Item; 13] = [
     Item::Resume,
     Item::SaveState,
     Item::LoadState,
@@ -35,6 +36,7 @@ pub const ITEMS: [Item; 12] = [
     Item::Effect,
     Item::Ghosting,
     Item::Controls,
+    Item::CoreOptions,
     Item::Quit,
 ];
 
@@ -52,6 +54,7 @@ impl Item {
             Self::Effect => "SCREEN EFFECT",
             Self::Ghosting => "LCD GHOSTING",
             Self::Controls => "CONTROLS",
+            Self::CoreOptions => "CORE OPTIONS",
             Self::Quit => "QUIT",
         })
     }
@@ -75,6 +78,8 @@ pub enum Action {
     Ghosting(i32),
     /// Opens the CONTROLS page.
     Controls,
+    /// Opens the CORE OPTIONS page.
+    CoreOptions,
 }
 
 pub struct PauseMenu {
@@ -149,7 +154,7 @@ impl PauseMenu {
                     Item::Scaling => return Action::Scaling(step),
                     Item::Effect => return Action::Effect(step),
                     Item::Ghosting => return Action::Ghosting(step),
-                    Item::Resume | Item::Screenshot | Item::Controls | Item::Quit => {}
+                    Item::Resume | Item::Screenshot | Item::Controls | Item::CoreOptions | Item::Quit => {}
                 }
             }
             Button::A => {
@@ -160,6 +165,7 @@ impl PauseMenu {
                     Item::Disc => Action::Disc(self.disc),
                     Item::Screenshot => Action::Screenshot,
                     Item::Controls => Action::Controls,
+                    Item::CoreOptions => Action::CoreOptions,
                     Item::Quit => Action::Quit,
                     Item::Volume | Item::Brightness | Item::Scaling | Item::Effect | Item::Ghosting => {
                         Action::Nothing
@@ -259,6 +265,9 @@ mod tests {
         let mut menu = menu_at(Item::Controls);
         assert_eq!(menu.press(Button::Left), Action::Nothing);
         assert_eq!(menu.press(Button::A), Action::Controls);
+        let mut menu = menu_at(Item::CoreOptions);
+        assert_eq!(menu.press(Button::Right), Action::Nothing);
+        assert_eq!(menu.press(Button::A), Action::CoreOptions);
     }
 
     #[test]

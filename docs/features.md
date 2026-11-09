@@ -880,6 +880,68 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   game, other consoles' cores and Menu + Start with a layout (`press.py` can't hold both) are
   not checked
 
+- Core options. Each core's own settings, such as FCEUmm's sprite limit and palette or
+  mGBA's Game Boy model, are on a CORE OPTIONS page in the in-game menu and under Settings >
+  CORES (`core_options.rs`, `core_options_screen.rs`, `screens::option_rows`). Every option
+  the core declares is listed under the core's own categories, with its own names, choices
+  and help text, which are in English whatever the language. Left and Right go through the
+  choices, A opens a category or steps a choice, B goes back, and RESET ALL TO DEFAULTS
+  empties the choices shown. The selected option's help text shows under the rows, cut with
+  `..` after three lines; long names and choices are cut the same way.
+
+  The frontend now answers `GET_CORE_OPTIONS_VERSION` with 2 and takes
+  `SET_CORE_OPTIONS_V2` and `_V2_INTL` (reading `us`; the frontend reports no language, so
+  `local` is empty). Cores built with `libretro_core_options.h` send only `_V2_INTL` and
+  don't fall back if it is refused. `SET_VARIABLES` is read too, for Tamalib, which
+  declares nothing. `SET_CORE_OPTIONS_DISPLAY` hides options the core says don't apply, and
+  the `UPDATE_DISPLAY_CALLBACK` is called after each change, so the page follows. Options
+  with one choice, and mGBA's `mgba_interframe_blending`, which GAME SCREEN > LCD GHOSTING
+  sets, are left out. `FRONTEND_DEFAULTS` (SGB borders off, colour correction Auto, FCEUmm's
+  Smooth FBX palette, no second PlayStation memory card) are the defaults the page shows
+  and RESET goes back to.
+
+  What a core gets for an option: its ghosting setting, then the choice if the core still
+  offers that value, then the frontend's default, then the core's declared default for
+  cores with `declared_defaults`. Cores without it (mGBA, FCEUmm, Snes9x, Tamalib) still
+  get nothing for options nobody chose, as before, except an option chosen earlier in the
+  same run, so going back to the default reaches the core. Values the core is given are
+  kept for the whole run (`Host::answers`), as a core may hold the pointer.
+
+  SET FOR works as on CONTROLS: THIS CONSOLE keeps `key=value` lines in
+  `/mnt/data/core-options/<console>.txt`, only for values that differ from the default, and
+  removes the file when none are left. THIS GAME copies what the game had been using into
+  `Tetris.gb.srm.options` beside its saves, where an empty file means every default. Going
+  back to THIS CONSOLE removes it. DELETE GAME AND SAVES removes the game's file. It counts
+  neither as a save nor as last played. RESET SETTINGS removes the folder and every game's
+  file. Consoles that share a core (Game Boy, Color and Advance on mGBA) keep their own
+  choices. Changes are saved and handed to the core as they are made. The core reads them
+  through `GET_VARIABLE_UPDATE` on the next frame, but some only apply on the next start,
+  which the page says and which mGBA marks with (RESTART) in the name. Some options do
+  nothing here, such as FCEUmm's aspect ratio, as the frontend sets the shape itself.
+
+  Settings > CORES lists the 16 consoles, and each opens its core's options for the
+  console, without SET FOR. The launcher never loads a core: `launcher --core-options CORE`
+  calls only `retro_set_environment`, where every core here declares its options, and
+  prints them as tab-separated lines with what the core hid. The launcher keeps the result
+  while it runs. FCEUmm declares its options again on loading a game, with its dipswitches.
+  The tile is labelled CORES, as CORE OPTIONS is too long for a tile; it is the ninth, on a
+  row of its own. The in-game menu gained a row, so `PAUSE_ROW` went from 27 to 25 lines.
+  The in-game page uses a wider panel than the menu (600 lines), as names come from the
+  cores. `--preview-core-options` renders it with sample options.
+
+  Claude tested on the device on 2026-11-09. `--core-options` counts: FCEUmm 44 options in
+  6 categories, Genesis Plus GX 62 in 6, Beetle PCE Fast 32 in 5, PCSX ReARMed 60 in 7,
+  Snes9x 43 in 3, mGBA 17 in 5, Beetle Cygne 16, Handy 7, Beetle NeoPop 1, Tamalib none.
+  Tetris was run with its save in `/tmp`. The page showed mGBA's categories. Changing the
+  palette to DMG Green coloured the game on resuming and wrote `gb.txt`, and a restart
+  started green. THIS GAME with RESET gave an empty game file and grayscale, while
+  `gb.txt` stayed. THIS CONSOLE removed the game's file and brought green back, and RESET
+  removed `gb.txt`. Super Mario Bros. showed Smooth FBX as its palette, and NES Classic took
+  effect on resuming. Settings > CORES listed the consoles and NES's categories. Everything
+  was put back, and the folder removed. Not checked: German wording on the device (the
+  previews were), a core's hidden options changing during a game, PCSX ReARMed and Genesis
+  Plus GX in a game, and options that only apply on a restart for each core
+
 ## Hardware facts in full
 
 - **Don't trust the model name for hardware details.** This unit has LPDDR3 at

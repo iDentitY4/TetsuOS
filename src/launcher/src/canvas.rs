@@ -6,6 +6,8 @@ use crate::boxart::Image;
 use crate::icons::{self, Icon};
 use crate::input::{Button, Controls};
 use crate::controls::{self, ControlsMenu, Row};
+use crate::core_options::OptionsPage;
+use crate::screens::{self, OptionsLayout};
 use crate::pause::{Item, PauseMenu, ITEMS};
 use crate::settings::{BatteryDisplay, GameDisplay, Settings};
 
@@ -312,7 +314,7 @@ pub struct PauseView<'a> {
 
 const PAUSE_PANEL: (usize, usize, usize, usize) = (110, 15, 420, 450);
 const PAUSE_TOP: usize = 65;
-const PAUSE_ROW: usize = 27;
+const PAUSE_ROW: usize = 25;
 const PAUSE_TEXT_SCALE: usize = 2;
 const PAUSE_BAR_WIDTH: usize = 120;
 
@@ -325,7 +327,18 @@ fn dim(pixel: u32) -> Rgb {
 }
 
 /// The paused game's last frame, dimmed, with the panel the in-game menu's pages go on.
-fn pause_backdrop(width: usize, height: usize, frame: &[u32], (frame_w, frame_h): (usize, usize), theme: Theme) -> Canvas {
+fn pause_backdrop(width: usize, height: usize, frame: &[u32], frame_size: (usize, usize), theme: Theme) -> Canvas {
+    backdrop_with_panel(width, height, frame, frame_size, theme, PAUSE_PANEL)
+}
+
+fn backdrop_with_panel(
+    width: usize,
+    height: usize,
+    frame: &[u32],
+    (frame_w, frame_h): (usize, usize),
+    theme: Theme,
+    (panel_x, panel_y, panel_w, panel_h): (usize, usize, usize, usize),
+) -> Canvas {
     let mut canvas = Canvas::new(width, height, theme);
     canvas.pixels.fill(Rgb(0, 0, 0));
     let left = width.saturating_sub(frame_w) / 2;
@@ -338,7 +351,6 @@ fn pause_backdrop(width: usize, height: usize, frame: &[u32], (frame_w, frame_h)
         }
     }
 
-    let (panel_x, panel_y, panel_w, panel_h) = PAUSE_PANEL;
     canvas.rect(panel_x, panel_y, panel_w, panel_h, canvas.theme.background);
     canvas
 }
@@ -458,6 +470,33 @@ pub fn controls_screen(
         canvas.text(note, y + 12, PAUSE_TEXT_SCALE, canvas.theme.accent);
     }
     canvas.text(tr("< > CHANGES - A TURBO - B BACK"), y + 42, PAUSE_TEXT_SCALE, MUTED);
+    canvas
+}
+
+/// Wider than the menu's, as option names and choices come from the cores, at any length.
+const OPTIONS_PANEL: (usize, usize, usize, usize) = (20, 15, 600, 450);
+const OPTIONS_ROWS: OptionsLayout =
+    OptionsLayout { left: OPTIONS_PANEL.0, right: OPTIONS_PANEL.0 + OPTIONS_PANEL.2, pad: 16, top: 60, row: 24, shown: 12 };
+
+// The rows, the note, then a line about restarting and the hint, 50 lines below the note.
+const _: () = assert!(OPTIONS_ROWS.top + screens::option_rows_height(&OPTIONS_ROWS) + 50 <= OPTIONS_PANEL.1 + OPTIONS_PANEL.3);
+
+/// The in-game menu's CORE OPTIONS page.
+pub fn core_options_screen(
+    width: usize,
+    height: usize,
+    frame: &[u32],
+    frame_size: (usize, usize),
+    page: &OptionsPage,
+    theme: Theme,
+) -> Canvas {
+    let mut canvas = backdrop_with_panel(width, height, frame, frame_size, theme, OPTIONS_PANEL);
+    let title: String = page.category_label().unwrap_or(tr("CORE OPTIONS")).chars().take(28).collect();
+    canvas.text(&title, OPTIONS_PANEL.1 + 20, 3, TEXT);
+    screens::option_rows(&mut canvas, page, &OPTIONS_ROWS);
+    let below = OPTIONS_ROWS.top + screens::option_rows_height(&OPTIONS_ROWS);
+    canvas.text(tr("SOME CHANGES APPLY ON THE GAME'S NEXT START"), below + 6, PAUSE_TEXT_SCALE, MUTED);
+    canvas.text(tr("< > CHANGES - A OPENS - B BACK"), below + 30, PAUSE_TEXT_SCALE, MUTED);
     canvas
 }
 

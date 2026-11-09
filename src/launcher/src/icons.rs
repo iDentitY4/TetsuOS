@@ -796,6 +796,34 @@ pub const ADVANCED: Icon = [
     "................................",
 ];
 
+/// Core options, Settings > CORES: a chip with a gamepad's controls on it.
+pub const CORES: Icon = [
+    "................................",
+    "...........GG..GG..GG...........",
+    "...........GG..GG..GG...........",
+    "...........GG..GG..GG...........",
+    "........KKKKKKKKKKKKKKKK........",
+    "........KDDDDDDDDDDDDDDK........",
+    "........KDDDDDDDDDDDDDDK........",
+    "....GGGGKDDDDDDDDDDDDDDKGGGG....",
+    "....GGGGKDDDDDDDDDDDDDDKGGGG....",
+    "........KDDDDCCDDDDRRDDK........",
+    "........KDDDDCCDDDDRRDDK........",
+    "....GGGGKDDCCCCCCDDDDDDKGGGG....",
+    "....GGGGKDDCCCCCCDDDDDDKGGGG....",
+    "........KDDDDCCDDDYYDDDK........",
+    "........KDDDDCCDDDYYDDDK........",
+    "....GGGGKDDDDDDDDDDDDDDKGGGG....",
+    "....GGGGKDDDDDDDDDDDDDDKGGGG....",
+    "........KDDDDDDDDDDDDDDK........",
+    "........KDDDDDDDDDDDDDDK........",
+    "........KKKKKKKKKKKKKKKK........",
+    "...........GG..GG..GG...........",
+    "...........GG..GG..GG...........",
+    "...........GG..GG..GG...........",
+    "................................",
+];
+
 /// The Tetsu OS logo: a tetsubin, the Japanese iron kettle (tetsu means iron), with a
 /// gamepad's controls on its side. The handle, lid and body mirror around x = 17.
 pub const LOGO: Icon = [

@@ -406,6 +406,7 @@ pub(crate) fn act(
         Action::DeleteGame(_) => return Ok(true),
         Action::ButtonTest => button_test(framebuffer, events)?,
         Action::Wifi => wifi_settings(framebuffer, events)?,
+        Action::CoreOptions => core_options_settings(framebuffer, events)?,
         Action::DownloadBoxArt(mode) => {
             download_box_art(framebuffer, events, mode)?;
             // Covers saved since are read again.
@@ -520,6 +521,7 @@ pub(crate) fn act(
         Action::ResetSettings => {
             change_settings(|s| *s = s.reset());
             controls::remove_all_game_layouts(Path::new(SAVE_DIR));
+            core_options::remove_all(Path::new(SAVE_DIR), Path::new(core_options::CONSOLE_DIR));
             let current = settings::get();
             performance::apply(current.performance);
             power::apply_charge_limit(current.charge);

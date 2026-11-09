@@ -22,13 +22,13 @@ Games: NES (FCEUmm), SNES (Snes9x), Game Boy, Color and Advance (mGBA), PlayStat
 ReARMed, with discs grouped by name or an `.m3u`, and CHANGE DISC), Mega Drive, Master System and Game Gear (Genesis Plus GX), PC Engine (Beetle PCE
 Fast), Neo Geo Pocket and Color (Beetle NeoPop), WonderSwan and Color (Beetle Cygne), Lynx
 (Handy) and Tamagotchi (tamalib), cartridge games also in ZIP files, with an in-game menu (8 save slots, levels, display
-options, screenshots to PNG, also used as the cover of a game without one, button remapping and turbo per console or game), resume on leaving and after power-off, fast-forward on R2, sharp-bilinear
+options, screenshots to PNG, also used as the cover of a game without one, button remapping and turbo per console or game, each core's own options per console or game), resume on leaving and after power-off, fast-forward on R2, sharp-bilinear
 scaling with CRT and LCD effects, kept per console, and a volume sign on the volume buttons, also in the menus.
 
 Launcher: a tile grid with RECENT and FAVORITES, lists with covers and scrolling names,
 sorting by name or how recently or long a game was played, jumping by letter on L1 and R1, search on X, a game's details, play time and deleting it on Y,
 box art downloaded on the device, and a settings grid (GENERAL, GAME SCREEN, WI-FI,
-BOX ART, THEME, TIME, SYSTEM, ADVANCED) with colours, background, title, grid size,
+BOX ART, THEME, TIME, SYSTEM, ADVANCED, CORES) with colours, background, title, grid size,
 hidden tiles, start screen, game names, battery display, menu sounds, the boot jingle and sleep when idle.
 The launcher and in-game menu are in English or German (Settings > GENERAL > LANGUAGE).
 A new install starts with a setup (language, Wi-Fi, time, adding games), which Settings >
@@ -37,6 +37,8 @@ ADVANCED > RUN SETUP AGAIN repeats.
 ## Not yet checked by the user
 
 - Game Boy SGB games without their border; PlayStation sound and feel
+- Core options: the German wording on the device, PCSX ReARMed and Genesis Plus GX in a
+  game, options that only apply after a restart
 - Remapping and turbo: how turbo feels in a real game, cores other than mGBA, Menu + Start
   with a layout, the German wording on the device
 - A real multi-disc PlayStation game asking for its next disc; a multi-disc `.pbp`
@@ -73,7 +75,7 @@ ADVANCED > RUN SETUP AGAIN repeats.
   the menus; `--play`: one game in its own process; `--preview*`: PC screenshots).
   `app.rs` has the menus' loop and actions, `systems.rs` the consoles, `library.rs` the
   games and tiles, `game.rs` running and resuming games, `libretro.rs` the frontend,
-  `rom_zip.rs` games in ZIPs, `controls.rs` button layouts and turbo, `game_files.rs` which files are a game's, `screenshot.rs` the in-game menu's pictures, `sleep.rs`, `corner.rs` (clock and battery), `launcher.rs` the button logic,
+  `rom_zip.rs` games in ZIPs, `controls.rs` button layouts and turbo, `core_options.rs` cores' own options, `game_files.rs` which files are a game's, `screenshot.rs` the in-game menu's pictures, `sleep.rs`, `corner.rs` (clock and battery), `launcher.rs` the button logic,
   `screens.rs` and `canvas.rs` the drawing. They reach each other through `use crate::*`.
 - **Settings:** `settings.rs` reads `/mnt/data/settings.txt` once per process.
   `settings::get()` returns the `Settings`, and `settings::update(|s| ...)` changes and

@@ -89,7 +89,7 @@ pub enum DetailRow {
 pub const DETAIL_ROWS: [DetailRow; 3] = [DetailRow::Play, DetailRow::Star, DetailRow::Delete];
 
 /// A tile on the settings grid. Each opens a list of its settings, except Wi-Fi, which
-/// opens the Wi-Fi screen.
+/// opens the Wi-Fi screen, and Cores, which opens the consoles' core options.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Group {
     General,
@@ -100,9 +100,10 @@ pub enum Group {
     Time,
     System,
     Advanced,
+    Cores,
 }
 
-pub const GROUPS: [Group; 8] = [
+pub const GROUPS: [Group; 9] = [
     Group::General,
     Group::GameScreen,
     Group::Wifi,
@@ -111,6 +112,7 @@ pub const GROUPS: [Group; 8] = [
     Group::Time,
     Group::System,
     Group::Advanced,
+    Group::Cores,
 ];
 
 /// The most settings a group has, which the settings screen makes room for.
@@ -127,6 +129,7 @@ impl Group {
             Self::Time => "TIME",
             Self::System => "SYSTEM",
             Self::Advanced => "ADVANCED",
+            Self::Cores => "CORES",
         })
     }
 
@@ -144,7 +147,7 @@ impl Group {
                     Setting::Language,
                 ],
             Self::GameScreen => &[Setting::Scaling, Setting::Effect, Setting::Ghosting, Setting::UseForAllConsoles],
-            Self::Wifi => &[],
+            Self::Wifi | Self::Cores => &[],
             Self::BoxArt => &[Setting::ShowCovers, Setting::ScreenshotCovers, Setting::DownloadMissingArt, Setting::DownloadAllArt, Setting::DeleteArt],
             Self::Theme => {
                 &[
@@ -392,6 +395,8 @@ pub enum Command {
     DeleteGame(PathBuf),
     ButtonTest,
     Wifi,
+    /// The consoles' core options, from Settings > CORES.
+    CoreOptions,
     /// Shows covers in game lists if they are hidden, or hides them.
     ToggleCovers,
     /// Whether a game without a cover shows its newest screenshot.
@@ -812,6 +817,7 @@ impl Launcher {
             Button::B => self.screen = self.before_settings,
             Button::A => match self.group_selected() {
                 Group::Wifi => return Command::Wifi,
+                Group::Cores => return Command::CoreOptions,
                 group => self.screen = Screen::SettingsGroup(group),
             },
             _ => {}
@@ -1334,6 +1340,11 @@ mod tests {
         // Wi-Fi opens its own screen straight from the grid.
         assert_eq!(press_all(&mut launcher, &library, &[Button::B, Button::Right, Button::A]), Command::Wifi);
         assert_eq!(launcher.screen(), Screen::Settings);
+        // So does CORES, the last tile, on a row of its own.
+        assert_eq!(press_all(&mut launcher, &library, &[Button::Down, Button::Down, Button::A]), Command::CoreOptions);
+        assert_eq!((launcher.screen(), launcher.group_selected()), (Screen::Settings, Group::Cores));
+        press_all(&mut launcher, &library, &[Button::Up, Button::Up, Button::Right, Button::Right]);
+        assert_eq!(launcher.group_selected(), Group::Wifi);
         press_all(&mut launcher, &library, &[Button::Right, Button::A]);
         assert_eq!(launcher.press(Button::Right, &library), Command::ToggleCovers);
         launcher.press(Button::Down, &library);
@@ -1427,7 +1438,7 @@ mod tests {
     fn every_group_fits_the_settings_screen() {
         for group in GROUPS {
             assert!(group.settings().len() <= MAX_GROUP_SETTINGS, "{group:?}");
-            assert_eq!(group.settings().is_empty(), group == Group::Wifi);
+            assert_eq!(group.settings().is_empty(), matches!(group, Group::Wifi | Group::Cores));
         }
     }
 

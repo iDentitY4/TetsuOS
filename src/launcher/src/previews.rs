@@ -87,6 +87,40 @@ pub(crate) fn write_pause_preview(path: &str) -> io::Result<()> {
     write_ppm(&canvas::pause_screen(width, height, &frame, frame_size, &view, current_theme()), path)
 }
 
+/// Renders the in-game menu's CORE OPTIONS page with a few options like mGBA's, as the PC
+/// can't load the device's cores, with a changed choice selected.
+pub(crate) fn write_core_options_preview(path: &str) -> io::Result<()> {
+    use core_options::{Category, Choice, Choices, Declarations, Declared, OptionsPage};
+    let (width, height) = PREVIEW_SIZE;
+    let option = |key: &str, label: &str, category: &str, info: &str, choices: &[(&str, &str)]| Declared {
+        key: key.into(),
+        label: label.into(),
+        info: info.into(),
+        category: category.into(),
+        default: choices[0].0.into(),
+        choices: choices.iter().map(|&(value, label)| Choice { value: value.into(), label: label.into() }).collect(),
+    };
+    let declarations = Declarations {
+        categories: vec![Category { key: "system".into(), label: "System".into(), info: "Which hardware to run as.".into() }],
+        options: vec![
+            option("model", "Game Boy Model", "system", "Runs as this console.", &[("Autodetect", ""), ("Game Boy", "")]),
+            option("palette", "Default Game Boy Palette", "", "The colours of games without their own: 12 to choose from.", &[("Grayscale", ""), ("DMG Green", "")]),
+            option("solar", "Solar Sensor Level", "", "How much light Boktai's sensor sees, as the device has none.", &[("0", ""), ("5", ""), ("10", "")]),
+            option("idle", "Idle Loop Removal", "", "Skips the loops games wait in, which saves battery. A few games may misbehave.", &[("Remove Known", ""), ("Detect and Remove", ""), ("Don't Remove", "")]),
+            option("skip", "Frameskip", "", "", &[("disabled", "OFF"), ("auto", "Auto")]),
+        ],
+        hidden: Vec::new(),
+    };
+    let mut console = Choices::default();
+    console.set("idle", "Detect and Remove", "Remove Known");
+    let mut page = OptionsPage::for_game(declarations, Vec::new(), console, None);
+    for _ in 0..4 {
+        page.press(Button::Down);
+    }
+    let frame = vec![0x0040_6080u32; width * height];
+    write_ppm(&canvas::core_options_screen(width, height, &frame, PREVIEW_SIZE, &page, current_theme()), path)
+}
+
 /// Renders the in-game menu's CONTROLS page, with A swapped, X on turbo and R2 selected.
 pub(crate) fn write_controls_preview(path: &str) -> io::Result<()> {
     let (width, height) = PREVIEW_SIZE;

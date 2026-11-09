@@ -10,6 +10,8 @@ mod boxart_screen;
 mod canvas;
 mod clock;
 mod controls;
+mod core_options;
+mod core_options_screen;
 mod corner;
 mod favorites;
 mod fb;
@@ -50,6 +52,7 @@ mod wifi_screen;
 
 pub(crate) use app::*;
 pub(crate) use boxart_screen::*;
+pub(crate) use core_options_screen::*;
 pub(crate) use corner::*;
 pub(crate) use game::*;
 pub(crate) use library::*;
@@ -98,6 +101,8 @@ fn main() -> ExitCode {
         },
         [flag, path] if flag == "--preview-pause" => write_pause_preview(path),
         [flag, path] if flag == "--preview-controls" => write_controls_preview(path),
+        [flag, path] if flag == "--preview-core-options" => write_core_options_preview(path),
+        [flag, core] if flag == "--core-options" => libretro::print_core_options(Path::new(core)),
         [flag, path] if flag == "--preview-splash" => write_plain_ppm(&screens::splash(), path),
         [flag, path] if flag == "--preview-volume" => write_ppm(&screens::volume_sign(80, current_theme()), path),
         [flag, core, rom, save, persistence] if flag == "--play" => {
@@ -128,7 +133,8 @@ fn main() -> ExitCode {
             eprintln!(
                 "usage: launcher [--preview | --preview-list | --preview-recent | --preview-settings FILE.ppm\n\
                  \x20              | --preview-buttons | --preview-wifi | --preview-keyboard FILE.ppm\n\
-                 \x20              | --preview-pause | --preview-controls | --preview-splash FILE.ppm\n\
+                 \x20              | --preview-pause | --preview-controls | --preview-core-options FILE.ppm\n\
+                 \x20              | --preview-splash FILE.ppm | --core-options CORE\n\
                  \x20              | --preview-volume FILE.ppm | --preview-setup STEP FILE.ppm\n\
                  \x20              | --play CORE ROM SAVE battery|state\n\
                  \x20              | --render CORE ROM SAVE battery|state FRAMES FILE.ppm]"
