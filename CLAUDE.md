@@ -26,7 +26,7 @@ options), resume on leaving and after power-off, fast-forward on R2, sharp-bilin
 scaling with CRT and LCD effects, kept per console, and a volume sign on the volume buttons, also in the menus.
 
 Launcher: a tile grid with RECENT and FAVORITES, lists with covers and scrolling names,
-jumping by letter on L1 and R1, search on X, a game's details and deleting it on Y,
+jumping by letter on L1 and R1, search on X, a game's details, play time and deleting it on Y,
 box art downloaded on the device, and a settings grid (GENERAL, GAME SCREEN, WI-FI,
 BOX ART, THEME, TIME, SYSTEM, ADVANCED) with colours, background, title, grid size,
 hidden tiles, start screen, game names, battery display, menu sounds, the boot jingle and sleep when idle.
@@ -57,11 +57,10 @@ ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Next steps
 
-1. Play time per game, shown in the details screen
-2. Sort options for lists: name, last played, play time
-3. Proposed, not confirmed: before a release, decide whether USB ONLY should keep root's
+1. Sort options for lists: name, last played, play time
+2. Proposed, not confirmed: before a release, decide whether USB ONLY should keep root's
    empty password, as the serial console does
-4. Rewind, moved to the end by the user
+3. Rewind, moved to the end by the user
 
 ## How the launcher is built
 

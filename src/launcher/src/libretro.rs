@@ -5,6 +5,7 @@ use crate::canvas::{self, PauseView};
 use crate::fb::Framebuffer;
 use crate::input::{self, Button, Controls, Event};
 use crate::pause::{Action, MenuTrigger, PauseMenu};
+use crate::play_time::PlayClock;
 use crate::power::{self, Level};
 use crate::screens;
 use crate::settings::{self, Effect, GameDisplay, Ghosting, Scaling};
@@ -1135,6 +1136,12 @@ fn change_display(change: impl FnOnce(&mut GameDisplay)) {
     }
 }
 
+fn save_play_time(clock: &mut PlayClock) {
+    if let Err(error) = clock.save(Instant::now()) {
+        eprintln!("warning: could not save the play time: {error}");
+    }
+}
+
 /// How the game continues after the menu closes.
 #[derive(PartialEq)]
 enum AfterMenu {
@@ -1299,6 +1306,7 @@ pub fn play(
     framebuffer.clear()?;
 
     let mut next_frame = Instant::now();
+    let mut play_clock = PlayClock::start(save, next_frame);
     let mut stats_start = next_frame;
     let mut run_time = Duration::ZERO;
     let mut screen_time = Duration::ZERO;
@@ -1332,6 +1340,7 @@ pub fn play(
             if let Err(error) = save_progress(&mut core, persistence, &mut save_file, resume.as_deref()) {
                 eprintln!("warning: could not save before sleeping: {error}");
             }
+            save_play_time(&mut play_clock);
         }
         match battery.check(Instant::now()) {
             Some(Level::Critical) => {
@@ -1346,6 +1355,7 @@ pub fn play(
         }
         update_volume_sign(framebuffer, &levels)?;
         if open_menu {
+            save_play_time(&mut play_clock);
             hold_cpu_speed();
             if pause(&mut core, save, &mut menu, framebuffer, &events, &levels)? == AfterMenu::Quit {
                 break;
@@ -1409,6 +1419,9 @@ pub fn play(
         })?;
 
         frames += 1;
+        if play_clock.tick(Instant::now()) {
+            save_play_time(&mut play_clock);
+        }
         if frames == AUDIO_PROBE_FRAMES && with_host(|host| host.audio.is_none()) {
             let measured = with_host(|host| host.audio_bytes) as f64 / 4.0 / AUDIO_PROBE_FRAMES as f64;
             // Starting games can make less sound than they do later, so the measurement
@@ -1476,6 +1489,7 @@ pub fn play(
     if release_at.is_some() || fast_forwarding {
         release_cpu_speed();
     }
+    save_play_time(&mut play_clock);
     save_progress(&mut core, persistence, &mut save_file, resume.as_deref())?;
     let audio = with_host(|host| host.audio.take());
     if let Some(mut audio) = audio {

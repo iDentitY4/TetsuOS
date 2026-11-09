@@ -145,6 +145,23 @@ Working on the test unit, confirmed by the user:
   the lowest 480 MHz and 44 C with no underruns, FF7 sees a formatted card, and save
   states (4.4 MB) save and load. 50 Hz games can't match the 59.94 Hz panel, so some
   frames show twice. The user hasn't tried it yet, so sound and feel are unchecked
+- Play time (`play_time.rs`). Each game keeps its time in whole seconds beside its saves, as
+  `saves/<save file>.playtime`, so it follows the save name through being zipped or moved
+  and is deleted with the saves. The game process counts the time between frames and leaves
+  out any gap of a second or more, which covers the in-game menu, sleep and anything else
+  that stops it without any of them telling it. Fast-forward counts as the time it took. It
+  writes on opening the menu, on the lid closing, on leaving (with a power-off's signal too)
+  and every 5 minutes, so a core crash costs at most that. Details show it as `UNDER A
+  MINUTE`, `12 MIN` or `2 H 5 MIN`, adding what a grouped game's discs had as games of their
+  own. A game with saves from before this says UNKNOWN until it is next played; the file
+  isn't counted among SAVE FILES.
+
+  Claude tested on the device on 2026-11-09 with a dummy copy of a game started from its list:
+  20 s of play, 10 s frozen with `kill -STOP` as sleep would be, then 5 s read 25 at the menu,
+  a 12 s menu and 10 s more read 36, and 8 s more ended by SIGTERM read 43. Details showed
+  NOT YET, UNDER A MINUTE and, with a written 7500, 2 H 5 MIN, and deleting the game removed
+  the file. The 5-minute write and a real lid closing haven't been seen on the device
+
 - Display settings per console. Changing scaling, effect or ghosting in the in-game menu
   saves all three for that console, as `display.gb=fit,crt,smart` in `settings.txt`
   (`Settings::console_displays`, read with `display_for`). A console's key comes from

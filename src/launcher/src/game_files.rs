@@ -1,6 +1,7 @@
 //! Which files on the card belong to a game, for its details screen and for deleting it.
 
 use crate::boxart::ART_DIR;
+use crate::i18n::{tr, trf};
 use crate::boxart_fetch::art_path;
 use crate::launcher::Library;
 use crate::pause::SLOTS;
@@ -8,7 +9,7 @@ use crate::*;
 use std::collections::HashSet;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 /// A game's files, each only if it exists.
 pub(crate) struct GameFiles {
@@ -37,6 +38,20 @@ impl GameFiles {
     /// How much of the card the game itself takes, in bytes.
     pub(crate) fn size(&self) -> u64 {
         self.game.iter().filter_map(|file| std::fs::metadata(file).ok()).map(|data| data.len()).sum()
+    }
+
+    /// Save files as a player thinks of them, without the play time's.
+    pub(crate) fn save_count(&self) -> usize {
+        self.saves.iter().filter(|file| !play_time::is_play_time(file)).count()
+    }
+
+    /// The time played, with what its discs had as games of their own. None if none is known.
+    pub(crate) fn play_time(&self) -> Option<Duration> {
+        self.saves
+            .iter()
+            .filter(|file| play_time::is_play_time(file))
+            .filter_map(|file| play_time::read(file))
+            .reduce(|total, time| total + time)
     }
 
     /// When it was last saved to, which leaving a game does. No game needs a new file for
@@ -86,6 +101,7 @@ fn cue_file_name(line: &str) -> Option<&str> {
 fn saves_beside(save: &Path) -> Vec<PathBuf> {
     let mut files = vec![save.to_path_buf(), save.with_extension("resume"), save.with_extension("unreadable")];
     files.extend((1..=SLOTS).map(|slot| save.with_extension(format!("state{slot}"))));
+    files.push(play_time::path_for(save));
     files.retain(|file| file.exists());
     files
 }
@@ -137,6 +153,16 @@ pub(crate) fn delete_game(rom: &Path, library: &Library) -> io::Result<()> {
         eprintln!("warning: could not remove the game from the favorites: {error}");
     }
     Ok(())
+}
+
+/// A time played, in hours and minutes.
+pub(crate) fn play_time_text(time: Duration) -> String {
+    let minutes = time.as_secs() / 60;
+    match (minutes / 60, minutes % 60) {
+        (0, 0) => tr("UNDER A MINUTE").to_string(),
+        (0, minutes) => trf("{} MIN", &[&minutes]),
+        (hours, minutes) => trf("{} H {} MIN", &[&hours, &minutes]),
+    }
 }
 
 /// A size in the largest unit that keeps it above 1, with a decimal while it is small.
@@ -237,13 +263,37 @@ mod tests {
     #[test]
     fn every_save_of_a_game_is_found() {
         let dir = folder("saves");
-        for name in ["G.gb.srm", "G.gb.resume", "G.gb.state1", "G.gb.state8", "G.gb.unreadable", "H.gb.srm", "G.gba.srm"] {
+        for name in ["G.gb.srm", "G.gb.resume", "G.gb.state1", "G.gb.state8", "G.gb.unreadable", "G.gb.srm.playtime", "H.gb.srm", "G.gba.srm"] {
             write(&dir.join(name), "x");
         }
         let mut found = names(&saves_beside(&dir.join("G.gb.srm")), &dir);
         found.sort();
-        assert_eq!(found, ["G.gb.resume", "G.gb.srm", "G.gb.state1", "G.gb.state8", "G.gb.unreadable"]);
+        assert_eq!(found, ["G.gb.resume", "G.gb.srm", "G.gb.srm.playtime", "G.gb.state1", "G.gb.state8", "G.gb.unreadable"]);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn play_time_is_added_up_and_not_counted_as_a_save() {
+        let dir = folder("time");
+        for (name, text) in [("G.m3u.srm", "x"), ("G.m3u.srm.playtime", "100"), ("D1.cue.srm.playtime", "20")] {
+            write(&dir.join(name), text);
+        }
+        let saves = ["G.m3u.srm", "G.m3u.srm.playtime", "D1.cue.srm.playtime"].map(|name| dir.join(name)).to_vec();
+        let files = GameFiles { game: Vec::new(), saves, cover: Vec::new() };
+        assert_eq!(files.save_count(), 1);
+        assert_eq!(files.play_time(), Some(Duration::from_secs(120)));
+        let none = GameFiles { game: Vec::new(), saves: Vec::new(), cover: Vec::new() };
+        assert_eq!(none.play_time(), None);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn play_times_read_well() {
+        assert_eq!(play_time_text(Duration::from_secs(59)), "UNDER A MINUTE");
+        assert_eq!(play_time_text(Duration::from_secs(60)), "1 MIN");
+        assert_eq!(play_time_text(Duration::from_secs(59 * 60 + 59)), "59 MIN");
+        assert_eq!(play_time_text(Duration::from_secs(3600)), "1 H 0 MIN");
+        assert_eq!(play_time_text(Duration::from_secs(1000 * 3600 + 300)), "1000 H 5 MIN");
     }
 
     #[test]

@@ -348,8 +348,8 @@ pub struct DetailsView<'a> {
 
 const DETAILS_NAME_LINES: usize = 3;
 const DETAILS_FACTS_TOP: usize = 150;
-const DETAILS_FACT_ROW: usize = 26;
-const DETAILS_ROWS_TOP: usize = 266;
+const DETAILS_FACT_ROW: usize = 24;
+const DETAILS_ROWS_TOP: usize = 276;
 const DETAILS_MESSAGE_Y: usize = DETAILS_ROWS_TOP + DETAIL_ROWS.len() * LIST_ROW + 12;
 /// The rows end before the cover's panel.
 const DETAILS_RIGHT: usize = ART_PANEL.0 - 8;

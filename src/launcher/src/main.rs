@@ -25,6 +25,7 @@ mod libretro;
 mod names;
 mod pause;
 mod performance;
+mod play_time;
 mod png;
 mod power;
 mod previews;

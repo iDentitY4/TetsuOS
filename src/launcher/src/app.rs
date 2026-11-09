@@ -212,11 +212,18 @@ pub(crate) fn launcher_canvas(
                     let played = played.map_or(tr("NOT YET").to_string(), |time| {
                         clock::short_date_text(&clock::local(time, settings.time_zone()))
                     });
+                    // Unknown for a game played before play time was counted.
+                    let time = match files.play_time() {
+                        Some(time) => game_files::play_time_text(time),
+                        None if files.last_played().is_some() => tr("UNKNOWN").to_string(),
+                        None => tr("NOT YET").to_string(),
+                    };
                     let facts = vec![
                         (tr("CONSOLE"), SYSTEMS[game.system].console.to_string()),
                         (tr("SIZE"), game_files::size_text(files.size())),
                         (tr("LAST PLAYED"), played),
-                        (tr("SAVE FILES"), files.saves.len().to_string()),
+                        (tr("PLAY TIME"), time),
+                        (tr("SAVE FILES"), files.save_count().to_string()),
                     ];
                     (SYSTEMS[game.system].icon, rom_label(&game.path), facts, library.is_favorite(game))
                 }
