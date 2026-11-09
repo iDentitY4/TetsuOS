@@ -3,7 +3,7 @@
 
 use crate::i18n::tr;
 use crate::input::Button;
-use crate::settings::GridSize;
+use crate::settings::{GameSort, GridSize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -42,6 +42,8 @@ pub struct Library {
     pub hidden: Vec<Tile>,
     /// How large the home screen's tiles are, which sets how many are in a row.
     pub grid: GridSize,
+    /// The order consoles' lists and favorites are in.
+    pub sort: GameSort,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -152,6 +154,7 @@ impl Group {
                     Setting::TitleText,
                     Setting::GridSize,
                     Setting::HomeTiles,
+                    Setting::SortGames,
                 ]
             }
             Self::Time => &[Setting::TimeZone, Setting::ClockFormat],
@@ -199,6 +202,7 @@ pub enum Setting {
     DeleteArt,
     AccentColor,
     Background,
+    SortGames,
     ShowTitle,
     TitleText,
     GridSize,
@@ -230,6 +234,7 @@ impl Setting {
             Self::Brightness => "BRIGHTNESS",
             Self::StartScreen => "START SCREEN",
             Self::GameNames => "GAME NAMES",
+            Self::SortGames => "SORT GAMES BY",
             Self::Battery => "BATTERY",
             Self::MenuSounds => "MENU SOUNDS",
             Self::BootJingle => "BOOT JINGLE",
@@ -292,6 +297,7 @@ impl Setting {
                 | Self::Brightness
                 | Self::StartScreen
                 | Self::GameNames
+                | Self::SortGames
                 | Self::Battery
                 | Self::MenuSounds
                 | Self::BootJingle
@@ -391,6 +397,7 @@ pub enum Command {
     Brightness(i32),
     StartScreen(i32),
     GameNames(i32),
+    SortGames(i32),
     BatteryDisplay(i32),
     /// Turns menu sounds on if they are off, or off.
     ToggleSounds,
@@ -488,6 +495,16 @@ impl Library {
         tiles
     }
 
+    /// Whether a list is by name, so that jumping by letter makes sense. Search results always
+    /// are, and recent games never.
+    pub fn jumps_by_letter(&self, list: List) -> bool {
+        match list {
+            List::Recent => false,
+            List::Search => true,
+            List::Favorites | List::System(_) => self.sort == GameSort::Name,
+        }
+    }
+
     fn game_at(&self, path: &std::path::Path) -> Option<&Game> {
         self.shelves.iter().flat_map(|shelf| &shelf.games).find(|game| game.path == path)
     }
@@ -561,6 +578,26 @@ impl Launcher {
     pub fn list_selected(&self, library: &Library, list: List) -> usize {
         let count = library.games(list).len();
         self.lists.get(&list).copied().unwrap_or(0).min(count.saturating_sub(1))
+    }
+
+    /// The game selected in the list on screen or behind the details, to find again once the
+    /// games have been read again and may be in a new order.
+    pub fn selected_path(&self, library: &Library) -> Option<PathBuf> {
+        match self.screen {
+            Screen::Games(list) | Screen::Details(list) => {
+                library.games(list).get(self.list_selected(library, list)).map(|game| game.path.clone())
+            }
+            _ => None,
+        }
+    }
+
+    /// Selects that game again. If it has left the list, the selection stays where it was.
+    pub fn select_path(&mut self, library: &Library, path: Option<&std::path::Path>) {
+        if let (Screen::Games(list) | Screen::Details(list), Some(path)) = (self.screen, path) {
+            if let Some(index) = library.games(list).iter().position(|game| game.path == path) {
+                self.lists.insert(list, index);
+            }
+        }
     }
 
     /// Starts on a list instead of the home screen, with a game selected, or stays home if
@@ -721,9 +758,8 @@ impl Launcher {
             Button::Down => if selected == last { 0 } else { selected + 1 },
             Button::Left => selected.saturating_sub(PAGE),
             Button::Right => (selected + PAGE).min(last),
-            // Recent games are in the order they were played, so their letters mean nothing.
-            Button::L1 if list != List::Recent => previous_letter(games, selected),
-            Button::R1 if list != List::Recent => next_letter(games, selected),
+            Button::L1 if library.jumps_by_letter(list) => previous_letter(games, selected),
+            Button::R1 if library.jumps_by_letter(list) => next_letter(games, selected),
             Button::X => return Command::Search,
             Button::Y => {
                 self.details_game = Some(games[selected].path.clone());
@@ -802,6 +838,7 @@ impl Launcher {
                 Setting::Brightness => return Command::Brightness(step),
                 Setting::StartScreen => return Command::StartScreen(step),
                 Setting::GameNames => return Command::GameNames(step),
+                Setting::SortGames => return Command::SortGames(step),
                 Setting::Battery => return Command::BatteryDisplay(step),
                 Setting::MenuSounds => return Command::ToggleSounds,
                 Setting::BootJingle => return Command::ToggleJingle,
@@ -848,6 +885,7 @@ impl Launcher {
                 | Setting::Brightness
                 | Setting::StartScreen
                 | Setting::GameNames
+                | Setting::SortGames
                 | Setting::Battery
                 | Setting::MenuSounds
                 | Setting::BootJingle
@@ -951,6 +989,9 @@ mod tests {
         library.systems = 7;
         let mut launcher = Launcher::new();
         open_group(&mut launcher, &library, Group::Theme);
+        launcher.press(Button::Up, &library);
+        assert_eq!(launcher.setting_selected(Group::Theme), Some(Setting::SortGames));
+        assert_eq!(launcher.press(Button::Right, &library), Command::SortGames(1));
         launcher.press(Button::Up, &library);
         assert_eq!(launcher.setting_selected(Group::Theme), Some(Setting::HomeTiles));
         launcher.press(Button::A, &library);
@@ -1143,6 +1184,42 @@ mod tests {
         library.shelves[0].games.remove(1);
         launcher.leave_empty_list(&library);
         assert_eq!(launcher.screen(), Screen::Games(list));
+    }
+
+    #[test]
+    fn letters_only_jump_in_lists_by_name() {
+        let mut library = details_library();
+        library.search = games_named(&["apple", "banana"]);
+        library.sort = GameSort::Recent;
+        assert!(!library.jumps_by_letter(List::System(0)));
+        assert!(!library.jumps_by_letter(List::Favorites));
+        assert!(!library.jumps_by_letter(List::Recent));
+        assert!(library.jumps_by_letter(List::Search));
+        let mut launcher = Launcher::new();
+        launcher.screen = Screen::Games(List::System(0));
+        launcher.press(Button::R1, &library);
+        assert_eq!(launcher.list_selected(&library, List::System(0)), 0);
+        library.sort = GameSort::Name;
+        assert!(library.jumps_by_letter(List::Favorites));
+        launcher.press(Button::R1, &library);
+        assert_eq!(launcher.list_selected(&library, List::System(0)), 1);
+    }
+
+    #[test]
+    fn the_selection_follows_its_game_into_a_new_order() {
+        let mut library = details_library();
+        let mut launcher = Launcher::new();
+        let list = open_details(&mut launcher, &library);
+        let kept = launcher.selected_path(&library);
+        assert_eq!(kept.as_deref(), Some(std::path::Path::new("banana")));
+        library.shelves[0].games.reverse();
+        launcher.select_path(&library, kept.as_deref());
+        assert_eq!(launcher.list_selected(&library, list), 0);
+        // A game that has left the list leaves the selection where it is.
+        launcher.select_path(&library, Some(std::path::Path::new("gone")));
+        assert_eq!(launcher.list_selected(&library, list), 0);
+        launcher.screen = Screen::Home;
+        assert_eq!(launcher.selected_path(&library), None);
     }
 
     #[test]

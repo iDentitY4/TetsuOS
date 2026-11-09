@@ -289,6 +289,8 @@ pub struct ListView<'a> {
     pub art: Option<Art<'a>>,
     /// How far the selected name has scrolled, in pixels, when it is too long.
     pub scroll: usize,
+    /// Whether L and R jump by letter, as the list is by name.
+    pub letters: bool,
 }
 
 /// Where a list's names go across the screen: from where the text starts, to where the
@@ -413,7 +415,7 @@ pub fn details_screen(width: usize, height: usize, view: &DetailsView, frame: &F
 }
 
 pub fn list_screen(width: usize, height: usize, view: &ListView, frame: &Frame) -> Canvas {
-    let ListView { icon, title, rows, selected, ref art, scroll } = *view;
+    let ListView { icon, title, rows, selected, ref art, scroll, letters } = *view;
     let mut canvas = Canvas::new(width, height, frame.theme);
     header(&mut canvas, icon, title, frame.battery);
     if !rows.is_empty() {
@@ -449,7 +451,7 @@ pub fn list_screen(width: usize, height: usize, view: &ListView, frame: &Frame) 
         }
     }
     draw_art(&mut canvas, art);
-    hint(&mut canvas, tr("A START - X SEARCH - Y INFO - SELECT STAR - L R ABC"));
+    hint(&mut canvas, if letters { tr("A START - X SEARCH - Y INFO - SELECT STAR - L R ABC") } else { tr("A START - X SEARCH - Y INFO - SELECT STAR") });
     canvas
 }
 
@@ -460,6 +462,7 @@ pub(crate) fn setting_value(setting: Setting, settings: &Settings) -> Option<Str
     let label = match setting {
         Setting::StartScreen => settings.start_screen.label(),
         Setting::GameNames => settings.game_names.label(),
+        Setting::SortGames => settings.sort.label(),
         Setting::Battery => settings.battery.label(),
         Setting::MenuSounds => on_off(settings.menu_sounds),
         Setting::BootJingle => on_off(!settings.jingle_off),
@@ -1089,7 +1092,7 @@ mod tests {
         assert_eq!(first_visible(PAGE), PAGE);
         let names: Vec<String> = (0..20).map(|i| format!("GAME {i}")).collect();
         let rows: Vec<RowView> = names.iter().map(|name| RowView { name, icon: None, starred: false }).collect();
-        let view = ListView { icon: &icons::GAME_BOY, title: "GAME BOY", rows: &rows, selected: 14, art: None, scroll: 0 };
+        let view = ListView { icon: &icons::GAME_BOY, title: "GAME BOY", rows: &rows, selected: 14, art: None, scroll: 0, letters: true };
         let canvas = list_screen(640, 480, &view, &frame());
         // Game 14 is the third row of the second page.
         assert_eq!(pixel(&canvas, 639, LIST_TOP + 2 * LIST_ROW + 2), Theme::default().accent);
@@ -1130,7 +1133,7 @@ mod tests {
     fn long_names_and_small_screens_are_safe() {
         let long = "X".repeat(500);
         let rows = [RowView { name: &long, icon: Some(&icons::SNES), starred: true }];
-        let view = |art, scroll| ListView { icon: &icons::RECENT, title: "RECENT", rows: &rows, selected: 0, art, scroll };
+        let view = |art, scroll| ListView { icon: &icons::RECENT, title: "RECENT", rows: &rows, selected: 0, art, scroll, letters: false };
         let placeholder = || Some(Art::Placeholder(&icons::SNES));
         assert_eq!(list_screen(640, 480, &view(placeholder(), 0), &frame()).pixels.len(), 640 * 480);
         assert_eq!(list_screen(64, 48, &view(placeholder(), 9999), &frame()).pixels.len(), 64 * 48);
@@ -1154,7 +1157,7 @@ mod tests {
         let names: Vec<String> = (0..3).map(|i| format!("GAME {i}")).collect();
         let rows: Vec<RowView> = names.iter().map(|name| RowView { name, icon: None, starred: false }).collect();
         let cover = Image { width: 10, height: 10, pixels: vec![Rgb(1, 2, 3); 100] };
-        let view = ListView { icon: &icons::NES, title: "NES", rows: &rows, selected: 0, art: Some(Art::Cover(&cover)), scroll: 0 };
+        let view = ListView { icon: &icons::NES, title: "NES", rows: &rows, selected: 0, art: Some(Art::Cover(&cover)), scroll: 0, letters: true };
         let canvas = list_screen(640, 480, &view, &frame());
         // The selection stops short of the panel, and the cover is in the panel's middle.
         assert_eq!(pixel(&canvas, x - 9, LIST_TOP + 2), Theme::default().accent);
@@ -1190,7 +1193,7 @@ mod tests {
         let long = "W".repeat(60);
         let rows = [RowView { name: &long, icon: None, starred: false }];
         let cover = Image { width: 10, height: 10, pixels: vec![Rgb(1, 2, 3); 100] };
-        let view = ListView { icon: &icons::NES, title: "NES", rows: &rows, selected: 0, art: Some(Art::Cover(&cover)), scroll: 100 };
+        let view = ListView { icon: &icons::NES, title: "NES", rows: &rows, selected: 0, art: Some(Art::Cover(&cover)), scroll: 100, letters: true };
         let canvas = list_screen(640, 480, &view, &frame());
         let row_y = LIST_TOP..LIST_TOP + LIST_ROW - 2;
         // Text, drawn in the background colour on the highlight, keeps clear of the
@@ -1208,7 +1211,7 @@ mod tests {
             RowView { name: &names[0], icon: None, starred: true },
             RowView { name: &names[1], icon: None, starred: false },
         ];
-        let view = ListView { icon: &icons::NES, title: "NES", rows: &rows, selected: 1, art: None, scroll: 0 };
+        let view = ListView { icon: &icons::NES, title: "NES", rows: &rows, selected: 1, art: None, scroll: 0, letters: true };
         let canvas = list_screen(640, 480, &view, &frame());
         let star_in = |row: usize| {
             let y = LIST_TOP + row * LIST_ROW;

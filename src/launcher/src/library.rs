@@ -312,12 +312,38 @@ pub(crate) fn tile_look(tile: Tile) -> (&'static icons::Icon, &'static str) {
 }
 
 pub(crate) fn load_library() -> Library {
-    build_library(
+    let mut library = build_library(
         &find_roms(Path::new(ROM_DIR)),
         &recent::load(Path::new(recent::RECENT_PATH)),
         &favorites::load(Path::new(favorites::FAVORITES_PATH)),
         settings::get().game_names,
-    )
+    );
+    let started = std::time::Instant::now();
+    sort_library(&mut library, settings::get().sort, &game_files::last_played, &game_files::time_played);
+    if library.sort != settings::GameSort::Name {
+        println!("sorted the games in {:.2} s", started.elapsed().as_secs_f32());
+    }
+    library
+}
+
+/// Puts consoles' lists and favorites in the chosen order. They arrive by name, and sorting
+/// keeps that order among games that tie, so games never played are by name at the end.
+fn sort_library(
+    library: &mut Library,
+    sort: settings::GameSort,
+    last_played: &dyn Fn(&Path) -> Option<std::time::SystemTime>,
+    time_played: &dyn Fn(&Path) -> std::time::Duration,
+) {
+    use std::cmp::Reverse;
+    library.sort = sort;
+    let lists = library.shelves.iter_mut().map(|shelf| &mut shelf.games).chain([&mut library.favorites]);
+    for games in lists {
+        match sort {
+            settings::GameSort::Name => {}
+            settings::GameSort::Recent => games.sort_by_cached_key(|game| Reverse(last_played(&game.path))),
+            settings::GameSort::Time => games.sort_by_cached_key(|game| Reverse(time_played(&game.path))),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -328,6 +354,37 @@ mod tests {
         let roms: Vec<PathBuf> = names.iter().map(PathBuf::from).collect();
         let recent: Vec<PathBuf> = recent.iter().map(PathBuf::from).collect();
         build_library(&roms, &recent, &[], settings::GameNames::Short)
+    }
+
+    #[test]
+    fn lists_sort_by_the_choice_with_ties_by_name() {
+        use settings::GameSort;
+        use std::time::{Duration, SystemTime};
+        let roms: Vec<PathBuf> = ["/r/a.gb", "/r/b.gb", "/r/c.gb", "/r/d.gb"].iter().map(PathBuf::from).collect();
+        let order = |sort: GameSort| -> Vec<String> {
+            let favorites = [roms[0].clone(), roms[2].clone()];
+            let mut library = build_library(&roms, &[], &favorites, settings::GameNames::Short);
+            let last_played = |rom: &Path| -> Option<SystemTime> {
+                let days: u64 = match rom.to_str().unwrap() {
+                    "/r/b.gb" => 1,
+                    "/r/d.gb" => 2,
+                    _ => return None,
+                };
+                Some(SystemTime::UNIX_EPOCH + Duration::from_secs(days * 86400))
+            };
+            let time_played = |rom: &Path| match rom.to_str().unwrap() {
+                "/r/c.gb" => Duration::from_secs(50),
+                "/r/a.gb" => Duration::from_secs(10),
+                _ => Duration::ZERO,
+            };
+            sort_library(&mut library, sort, &last_played, &time_played);
+            assert_eq!(library.sort, sort);
+            let favorites = library.favorites.iter().map(|game| game.name.as_str());
+            library.shelves[0].games.iter().map(|game| game.name.as_str()).chain(favorites).map(String::from).collect()
+        };
+        assert_eq!(order(GameSort::Name), ["a", "b", "c", "d", "a", "c"]);
+        assert_eq!(order(GameSort::Recent), ["d", "b", "a", "c", "a", "c"], "never played last, by name");
+        assert_eq!(order(GameSort::Time), ["c", "a", "b", "d", "c", "a"]);
     }
 
     #[test]

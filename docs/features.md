@@ -145,6 +145,23 @@ Working on the test unit, confirmed by the user:
   the lowest 480 MHz and 44 C with no underruns, FF7 sees a formatted card, and save
   states (4.4 MB) save and load. 50 Hz games can't match the 59.94 Hz panel, so some
   frames show twice. The user hasn't tried it yet, so sound and feel are unchecked
+- Sorting. Settings > THEME > SORT GAMES BY chooses NAME, RECENTLY PLAYED or MOST PLAYED
+  (`settings::GameSort`, `sort=` in `settings.txt`, under THEME since GENERAL has no room).
+  `library::sort_library` applies it to consoles' lists and favorites; RECENT stays in the
+  order played and search results stay by name. Recently played goes by a game's newest save
+  file and most played by its play time, as the details screen shows them. Games that tie,
+  such as those never played, keep their order by name at the end. L1 and R1 only jump in
+  a list by name (`Library::jumps_by_letter`), and the hint leaves out `L R ABC` otherwise,
+  on RECENT as well. When the games are read again, the selection follows its game into
+  the new order (`Launcher::selected_path`, `select_path`), in any sort and on RECENT.
+
+  Claude tested on the device on 2026-11-09 with dummy games with chosen dates and times: each
+  order was as expected in the Game Boy list, R1 did nothing and the hint changed outside
+  NAME, and a game started from row 4 moved to the top under RECENTLY PLAYED with the
+  selection on it. Sorting 1000 extra empty games took 0.41 s, which happens at each start
+  and after each game, and not at all under NAME. `settings.txt` and `recent.txt` were put
+  back, and the card's files were as before. FAVORITES sorted is covered by a unit test only
+
 - Play time (`play_time.rs`). Each game keeps its time in whole seconds beside its saves, as
   `saves/<save file>.playtime`, so it follows the save name through being zipped or moved
   and is deleted with the saves. The game process counts the time between frames and leaves

@@ -26,7 +26,7 @@ options), resume on leaving and after power-off, fast-forward on R2, sharp-bilin
 scaling with CRT and LCD effects, kept per console, and a volume sign on the volume buttons, also in the menus.
 
 Launcher: a tile grid with RECENT and FAVORITES, lists with covers and scrolling names,
-jumping by letter on L1 and R1, search on X, a game's details, play time and deleting it on Y,
+sorting by name or how recently or long a game was played, jumping by letter on L1 and R1, search on X, a game's details, play time and deleting it on Y,
 box art downloaded on the device, and a settings grid (GENERAL, GAME SCREEN, WI-FI,
 BOX ART, THEME, TIME, SYSTEM, ADVANCED) with colours, background, title, grid size,
 hidden tiles, start screen, game names, battery display, menu sounds, the boot jingle and sleep when idle.
@@ -38,6 +38,9 @@ ADVANCED > RUN SETUP AGAIN repeats.
 
 - Game Boy SGB games without their border; PlayStation sound and feel
 - A real multi-disc PlayStation game asking for its next disc; a multi-disc `.pbp`
+- Playing from a ZIP; search, letter jumps, sorting and the details screen on the real
+  buttons; the look of per-console display settings; play time through a real lid close
+- The German wording added for all of those
 - Neo Geo Pocket, WonderSwan and Lynx sound and controls; a Neo Geo Pocket game that saves
 - Sleep when idle: the screen dark while asleep, and waking with the power button
 - The lid since input moved to the `evdev` crate; the lid during a box art download
@@ -57,10 +60,9 @@ ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Next steps
 
-1. Sort options for lists: name, last played, play time
-2. Proposed, not confirmed: before a release, decide whether USB ONLY should keep root's
+1. Proposed, not confirmed: before a release, decide whether USB ONLY should keep root's
    empty password, as the serial console does
-3. Rewind, moved to the end by the user
+2. Rewind, moved to the end by the user
 
 ## How the launcher is built
 

@@ -199,7 +199,8 @@ pub(crate) fn launcher_canvas(
                 scrolling = Some(screens::selected_row_area(width, &rows, selected, art.is_some()));
             }
             let scroll = screens::scroll_offset(scrolled, overflow);
-            let view = screens::ListView { icon, title, rows: &rows, selected, art, scroll };
+            let letters = library.jumps_by_letter(list);
+            let view = screens::ListView { icon, title, rows: &rows, selected, art, scroll, letters };
             screens::list_screen(width, height, &view, &frame)
         }
         Screen::Details(_) => {
@@ -448,6 +449,10 @@ pub(crate) fn act(
             change_settings(|s| s.battery = s.battery.cycle(steps));
         }
         Action::ToggleCovers => change_settings(|s| s.covers_hidden = !s.covers_hidden),
+        Action::SortGames(steps) => {
+            change_settings(|s| s.sort = s.sort.cycle(steps));
+            return Ok(true);
+        }
         Action::GameNames(steps) => {
             change_settings(|s| s.game_names = s.game_names.cycle(steps));
             // The lists are made again with the new names.
@@ -897,7 +902,9 @@ pub(crate) fn run_launcher() -> io::Result<()> {
         }
         if act(action, &mut framebuffer, &events)? {
             art.clear();
+            let selected = launcher.selected_path(&library);
             library = reload_library(&library);
+            launcher.select_path(&library, selected.as_deref());
             launcher.leave_empty_list(&library);
         }
     }

@@ -22,15 +22,7 @@ pub(crate) struct GameFiles {
 impl GameFiles {
     pub(crate) fn of(rom: &Path) -> Self {
         let game = game_files(rom, Path::new(ROM_DIR));
-        let mut owners = vec![rom.to_path_buf()];
-        if is_m3u(rom) {
-            // The discs keep the saves they had as games of their own.
-            owners.extend(read_m3u(rom));
-        }
-        let saves = match system_for(rom) {
-            Some(system) => owners.iter().flat_map(|owner| saves_beside(&save_path(owner, system))).collect(),
-            None => Vec::new(),
-        };
+        let saves = saves_of(rom);
         let cover = Some(art_path(Path::new(ART_DIR), rom)).filter(|path| path.exists()).into_iter().collect();
         Self { game, saves, cover }
     }
@@ -47,18 +39,48 @@ impl GameFiles {
 
     /// The time played, with what its discs had as games of their own. None if none is known.
     pub(crate) fn play_time(&self) -> Option<Duration> {
-        self.saves
-            .iter()
-            .filter(|file| play_time::is_play_time(file))
-            .filter_map(|file| play_time::read(file))
-            .reduce(|total, time| total + time)
+        total_play_time(&self.saves)
     }
 
     /// When it was last saved to, which leaving a game does. No game needs a new file for
     /// this, and it knows about games played before there was this screen.
     pub(crate) fn last_played(&self) -> Option<SystemTime> {
-        self.saves.iter().filter_map(|file| std::fs::metadata(file).ok()?.modified().ok()).max()
+        newest_save(&self.saves)
     }
+}
+
+/// A game's saves, also those its discs have from being games of their own.
+fn saves_of(rom: &Path) -> Vec<PathBuf> {
+    let mut owners = vec![rom.to_path_buf()];
+    if is_m3u(rom) {
+        owners.extend(read_m3u(rom));
+    }
+    match system_for(rom) {
+        Some(system) => owners.iter().flat_map(|owner| saves_beside(&save_path(owner, system))).collect(),
+        None => Vec::new(),
+    }
+}
+
+fn total_play_time(saves: &[PathBuf]) -> Option<Duration> {
+    saves
+        .iter()
+        .filter(|file| play_time::is_play_time(file))
+        .filter_map(|file| play_time::read(file))
+        .reduce(|total, time| total + time)
+}
+
+fn newest_save(saves: &[PathBuf]) -> Option<SystemTime> {
+    saves.iter().filter_map(|file| std::fs::metadata(file).ok()?.modified().ok()).max()
+}
+
+/// When a game was last played, for sorting.
+pub(crate) fn last_played(rom: &Path) -> Option<SystemTime> {
+    newest_save(&saves_of(rom))
+}
+
+/// How long a game has been played, for sorting.
+pub(crate) fn time_played(rom: &Path) -> Duration {
+    total_play_time(&saves_of(rom)).unwrap_or_default()
 }
 
 /// The game's own files under `root`. A line in an `.m3u` or `.cue` can name any path, and

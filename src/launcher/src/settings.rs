@@ -225,6 +225,17 @@ choices! {
 }
 
 choices! {
+    /// The order of consoles' lists and favorites. Ties go by name.
+    pub enum GameSort (default Name) {
+        Name => "name", "NAME";
+        /// By the date of each game's newest save, newest first.
+        Recent => "recent", "RECENTLY PLAYED";
+        /// By play time, longest first.
+        Time => "time", "MOST PLAYED";
+    }
+}
+
+choices! {
     /// When the menus show the battery level in the top-right corner. A game still warns
     /// when the battery runs low, whichever is chosen.
     pub enum BatteryDisplay (default Percent) {
@@ -348,6 +359,7 @@ pub struct Settings {
     pub language: Language,
     pub start_screen: StartScreen,
     pub game_names: GameNames,
+    pub sort: GameSort,
     /// Lists leave out the cover panel, so names have the whole width.
     pub covers_hidden: bool,
     pub battery: BatteryDisplay,
@@ -473,6 +485,7 @@ fn parse(text: &str) -> Settings {
             "language" => choose(&mut settings.language, Language::from_key(value)),
             "start" => choose(&mut settings.start_screen, StartScreen::from_key(value)),
             "names" => choose(&mut settings.game_names, GameNames::from_key(value)),
+            "sort" => choose(&mut settings.sort, GameSort::from_key(value)),
             "covers" => settings.covers_hidden = value == "off",
             "battery" => choose(&mut settings.battery, BatteryDisplay::from_key(value)),
             "idle" => choose(&mut settings.idle_minutes, IDLE_SLEEP_MINUTES.into_iter().find(|&m| value.parse() == Ok(m))),
@@ -525,6 +538,7 @@ fn format(settings: &Settings) -> String {
     lines.push(format!("language={}", settings.language.key()));
     lines.push(format!("start={}", settings.start_screen.key()));
     lines.push(format!("names={}", settings.game_names.key()));
+    lines.push(format!("sort={}", settings.sort.key()));
     lines.push(format!("covers={}", on_off(!settings.covers_hidden)));
     lines.push(format!("battery={}", settings.battery.key()));
     lines.push(format!("idle={}", settings.idle_minutes));
@@ -763,6 +777,7 @@ mod tests {
             language: Language::German,
             start_screen: StartScreen::LastGame,
             game_names: GameNames::Full,
+            sort: GameSort::Time,
             covers_hidden: true,
             battery: BatteryDisplay::WhenLow,
             idle_minutes: 10,
