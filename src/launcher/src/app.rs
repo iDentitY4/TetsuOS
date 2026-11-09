@@ -645,7 +645,7 @@ pub(crate) fn search_games(
     let (width, height) = framebuffer.size();
     let mut keyboard = keyboard::Keyboard::new(MAX_SEARCH_LENGTH, |text| !text.trim().is_empty());
     if launcher.screen() == Screen::Games(List::Search) {
-        keyboard.text = library.search_text.clone();
+        keyboard.text.clone_from(&library.search_text);
     }
     let battery = read_battery(&power::battery_dir());
     loop {
@@ -810,7 +810,7 @@ fn type_text(
     Ok(typed)
 }
 
-/// RetroAchievements names are letters and digits, at most 20 of them.
+/// `RetroAchievements` names are letters and digits, at most 20 of them.
 const MAX_ACHIEVEMENTS_NAME: usize = 20;
 /// Long enough for any password a person types.
 const MAX_ACHIEVEMENTS_PASSWORD: usize = 64;
@@ -848,7 +848,7 @@ pub(crate) fn log_in_to_achievements(framebuffer: &mut fb::Framebuffer, events: 
             on_password = false;
             continue;
         };
-        password.text = typed.clone();
+        password.text.clone_from(&typed);
 
         framebuffer.draw(&screens::message_screen(width, height, tr("LOGGING IN"), current_theme()))?;
         let (sender, receiver) = std::sync::mpsc::channel();

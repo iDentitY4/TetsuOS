@@ -1,12 +1,12 @@
-//! Compiles rcheevos, the RetroAchievements library, into the launcher. Buildroot sets
+//! Compiles rcheevos, the `RetroAchievements` library, into the launcher. Buildroot sets
 //! `CC` and `CFLAGS` for the device, which the `cc` crate uses.
 
 fn main() {
     let root = std::path::Path::new("rcheevos");
     let mut files = Vec::new();
     for dir in ["src", "src/rapi", "src/rcheevos", "src/rhash"] {
-        for entry in std::fs::read_dir(root.join(dir)).expect("rcheevos sources") {
-            let path = entry.expect("rcheevos sources").path();
+        for entry in std::fs::read_dir(root.join(dir)).expect("the rcheevos sources are in src/launcher/rcheevos") {
+            let path = entry.expect("the rcheevos sources can be listed").path();
             if path.extension().is_some_and(|extension| extension == "c") {
                 files.push(path);
             }

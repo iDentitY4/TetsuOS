@@ -261,7 +261,7 @@ mod tests {
             assert!(samples.iter().all(|sample| sample.unsigned_abs() <= PEAK as u16));
             assert!(samples.iter().any(|sample| sample.unsigned_abs() > PEAK as u16 / 4), "{sound:?} is audible");
             // Stereo, and quiet at both ends.
-            assert!(samples.chunks_exact(2).all(|pair| pair[0] == pair[1]));
+            assert!(samples.as_chunks::<2>().0.iter().all(|pair| pair[0] == pair[1]));
             assert!(samples[..2].iter().all(|sample| sample.unsigned_abs() < 200));
             assert!(samples[samples.len() - 2..].iter().all(|sample| sample.unsigned_abs() < 200));
         }
@@ -273,7 +273,7 @@ mod tests {
         assert_eq!(samples.len() / 2, (JINGLE_SECONDS * f64::from(RATE)) as usize);
         let loudest = samples.iter().map(|sample| sample.unsigned_abs()).max().unwrap();
         assert!((10900..=11000).contains(&loudest), "{loudest}");
-        assert!(samples.chunks_exact(2).all(|pair| pair[0] == pair[1]));
+        assert!(samples.as_chunks::<2>().0.iter().all(|pair| pair[0] == pair[1]));
         assert_eq!(samples[0], 0);
         assert_eq!(samples[samples.len() - 1], 0);
     }

@@ -354,7 +354,7 @@ mod tests {
         assert_eq!(play_time_text(Duration::from_secs(60)), "1 MIN");
         assert_eq!(play_time_text(Duration::from_secs(59 * 60 + 59)), "59 MIN");
         assert_eq!(play_time_text(Duration::from_secs(3600)), "1 H 0 MIN");
-        assert_eq!(play_time_text(Duration::from_secs(1000 * 3600 + 300)), "1000 H 5 MIN");
+        assert_eq!(play_time_text(Duration::from_mins(60005)), "1000 H 5 MIN");
     }
 
     #[test]

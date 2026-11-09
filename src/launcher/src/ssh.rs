@@ -93,7 +93,7 @@ pub fn password_from(bytes: impl Iterator<Item = u8>) -> Option<String> {
     Some(groups?.join("-"))
 }
 
-/// Hashes the password with SHA-512 crypt and stores it. BusyBox's mkpasswd reads it from
+/// Hashes the password with SHA-512 crypt and stores it. `BusyBox`'s mkpasswd reads it from
 /// standard input, so it never shows in the process list.
 pub fn set_password(password: &str) -> io::Result<()> {
     let mut child = Command::new("mkpasswd")

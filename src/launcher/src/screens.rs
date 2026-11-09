@@ -94,7 +94,7 @@ pub struct SettingsView<'a> {
     pub login: ssh::Login,
     /// Where the boot messages go, read from the card; None if it couldn't be.
     pub boot_messages: Option<BootMessages>,
-    /// The RetroAchievements account logged in, for the ACHIEVEMENTS group.
+    /// The `RetroAchievements` account logged in, for the ACHIEVEMENTS group.
     pub achievements_user: Option<&'a str>,
 }
 
@@ -323,10 +323,10 @@ pub fn selected_row_area(width: usize, rows: &[RowView], selected: usize, with_a
 }
 
 /// The cover in its panel, or the console's pictogram for a game without one.
-fn draw_art(canvas: &mut Canvas, art: &Option<Art>) {
+fn draw_art(canvas: &mut Canvas, art: Option<&Art>) {
     let (panel_x, panel_y, panel_w, panel_h) = ART_PANEL;
-    match *art {
-        Some(Art::Cover(image)) => {
+    match art {
+        Some(&Art::Cover(image)) => {
             let x = panel_x + panel_w.saturating_sub(image.width) / 2;
             let y = panel_y + panel_h.saturating_sub(image.height) / 2;
             canvas.image(image, x, y);
@@ -352,7 +352,7 @@ pub struct DetailsView<'a> {
     pub rows: &'a [DetailRow],
     pub selected: DetailRow,
     pub starred: bool,
-    /// RetroAchievements are off for this game.
+    /// `RetroAchievements` are off for this game.
     pub achievements_off: bool,
     pub art: Option<Art<'a>>,
     pub message: Option<&'a str>,
@@ -431,7 +431,7 @@ pub fn details_screen(width: usize, height: usize, view: &DetailsView, frame: &F
     if let Some(message) = view.message {
         canvas.text_at(message, LIST_LEFT, DETAILS_MESSAGE_Y, TEXT_SCALE, canvas.theme.accent);
     }
-    draw_art(&mut canvas, &view.art);
+    draw_art(&mut canvas, view.art.as_ref());
     let changes = view.rows.contains(&DetailRow::Achievements);
     hint(&mut canvas, if changes { tr("A SELECTS - LEFT RIGHT CHANGES - B BACK") } else { tr("A SELECTS - B BACK") });
     canvas
@@ -473,7 +473,7 @@ pub fn list_screen(width: usize, height: usize, view: &ListView, frame: &Frame) 
             canvas.text_at(&visible, text_left, text_y, TEXT_SCALE, color);
         }
     }
-    draw_art(&mut canvas, art);
+    draw_art(&mut canvas, art.as_ref());
     hint(&mut canvas, if letters { tr("A START - X SEARCH - Y INFO - SELECT STAR - L R ABC") } else { tr("A START - X SEARCH - Y INFO - SELECT STAR") });
     canvas
 }
@@ -731,10 +731,10 @@ pub(crate) fn option_rows(canvas: &mut Canvas, page: &dyn RowList, layout: &Opti
     let selected = page.selected_row();
     let first = selected / shown * shown;
     if first > 0 {
-        more_arrow(canvas, (left + right) / 2, top.saturating_sub(10), true);
+        more_arrow(canvas, usize::midpoint(left, right), top.saturating_sub(10), true);
     }
     if first + shown < count {
-        more_arrow(canvas, (left + right) / 2, top + shown * row_h, false);
+        more_arrow(canvas, usize::midpoint(left, right), top + shown * row_h, false);
     }
     for (line, index) in (first..count.min(first + shown)).enumerate() {
         let y = top + line * row_h;
@@ -1052,7 +1052,7 @@ pub fn fast_forward_sign(on: bool, theme: Theme) -> Canvas {
     canvas
 }
 
-/// An achievement unlocked, or other news from RetroAchievements, shown over the game: the
+/// An achievement unlocked, or other news from `RetroAchievements`, shown over the game: the
 /// badge if there is one, what happened, and the achievement or game it was.
 pub fn achievement_notice(notice: &crate::achievements::Notice, badge: Option<&Image>, theme: Theme) -> Canvas {
     let pad = 6;
@@ -1280,7 +1280,7 @@ mod tests {
         assert!(first_lit(&untitled) < first_lit(&titled));
         assert!(first_lit(&untitled) >= GRID_TOP_UNTITLED);
         // The corner text ends above the grid.
-        assert!(8 + font::HEIGHT * TEXT_SCALE + 8 <= GRID_TOP_UNTITLED);
+        const { assert!(8 + font::HEIGHT * TEXT_SCALE + 8 <= GRID_TOP_UNTITLED) };
     }
 
     #[test]
@@ -1552,7 +1552,7 @@ mod tests {
     #[test]
     fn the_battery_stays_clear_of_titles() {
         let widest = text_width("100%+", TEXT_SCALE);
-        let home_title_end = (640 + text_width("TETSU OS", 4)) / 2;
+        let home_title_end = usize::midpoint(640, text_width("TETSU OS", 4));
         assert!(640 - 16 - widest > home_title_end);
         let list_title_end = 16 + icons::WIDTH * 2 + 16 + text_width("GAME BOY ADVANCE", 3);
         assert!(640 - 16 - text_width("100 OF 100", TEXT_SCALE) > list_title_end);
@@ -1590,7 +1590,7 @@ mod tests {
 
     #[test]
     fn the_resume_screen_fits_above_the_hint() {
-        assert!(90 + icons::HEIGHT * 4 + 76 + font::HEIGHT * TEXT_SCALE <= HINT_Y);
+        const { assert!(90 + icons::HEIGHT * 4 + 76 + font::HEIGHT * TEXT_SCALE <= HINT_Y) };
         let long = "X".repeat(200);
         assert_eq!(resume_screen(640, 480, &icons::GAME_BOY, &long, Theme::default()).pixels.len(), 640 * 480);
         assert_eq!(resume_screen(64, 48, &icons::GAME_BOY, &long, Theme::default()).pixels.len(), 64 * 48);

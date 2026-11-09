@@ -385,9 +385,9 @@ pub struct Settings {
     pub ssh: SshAccess,
     pub performance: CpuLevel,
     pub charge: ChargeLimit,
-    /// RetroAchievements unlocks count as hardcore, and games keep to its rules.
+    /// `RetroAchievements` unlocks count as hardcore, and games keep to its rules.
     pub hardcore: bool,
-    /// RetroAchievements are off for every game.
+    /// `RetroAchievements` are off for every game.
     pub achievements_off: bool,
     /// The setup hasn't finished: there was no settings file, or it was left partway.
     pub setup_pending: bool,

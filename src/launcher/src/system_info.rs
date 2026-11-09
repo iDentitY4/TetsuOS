@@ -93,7 +93,7 @@ fn read_number(path: &str) -> Option<i64> {
     read_text(path)?.trim().parse().ok()
 }
 
-/// The Wi-Fi network's name and address, from wpa_supplicant.
+/// The Wi-Fi network's name and address, from `wpa_supplicant`.
 fn wifi_line() -> Option<String> {
     let status = wifi::Control::open(Path::new(wifi::CONTROL_PATH)).ok()?.status().ok()?;
     if !status.connected() {

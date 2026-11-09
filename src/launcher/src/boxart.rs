@@ -47,7 +47,7 @@ pub fn parse_ppm(bytes: &[u8]) -> Option<Image> {
     if fields[0] != "P6" || fields[3] != "255" || data.len() < width * height * 3 {
         return None;
     }
-    let pixels = data.chunks_exact(3).take(width * height).map(|c| Rgb(c[0], c[1], c[2])).collect();
+    let pixels = data.as_chunks::<3>().0.iter().take(width * height).map(|c| Rgb(c[0], c[1], c[2])).collect();
     Some(Image { width, height, pixels })
 }
 

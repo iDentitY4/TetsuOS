@@ -161,10 +161,10 @@ impl Declarations {
                         category: category.to_string(),
                         default: default.to_string(),
                         choices: choices
-                            .chunks_exact(2)
+                            .as_chunks::<2>().0.iter()
                             .map(|pair| Choice { value: pair[0].to_string(), label: pair[1].to_string() })
                             .collect(),
-                    })
+                    });
                 }
                 ["hidden", key] => declarations.hidden.push(key.to_string()),
                 _ => {}

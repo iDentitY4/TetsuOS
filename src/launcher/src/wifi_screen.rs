@@ -60,11 +60,11 @@ pub(crate) fn start_connecting(
     control: &wifi::Control,
     ssid: Vec<u8>,
     saved: Option<u32>,
-    password: Option<String>,
+    password: Option<&str>,
 ) -> io::Result<wifi_menu::Attempt> {
     let (id, added) = match saved {
         Some(id) => (id, false),
-        None => (control.add(&ssid, password.as_deref())?, true),
+        None => (control.add(&ssid, password)?, true),
     };
     if let Err(error) = control.select(id) {
         let _ = control.give_up(id, added);
@@ -219,7 +219,7 @@ pub(crate) fn wifi_settings(framebuffer: &mut fb::Framebuffer, events: &Receiver
                     if let Some(current) = attempt.take() {
                         let _ = wpa.give_up(current.id, current.added);
                     }
-                    match start_connecting(wpa, ssid, saved, password) {
+                    match start_connecting(wpa, ssid, saved, password.as_deref()) {
                         Ok(started) => {
                             attempt = Some(started);
                             menu.message = None;

@@ -27,7 +27,7 @@ pub enum Item {
 
 /// Every choice, as a game with several discs, cheats and achievements shows them. Others
 /// go without `Item::Disc`, games whose core ignores codes or that play in hardcore without
-/// `Item::Cheats`, and games without RetroAchievements without `Item::Achievements`.
+/// `Item::Cheats`, and games without `RetroAchievements` without `Item::Achievements`.
 pub const ITEMS: [Item; 15] = [
     Item::Resume,
     Item::SaveState,
@@ -113,7 +113,7 @@ impl PauseMenu {
         Self::with(discs, cheats, false)
     }
 
-    /// Also offers the game's achievements, when it plays with RetroAchievements.
+    /// Also offers the game's achievements, when it plays with `RetroAchievements`.
     pub fn with(discs: usize, cheats: bool, achievements: bool) -> Self {
         let items = ITEMS
             .into_iter()

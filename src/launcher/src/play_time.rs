@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 const LONGEST_FRAME: Duration = Duration::from_secs(1);
 
 /// How much may be lost if a core crashes. Writing takes the frame's time, so not too often.
-const SAVE_EVERY: Duration = Duration::from_secs(5 * 60);
+const SAVE_EVERY: Duration = Duration::from_mins(5);
 
 /// The file for a game's save file. It adds to the whole name, so that writing it, which uses
 /// a temporary file named by replacing the extension, can't meet the save's temporary file.

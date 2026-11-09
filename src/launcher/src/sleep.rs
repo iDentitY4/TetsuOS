@@ -18,7 +18,7 @@ pub(crate) fn sleep_until_lid_opens(events: &Receiver<Event>) {
 }
 
 /// Runs `sleep` off the Wi-Fi network. Wi-Fi must be disconnected first, or the device
-/// hangs going to sleep. Without wpa_supplicant there is nothing to disconnect.
+/// hangs going to sleep. Without `wpa_supplicant` there is nothing to disconnect.
 pub(crate) fn without_wifi(sleep: impl FnOnce()) {
     let wifi = wifi::Control::open(Path::new(wifi::CONTROL_PATH)).ok();
     if let Some(control) = &wifi {

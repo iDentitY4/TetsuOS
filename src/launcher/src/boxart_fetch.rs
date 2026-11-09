@@ -19,7 +19,7 @@ use std::time::Duration;
 
 const RAW_URL: &str = "https://raw.githubusercontent.com/libretro-thumbnails";
 const TREE_URL: &str = "https://api.github.com/repos/libretro-thumbnails";
-/// The most a download may be. GitHub's listing of the PlayStation covers is a few MB.
+/// The most a download may be. GitHub's listing of the `PlayStation` covers is a few MB.
 const MAX_DOWNLOAD: u64 = 64 << 20;
 /// The art panel in the launcher's game lists.
 pub const MAX_SIZE: (usize, usize) = (200, 300);
@@ -338,7 +338,7 @@ fn fetch_one<'a>(
         listings.insert(job.collection, names);
     }
     match closest_cover(&listings[job.collection], stem) {
-        Some(name) => fetch_cover(source, job.collection, &name.to_string()),
+        Some(name) => fetch_cover(source, job.collection, name),
         None => Ok(None),
     }
 }
@@ -456,7 +456,7 @@ mod tests {
         assert_eq!(fit_size((400, 1000), MAX_SIZE), (120, 300));
         assert_eq!(fit_size((100, 80), MAX_SIZE), (100, 80));
         // Two by one to one pixel: the average of both.
-        let image = Image { width: 4, height: 2, pixels: vec![Rgb(0, 0, 0), Rgb(200, 100, 50), Rgb(10, 10, 10), Rgb(10, 10, 10)].repeat(2) };
+        let image = Image { width: 4, height: 2, pixels: [Rgb(0, 0, 0), Rgb(200, 100, 50), Rgb(10, 10, 10), Rgb(10, 10, 10)].repeat(2) };
         let small = shrink(&image, (2, 1));
         assert_eq!((small.width, small.height), (2, 1));
         assert_eq!(small.pixels, [Rgb(100, 50, 25), Rgb(10, 10, 10)]);

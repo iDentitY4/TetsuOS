@@ -1,4 +1,4 @@
-//! RetroAchievements, through rcheevos: `rcheevos/` in the source, compiled by `build.rs`.
+//! `RetroAchievements`, through rcheevos: `rcheevos/` in the source, compiled by `build.rs`.
 //!
 //! Settings > ACHIEVEMENTS logs in once with a name and password, and keeps the name and
 //! the token the server gives in `ACCOUNT_PATH`, never the password. In a game, `Session`
@@ -37,7 +37,7 @@ pub const SMALL_BADGE: usize = 32;
 /// The size badges are drawn at in a notice, as they are downloaded.
 pub const NOTICE_BADGE: usize = 64;
 
-/// The RetroAchievements console of a system, by its key in `systems::SYSTEMS`. The
+/// The `RetroAchievements` console of a system, by its key in `systems::SYSTEMS`. The
 /// Tamagotchi has none.
 pub fn console_id(key: &str) -> Option<u32> {
     Some(match key {
@@ -662,7 +662,7 @@ impl Client {
                 load: None,
                 user_agent,
                 regions: None,
-            })
+            });
         });
         Ok(Self { raw, responses })
     }
@@ -843,7 +843,7 @@ pub fn summary_path(save: &Path) -> PathBuf {
     PathBuf::from(name)
 }
 
-/// The file beside a game's save that turns RetroAchievements off for it.
+/// The file beside a game's save that turns `RetroAchievements` off for it.
 pub fn off_path(save: &Path) -> PathBuf {
     let mut name = save.as_os_str().to_owned();
     name.push(".achievements-off");
@@ -854,7 +854,7 @@ pub fn is_off_for_game(save: &Path) -> bool {
     off_path(save).exists()
 }
 
-/// Turns RetroAchievements off for the game with this save, or on again.
+/// Turns `RetroAchievements` off for the game with this save, or on again.
 pub fn set_off_for_game(save: &Path, off: bool) -> io::Result<()> {
     let path = off_path(save);
     if off {
@@ -1021,7 +1021,7 @@ impl Session {
         self.client.pump();
         let mut notices = Vec::new();
         if let Some(outcome) = with_state(|state| state.load.take()).flatten() {
-            notices.extend(self.loaded(outcome));
+            notices.push(self.loaded(outcome));
         }
         if let Some(Err((code, message))) = with_state(|state| state.login.take()).flatten() {
             eprintln!("achievements: login failed ({code}): {message}");
@@ -1030,7 +1030,7 @@ impl Session {
         let mut unlocked = false;
         for happening in happenings {
             unlocked |= matches!(happening, Happening::Unlocked { .. } | Happening::Completed);
-            notices.extend(self.notice_for(happening));
+            notices.push(self.notice_for(happening));
         }
         if unlocked {
             self.write_summary();
@@ -1038,7 +1038,7 @@ impl Session {
         notices
     }
 
-    fn loaded(&mut self, outcome: Outcome) -> Option<Notice> {
+    fn loaded(&mut self, outcome: Outcome) -> Notice {
         let hardcore = self.hardcore();
         match outcome {
             Ok(()) => {
@@ -1049,7 +1049,7 @@ impl Session {
                 let title = title.unwrap_or_default();
                 if !has_achievements {
                     self.status = Status::NoAchievements;
-                    return Some(Notice::new(tr("NO ACHIEVEMENTS FOR THIS GAME YET"), title));
+                    return Notice::new(tr("NO ACHIEVEMENTS FOR THIS GAME YET"), title);
                 }
                 self.status = Status::Ready;
                 let summary = self.write_summary();
@@ -1058,24 +1058,24 @@ impl Session {
                 if hardcore {
                     heading = format!("{heading} - {}", tr("HARDCORE"));
                 }
-                Some(Notice::new(heading, title))
+                Notice::new(heading, title)
             }
             Err((ffi::RC_NO_GAME_LOADED, message)) => {
                 println!("achievements: not recognised: {message}");
                 self.status = Status::NotRecognised;
-                Some(Notice::new(tr("ACHIEVEMENTS"), tr("RETROACHIEVEMENTS DOESN'T KNOW THIS GAME")))
+                Notice::new(tr("ACHIEVEMENTS"), tr("RETROACHIEVEMENTS DOESN'T KNOW THIS GAME"))
             }
             Err((code, message)) => {
                 eprintln!("achievements: could not load the game ({code}): {message}");
                 let text = failure_text(code, &message);
                 self.status = Status::Failed(text.clone());
-                Some(Notice::new(tr("ACHIEVEMENTS"), text))
+                Notice::new(tr("ACHIEVEMENTS"), text)
             }
         }
     }
 
-    fn notice_for(&self, happening: Happening) -> Option<Notice> {
-        Some(match happening {
+    fn notice_for(&self, happening: Happening) -> Notice {
+        match happening {
             Happening::Unlocked { title, points, badge } => Notice {
                 badge: Some(badge),
                 time: Duration::from_secs(5),
@@ -1097,7 +1097,7 @@ impl Session {
             Happening::ServerError(message) => Notice::new(tr("RETROACHIEVEMENTS"), message),
             Happening::Disconnected => Notice::new(tr("RETROACHIEVEMENTS"), tr("UNLOCKS WAIT FOR A CONNECTION")),
             Happening::Reconnected => Notice::new(tr("RETROACHIEVEMENTS"), tr("WAITING UNLOCKS SENT")),
-        })
+        }
     }
 
     fn game_title(&self) -> String {
@@ -1305,7 +1305,7 @@ impl Page {
     }
 }
 
-/// Checks a core's options against those hardcore disallows, as RetroArch does: a PAL
+/// Checks a core's options against those hardcore disallows, as `RetroArch` does: a PAL
 /// region, for example, runs games slower. Returns the first that is, by its key.
 pub fn disallowed_option(library_name: &str, options: &[(String, String)]) -> Option<String> {
     let name = CString::new(library_name).ok()?;

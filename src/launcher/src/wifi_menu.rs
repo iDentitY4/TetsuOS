@@ -1,4 +1,4 @@
-//! The Wi-Fi screen's list and buttons, kept apart from wpa_supplicant and drawing so
+//! The Wi-Fi screen's list and buttons, kept apart from `wpa_supplicant` and drawing so
 //! they can be tested. `main.rs` runs it with a `wifi::Control`.
 
 use crate::i18n::tr;
@@ -97,7 +97,7 @@ pub enum Progress {
 }
 
 impl Attempt {
-    /// wpa_supplicant stops trying a network for a while after it fails, which is how a
+    /// `wpa_supplicant` stops trying a network for a while after it fails, which is how a
     /// wrong password shows.
     pub fn progress(&self, status: &Status, saved: &[Saved], now: Instant) -> Progress {
         if status.connected() && status.id == Some(self.id) {

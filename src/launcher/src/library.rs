@@ -38,7 +38,7 @@ pub(crate) fn is_m3u(rom: &Path) -> bool {
 /// Where the lists of `group_discs` go. It starts with a dot, so the search skips it.
 const DISC_LISTS: &str = ".discs";
 
-/// As many discs as PCSX ReARMed holds for a game.
+/// As many discs as PCSX `ReARMed` holds for a game.
 const MOST_DISCS: usize = 8;
 
 /// Replaces discs of one game by an `.m3u` the launcher writes, for games without their own.
@@ -120,7 +120,7 @@ pub(crate) fn read_m3u(m3u: &Path) -> Vec<PathBuf> {
     std::fs::read(m3u).map(|contents| m3u_discs(m3u, &contents)).unwrap_or_default()
 }
 
-/// The files an `.m3u` lists, read as PCSX ReARMed reads them: a line starting with `#` is
+/// The files an `.m3u` lists, read as PCSX `ReARMed` reads them: a line starting with `#` is
 /// a comment, and a name that isn't a full path starts from the `.m3u`'s folder.
 fn m3u_discs(m3u: &Path, contents: &[u8]) -> Vec<PathBuf> {
     let folder = m3u.parent().unwrap_or(Path::new(""));
@@ -188,7 +188,7 @@ pub(crate) fn build_library(roms: &[PathBuf], recent: &[PathBuf], favorites: &[P
         let mut games: Vec<Game> = paths
             .iter()
             .zip(shown)
-            .map(|(path, name)| Game { path: path.to_path_buf(), name, system })
+            .map(|(path, name)| Game { path: (*path).clone(), name, system })
             .collect();
         games.sort_by_key(|game| game.name.to_ascii_lowercase());
         shelves.push(Shelf { system, games });
@@ -551,7 +551,7 @@ mod tests {
         let list = find_roms(&dir).remove(0);
         assert_eq!(read_m3u(&list).len(), 2);
         std::fs::write(dir.join("G (Disc 3).cue"), []).unwrap();
-        assert_eq!(find_roms(&dir), [list.clone()]);
+        assert_eq!(find_roms(&dir), std::slice::from_ref(&list));
         assert_eq!(read_m3u(&list).len(), 3);
         std::fs::remove_dir_all(&dir).unwrap();
     }

@@ -1,5 +1,5 @@
-//! Wi-Fi through wpa_supplicant's control socket, which `S42wifi` starts. Networks are
-//! saved by wpa_supplicant itself, in `/mnt/data/wpa_supplicant.conf`.
+//! Wi-Fi through `wpa_supplicant`'s control socket, which `S42wifi` starts. Networks are
+//! saved by `wpa_supplicant` itself, in `/mnt/data/wpa_supplicant.conf`.
 
 use std::io;
 use std::os::unix::net::UnixDatagram;
@@ -10,7 +10,7 @@ pub const CONTROL_PATH: &str = "/run/wpa_supplicant/wlan0";
 /// Where udhcpc, started by `S42wifi`, keeps its process number.
 const DHCP_PID_PATH: &str = "/run/udhcpc.wlan0.pid";
 
-/// What a network asks for to join it. Only what wpa_supplicant is built for here can be
+/// What a network asks for to join it. Only what `wpa_supplicant` is built for here can be
 /// joined: WPA3-only, enterprise and WEP networks can't.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Security {
@@ -29,7 +29,7 @@ pub struct Network {
     pub security: Security,
 }
 
-/// A network wpa_supplicant knows, from `LIST_NETWORKS`.
+/// A network `wpa_supplicant` knows, from `LIST_NETWORKS`.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Saved {
     pub id: u32,
@@ -59,7 +59,7 @@ pub fn display_name(ssid: &[u8]) -> String {
     String::from_utf8_lossy(ssid).into_owned()
 }
 
-/// Undoes wpa_supplicant's escaping of names, as in `printf_encode`.
+/// Undoes `wpa_supplicant`'s escaping of names, as in `printf_encode`.
 fn unescape(text: &str) -> Vec<u8> {
     let bytes = text.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -123,7 +123,7 @@ pub fn parse_scan_results(text: &str) -> Vec<Network> {
             None => networks.push(network),
         }
     }
-    networks.sort_by(|a, b| b.signal.cmp(&a.signal));
+    networks.sort_by_key(|network| std::cmp::Reverse(network.signal));
     networks
 }
 
@@ -157,7 +157,7 @@ pub fn parse_status(text: &str) -> Status {
     status
 }
 
-/// Whether wpa_supplicant takes this as a WPA passphrase: 8 to 63 printable ASCII
+/// Whether `wpa_supplicant` takes this as a WPA passphrase: 8 to 63 printable ASCII
 /// characters, or 64 hexadecimal digits for the key itself.
 pub fn valid_password(password: &str) -> bool {
     let printable = password.chars().all(|c| (' '..='~').contains(&c));
@@ -166,7 +166,7 @@ pub fn valid_password(password: &str) -> bool {
 }
 
 /// The password as `SET_NETWORK` takes it: a passphrase in quotes, or a key as it is.
-/// wpa_supplicant reads a quoted value up to its last quote, so quotes inside are fine.
+/// `wpa_supplicant` reads a quoted value up to its last quote, so quotes inside are fine.
 fn psk_value(password: &str) -> String {
     if password.len() == 64 && password.chars().all(|c| c.is_ascii_hexdigit()) {
         password.to_string()

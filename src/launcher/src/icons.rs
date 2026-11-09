@@ -824,7 +824,7 @@ pub const CORES: Icon = [
     "................................",
 ];
 
-/// RetroAchievements, Settings > ACHIEVEMENTS: a trophy.
+/// `RetroAchievements`, Settings > ACHIEVEMENTS: a trophy.
 pub const ACHIEVEMENTS: Icon = [
     "................................",
     "........KKKKKKKKKKKKKKKK........",

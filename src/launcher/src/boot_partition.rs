@@ -135,18 +135,29 @@ fn replace_checked(path: &Path, contents: &str) -> io::Result<()> {
     std::fs::rename(&temporary, path)
 }
 
+/// What is known of the setting.
+#[derive(Clone, Copy)]
+enum Cached {
+    NotRead,
+    /// None if the card's `extlinux.conf` couldn't be read.
+    Read(Option<BootMessages>),
+}
+
 /// The setting, read once from the card and kept, as each read mounts the partition.
-static BOOT_MESSAGES: Mutex<Option<Option<BootMessages>>> = Mutex::new(None);
+static BOOT_MESSAGES: Mutex<Cached> = Mutex::new(Cached::NotRead);
 
 /// Where the boot messages go, or None if the card's `extlinux.conf` can't be read.
 pub fn boot_messages() -> Option<BootMessages> {
     let mut cached = BOOT_MESSAGES.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    *cached.get_or_insert_with(|| {
-        with_mounted(|root| std::fs::read_to_string(root.join(EXTLINUX)))
-            .inspect_err(|error| eprintln!("warning: could not read extlinux.conf: {error}"))
-            .ok()
-            .and_then(|conf| parse_boot_messages(&conf))
-    })
+    if let Cached::Read(messages) = *cached {
+        return messages;
+    }
+    let messages = with_mounted(|root| std::fs::read_to_string(root.join(EXTLINUX)))
+        .inspect_err(|error| eprintln!("warning: could not read extlinux.conf: {error}"))
+        .ok()
+        .and_then(|conf| parse_boot_messages(&conf));
+    *cached = Cached::Read(messages);
+    messages
 }
 
 /// Changes where the boot messages go, from the next boot on.
@@ -158,7 +169,7 @@ pub fn set_boot_messages(messages: BootMessages) -> io::Result<()> {
             .ok_or_else(|| io::Error::other("extlinux.conf has no APPEND line"))?;
         replace_checked(&path, &changed)
     })?;
-    *BOOT_MESSAGES.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Some(messages));
+    *BOOT_MESSAGES.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Cached::Read(Some(messages));
     println!("boot messages: {}", messages.label());
     Ok(())
 }

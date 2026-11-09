@@ -157,7 +157,9 @@ impl Canvas {
             };
             if font::dots_above(c, false) {
                 let dots_y = y.saturating_sub(font::DOTS_ROWS_ABOVE * scale);
-                font::DOT_COLUMNS.into_iter().for_each(|col| cell(col, dots_y));
+                for col in font::DOT_COLUMNS {
+                    cell(col, dots_y);
+                }
             }
             for (row, bits) in font::glyph(c).iter().enumerate() {
                 for col in 0..font::WIDTH {

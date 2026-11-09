@@ -162,7 +162,7 @@ pub(crate) fn setup_view(setup: &Setup, current: &settings::Settings, status: St
     SetupView { icon, title, number, lines, rows, selected, status, hint }
 }
 
-/// The Wi-Fi line, asking wpa_supplicant each time. The socket isn't kept, because the
+/// The Wi-Fi line, asking `wpa_supplicant` each time. The socket isn't kept, because the
 /// Wi-Fi screen opens one under the same name.
 fn wifi_status() -> String {
     match wifi::Control::open(Path::new(wifi::CONTROL_PATH)).and_then(|control| control.status()) {
@@ -335,12 +335,12 @@ mod tests {
 
     #[test]
     fn other_buttons_do_nothing() {
-        for step in 0..STEPS.len() {
-            let mut setup = Setup::at(step);
+        for (index, step) in STEPS.into_iter().enumerate() {
+            let mut setup = Setup::at(index);
             for button in [Button::X, Button::Y, Button::L1, Button::R1, Button::Select, Button::Menu] {
                 assert_eq!(setup.press(button), Request::Nothing, "{button:?}");
             }
-            assert_eq!(setup.step(), STEPS[step]);
+            assert_eq!(setup.step(), step);
         }
     }
 

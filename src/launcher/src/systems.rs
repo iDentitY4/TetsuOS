@@ -295,7 +295,7 @@ pub(crate) const ROM_DIR: &str = "/mnt/data/roms";
 pub(crate) const SAVE_DIR: &str = "/mnt/data/saves";
 
 impl System {
-    /// A game that is one file. A PlayStation disc needs several side by side.
+    /// A game that is one file. A `PlayStation` disc needs several side by side.
     pub(crate) fn fits_in_zip(&self) -> bool {
         !self.extensions.contains(&"m3u")
     }

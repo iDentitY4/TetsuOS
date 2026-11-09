@@ -44,7 +44,7 @@ pub struct Library {
     pub grid: GridSize,
     /// The order consoles' lists and favorites are in.
     pub sort: GameSort,
-    /// The systems, by index, whose games can have RetroAchievements.
+    /// The systems, by index, whose games can have `RetroAchievements`.
     pub achievement_systems: Vec<usize>,
 }
 
@@ -85,7 +85,7 @@ pub enum Screen {
 pub enum DetailRow {
     Play,
     Star,
-    /// Turns RetroAchievements off for this game, or on again. Only for consoles with them.
+    /// Turns `RetroAchievements` off for this game, or on again. Only for consoles with them.
     Achievements,
     Delete,
 }
@@ -247,9 +247,9 @@ pub enum Setting {
     ResetSettings,
     UseForAllConsoles,
     SaveLogs,
-    /// RetroAchievements for every game, or none.
+    /// `RetroAchievements` for every game, or none.
     AchievementsOn,
-    /// Logs in to RetroAchievements, or out once logged in.
+    /// Logs in to `RetroAchievements`, or out once logged in.
     AchievementsAccount,
     Hardcore,
 }
@@ -355,7 +355,7 @@ impl Setting {
     }
 
     /// Whether A must be pressed twice, because it can't be undone. Logging out of
-    /// RetroAchievements is confirmed only once logged in, which the launcher knows.
+    /// `RetroAchievements` is confirmed only once logged in, which the launcher knows.
     fn needs_confirming(self) -> bool {
         matches!(self, Self::DeleteArt | Self::Reboot | Self::PowerOff | Self::SshKeys | Self::ResetSettings | Self::UseForAllConsoles)
     }
@@ -422,9 +422,9 @@ pub enum Command {
     Search,
     /// Deletes the game and its saves, after a second press.
     DeleteGame(PathBuf),
-    /// Turns RetroAchievements off for the game, or on again.
+    /// Turns `RetroAchievements` off for the game, or on again.
     ToggleGameAchievements(PathBuf),
-    /// Turns RetroAchievements off for every game, or on again.
+    /// Turns `RetroAchievements` off for every game, or on again.
     ToggleAchievements,
     ButtonTest,
     Wifi,
@@ -473,9 +473,9 @@ pub enum Command {
     /// Drops every console's own display, so they all use the settings' one.
     UseDisplayForAllConsoles,
     SaveLogs,
-    /// Logs in to RetroAchievements with a name and password typed on the keyboard.
+    /// Logs in to `RetroAchievements` with a name and password typed on the keyboard.
     LogInToAchievements,
-    /// Forgets the RetroAchievements account, after a second press.
+    /// Forgets the `RetroAchievements` account, after a second press.
     LogOutOfAchievements,
     ToggleHardcore,
     /// The card's TETSU-DATA partition as a USB drive on the PC.
@@ -511,7 +511,7 @@ pub struct Launcher {
     delete_armed: bool,
     /// A setting that can't be undone, waiting for a second press of A.
     confirming: Option<Setting>,
-    /// Logged in to RetroAchievements, so A on its account logs out, after a second press.
+    /// Logged in to `RetroAchievements`, so A on its account logs out, after a second press.
     pub achievements_logged_in: bool,
 }
 

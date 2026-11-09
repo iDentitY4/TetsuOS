@@ -1,11 +1,11 @@
-//! Cheat codes: reading RetroArch's `.cht` files, finding a game's, downloading one from
+//! Cheat codes: reading `RetroArch`'s `.cht` files, finding a game's, downloading one from
 //! libretro-database, and the in-game CHEATS page that turns codes on and off, kept apart
 //! from drawing and the core so they can be tested.
 //!
 //! A console's files are in `CHEAT_DIR/<console key>`, named after the game's file like its
 //! cover; a file with another name for the same game is found by its title, as box art is.
 //! The core applies the codes itself through `retro_cheat_set`, so a code is in whatever
-//! format the core reads (Game Genie, GameShark, Action Replay or raw addresses). The codes
+//! format the core reads (Game Genie, `GameShark`, Action Replay or raw addresses). The codes
 //! a game has on are kept in a small file beside its saves, like its controls.
 
 use crate::boxart_fetch::{self, Source};
@@ -46,7 +46,7 @@ pub struct CheatSource {
     pub stem: String,
 }
 
-/// The `key = value` pairs of a RetroArch config file. A quoted value runs to the next
+/// The `key = value` pairs of a `RetroArch` config file. A quoted value runs to the next
 /// quote, so it can span lines, as some descriptions in libretro-database do.
 fn config_values(text: &str) -> HashMap<String, String> {
     let mut values = HashMap::new();
@@ -81,7 +81,7 @@ fn config_values(text: &str) -> HashMap<String, String> {
 }
 
 /// The codes in a `.cht` file that a core can apply, in their order. Left out are those
-/// without a code, and RetroArch's own memory-search cheats (`handler = 1`), which are
+/// without a code, and `RetroArch`'s own memory-search cheats (`handler = 1`), which are
 /// addresses and values for a cheat engine this frontend doesn't have, such as the rumble
 /// files.
 pub fn parse(text: &str) -> Vec<Cheat> {

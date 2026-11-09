@@ -239,7 +239,7 @@ pub struct CoreSetup {
     /// The shape the game is shown at, for consoles whose pixels aren't square.
     pub aspect: Option<(usize, usize)>,
     /// Answers the core's own defaults for options nobody chose. Without, a core keeps
-    /// whatever it set up internally, which for PCSX ReARMed means no memory card and no
+    /// whatever it set up internally, which for PCSX `ReARMed` means no memory card and no
     /// disc read-ahead. The first cores were set up and checked without this, so they
     /// keep that, until an option is chosen in the menu.
     pub declared_defaults: bool,
@@ -355,7 +355,7 @@ impl DiskControl {
         known && Path::new(OsStr::from_bytes(unsafe { CStr::from_ptr(path.as_ptr()) }.to_bytes())).exists()
     }
 
-    /// Opens the lid, swaps the disc and closes it. PCSX ReARMed reports the lid as open for
+    /// Opens the lid, swaps the disc and closes it. PCSX `ReARMed` reports the lid as open for
     /// two more seconds, which is how a game notices the change. If the new disc fails, the
     /// one that was in goes back.
     fn change(&self, index: usize) -> bool {
@@ -736,7 +736,7 @@ fn fit(source_w: usize, source_h: usize, target_w: usize, target_h: usize) -> (u
 }
 
 /// The size to show a picture at on the panel. With an `aspect`, the picture takes that
-/// shape whatever its size in pixels, as a PlayStation's 256 to 640 pixel wide modes all
+/// shape whatever its size in pixels, as a `PlayStation`'s 256 to 640 pixel wide modes all
 /// filled the same 4:3 television.
 fn picture_size(
     (source_w, source_h): (usize, usize),
@@ -914,7 +914,7 @@ fn scale_row(source: &[u8], format: PixelFormat, columns: &[(usize, u32)], conve
 
 /// Converts to XRGB8888 and scales, keeping game pixels the same apparent size.
 /// Pictures with at least this many lines are scaled in two bands at once, on two cores.
-/// A PlayStation frame took 8.7 ms on one, of the 20 ms a 50 Hz frame has.
+/// A `PlayStation` frame took 8.7 ms on one, of the 20 ms a 50 Hz frame has.
 const BAND_MIN_LINES: usize = 64;
 
 fn scale_frame(
@@ -1008,8 +1008,8 @@ struct Core {
     _rom: Vec<u8>,
 }
 
-/// Loads a core's library. Never unloaded, as a core's threads, like PCSX ReARMed's GPU
-/// thread, can outlive retro_deinit. The game process ends soon after the game anyway.
+/// Loads a core's library. Never unloaded, as a core's threads, like PCSX `ReARMed`'s GPU
+/// thread, can outlive `retro_deinit`. The game process ends soon after the game anyway.
 fn open_core(core_path: &Path) -> io::Result<&'static libloading::os::unix::Library> {
     use libloading::os::unix::{Library, RTLD_LOCAL, RTLD_NOW};
     // SAFETY: loading a core runs its initialisers, which only set up the core.
@@ -1131,7 +1131,7 @@ impl Core {
         }
     }
 
-    /// Gives the core these codes in place of any it had, as RetroArch does: cores such as
+    /// Gives the core these codes in place of any it had, as `RetroArch` does: cores such as
     /// mGBA take every code they are given as on, so codes that are off aren't given.
     fn apply_cheats(&mut self, codes: &[&str]) {
         let (Some(reset), Some(set)) = (self.cheat_reset, self.cheat_set) else { return };
@@ -1601,7 +1601,7 @@ struct Game<'a> {
     cheat_source: Option<&'a CheatSource>,
 }
 
-/// The game's RetroAchievements, if it plays with them, and the notices waiting to show.
+/// The game's `RetroAchievements`, if it plays with them, and the notices waiting to show.
 struct Achievements<'a> {
     session: &'a mut Option<Session>,
     notices: &'a mut VecDeque<Notice>,
@@ -1613,7 +1613,7 @@ impl Achievements<'_> {
     }
 }
 
-/// Starts RetroAchievements for the game, when an account is logged in and its console has
+/// Starts `RetroAchievements` for the game, when an account is logged in and its console has
 /// them. Hardcore needs the core's options to keep to its rules, or the game plays in
 /// softcore.
 fn start_achievements(core: &Core, rom: &Path, save: &Path, console: Option<&str>, notices: &mut VecDeque<Notice>) -> Option<Session> {
