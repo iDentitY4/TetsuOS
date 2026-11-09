@@ -1,6 +1,7 @@
 //! Lays out the launcher's screens: the console grid, game lists, settings and system info.
 
 use crate::boxart::Image;
+use crate::cheats::{self, CheatsPage};
 use crate::core_options::{OptionsPage, Row as OptionRow};
 use crate::canvas::{text_width, Battery, Canvas, Rgb, Theme, BODY, LOW, MUTED, TEXT};
 use crate::font;
@@ -635,6 +636,60 @@ fn cut(text: &str, columns: usize) -> String {
     format!("{}..", kept.trim_end())
 }
 
+/// A page of rows with a name and maybe a value each, as `option_rows` draws them.
+pub(crate) trait RowList {
+    fn row_count(&self) -> usize;
+    fn selected_row(&self) -> usize;
+    fn row_label(&self, index: usize) -> String;
+    fn row_value(&self, index: usize) -> Option<String>;
+    /// Whether Left and Right change the row's value, which then shows `< >` when selected.
+    fn row_steps(&self, index: usize) -> bool;
+    /// What goes under the rows, about the selected one.
+    fn row_note(&self) -> Option<String>;
+}
+
+impl RowList for OptionsPage {
+    fn row_count(&self) -> usize {
+        self.rows().len()
+    }
+    fn selected_row(&self) -> usize {
+        self.selected_index()
+    }
+    fn row_label(&self, index: usize) -> String {
+        self.label(self.rows()[index])
+    }
+    fn row_value(&self, index: usize) -> Option<String> {
+        self.value(self.rows()[index])
+    }
+    fn row_steps(&self, index: usize) -> bool {
+        !matches!(self.rows()[index], OptionRow::Category(_))
+    }
+    fn row_note(&self) -> Option<String> {
+        if self.has_options() { self.note().map(String::from) } else { Some(tr("THIS CORE HAS NO OPTIONS").to_string()) }
+    }
+}
+
+impl RowList for CheatsPage {
+    fn row_count(&self) -> usize {
+        self.rows().len()
+    }
+    fn selected_row(&self) -> usize {
+        self.selected_index()
+    }
+    fn row_label(&self, index: usize) -> String {
+        self.label(self.rows()[index])
+    }
+    fn row_value(&self, index: usize) -> Option<String> {
+        self.value(self.rows()[index])
+    }
+    fn row_steps(&self, index: usize) -> bool {
+        matches!(self.rows()[index], cheats::Row::Cheat(_))
+    }
+    fn row_note(&self) -> Option<String> {
+        self.note()
+    }
+}
+
 /// The room the rows and the note take, from the top of the rows.
 pub(crate) const fn option_rows_height(layout: &OptionsLayout) -> usize {
     layout.shown * layout.row + 10 + OPTION_NOTE_LINES * OPTION_NOTE_LINE
@@ -642,20 +697,20 @@ pub(crate) const fn option_rows_height(layout: &OptionsLayout) -> usize {
 
 /// Draws the page's rows, a page of them at a time with arrows for more, and under them
 /// what the selected option does. A name too long for the room its choice leaves is cut.
-pub(crate) fn option_rows(canvas: &mut Canvas, page: &OptionsPage, layout: &OptionsLayout) {
+pub(crate) fn option_rows(canvas: &mut Canvas, page: &dyn RowList, layout: &OptionsLayout) {
     let OptionsLayout { left, right, pad, top, row: row_h, shown } = *layout;
     let advance = (font::WIDTH + 1) * TEXT_SCALE;
     let (label_x, value_right) = (left + pad, right.saturating_sub(pad));
-    let rows = page.rows();
-    let selected = page.selected_index();
+    let count = page.row_count();
+    let selected = page.selected_row();
     let first = selected / shown * shown;
     if first > 0 {
         more_arrow(canvas, (left + right) / 2, top.saturating_sub(10), true);
     }
-    if first + shown < rows.len() {
+    if first + shown < count {
         more_arrow(canvas, (left + right) / 2, top + shown * row_h, false);
     }
-    for (line, (index, &row)) in rows.iter().enumerate().skip(first).take(shown).enumerate() {
+    for (line, index) in (first..count.min(first + shown)).enumerate() {
         let y = top + line * row_h;
         let color = if index == selected {
             canvas.rect(left, y, right - left, row_h - 2, canvas.theme.accent);
@@ -664,22 +719,21 @@ pub(crate) fn option_rows(canvas: &mut Canvas, page: &OptionsPage, layout: &Opti
             TEXT
         };
         let text_y = row_text_y(y, row_h - 2);
-        let value = page.value(row).map(|value| {
+        let value = page.row_value(index).map(|value| {
             let value = cut(&value, OPTION_VALUE_COLUMNS);
-            if index == selected && !matches!(row, OptionRow::Category(_)) { format!("< {value} >") } else { value }
+            if index == selected && page.row_steps(index) { format!("< {value} >") } else { value }
         });
         // Two characters between the name and its choice.
         let value_w = value.as_deref().map_or(0, |value| text_width(value, TEXT_SCALE) + 2 * advance);
-        let label = cut(&page.label(row), value_right.saturating_sub(label_x + value_w) / advance);
+        let label = cut(&page.row_label(index), value_right.saturating_sub(label_x + value_w) / advance);
         canvas.text_at(&label, label_x, text_y, TEXT_SCALE, color);
         if let Some(value) = value {
             canvas.text_at(&value, value_right.saturating_sub(text_width(&value, TEXT_SCALE)), text_y, TEXT_SCALE, color);
         }
     }
-    let below = top + shown.min(rows.len()) * row_h + 10;
+    let below = top + shown.min(count) * row_h + 10;
     let columns = (right - left).saturating_sub(2 * pad) / advance;
-    let note = if page.has_options() { page.note() } else { Some(tr("THIS CORE HAS NO OPTIONS")) };
-    let mut lines = note.map(|note| wrapped_lines(note, columns, OPTION_NOTE_LINES + 1)).unwrap_or_default();
+    let mut lines = page.row_note().map(|note| wrapped_lines(&note, columns, OPTION_NOTE_LINES + 1)).unwrap_or_default();
     if lines.len() > OPTION_NOTE_LINES {
         lines.truncate(OPTION_NOTE_LINES);
         // More follows, which the room doesn't allow.

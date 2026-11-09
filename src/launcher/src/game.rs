@@ -152,14 +152,22 @@ pub(crate) fn confirm_resume(framebuffer: &mut fb::Framebuffer, events: &Receive
 pub(crate) fn run_game(core: &Path, rom: &Path, save: &Path, persistence: Persistence) -> io::Result<Ending> {
     let setup = system_for(rom).map(|system| system.setup).unwrap_or_default();
     let console = system_for(rom).map(|system| system.key);
+    // Named after the game as it is listed, not the file unpacked from a ZIP.
+    let cheats = system_for(rom).and_then(|system| {
+        Some(cheats::CheatSource {
+            dir: Path::new(cheats::CHEAT_DIR).join(system.key),
+            database: system.cheats?,
+            stem: rom.file_stem()?.to_string_lossy().into_owned(),
+        })
+    });
     if !rom_zip::is_zip(rom) {
-        return libretro::play(core, rom, save, persistence, setup, console, &mut open_framebuffer()?);
+        return libretro::play(core, rom, save, persistence, setup, console, cheats, &mut open_framebuffer()?);
     }
     let folder = Path::new(rom_zip::UNPACK_DIR);
     let started = Instant::now();
     let unpacked = rom_zip::unpack(rom, folder)?;
     println!("unpacked {} in {:.2} s", rom.display(), started.elapsed().as_secs_f32());
-    let ending = libretro::play(core, &unpacked, save, persistence, setup, console, &mut open_framebuffer()?);
+    let ending = libretro::play(core, &unpacked, save, persistence, setup, console, cheats, &mut open_framebuffer()?);
     if let Err(error) = std::fs::remove_dir_all(folder) {
         eprintln!("warning: could not remove the unpacked game: {error}");
     }

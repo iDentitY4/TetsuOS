@@ -1,0 +1,29 @@
+Undo cheats' changes to the game on retro_cheat_reset
+
+retro_cheat_reset cleared the cheat device without disabling its sets, so
+ROM patches (Game Genie codes, GBA ROM patch codes) and the breakpoints of
+GBA hook codes stayed in the game until it was restarted. A frontend turns
+a code off by resetting and setting the remaining codes again, so a code
+turned off kept working. Disable, remove and free each set instead.
+
+--- a/src/platform/libretro/libretro.c
++++ b/src/platform/libretro/libretro.c
+@@ -2172,7 +2172,17 @@
+ }
+ 
+ void retro_cheat_reset(void) {
+-	mCheatDeviceClear(core->cheatDevice(core));
++	struct mCheatDevice* device = core->cheatDevice(core);
++	/* mCheatDeviceClear frees the sets without undoing what they did to the game: ROM
++	 * patches, such as Game Genie codes, and the breakpoints of GBA hook codes stayed in
++	 * place until the game restarted, so a code turned off kept working. */
++	while (mCheatSetsSize(&device->cheats)) {
++		struct mCheatSet* set = *mCheatSetsGetPointer(&device->cheats, 0);
++		set->enabled = false;
++		mCheatRefresh(device, set);
++		mCheatRemoveSet(device, set);
++		mCheatSetDeinit(set);
++	}
+ }
+ 
+ void retro_cheat_set(unsigned index, bool enabled, const char* code) {

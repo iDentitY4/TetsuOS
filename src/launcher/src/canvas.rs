@@ -6,6 +6,7 @@ use crate::boxart::Image;
 use crate::icons::{self, Icon};
 use crate::input::{Button, Controls};
 use crate::controls::{self, ControlsMenu, Row};
+use crate::cheats::CheatsPage;
 use crate::core_options::OptionsPage;
 use crate::screens::{self, OptionsLayout};
 use crate::pause::{Item, PauseMenu, ITEMS};
@@ -314,7 +315,7 @@ pub struct PauseView<'a> {
 
 const PAUSE_PANEL: (usize, usize, usize, usize) = (110, 15, 420, 450);
 const PAUSE_TOP: usize = 65;
-const PAUSE_ROW: usize = 25;
+const PAUSE_ROW: usize = 23;
 const PAUSE_TEXT_SCALE: usize = 2;
 const PAUSE_BAR_WIDTH: usize = 120;
 
@@ -480,6 +481,10 @@ const OPTIONS_ROWS: OptionsLayout =
 
 // The rows, the note, then a line about restarting and the hint, 50 lines below the note.
 const _: () = assert!(OPTIONS_ROWS.top + screens::option_rows_height(&OPTIONS_ROWS) + 50 <= OPTIONS_PANEL.1 + OPTIONS_PANEL.3);
+/// Higher than the menu's title, so the arrow for rows above the page, 10 lines over the
+/// rows, stays clear of it.
+const OPTIONS_TITLE_Y: usize = OPTIONS_PANEL.1 + 12;
+const _: () = assert!(OPTIONS_TITLE_Y + font::HEIGHT * 3 < OPTIONS_ROWS.top - 10);
 
 /// The in-game menu's CORE OPTIONS page.
 pub fn core_options_screen(
@@ -492,11 +497,35 @@ pub fn core_options_screen(
 ) -> Canvas {
     let mut canvas = backdrop_with_panel(width, height, frame, frame_size, theme, OPTIONS_PANEL);
     let title: String = page.category_label().unwrap_or(tr("CORE OPTIONS")).chars().take(28).collect();
-    canvas.text(&title, OPTIONS_PANEL.1 + 20, 3, TEXT);
+    canvas.text(&title, OPTIONS_TITLE_Y, 3, TEXT);
     screens::option_rows(&mut canvas, page, &OPTIONS_ROWS);
     let below = OPTIONS_ROWS.top + screens::option_rows_height(&OPTIONS_ROWS);
     canvas.text(tr("SOME CHANGES APPLY ON THE GAME'S NEXT START"), below + 6, PAUSE_TEXT_SCALE, MUTED);
     canvas.text(tr("< > CHANGES - A OPENS - B BACK"), below + 30, PAUSE_TEXT_SCALE, MUTED);
+    canvas
+}
+
+/// The in-game menu's CHEATS page, on the same wide panel as CORE OPTIONS, as codes'
+/// descriptions come from the files.
+pub fn cheats_screen(
+    width: usize,
+    height: usize,
+    frame: &[u32],
+    frame_size: (usize, usize),
+    page: &CheatsPage,
+    theme: Theme,
+) -> Canvas {
+    let mut canvas = backdrop_with_panel(width, height, frame, frame_size, theme, OPTIONS_PANEL);
+    canvas.text(tr("CHEATS"), OPTIONS_TITLE_Y, 3, TEXT);
+    screens::option_rows(&mut canvas, page, &OPTIONS_ROWS);
+    let below = OPTIONS_ROWS.top + screens::option_rows_height(&OPTIONS_ROWS);
+    match page.message() {
+        Some(message) => canvas.text(message, below + 6, PAUSE_TEXT_SCALE, canvas.theme.accent),
+        None if page.has_cheats() => canvas.text(tr("CHEATS CAN CHANGE OR SPOIL SAVES"), below + 6, PAUSE_TEXT_SCALE, MUTED),
+        None => {}
+    }
+    let hint = if page.has_cheats() { tr("A TURNS ON OR OFF - L1 R1 PAGES - B BACK") } else { tr("A SELECTS - B BACK") };
+    canvas.text(hint, below + 30, PAUSE_TEXT_SCALE, MUTED);
     canvas
 }
 
@@ -632,7 +661,7 @@ mod tests {
     #[test]
     fn the_pause_menu_dims_the_frame_and_highlights_the_selection() {
         let frame = vec![0x00FF_FFFFu32; 640 * 426];
-        let menu = PauseMenu::new(1);
+        let menu = PauseMenu::new(1, true);
         let canvas = pause_screen(640, 480, &frame, (640, 426), &pause_view(&menu), Theme::default());
         // Outside the panel, the frame shows dimmed. The bars above and below are black.
         assert_eq!(pixel(&canvas, 5, 240), Rgb(85, 85, 85));
@@ -663,7 +692,7 @@ mod tests {
 
     #[test]
     fn the_pause_menu_survives_odd_sizes() {
-        let menu = PauseMenu::new(1);
+        let menu = PauseMenu::new(1, true);
         let canvas = pause_screen(64, 48, &[0; 4], (2, 2), &pause_view(&menu), Theme::default());
         assert_eq!(canvas.pixels.len(), 64 * 48);
         let canvas = pause_screen(640, 480, &[], (0, 0), &pause_view(&menu), Theme::default());

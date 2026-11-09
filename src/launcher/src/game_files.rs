@@ -69,9 +69,9 @@ fn total_play_time(saves: &[PathBuf]) -> Option<Duration> {
         .reduce(|total, time| total + time)
 }
 
-/// A game's own controls or core options, which are settings rather than saves.
+/// A game's own controls, core options or cheats, which are settings rather than saves.
 fn is_game_setting(file: &Path) -> bool {
-    controls::is_game_layout(file) || core_options::is_game_options(file)
+    controls::is_game_layout(file) || core_options::is_game_options(file) || cheats::is_game_cheats(file)
 }
 
 fn newest_save(saves: &[PathBuf]) -> Option<SystemTime> {
@@ -137,6 +137,7 @@ fn saves_beside(save: &Path) -> Vec<PathBuf> {
     files.push(play_time::path_for(save));
     files.push(controls::game_layout_path(save));
     files.push(core_options::game_path(save));
+    files.push(cheats::game_path(save));
     files.retain(|file| file.exists());
     files
 }

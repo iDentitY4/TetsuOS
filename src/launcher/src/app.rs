@@ -522,6 +522,7 @@ pub(crate) fn act(
             change_settings(|s| *s = s.reset());
             controls::remove_all_game_layouts(Path::new(SAVE_DIR));
             core_options::remove_all(Path::new(SAVE_DIR), Path::new(core_options::CONSOLE_DIR));
+            cheats::remove_all_enabled(Path::new(SAVE_DIR));
             let current = settings::get();
             performance::apply(current.performance);
             power::apply_charge_limit(current.charge);

@@ -85,7 +85,7 @@ impl Source for Https {
             // The server answered with an error, which for a cover means there is none.
             Err(ureq::Error::StatusCode(_)) => Ok(None),
             Err(error) => {
-                eprintln!("boxart: download failed for {url}: {error}");
+                eprintln!("download failed for {url}: {error}");
                 Err(failure_message(&error).into())
             }
         }
@@ -109,7 +109,7 @@ pub fn thumbnail_name(stem: &str) -> String {
 }
 
 /// Percent-encodes a URL path segment, keeping only unreserved characters.
-fn quote(text: &str) -> String {
+pub(crate) fn quote(text: &str) -> String {
     let mut out = String::new();
     for byte in text.bytes() {
         if byte.is_ascii_alphanumeric() || b"-._~".contains(&byte) {
@@ -180,7 +180,7 @@ fn cover_names(source: &dyn Source, collection: &str) -> Result<Vec<String>, Str
 }
 
 /// Splits "Tetris DX (World) (SGB Enhanced)" into "tetris dx" and its tags.
-fn title_and_tags(name: &str) -> (String, Vec<String>) {
+pub(crate) fn title_and_tags(name: &str) -> (String, Vec<String>) {
     let title = name.split(" (").next().unwrap_or_default().to_lowercase();
     let tags = name
         .split('(')

@@ -942,6 +942,68 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   previews were), a core's hidden options changing during a game, PCSX ReARMed and Genesis
   Plus GX in a game, and options that only apply on a restart for each core
 
+- Cheats. CHEATS in the in-game menu lists the codes of the game's cheat file, each ON or
+  OFF (`cheats.rs`, `canvas::cheats_screen`). A, Left or Right turns the selected code on
+  or off, L1 and R1 move 12 rows, TURN ALL OFF does that, and DOWNLOAD CHEATS fetches the
+  game's file. Under the rows is the selected code's whole description, which its row may
+  cut; with no codes, where to copy a file. The page uses the CORE OPTIONS panel and its
+  row drawing, now shared through `screens::RowList`. Both wide pages' titles moved up 8
+  lines, so the arrow for rows above the page no longer overlaps them.
+
+  Files are RetroArch `.cht` files, in `/mnt/data/cheats/<console key>/` on TETSU-DATA
+  (`cheats/gb`, `cheats/snes`, ...). A game's file is the one named after it (its file
+  name without the extension, so a ZIP's name), or else the one whose title matches,
+  compared on letters and digits only, with the most tags in common, as box art is
+  chosen. Quoted values may span lines, as some descriptions in libretro-database do;
+  they are shown on one line. Codes without a code, and RetroArch's own memory-search
+  cheats (`handler = 1`, such as the `(Rumbles)` files), are left out, as this frontend has
+  no cheat engine of its own: the core applies each code itself through
+  `retro_cheat_set`, in whatever formats it reads (Game Genie, Pro Action Replay, GameShark,
+  Code Breaker or raw `address:value`). The CHEATS item shows only for consoles whose core
+  does that (`System::cheats`): not the Lynx, Neo Geo Pocket or Tamagotchi, whose cores
+  ignore codes.
+
+  Turning a code on or off calls `retro_cheat_reset` and then gives the core the codes that
+  are on, numbered from 0, as RetroArch does: mGBA takes every code it gets as on. The codes
+  that are on are saved by their code in `Tetris.gb.srm.cheats` beside the saves, so a
+  new download keeps those still in the file, and the file is removed when none are left.
+  A start gives the core those codes again after the resume state is loaded, leaving out
+  any no longer in the cheat file. The `enable` lines of a `.cht` file are ignored: codes
+  only come on from the page. Like a game's controls, the file counts neither as a save
+  nor as last played, DELETE GAME AND SAVES removes it, and RESET SETTINGS removes every
+  game's list; the cheat files themselves stay.
+
+  DOWNLOAD CHEATS runs on its own thread while the menu stays usable, and the row reads
+  DOWNLOADING... meanwhile. It first asks raw.githubusercontent.com for
+  `libretro-database/master/cht/<console folder>/<game>.cht`, which needs no listing, then
+  GitHub's listing of the folder (`git/trees/master:cht/<folder>`, one API call, of the 60
+  an hour allowed) for the closest name. A file without usable codes counts as none. It is
+  saved under the game's own name, so it is found first from then on. The result shows in
+  the accent colour: `37 CHEATS DOWNLOADED`, NO CHEATS FOUND FOR THIS GAME, or the box art
+  download's messages, such as NO CONNECTION TO GITHUB. The folders hold 1,500 to 2,300
+  files per console, named in several ways: No-Intro names, bare titles, and tags for the
+  device, such as `(Game Genie)` or `(GameShark)`.
+
+  mGBA's `retro_cheat_reset` freed its codes without undoing their changes, so a Game Genie
+  or other ROM patch code, and a GBA hook code's breakpoint, stayed after being turned off.
+  `package/libretro-mgba/0001-undo-cheats-on-cheat-reset.patch` disables, removes and frees
+  each set instead. Snes9x and Genesis Plus GX restore the ROM themselves; FCEUmm's codes
+  are read through its cheat list, which reset empties.
+
+  Claude tested on the device on 2026-11-09, running Tetris with its save in `/tmp`. Real
+  downloads from the PC: Super Mario Bros. (World) found by name (711 codes), Tetris (World)
+  (Rev 1) (37), Pokemon Emerald and Crash Bandicoot by the closest name. On the device the
+  menu showed CHEATS, the empty page its note, and a download with the Wi-Fi not passing
+  traffic NO CONNECTION TO GITHUB; after a reboot it saved 37 codes and listed them. Game
+  Genie "Glitched Graphics" scrambled the next screen. GameShark "No Piece Display Box"
+  emptied the next-piece box, and "Always Get Square Pieces" dropped squares and showed a
+  piece in the level select, which TURN ALL OFF ended. Both came back after quitting and
+  starting again, with a code no longer in the file left out (`cheats: 1 on`).
+  "Glitched Graphics" on from a fresh start scrambled the level select after the title
+  screen. Turned off on the copyright screen, the unpatched core still scrambled it, and the
+  patched core showed the game type screen as normal. Not checked: the other cores, a PlayStation code, a ZIP, the
+  German wording on the device (the previews were)
+
 ## Hardware facts in full
 
 - **Don't trust the model name for hardware details.** This unit has LPDDR3 at

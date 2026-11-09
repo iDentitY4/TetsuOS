@@ -2,6 +2,7 @@
 
 use crate::i18n::{tr, trf};
 use crate::canvas::{self, PauseView};
+use crate::cheats::{self, CheatAction, CheatSource, CheatsPage, Downloaded};
 use crate::controls::{self, ControlsMenu, Layout, PageAction, Pad, Scope};
 use crate::core_options::{self, current, default_value, Category, Choice, Choices, Declarations, Declared, OptionsPage};
 use crate::fb::Framebuffer;
@@ -23,7 +24,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock};
-use std::sync::mpsc::{channel, Receiver, RecvTimeoutError};
+use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, TryRecvError};
 use std::thread::{sleep, spawn, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -898,6 +899,8 @@ struct Core {
     serialize_size: unsafe extern "C" fn() -> usize,
     serialize: unsafe extern "C" fn(*mut c_void, usize) -> bool,
     unserialize: unsafe extern "C" fn(*const c_void, usize) -> bool,
+    cheat_reset: Option<unsafe extern "C" fn()>,
+    cheat_set: Option<unsafe extern "C" fn(c_uint, bool, *const c_char)>,
     av_info: AvInfo,
     /// The core may read from this for as long as the game is loaded.
     _rom: Vec<u8>,
@@ -992,6 +995,12 @@ impl Core {
                 serialize_size: function!(c"retro_serialize_size", unsafe extern "C" fn() -> usize),
                 serialize: function!(c"retro_serialize", unsafe extern "C" fn(*mut c_void, usize) -> bool),
                 unserialize: function!(c"retro_unserialize", unsafe extern "C" fn(*const c_void, usize) -> bool),
+                // Every core has them, but an empty one only needs the frontend to cope.
+                cheat_reset: library.get::<unsafe extern "C" fn()>(b"retro_cheat_reset\0").ok().map(|symbol| *symbol),
+                cheat_set: library
+                    .get::<unsafe extern "C" fn(c_uint, bool, *const c_char)>(b"retro_cheat_set\0")
+                    .ok()
+                    .map(|symbol| *symbol),
                 av_info,
                 _rom: rom,
             })
@@ -1008,6 +1017,20 @@ impl Core {
                 return &mut [];
             }
             std::slice::from_raw_parts_mut(data, size)
+        }
+    }
+
+    /// Gives the core these codes in place of any it had, as RetroArch does: cores such as
+    /// mGBA take every code they are given as on, so codes that are off aren't given.
+    fn apply_cheats(&mut self, codes: &[&str]) {
+        let (Some(reset), Some(set)) = (self.cheat_reset, self.cheat_set) else { return };
+        // SAFETY: the game is loaded. Each core copies the code before returning.
+        unsafe {
+            reset();
+            for (index, code) in codes.iter().enumerate() {
+                let Ok(code) = CString::new(*code) else { continue };
+                set(index as c_uint, true, code.as_ptr());
+            }
         }
     }
 
@@ -1415,6 +1438,30 @@ fn apply_core_options(page: &mut OptionsPage, save: &Path) {
     }
 }
 
+/// Gives the core the codes the CHEATS page has on, and saves them for the game.
+fn apply_cheats(core: &mut Core, page: &CheatsPage, save: &Path) {
+    let codes = page.enabled_codes();
+    core.apply_cheats(&codes);
+    println!("cheats: {} on", codes.len());
+    if let Err(error) = cheats::write_enabled(save, &codes) {
+        eprintln!("warning: could not save the cheats: {error}");
+    }
+}
+
+/// What a download that ended says on the CHEATS page, which then shows the new codes.
+fn finish_download(page: &mut CheatsPage, source: &CheatSource, result: Downloaded) {
+    page.set_downloading(false);
+    let message = match result {
+        Ok(Some(count)) => {
+            page.set_cheats(cheats::read(source));
+            trf("{} CHEATS DOWNLOADED", &[&count])
+        }
+        Ok(None) => tr("NO CHEATS FOUND FOR THIS GAME").to_string(),
+        Err(error) => error,
+    };
+    page.set_message(message);
+}
+
 /// The layout a game starts with: its own, or its console's.
 fn layout_for(save: &Path, console: Option<&str>) -> Layout {
     controls::read_game_layout(save)
@@ -1439,6 +1486,7 @@ enum AfterMenu {
 fn pause(
     core: &mut Core,
     save: &Path,
+    cheat_source: Option<&CheatSource>,
     menu: &mut PauseMenu,
     framebuffer: &mut Framebuffer,
     events: &Receiver<Event>,
@@ -1454,8 +1502,25 @@ fn pause(
     let mut controls_page: Option<ControlsMenu> = None;
     // The CORE OPTIONS page, while it is open.
     let mut options_page: Option<OptionsPage> = None;
+    // The CHEATS page, while it is open, and a download it started.
+    let mut cheats_page: Option<CheatsPage> = None;
+    let mut download: Option<Receiver<Downloaded>> = None;
     let mut redraw = true;
     let after = loop {
+        if let Some(receiver) = &download {
+            let result = match receiver.try_recv() {
+                Ok(result) => Some(result),
+                Err(TryRecvError::Empty) => None,
+                Err(TryRecvError::Disconnected) => Some(Err(tr("DOWNLOAD FAILED").to_string())),
+            };
+            if let Some(result) = result {
+                download = None;
+                if let (Some(page), Some(source)) = (cheats_page.as_mut(), cheat_source) {
+                    finish_download(page, source, result);
+                    redraw = true;
+                }
+            }
+        }
         if let Some(percent) = volume_levels.try_iter().last() {
             crate::show_volume(framebuffer, percent)?;
             redraw = true;
@@ -1464,10 +1529,11 @@ fn pause(
         redraw |= framebuffer.sign_wait().is_zero();
         if redraw {
             let theme = crate::current_theme();
-            let screen = match (&controls_page, &options_page) {
-                (Some(page), _) => canvas::controls_screen(width, height, &frame, frame_size, page, theme),
-                (None, Some(page)) => canvas::core_options_screen(width, height, &frame, frame_size, page, theme),
-                (None, None) => {
+            let screen = match (&controls_page, &options_page, &cheats_page) {
+                (Some(page), _, _) => canvas::controls_screen(width, height, &frame, frame_size, page, theme),
+                (None, Some(page), _) => canvas::core_options_screen(width, height, &frame, frame_size, page, theme),
+                (None, None, Some(page)) => canvas::cheats_screen(width, height, &frame, frame_size, page, theme),
+                (None, None, None) => {
                     let view = PauseView {
                         menu,
                         slot_used: slot_path(save, menu.slot()).exists(),
@@ -1503,6 +1569,21 @@ fn pause(
                 PageAction::Nothing => {}
                 PageAction::Changed => apply_core_options(page, save),
                 PageAction::Back => options_page = None,
+            }
+            continue;
+        }
+        if let Some(page) = cheats_page.as_mut() {
+            match page.press(button) {
+                CheatAction::Nothing => {}
+                CheatAction::Changed => apply_cheats(core, page, save),
+                CheatAction::Download => {
+                    // The menu offers cheats only for a game that has a source.
+                    if let Some(source) = cheat_source {
+                        page.set_downloading(true);
+                        download = Some(cheats::spawn_download(source.clone()));
+                    }
+                }
+                CheatAction::Back => cheats_page = None,
             }
             continue;
         }
@@ -1590,6 +1671,14 @@ fn pause(
                 });
                 options_page = Some(OptionsPage::for_game(declarations, hidden, console, core_options::read_game(save)));
             }
+            Action::Cheats => {
+                let Some(source) = cheat_source else { continue };
+                let console = source.dir.file_name().unwrap_or_default().to_string_lossy().into_owned();
+                let mut page = CheatsPage::new(cheats::read(source), &cheats::read_enabled(save), &console);
+                // A download from an earlier visit may still be going.
+                page.set_downloading(download.is_some());
+                cheats_page = Some(page);
+            }
         }
     };
     if settings_changed {
@@ -1624,6 +1713,7 @@ pub fn play(
     persistence: Persistence,
     setup: CoreSetup,
     console: Option<&'static str>,
+    cheat_source: Option<CheatSource>,
     framebuffer: &mut Framebuffer,
 ) -> io::Result<Ending> {
     if let Err(error) = signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&TERMINATING)) {
@@ -1637,6 +1727,15 @@ pub fn play(
     let resume = resume_path(save, persistence);
     if let Some(path) = &resume {
         load_resume(&mut core, path)?;
+    }
+    if let Some(source) = &cheat_source {
+        // Only codes still in the file, should it have changed or gone since.
+        let enabled = cheats::read_enabled(save);
+        let codes: Vec<String> = cheats::read(source).into_iter().map(|cheat| cheat.code).filter(|code| enabled.contains(code)).collect();
+        if !codes.is_empty() {
+            core.apply_cheats(&codes.iter().map(String::as_str).collect::<Vec<_>>());
+            println!("cheats: {} on", codes.len());
+        }
     }
     let (fps, sample_rate) = (core.av_info.timing.fps, core.av_info.timing.sample_rate);
     println!("playing {} at {fps:.2} fps, {sample_rate:.0} Hz", rom.display());
@@ -1654,7 +1753,8 @@ pub fn play(
     let mut vsync_time = Duration::ZERO;
     let mut vsync_works = true;
     let mut frames = 0u64;
-    let mut menu = PauseMenu::new(with_host(|host| host.disk_control).map_or(0, |control| control.count()));
+    let discs = with_host(|host| host.disk_control).map_or(0, |control| control.count());
+    let mut menu = PauseMenu::new(discs, cheat_source.is_some());
     let mut trigger = MenuTrigger::new();
     let mut release_at = None;
     let mut battery = power::Monitor::new();
@@ -1698,7 +1798,7 @@ pub fn play(
         if open_menu {
             save_play_time(&mut play_clock);
             hold_cpu_speed();
-            if pause(&mut core, save, &mut menu, framebuffer, &events, &levels)? == AfterMenu::Quit {
+            if pause(&mut core, save, cheat_source.as_ref(), &mut menu, framebuffer, &events, &levels)? == AfterMenu::Quit {
                 break;
             }
             release_at = Some(frames - frames % STATS_FRAMES + CPU_HOLD_FRAMES);

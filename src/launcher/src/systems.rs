@@ -30,6 +30,9 @@ pub(crate) struct System {
     pub(crate) setup: CoreSetup,
     /// Its box art collection in libretro-thumbnails, if it has one.
     pub(crate) thumbnails: Option<&'static str>,
+    /// Its folder of cheat files in libretro-database, for a core that applies codes. The
+    /// Lynx, Neo Geo Pocket and Tamagotchi cores ignore them.
+    pub(crate) cheats: Option<&'static str>,
 }
 
 pub(crate) const MGBA: &str = "/usr/lib/libretro/mgba_libretro.so";
@@ -52,6 +55,7 @@ pub(crate) const SYSTEMS: [System; 16] = [
         short_save_names: false,
         setup: CoreSetup { aspect: None, declared_defaults: false },
         thumbnails: Some("Nintendo_-_Nintendo_Entertainment_System"),
+        cheats: Some("Nintendo - Nintendo Entertainment System"),
     },
     System {
         console: "MASTER SYSTEM",
@@ -66,6 +70,7 @@ pub(crate) const SYSTEMS: [System; 16] = [
         short_save_names: false,
         setup: CoreSetup { aspect: Some((4, 3)), declared_defaults: true },
         thumbnails: Some("Sega_-_Master_System_-_Mark_III"),
+        cheats: Some("Sega - Master System - Mark III"),
     },
     System {
         console: "PC ENGINE",
@@ -80,6 +85,7 @@ pub(crate) const SYSTEMS: [System; 16] = [
         short_save_names: false,
         setup: CoreSetup { aspect: Some((4, 3)), declared_defaults: true },
         thumbnails: Some("NEC_-_PC_Engine_-_TurboGrafx_16"),
+        cheats: Some("NEC - PC Engine - TurboGrafx 16"),
     },
     System {
         console: "MEGA DRIVE",
@@ -95,6 +101,7 @@ pub(crate) const SYSTEMS: [System; 16] = [
         short_save_names: false,
         setup: CoreSetup { aspect: Some((4, 3)), declared_defaults: true },
         thumbnails: Some("Sega_-_Mega_Drive_-_Genesis"),
+        cheats: Some("Sega - Mega Drive - Genesis"),
     },
     System {
         console: "GAME BOY",
@@ -109,6 +116,7 @@ pub(crate) const SYSTEMS: [System; 16] = [
         short_save_names: false,
         setup: CoreSetup { aspect: None, declared_defaults: false },
         thumbnails: Some("Nintendo_-_Game_Boy"),
+        cheats: Some("Nintendo - Game Boy"),
     },
     System {
         console: "LYNX",
@@ -123,6 +131,7 @@ pub(crate) const SYSTEMS: [System; 16] = [
         short_save_names: false,
         setup: CoreSetup { aspect: None, declared_defaults: true },
         thumbnails: Some("Atari_-_Lynx"),
+        cheats: None,
     },
     System {
         console: "GAME GEAR",
@@ -137,6 +146,7 @@ pub(crate) const SYSTEMS: [System; 16] = [
         short_save_names: false,
         setup: CoreSetup { aspect: None, declared_defaults: true },
         thumbnails: Some("Sega_-_Game_Gear"),
+        cheats: Some("Sega - Game Gear"),
     },
     System {
         console: "SNES",
@@ -151,6 +161,7 @@ pub(crate) const SYSTEMS: [System; 16] = [
         short_save_names: false,
         setup: CoreSetup { aspect: None, declared_defaults: false },
         thumbnails: Some("Nintendo_-_Super_Nintendo_Entertainment_System"),
+        cheats: Some("Nintendo - Super Nintendo Entertainment System"),
     },
     System {
         console: "PLAYSTATION",
@@ -169,6 +180,7 @@ pub(crate) const SYSTEMS: [System; 16] = [
         // Its 256 to 640 pixel wide modes all filled the same 4:3 television.
         setup: CoreSetup { aspect: Some((4, 3)), declared_defaults: true },
         thumbnails: Some("Sony_-_PlayStation"),
+        cheats: Some("Sony - PlayStation"),
     },
     System {
         console: "TAMAGOTCHI",
@@ -183,6 +195,7 @@ pub(crate) const SYSTEMS: [System; 16] = [
         short_save_names: true,
         setup: CoreSetup { aspect: None, declared_defaults: false },
         thumbnails: None,
+        cheats: None,
     },
     System {
         console: "GAME BOY COLOR",
@@ -197,6 +210,7 @@ pub(crate) const SYSTEMS: [System; 16] = [
         short_save_names: false,
         setup: CoreSetup { aspect: None, declared_defaults: false },
         thumbnails: Some("Nintendo_-_Game_Boy_Color"),
+        cheats: Some("Nintendo - Game Boy Color"),
     },
     System {
         console: "NEO GEO POCKET",
@@ -211,6 +225,7 @@ pub(crate) const SYSTEMS: [System; 16] = [
         short_save_names: false,
         setup: CoreSetup { aspect: None, declared_defaults: true },
         thumbnails: Some("SNK_-_Neo_Geo_Pocket"),
+        cheats: None,
     },
     System {
         console: "NEO GEO POCKET COLOR",
@@ -225,6 +240,7 @@ pub(crate) const SYSTEMS: [System; 16] = [
         short_save_names: false,
         setup: CoreSetup { aspect: None, declared_defaults: true },
         thumbnails: Some("SNK_-_Neo_Geo_Pocket_Color"),
+        cheats: None,
     },
     System {
         console: "WONDERSWAN",
@@ -239,6 +255,7 @@ pub(crate) const SYSTEMS: [System; 16] = [
         short_save_names: false,
         setup: CoreSetup { aspect: None, declared_defaults: true },
         thumbnails: Some("Bandai_-_WonderSwan"),
+        cheats: Some("Bandai - WonderSwan"),
     },
     System {
         console: "WONDERSWAN COLOR",
@@ -253,6 +270,7 @@ pub(crate) const SYSTEMS: [System; 16] = [
         short_save_names: false,
         setup: CoreSetup { aspect: None, declared_defaults: true },
         thumbnails: Some("Bandai_-_WonderSwan_Color"),
+        cheats: Some("Bandai - WonderSwan Color"),
     },
     System {
         console: "GAME BOY ADVANCE",
@@ -267,6 +285,7 @@ pub(crate) const SYSTEMS: [System; 16] = [
         short_save_names: true,
         setup: CoreSetup { aspect: None, declared_defaults: false },
         thumbnails: Some("Nintendo_-_Game_Boy_Advance"),
+        cheats: Some("Nintendo - Game Boy Advance"),
     },
 ];
 

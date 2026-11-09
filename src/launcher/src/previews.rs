@@ -72,7 +72,7 @@ pub(crate) fn write_pause_preview(path: &str) -> io::Result<()> {
         })
         .collect();
     // With several discs, the fullest the menu gets.
-    let mut menu = pause::PauseMenu::new(3);
+    let mut menu = pause::PauseMenu::new(3, true);
     menu.press(Button::Down);
     menu.press(Button::Down);
     menu.press(Button::Right);
@@ -119,6 +119,31 @@ pub(crate) fn write_core_options_preview(path: &str) -> io::Result<()> {
     }
     let frame = vec![0x0040_6080u32; width * height];
     write_ppm(&canvas::core_options_screen(width, height, &frame, PREVIEW_SIZE, &page, current_theme()), path)
+}
+
+/// Renders the in-game menu's CHEATS page with codes like those for Super Mario Bros., one
+/// of them on and a long one selected.
+pub(crate) fn write_cheats_preview(path: &str) -> io::Result<()> {
+    use cheats::{Cheat, CheatsPage};
+    let (width, height) = PREVIEW_SIZE;
+    let cheat = |name: &str, code: &str| Cheat { name: name.into(), code: code.into() };
+    let codes = vec![
+        cheat("Always Big", "0754:00+0756:01"),
+        cheat("Always Have Fireball", "0754:00+0756:02"),
+        cheat("Totally Invincible", "079E:07"),
+        cheat("Infinite Time", "07FA:09"),
+        cheat("Start on World 8-4 and keep all your lives after a game over", "SXIOPO+AAPEYO"),
+        cheat("Enable Hard Mode", "07FC:01"),
+    ];
+    let mut codes = codes;
+    codes.extend((1..=8).map(|world| cheat(&format!("Start on World {world}-1"), &format!("075F:0{}", world - 1))));
+    let mut page = CheatsPage::new(codes, &["079E:07".to_string()], "nes");
+    // On the second page, so the arrow for the rows above shows.
+    for _ in 0..12 {
+        page.press(Button::Down);
+    }
+    let frame = vec![0x0040_6080u32; width * height];
+    write_ppm(&canvas::cheats_screen(width, height, &frame, PREVIEW_SIZE, &page, current_theme()), path)
 }
 
 /// Renders the in-game menu's CONTROLS page, with A swapped, X on turbo and R2 selected.

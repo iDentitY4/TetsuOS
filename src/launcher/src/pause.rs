@@ -20,11 +20,13 @@ pub enum Item {
     Ghosting,
     Controls,
     CoreOptions,
+    Cheats,
     Quit,
 }
 
-/// Every choice, as a game with several discs shows them. Others go without `Item::Disc`.
-pub const ITEMS: [Item; 13] = [
+/// Every choice, as a game with several discs and cheats shows them. Others go without
+/// `Item::Disc`, and games whose core ignores codes without `Item::Cheats`.
+pub const ITEMS: [Item; 14] = [
     Item::Resume,
     Item::SaveState,
     Item::LoadState,
@@ -37,6 +39,7 @@ pub const ITEMS: [Item; 13] = [
     Item::Ghosting,
     Item::Controls,
     Item::CoreOptions,
+    Item::Cheats,
     Item::Quit,
 ];
 
@@ -55,6 +58,7 @@ impl Item {
             Self::Ghosting => "LCD GHOSTING",
             Self::Controls => "CONTROLS",
             Self::CoreOptions => "CORE OPTIONS",
+            Self::Cheats => "CHEATS",
             Self::Quit => "QUIT",
         })
     }
@@ -80,6 +84,8 @@ pub enum Action {
     Controls,
     /// Opens the CORE OPTIONS page.
     CoreOptions,
+    /// Opens the CHEATS page.
+    Cheats,
 }
 
 pub struct PauseMenu {
@@ -95,8 +101,12 @@ pub struct PauseMenu {
 
 impl PauseMenu {
     /// `discs` is how many the game has. With one or none, the menu doesn't offer changing.
-    pub fn new(discs: usize) -> Self {
-        let items = ITEMS.into_iter().filter(|&item| item != Item::Disc || discs > 1).collect();
+    /// `cheats` is whether the game's core applies codes.
+    pub fn new(discs: usize, cheats: bool) -> Self {
+        let items = ITEMS
+            .into_iter()
+            .filter(|&item| (item != Item::Disc || discs > 1) && (item != Item::Cheats || cheats))
+            .collect();
         Self { items, selected: 0, slot: 1, discs, disc: 0, message: None }
     }
 
@@ -154,7 +164,7 @@ impl PauseMenu {
                     Item::Scaling => return Action::Scaling(step),
                     Item::Effect => return Action::Effect(step),
                     Item::Ghosting => return Action::Ghosting(step),
-                    Item::Resume | Item::Screenshot | Item::Controls | Item::CoreOptions | Item::Quit => {}
+                    Item::Resume | Item::Screenshot | Item::Controls | Item::CoreOptions | Item::Cheats | Item::Quit => {}
                 }
             }
             Button::A => {
@@ -166,6 +176,7 @@ impl PauseMenu {
                     Item::Screenshot => Action::Screenshot,
                     Item::Controls => Action::Controls,
                     Item::CoreOptions => Action::CoreOptions,
+                    Item::Cheats => Action::Cheats,
                     Item::Quit => Action::Quit,
                     Item::Volume | Item::Brightness | Item::Scaling | Item::Effect | Item::Ghosting => {
                         Action::Nothing
@@ -213,7 +224,7 @@ mod tests {
     const BTN_START: u16 = 0x13B;
 
     fn menu_at(item: Item) -> PauseMenu {
-        let mut menu = PauseMenu::new(2);
+        let mut menu = PauseMenu::new(2, true);
         while menu.selected() != item {
             menu.press(Button::Down);
         }
@@ -222,7 +233,7 @@ mod tests {
 
     #[test]
     fn up_and_down_wrap_around() {
-        let mut menu = PauseMenu::new(1);
+        let mut menu = PauseMenu::new(1, true);
         menu.press(Button::Up);
         assert_eq!(menu.selected(), Item::Quit);
         menu.press(Button::Down);
@@ -268,6 +279,15 @@ mod tests {
         let mut menu = menu_at(Item::CoreOptions);
         assert_eq!(menu.press(Button::Right), Action::Nothing);
         assert_eq!(menu.press(Button::A), Action::CoreOptions);
+        let mut menu = menu_at(Item::Cheats);
+        assert_eq!(menu.press(Button::Left), Action::Nothing);
+        assert_eq!(menu.press(Button::A), Action::Cheats);
+    }
+
+    #[test]
+    fn only_a_core_that_applies_codes_offers_cheats() {
+        assert!(PauseMenu::new(1, true).items().contains(&Item::Cheats));
+        assert!(!PauseMenu::new(1, false).items().contains(&Item::Cheats));
     }
 
     #[test]
@@ -279,7 +299,7 @@ mod tests {
 
     #[test]
     fn a_message_lasts_until_the_next_press() {
-        let mut menu = PauseMenu::new(1);
+        let mut menu = PauseMenu::new(1, true);
         menu.set_message("SAVED TO SLOT 1".into());
         assert_eq!(menu.message(), Some("SAVED TO SLOT 1"));
         menu.press(Button::Down);
@@ -297,14 +317,14 @@ mod tests {
 
     #[test]
     fn only_a_game_with_several_discs_offers_changing() {
-        assert!(!PauseMenu::new(0).items().contains(&Item::Disc));
-        assert!(!PauseMenu::new(1).items().contains(&Item::Disc));
-        assert!(PauseMenu::new(2).items().contains(&Item::Disc));
+        assert!(!PauseMenu::new(0, true).items().contains(&Item::Disc));
+        assert!(!PauseMenu::new(1, true).items().contains(&Item::Disc));
+        assert!(PauseMenu::new(2, true).items().contains(&Item::Disc));
     }
 
     #[test]
     fn discs_wrap_and_a_chooses_one() {
-        let mut menu = PauseMenu::new(3);
+        let mut menu = PauseMenu::new(3, true);
         menu.open(0);
         while menu.selected() != Item::Disc {
             menu.press(Button::Down);
