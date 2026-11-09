@@ -799,6 +799,45 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   went up after USB STORAGE, the menus were silent with menu sounds off, the setup stayed
   away after a reboot, and its German wording reads well. Not tried: the lid during it.
 
+- Screenshots. SCREENSHOT in the in-game menu saves the paused picture as a PNG in
+  `/mnt/data/screenshots` (`screenshot.rs`, `png::encode`), and the menu stays open, so
+  it can be followed by anything else. The file holds the game's own pixels at the core's
+  size, without scaling, screen effects, the menu or any sign: `video_refresh` keeps a copy of each
+  frame it shows (`Host::source`), as a core's pointer is only valid during the call. That
+  copy runs on every frame; its cost hasn't been measured, and is a memory copy of at most
+  about 600 KB (PlayStation at 640x480). Consoles with non-square pixels, such as the SNES
+  and PlayStation, are saved as their pixels are, so a PC shows them a little off the 4:3
+  shape they have on the device.
+
+  Files are named after the game's save file and a number: `Tetris.gb 001.png`. The save
+  name already tells `Tetris.gb` from `Tetris.nes`, stays the same when a game is zipped,
+  and suits grouped discs (`G.m3u 001.png`). A number and not a time, because the clock can
+  be wrong before the first network time. The next number follows the highest there, so an
+  older picture is never replaced.
+
+  A game with no cover shows its newest screenshot in lists and on its details screen
+  (`BoxArt::get`), unless Settings > BOX ART > SCREENSHOTS AS COVERS is OFF (on by default,
+  saved as `screenshot_covers=`), which shows the console's icon instead. It's shrunk to the 200x300 of a cover by the same averaging and given the
+  console's shape. It is read at display time and never copied to `boxart`, so BOX ART still
+  counts that game as having no cover, DOWNLOAD MISSING COVERS still fetches one, and a real
+  cover then takes over. DELETE ALL COVERS leaves screenshots. So does deleting a game, as
+  DELETE GAME AND SAVES says nothing of them and they are the player's own pictures; a game
+  put back later shows its old screenshot as a cover. Screenshots can be taken from the
+  card with USB STORAGE or copied over SSH.
+
+  The menu gained a row, so its panel grew to 450 lines (`PAUSE_PANEL`), keeping the row
+  height. Claude tested on the device on 2026-11-09 with Super Mario Bros. Deluxe (160x144)
+  and Super Mario World (256x224), with their covers moved aside. Saving took 0.02 to 0.03 s
+  and files of 3 to 10 KB. Two shots in a row got 001 and 002. The World shot had no CRT
+  lines with the effect on, and both looked right on the PC. Each showed as the cover right after
+  quitting, World at 200x150; putting its real cover back replaced it on returning from the home screen.
+  A file in the folder's place gave COULD NOT SAVE THE SCREENSHOT with the game still running.
+  German was checked in the `--preview-pause` picture. Saves, RECENT and covers
+  were put back and the test pictures removed. SCREENSHOTS AS COVERS was then flipped on the
+  device with a game whose cover was moved aside: OFF showed the console's icon and ON the
+  screenshot, each after going through the home screen. The other consoles, including PlayStation's
+  wide modes, a ZIP and a full card, are covered by unit tests at most, or not at all
+
 ## Hardware facts in full
 
 - **Don't trust the model name for hardware details.** This unit has LPDDR3 at

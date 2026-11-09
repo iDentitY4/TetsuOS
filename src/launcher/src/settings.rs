@@ -362,6 +362,8 @@ pub struct Settings {
     pub sort: GameSort,
     /// Lists leave out the cover panel, so names have the whole width.
     pub covers_hidden: bool,
+    /// A game without a cover shows its console's icon, not its newest screenshot.
+    pub screenshot_covers_off: bool,
     pub battery: BatteryDisplay,
     /// Minutes without a press in the menus before sleeping, one of `IDLE_SLEEP_MINUTES`.
     pub idle_minutes: u32,
@@ -487,6 +489,7 @@ fn parse(text: &str) -> Settings {
             "names" => choose(&mut settings.game_names, GameNames::from_key(value)),
             "sort" => choose(&mut settings.sort, GameSort::from_key(value)),
             "covers" => settings.covers_hidden = value == "off",
+            "screenshot_covers" => settings.screenshot_covers_off = value == "off",
             "battery" => choose(&mut settings.battery, BatteryDisplay::from_key(value)),
             "idle" => choose(&mut settings.idle_minutes, IDLE_SLEEP_MINUTES.into_iter().find(|&m| value.parse() == Ok(m))),
             "sounds" => settings.menu_sounds = value == "on",
@@ -540,6 +543,7 @@ fn format(settings: &Settings) -> String {
     lines.push(format!("names={}", settings.game_names.key()));
     lines.push(format!("sort={}", settings.sort.key()));
     lines.push(format!("covers={}", on_off(!settings.covers_hidden)));
+    lines.push(format!("screenshot_covers={}", on_off(!settings.screenshot_covers_off)));
     lines.push(format!("battery={}", settings.battery.key()));
     lines.push(format!("idle={}", settings.idle_minutes));
     lines.push(format!("sounds={}", on_off(settings.menu_sounds)));
@@ -779,6 +783,7 @@ mod tests {
             game_names: GameNames::Full,
             sort: GameSort::Time,
             covers_hidden: true,
+            screenshot_covers_off: true,
             battery: BatteryDisplay::WhenLow,
             idle_minutes: 10,
             menu_sounds: true,
@@ -805,7 +810,7 @@ mod tests {
         assert_eq!(old.time_zone().name, "Etc/UTC");
         assert_eq!((old.accent, old.title_hidden, old.title()), (Accent::Teal, false, DEFAULT_TITLE));
         assert_eq!(old.display.ghosting, Ghosting::Smart);
-        assert!(!old.covers_hidden && !old.menu_sounds && !old.jingle_off && old.idle_minutes == 0);
+        assert!(!old.covers_hidden && !old.screenshot_covers_off && !old.menu_sounds && !old.jingle_off && old.idle_minutes == 0);
         assert_eq!((old.grid, old.background, old.battery), (GridSize::Normal, Background::Dark, BatteryDisplay::Percent));
         assert_eq!((old.start_screen, old.game_names), (StartScreen::Home, GameNames::Short));
     }

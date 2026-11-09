@@ -22,7 +22,7 @@ Games: NES (FCEUmm), SNES (Snes9x), Game Boy, Color and Advance (mGBA), PlayStat
 ReARMed, with discs grouped by name or an `.m3u`, and CHANGE DISC), Mega Drive, Master System and Game Gear (Genesis Plus GX), PC Engine (Beetle PCE
 Fast), Neo Geo Pocket and Color (Beetle NeoPop), WonderSwan and Color (Beetle Cygne), Lynx
 (Handy) and Tamagotchi (tamalib), cartridge games also in ZIP files, with an in-game menu (8 save slots, levels, display
-options), resume on leaving and after power-off, fast-forward on R2, sharp-bilinear
+options, screenshots to PNG, also used as the cover of a game without one), resume on leaving and after power-off, fast-forward on R2, sharp-bilinear
 scaling with CRT and LCD effects, kept per console, and a volume sign on the volume buttons, also in the menus.
 
 Launcher: a tile grid with RECENT and FAVORITES, lists with covers and scrolling names,
@@ -41,6 +41,7 @@ ADVANCED > RUN SETUP AGAIN repeats.
 - Playing from a ZIP; search, letter jumps, sorting and the details screen on the real
   buttons; the look of per-console display settings; play time through a real lid close
 - The German wording added for all of those
+- Screenshots on other consoles: a PlayStation wide mode, a ZIP, the German wording on the device
 - Neo Geo Pocket, WonderSwan and Lynx sound and controls; a Neo Geo Pocket game that saves
 - Sleep when idle: the screen dark while asleep, and waking with the power button
 - The lid since input moved to the `evdev` crate; the lid during a box art download
@@ -70,7 +71,7 @@ ADVANCED > RUN SETUP AGAIN repeats.
   the menus; `--play`: one game in its own process; `--preview*`: PC screenshots).
   `app.rs` has the menus' loop and actions, `systems.rs` the consoles, `library.rs` the
   games and tiles, `game.rs` running and resuming games, `libretro.rs` the frontend,
-  `rom_zip.rs` games in ZIPs, `game_files.rs` which files are a game's, `sleep.rs`, `corner.rs` (clock and battery), `launcher.rs` the button logic,
+  `rom_zip.rs` games in ZIPs, `game_files.rs` which files are a game's, `screenshot.rs` the in-game menu's pictures, `sleep.rs`, `corner.rs` (clock and battery), `launcher.rs` the button logic,
   `screens.rs` and `canvas.rs` the drawing. They reach each other through `use crate::*`.
 - **Settings:** `settings.rs` reads `/mnt/data/settings.txt` once per process.
   `settings::get()` returns the `Settings`, and `settings::update(|s| ...)` changes and

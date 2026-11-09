@@ -145,7 +145,7 @@ impl Group {
                 ],
             Self::GameScreen => &[Setting::Scaling, Setting::Effect, Setting::Ghosting, Setting::UseForAllConsoles],
             Self::Wifi => &[],
-            Self::BoxArt => &[Setting::ShowCovers, Setting::DownloadMissingArt, Setting::DownloadAllArt, Setting::DeleteArt],
+            Self::BoxArt => &[Setting::ShowCovers, Setting::ScreenshotCovers, Setting::DownloadMissingArt, Setting::DownloadAllArt, Setting::DeleteArt],
             Self::Theme => {
                 &[
                     Setting::AccentColor,
@@ -197,6 +197,7 @@ pub enum Setting {
     Effect,
     Ghosting,
     ShowCovers,
+    ScreenshotCovers,
     DownloadMissingArt,
     DownloadAllArt,
     DeleteArt,
@@ -243,6 +244,7 @@ impl Setting {
             Self::Effect => "SCREEN EFFECT",
             Self::Ghosting => "LCD GHOSTING",
             Self::ShowCovers => "COVERS IN LISTS",
+            Self::ScreenshotCovers => "SCREENSHOTS AS COVERS",
             Self::DownloadMissingArt => "DOWNLOAD MISSING COVERS",
             Self::DownloadAllArt => "DOWNLOAD ALL COVERS AGAIN",
             Self::DeleteArt => "DELETE ALL COVERS",
@@ -304,6 +306,7 @@ impl Setting {
                 | Self::Language
                 | Self::IdleSleep
                 | Self::ShowCovers
+                | Self::ScreenshotCovers
                 | Self::Scaling
                 | Self::Effect
                 | Self::Ghosting
@@ -391,6 +394,8 @@ pub enum Command {
     Wifi,
     /// Shows covers in game lists if they are hidden, or hides them.
     ToggleCovers,
+    /// Whether a game without a cover shows its newest screenshot.
+    ToggleScreenshotCovers,
     DownloadBoxArt(ArtDownload),
     DeleteBoxArt,
     Volume(i32),
@@ -845,6 +850,7 @@ impl Launcher {
                 Setting::Language => return Command::Language(step),
                 Setting::IdleSleep => return Command::IdleSleep(step),
                 Setting::ShowCovers => return Command::ToggleCovers,
+                Setting::ScreenshotCovers => return Command::ToggleScreenshotCovers,
                 Setting::Scaling => return Command::Scaling(step),
                 Setting::Effect => return Command::Effect(step),
                 Setting::Ghosting => return Command::Ghosting(step),
@@ -892,6 +898,7 @@ impl Launcher {
                 | Setting::Language
                 | Setting::IdleSleep
                 | Setting::ShowCovers
+                | Setting::ScreenshotCovers
                 | Setting::Scaling
                 | Setting::Effect
                 | Setting::Ghosting
@@ -1329,6 +1336,8 @@ mod tests {
         assert_eq!(launcher.screen(), Screen::Settings);
         press_all(&mut launcher, &library, &[Button::Right, Button::A]);
         assert_eq!(launcher.press(Button::Right, &library), Command::ToggleCovers);
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::Right, &library), Command::ToggleScreenshotCovers);
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::A, &library), Command::DownloadBoxArt(ArtDownload::Missing));
         launcher.press(Button::Down, &library);

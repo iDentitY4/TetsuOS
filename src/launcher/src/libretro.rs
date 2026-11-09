@@ -7,7 +7,9 @@ use crate::input::{self, Button, Controls, Event};
 use crate::pause::{Action, MenuTrigger, PauseMenu};
 use crate::play_time::PlayClock;
 use crate::power::{self, Level};
+use crate::png;
 use crate::screens;
+use crate::screenshot;
 use crate::settings::{self, Effect, GameDisplay, Ghosting, Scaling};
 use crate::storage::write_atomic;
 use std::cell::RefCell;
@@ -254,6 +256,8 @@ struct Host {
     frame_size: (usize, usize),
     /// The size of the core's last picture, before scaling.
     source_size: (usize, usize),
+    /// That picture's own pixels, row by row, for a screenshot. `frame` has the effects in it.
+    source: Vec<u8>,
     target: (usize, usize),
     setup: CoreSetup,
     /// Each option the core declared, with its default.
@@ -387,6 +391,10 @@ unsafe extern "C" fn video_refresh(
         host.frame.resize(size.0 * size.1, 0);
         host.frame_size = size;
         host.source_size = (width, height);
+        host.source.clear();
+        for row in 0..height {
+            host.source.extend_from_slice(&source[row * pitch..row * pitch + width * bytes_per_pixel]);
+        }
         scale_frame(source, pitch, host.format, (width, height), &mut host.frame, size, host.display.effect);
         host.frame_ready = true;
         host.scale_time += start.elapsed();
@@ -925,6 +933,7 @@ fn set_host(directory: &Path, target: (usize, usize), setup: CoreSetup, console:
         frame: Vec::new(),
         frame_size: (0, 0),
         source_size: (0, 0),
+        source: Vec::new(),
         target,
         setup,
         defaults: Vec::new(),
@@ -1104,6 +1113,25 @@ fn update_volume_sign(framebuffer: &mut Framebuffer, levels: &Receiver<u32>) -> 
     Ok(())
 }
 
+/// A picture's pixels as the 8-bit RGB samples of a PNG file.
+fn rgb_samples(source: &[u8], format: PixelFormat) -> Vec<u8> {
+    let bytes_per_pixel = if format == PixelFormat::Xrgb8888 { 4 } else { 2 };
+    source
+        .chunks_exact(bytes_per_pixel)
+        .flat_map(|pixel| {
+            let [_, r, g, b] = to_xrgb(format, pixel).to_be_bytes();
+            [r, g, b]
+        })
+        .collect()
+}
+
+/// Saves the core's last picture, for the game with this save file. Returns where.
+fn take_screenshot(save: &Path) -> Result<PathBuf, String> {
+    let (samples, (width, height)) = with_host(|host| (rgb_samples(&host.source, host.format), host.source_size));
+    let file = png::encode(width, height, &samples)?;
+    screenshot::save(Path::new(screenshot::SCREENSHOT_DIR), save, &file).map_err(|error| error.to_string())
+}
+
 /// Writes the game's save file, and the state to resume from where there is one.
 fn save_progress(
     core: &mut Core,
@@ -1238,6 +1266,19 @@ fn pause(
                     eprintln!("warning: the core could not change to disc {number}");
                     menu.set_message(tr("COULD NOT CHANGE DISC").to_string());
                 }
+            }
+            Action::Screenshot => {
+                let started = Instant::now();
+                menu.set_message(match take_screenshot(save) {
+                    Ok(path) => {
+                        println!("saved {} in {:.2} s", path.display(), started.elapsed().as_secs_f32());
+                        tr("SCREENSHOT SAVED").to_string()
+                    }
+                    Err(error) => {
+                        eprintln!("warning: could not save a screenshot: {error}");
+                        tr("COULD NOT SAVE THE SCREENSHOT").to_string()
+                    }
+                });
             }
             Action::Volume(steps) => {
                 settings::change_volume(steps * settings::VOLUME_STEP);
@@ -1700,6 +1741,15 @@ mod tests {
     #[test]
     fn a_tall_source_fits_the_panel_height() {
         assert_eq!(fit(100, 200, 640, 480), (240, 480));
+    }
+
+    #[test]
+    fn screenshots_have_the_games_own_colours_in_every_format() {
+        let xrgb = 0x00AA_BBCCu32.to_ne_bytes();
+        assert_eq!(rgb_samples(&xrgb, PixelFormat::Xrgb8888), [0xAA, 0xBB, 0xCC]);
+        let rgb565 = [0xF800u16.to_ne_bytes(), 0x07E0u16.to_ne_bytes()].concat();
+        assert_eq!(rgb_samples(&rgb565, PixelFormat::Rgb565), [255, 0, 0, 0, 255, 0]);
+        assert_eq!(rgb_samples(&0x001Fu16.to_ne_bytes(), PixelFormat::Rgb1555), [0, 0, 255]);
     }
 
     #[test]

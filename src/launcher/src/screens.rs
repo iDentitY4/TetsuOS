@@ -476,6 +476,7 @@ pub(crate) fn setting_value(setting: Setting, settings: &Settings) -> Option<Str
         Setting::ShowTitle => if settings.title_hidden { tr("HIDDEN") } else { tr("SHOWN") },
         Setting::GridSize => settings.grid.label(),
         Setting::ShowCovers => on_off(!settings.covers_hidden),
+        Setting::ScreenshotCovers => on_off(!settings.screenshot_covers_off),
         Setting::TimeZone => tr(settings.time_zone().label),
         Setting::ClockFormat => settings.clock.label(),
         Setting::Ssh => settings.ssh.label(),

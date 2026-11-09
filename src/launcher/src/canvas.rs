@@ -309,8 +309,8 @@ pub struct PauseView<'a> {
     pub display: GameDisplay,
 }
 
-const PAUSE_PANEL: (usize, usize, usize, usize) = (110, 30, 420, 420);
-const PAUSE_TOP: usize = 80;
+const PAUSE_PANEL: (usize, usize, usize, usize) = (110, 15, 420, 450);
+const PAUSE_TOP: usize = 65;
 const PAUSE_ROW: usize = 30;
 const PAUSE_TEXT_SCALE: usize = 2;
 const PAUSE_BAR_WIDTH: usize = 120;

@@ -1,10 +1,10 @@
-//! Decodes downloaded box art with the `png` crate, into the launcher's RGB images.
-//! Every colour type and bit depth becomes 8-bit RGB, and transparency is dropped, as
-//! covers have none that matters.
+//! Decodes downloaded box art with the `png` crate, into the launcher's RGB images, and
+//! encodes screenshots. Every colour type and bit depth becomes 8-bit RGB, and transparency
+//! is dropped, as covers have none that matters.
 
 use crate::boxart::Image;
 use crate::canvas::Rgb;
-use png::{ColorType, Decoder, Limits, Transformations};
+use png::{BitDepth, ColorType, Decoder, Encoder, Limits, Transformations};
 use std::io::Cursor;
 
 /// The most a cover may take to decode, so a bad file can't take all the memory.
@@ -34,6 +34,18 @@ pub fn decode(bytes: &[u8]) -> Result<Image, String> {
         }));
     }
     Ok(Image { width, height, pixels })
+}
+
+/// A PNG file of 8-bit RGB samples, three per pixel, row by row.
+pub fn encode(width: usize, height: usize, samples: &[u8]) -> Result<Vec<u8>, String> {
+    let mut bytes = Vec::new();
+    let mut encoder = Encoder::new(&mut bytes, width as u32, height as u32);
+    encoder.set_color(ColorType::Rgb);
+    encoder.set_depth(BitDepth::Eight);
+    let mut writer = encoder.write_header().map_err(|error| error.to_string())?;
+    writer.write_image_data(samples).map_err(|error| error.to_string())?;
+    writer.finish().map_err(|error| error.to_string())?;
+    Ok(bytes)
 }
 
 #[cfg(test)]
@@ -68,6 +80,21 @@ mod tests {
     fn decodes_stored_and_fixed_blocks() {
         check("stored");
         check("fixed");
+    }
+
+    #[test]
+    fn what_is_encoded_decodes_to_the_same_pixels() {
+        let samples = [255, 0, 0, 0, 255, 0, 0, 0, 255, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let image = decode(&encode(3, 2, &samples).unwrap()).unwrap();
+        assert_eq!((image.width, image.height), (3, 2));
+        let pixels: Vec<u8> = image.pixels.iter().flat_map(|p| [p.0, p.1, p.2]).collect();
+        assert_eq!(pixels, samples);
+    }
+
+    #[test]
+    fn encoding_needs_a_whole_picture() {
+        assert!(encode(0, 0, &[]).is_err());
+        assert!(encode(2, 2, &[0; 3]).is_err());
     }
 
     #[test]

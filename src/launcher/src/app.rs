@@ -449,6 +449,7 @@ pub(crate) fn act(
             change_settings(|s| s.battery = s.battery.cycle(steps));
         }
         Action::ToggleCovers => change_settings(|s| s.covers_hidden = !s.covers_hidden),
+        Action::ToggleScreenshotCovers => change_settings(|s| s.screenshot_covers_off = !s.screenshot_covers_off),
         Action::SortGames(steps) => {
             change_settings(|s| s.sort = s.sort.cycle(steps));
             return Ok(true);

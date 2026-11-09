@@ -12,6 +12,7 @@ pub enum Item {
     SaveState,
     LoadState,
     Disc,
+    Screenshot,
     Volume,
     Brightness,
     Scaling,
@@ -21,11 +22,12 @@ pub enum Item {
 }
 
 /// Every choice, as a game with several discs shows them. Others go without `Item::Disc`.
-pub const ITEMS: [Item; 10] = [
+pub const ITEMS: [Item; 11] = [
     Item::Resume,
     Item::SaveState,
     Item::LoadState,
     Item::Disc,
+    Item::Screenshot,
     Item::Volume,
     Item::Brightness,
     Item::Scaling,
@@ -41,6 +43,7 @@ impl Item {
             Self::SaveState => "SAVE STATE",
             Self::LoadState => "LOAD STATE",
             Self::Disc => "CHANGE DISC",
+            Self::Screenshot => "SCREENSHOT",
             Self::Volume => "VOLUME",
             Self::Brightness => "BRIGHTNESS",
             Self::Scaling => "SCALING",
@@ -61,6 +64,7 @@ pub enum Action {
     Load(usize),
     /// Counted from 0, as the core does.
     Disc(usize),
+    Screenshot,
     Volume(i32),
     Brightness(i32),
     Scaling(i32),
@@ -140,7 +144,7 @@ impl PauseMenu {
                     Item::Scaling => return Action::Scaling(step),
                     Item::Effect => return Action::Effect(step),
                     Item::Ghosting => return Action::Ghosting(step),
-                    Item::Resume | Item::Quit => {}
+                    Item::Resume | Item::Screenshot | Item::Quit => {}
                 }
             }
             Button::A => {
@@ -149,6 +153,7 @@ impl PauseMenu {
                     Item::SaveState => Action::Save(self.slot),
                     Item::LoadState => Action::Load(self.slot),
                     Item::Disc => Action::Disc(self.disc),
+                    Item::Screenshot => Action::Screenshot,
                     Item::Quit => Action::Quit,
                     Item::Volume | Item::Brightness | Item::Scaling | Item::Effect | Item::Ghosting => {
                         Action::Nothing
@@ -232,6 +237,15 @@ mod tests {
         assert_eq!(menu_at(Item::Volume).press(Button::A), Action::Nothing);
         assert_eq!(menu_at(Item::Scaling).press(Button::Right), Action::Scaling(1));
         assert_eq!(menu_at(Item::Effect).press(Button::Left), Action::Effect(-1));
+    }
+
+    #[test]
+    fn a_takes_a_screenshot_and_the_menu_stays_where_it_is() {
+        let mut menu = menu_at(Item::Screenshot);
+        assert_eq!(menu.press(Button::A), Action::Screenshot);
+        assert_eq!(menu.press(Button::Left), Action::Nothing);
+        assert_eq!(menu.press(Button::Right), Action::Nothing);
+        assert_eq!(menu.selected(), Item::Screenshot);
     }
 
     #[test]

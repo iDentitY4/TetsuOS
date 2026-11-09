@@ -211,7 +211,7 @@ fn closest_cover<'a>(names: &'a [String], stem: &str) -> Option<&'a str> {
 }
 
 /// The size that fits `max` with the same shape, never larger than the image.
-fn fit_size((width, height): (usize, usize), (max_w, max_h): (usize, usize)) -> (usize, usize) {
+pub fn fit_size((width, height): (usize, usize), (max_w, max_h): (usize, usize)) -> (usize, usize) {
     if width <= max_w && height <= max_h {
         return (width, height);
     }
@@ -225,7 +225,11 @@ fn fit_size((width, height): (usize, usize), (max_w, max_h): (usize, usize)) -> 
 /// Shrinks an image to fit `max` by averaging the pixels each new one covers, with
 /// partial pixels at the edges weighted by how much of them it covers.
 pub fn shrink(image: &Image, max: (usize, usize)) -> Image {
-    let (width, height) = fit_size((image.width, image.height), max);
+    resize(image, fit_size((image.width, image.height), max))
+}
+
+/// Gives an image a new size by the same averaging.
+pub fn resize(image: &Image, (width, height): (usize, usize)) -> Image {
     if (width, height) == (image.width, image.height) {
         return Image { width, height, pixels: image.pixels.clone() };
     }

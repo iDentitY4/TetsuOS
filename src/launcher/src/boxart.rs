@@ -1,7 +1,10 @@
 //! Box art for games, which Settings > BOX ART (`boxart_fetch`) or `scripts/boxart.py`
-//! puts on the card as PPM images named after each game's file.
+//! puts on the card as PPM images named after each game's file. A game without one shows
+//! its newest screenshot, unless Settings > BOX ART turns that off. Downloading a cover
+//! then takes the screenshot's place.
 
 use crate::canvas::Rgb;
+use crate::{screenshot, settings};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -48,29 +51,38 @@ pub fn parse_ppm(bytes: &[u8]) -> Option<Image> {
     Some(Image { width, height, pixels })
 }
 
+fn read_cover(directory: &Path, game: &Path) -> Option<Image> {
+    let mut file = PathBuf::from(game.file_stem()?);
+    file.set_extension("ppm");
+    parse_ppm(&std::fs::read(directory.join(file)).ok()?)
+}
+
+/// A game's cover, or without one its newest screenshot, if `screenshots` is given.
+fn find_cover(directory: &Path, screenshots: Option<&Path>, game: &Path) -> Option<Image> {
+    read_cover(directory, game).or_else(|| screenshot::cover(screenshots?, game))
+}
+
 /// Covers read so far, so each is read from the card once. Games without art are
 /// remembered too.
 pub struct BoxArt {
     directory: PathBuf,
+    screenshots: PathBuf,
     images: HashMap<PathBuf, Option<Rc<Image>>>,
 }
 
 impl BoxArt {
     pub fn new() -> Self {
-        Self { directory: PathBuf::from(ART_DIR), images: HashMap::new() }
+        Self { directory: PathBuf::from(ART_DIR), screenshots: PathBuf::from(screenshot::SCREENSHOT_DIR), images: HashMap::new() }
     }
 
     /// The cover for a game, by its file's name without the extension.
     pub fn get(&mut self, game: &Path) -> Option<Rc<Image>> {
-        let directory = &self.directory;
+        let (directory, screenshots) = (&self.directory, &self.screenshots);
         self.images
             .entry(game.to_path_buf())
             .or_insert_with(|| {
-                let name = game.file_stem()?;
-                let mut file = PathBuf::from(name);
-                file.set_extension("ppm");
-                let bytes = std::fs::read(directory.join(file)).ok()?;
-                parse_ppm(&bytes).map(Rc::new)
+                let screenshots = (!settings::get().screenshot_covers_off).then_some(screenshots.as_path());
+                find_cover(directory, screenshots, game).map(Rc::new)
             })
             .clone()
     }
@@ -109,11 +121,31 @@ mod tests {
         let mut bytes = b"P6 1 1 255\n".to_vec();
         bytes.extend_from_slice(&[1, 2, 3]);
         std::fs::write(dir.join("Game (USA).ppm"), &bytes).unwrap();
-        let mut art = BoxArt { directory: dir.clone(), images: HashMap::new() };
+        let mut art = BoxArt { directory: dir.clone(), screenshots: dir.join("none"), images: HashMap::new() };
         assert_eq!(art.get(Path::new("/roms/Game (USA).gba")).unwrap().pixels, [Rgb(1, 2, 3)]);
         assert!(art.get(Path::new("/roms/Other.gba")).is_none());
         std::fs::remove_dir_all(&dir).unwrap();
         // Still there: it was read once and kept.
         assert!(art.get(Path::new("/roms/Game (USA).gba")).is_some());
+    }
+
+    #[test]
+    fn a_game_shows_its_screenshot_only_until_it_has_a_cover() {
+        let dir = std::env::temp_dir().join(format!("launcher-boxart-shot-test-{}", std::process::id()));
+        let screenshots = dir.join("shots");
+        std::fs::create_dir_all(&screenshots).unwrap();
+        let game = Path::new("/roms/Game.gb");
+        let shot = crate::png::encode(1, 1, &[9, 9, 9]).unwrap();
+        std::fs::write(screenshots.join("Game.gb 001.png"), shot).unwrap();
+        let mut art = BoxArt { directory: dir.clone(), screenshots, images: HashMap::new() };
+        assert_eq!(art.get(game).unwrap().pixels, [Rgb(9, 9, 9)]);
+        // With the setting off, the game has no cover.
+        assert!(find_cover(&dir, None, game).is_none());
+        let mut cover = b"P6 1 1 255\n".to_vec();
+        cover.extend_from_slice(&[1, 2, 3]);
+        std::fs::write(dir.join("Game.ppm"), &cover).unwrap();
+        art.clear();
+        assert_eq!(art.get(game).unwrap().pixels, [Rgb(1, 2, 3)]);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

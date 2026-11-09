@@ -33,6 +33,7 @@ mod recent;
 mod repeat;
 mod rom_zip;
 mod screens;
+mod screenshot;
 mod settings;
 mod setup;
 mod sleep;
