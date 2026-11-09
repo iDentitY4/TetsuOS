@@ -562,6 +562,41 @@ precompiled on the PC. `external.mk` builds Mesa with `-Dllvm=disabled`, and
 links to a missing library. Claude checked over SSH that `kmscube` still runs at
 59.94 fps on Panfrost. The rootfs partition is still a fixed 1 GiB.
 
+- **Translations** (2026-11-09): Settings > GENERAL > LANGUAGE switches the launcher and
+  the in-game menu between English and German at once, with no restart. It is kept in
+  `settings.txt` as `language=en` or `de`, and RESET SETTINGS leaves it, so the menus stay
+  readable to whoever is using the device. `i18n::tr("SETTINGS")` looks the English text
+  up in a language file, and `i18n::trf("{} OF {}", &[&a, &b])` also fills in values, in
+  order; a text with no translation stays English. Screens ask as they draw, which is why
+  the switch is immediate. Each language is a plain text file built into the launcher
+  with `include_str!`, `src/launcher/lang/de.txt`, in lines of `ENGLISH = TRANSLATION`, so
+  there is nothing to go missing on the device. To add a language: add the file, a variant
+  in `settings::Language` and a line in `i18n::table`. Console names, TETSU OS and units
+  stay as they are, and the language names are never translated.
+  The font has one fixed width and everything is in capitals, so `[max N]` sections in the
+  file give the room each kind of text has: 11 characters on a tile, 53 on a full line.
+  That is why German says OPTIONEN rather than EINSTELLUNGEN, as the user chose short
+  wording over changing the layout. The tests in `i18n.rs` fail on a text on screen with
+  no translation, an entry nothing uses, a lost `{}`, a character the font can't draw and
+  a text too long for its section. They find the English keys by reading the source for
+  `tr("...")`, plus the lists of labels in `keys_elsewhere`, so text in a new list of
+  labels has to be added there. Deleting a line, an overlong tile and a character without
+  a glyph each failed as they should. They can't notice a string that was never wrapped in
+  `tr`, which needs a look at the screen.
+  The font gained Ä, Ö, Ü and ß, which also fixes these letters showing blank in game and
+  network names. Other accented letters are still blank. Ä, Ö and Ü are the plain capital
+  with two dots drawn two rows above the line (`font::dots_above`): squeezed into the
+  font's 7 rows with their dots, they looked lowercase beside other capitals, as in
+  `ZURüCK`. Lowercase ä, ö and ü, for network names, fit their dots in the glyph.
+  `LAUNCHER_PREVIEW_LANGUAGE=de` renders the `--preview*` screens in German on the PC.
+  Tested on the device on 2026-11-09 by switching with the buttons and screenshots of each
+  settings group, the settings grid, Wi-Fi, system info, the home tiles list, a game list
+  and a confirmation, then a launcher restart; `launcher --preview-pause` on the device
+  showed the in-game menu reading the language from the file. The translation was written
+  by Claude and hasn't been read by a German speaker. Not seen on the device: USB
+  STORAGE's screens, the box art download, the keyboard, full-screen messages such as
+  powering off, and the in-game menu inside a running game.
+
 ## Hardware facts in full
 
 - **Don't trust the model name for hardware details.** This unit has LPDDR3 at

@@ -14,6 +14,7 @@ mod favorites;
 mod fb;
 mod font;
 mod game;
+mod i18n;
 mod icons;
 mod input;
 mod keyboard;
@@ -62,6 +63,10 @@ use std::process::ExitCode;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // Previews run on the PC, which has no settings file to choose a language in.
+    if let Some(language) = std::env::var("LAUNCHER_PREVIEW_LANGUAGE").ok().and_then(|key| settings::Language::from_key(&key)) {
+        settings::preview_language(language);
+    }
     let result = match args.as_slice() {
         [] => run_launcher(),
         [flag] if flag == "--jingle" => sounds::boot_jingle(),

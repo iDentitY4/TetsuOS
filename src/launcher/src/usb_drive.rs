@@ -4,6 +4,7 @@
 //! ejecting the drive on the PC or pressing B, checks the partition, mounts it and reads
 //! the settings and games again.
 
+use crate::i18n::tr;
 use crate::*;
 use crate::input::{Button, Event};
 use std::io;
@@ -57,14 +58,14 @@ fn ejected() -> bool {
 /// What the screen says, for the link and whether B was pressed once already.
 pub(crate) fn usb_drive_view(link: UsbLink, confirming: bool) -> screens::UsbDriveView<'static> {
     let status = match link {
-        UsbLink::Unplugged => "CONNECT THE DEVICE TO A PC",
-        UsbLink::Connecting => "CONNECTING TO THE PC",
-        UsbLink::Connected => "CONNECTED TO THE PC",
+        UsbLink::Unplugged => tr("CONNECT THE DEVICE TO A PC"),
+        UsbLink::Connecting => tr("CONNECTING TO THE PC"),
+        UsbLink::Connected => tr("CONNECTED TO THE PC"),
     };
     let hint = match (link, confirming) {
-        (UsbLink::Connected, true) => "THE PC HAS NOT EJECTED IT - B AGAIN LEAVES",
-        (UsbLink::Connected, false) => "EJECT THE DRIVE ON THE PC - B LEAVES",
-        _ => "B BACK",
+        (UsbLink::Connected, true) => tr("THE PC HAS NOT EJECTED IT - B AGAIN LEAVES"),
+        (UsbLink::Connected, false) => tr("EJECT THE DRIVE ON THE PC - B LEAVES"),
+        _ => tr("B BACK"),
     };
     screens::UsbDriveView { status, hint }
 }
@@ -80,13 +81,13 @@ enum Leaving {
 /// again. Returns whether it was given to the PC, and so the games should be read again.
 pub(crate) fn usb_drive(framebuffer: &mut fb::Framebuffer, events: &Receiver<Event>) -> io::Result<bool> {
     let (width, height) = framebuffer.size();
-    framebuffer.draw(&screens::message_screen(width, height, "STARTING USB STORAGE", current_theme()))?;
+    framebuffer.draw(&screens::message_screen(width, height, tr("STARTING USB STORAGE"), current_theme()))?;
     let status = Command::new(GADGET).arg("storage").status()?;
     if !status.success() {
         let message = if status.code() == Some(IN_USE_EXIT) {
-            "THE CARD IS IN USE - TRY AGAIN"
+            tr("THE CARD IS IN USE - TRY AGAIN")
         } else {
-            "COULD NOT START USB STORAGE"
+            tr("COULD NOT START USB STORAGE")
         };
         eprintln!("usb storage: {GADGET} storage failed: {status}");
         framebuffer.draw(&screens::message_screen(width, height, message, current_theme()))?;
@@ -158,7 +159,7 @@ pub(crate) fn usb_drive(framebuffer: &mut fb::Framebuffer, events: &Receiver<Eve
         set_screen(true);
     }
 
-    framebuffer.draw(&screens::message_screen(width, height, "CHECKING THE CARD", current_theme()))?;
+    framebuffer.draw(&screens::message_screen(width, height, tr("CHECKING THE CARD"), current_theme()))?;
     let status = Command::new(GADGET).arg("network").status()?;
     if !status.success() {
         eprintln!("usb storage: {GADGET} network failed: {status}");
@@ -168,7 +169,7 @@ pub(crate) fn usb_drive(framebuffer: &mut fb::Framebuffer, events: &Receiver<Eve
     settings::reload();
     events.try_iter().for_each(drop);
     if leaving == Leaving::BatteryEmpty {
-        shut_down(framebuffer, "BATTERY EMPTY", &power::poweroff_command())?;
+        shut_down(framebuffer, tr("BATTERY EMPTY"), &power::poweroff_command())?;
     }
     Ok(true)
 }

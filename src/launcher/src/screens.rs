@@ -3,6 +3,7 @@
 use crate::boxart::Image;
 use crate::canvas::{text_width, Battery, Canvas, Rgb, Theme, BODY, LOW, MUTED, TEXT};
 use crate::font;
+use crate::i18n::{tr, trf};
 use crate::icons::{self, Icon};
 use crate::keyboard::{self, Key, Keyboard};
 use crate::launcher::{Group, Setting, COLUMNS, MAX_GROUP_SETTINGS, PAGE};
@@ -156,7 +157,7 @@ pub fn home_screen(
     // Without a title, the grid takes its space too.
     let top = if title.is_some() { GRID_TOP } else { GRID_TOP_UNTITLED };
     tile_grid(&mut canvas, tiles, selected, top, grid.columns(), Some(grid.rows_shown()));
-    hint(&mut canvas, "A OPENS - START SETTINGS");
+    hint(&mut canvas, tr("A OPENS - START SETTINGS"));
     canvas
 }
 
@@ -177,11 +178,11 @@ pub fn group_icon(group: Group) -> &'static Icon {
 /// The settings groups as tiles, laid out like the home screen.
 pub fn settings_grid(width: usize, height: usize, groups: &[Group], selected: usize, frame: &Frame) -> Canvas {
     let mut canvas = Canvas::new(width, height, frame.theme);
-    header(&mut canvas, &icons::SETTINGS, "SETTINGS", frame.battery);
+    header(&mut canvas, &icons::SETTINGS, tr("SETTINGS"), frame.battery);
     let tiles: Vec<TileView> =
         groups.iter().map(|&group| TileView { icon: group_icon(group), label: group.label(), count: None }).collect();
     tile_grid(&mut canvas, &tiles, selected, GRID_TOP, COLUMNS, None);
-    hint(&mut canvas, "A OPENS - B BACK - START CLOSES");
+    hint(&mut canvas, tr("A OPENS - B BACK - START CLOSES"));
     canvas
 }
 
@@ -241,7 +242,7 @@ fn tile_grid(
         let label_x = x + tile_w.saturating_sub(text_width(tile.label, TEXT_SCALE)) / 2;
         canvas.text_at(tile.label, label_x, label_y, TEXT_SCALE, label_color);
         if let Some(count) = tile.count {
-            let text = format!("{count} {}", if count == 1 { "GAME" } else { "GAMES" });
+            let text = format!("{count} {}", if count == 1 { tr("GAME") } else { tr("GAMES") });
             let count_x = x + tile_w.saturating_sub(text_width(&text, TEXT_SCALE)) / 2;
             canvas.text_at(&text, count_x, label_y + font::HEIGHT * TEXT_SCALE + gap / 2 + 2, TEXT_SCALE, MUTED);
         }
@@ -318,7 +319,7 @@ pub fn list_screen(width: usize, height: usize, view: &ListView, frame: &Frame) 
     let mut canvas = Canvas::new(width, height, frame.theme);
     header(&mut canvas, icon, title, frame.battery);
     if !rows.is_empty() {
-        let position = format!("{} OF {}", selected + 1, rows.len());
+        let position = trf("{} OF {}", &[&(selected + 1), &rows.len()]);
         let x = width.saturating_sub(text_width(&position, TEXT_SCALE) + 16);
         canvas.text_at(&position, x, 40, TEXT_SCALE, MUTED);
     }
@@ -365,14 +366,14 @@ pub fn list_screen(width: usize, height: usize, view: &ListView, frame: &Frame) 
         }
         None => {}
     }
-    hint(&mut canvas, "A STARTS - B BACK - SELECT STARS - LEFT RIGHT PAGE");
+    hint(&mut canvas, tr("A STARTS - B BACK - SELECT STARS - LEFT RIGHT PAGE"));
     canvas
 }
 
 /// The value a setting that changes with Left and Right shows on the right of its row.
 /// The levels show as bars instead, and the rest have none.
 fn setting_value(setting: Setting, settings: &Settings) -> Option<String> {
-    let on_off = |on: bool| if on { "ON" } else { "OFF" };
+    let on_off = |on: bool| if on { tr("ON") } else { tr("OFF") };
     let label = match setting {
         Setting::StartScreen => settings.start_screen.label(),
         Setting::GameNames => settings.game_names.label(),
@@ -380,15 +381,16 @@ fn setting_value(setting: Setting, settings: &Settings) -> Option<String> {
         Setting::MenuSounds => on_off(settings.menu_sounds),
         Setting::BootJingle => on_off(!settings.jingle_off),
         Setting::IdleSleep => return Some(idle_sleep_label(settings.idle_minutes)),
+        Setting::Language => settings.language.label(),
         Setting::Scaling => settings.display.scaling.label(),
         Setting::Effect => settings.display.effect.label(),
         Setting::Ghosting => settings.display.ghosting.label(),
         Setting::AccentColor => settings.accent.label(),
         Setting::Background => settings.background.label(),
-        Setting::ShowTitle => if settings.title_hidden { "HIDDEN" } else { "SHOWN" },
+        Setting::ShowTitle => if settings.title_hidden { tr("HIDDEN") } else { tr("SHOWN") },
         Setting::GridSize => settings.grid.label(),
         Setting::ShowCovers => on_off(!settings.covers_hidden),
-        Setting::TimeZone => settings.time_zone().label,
+        Setting::TimeZone => tr(settings.time_zone().label),
         Setting::ClockFormat => settings.clock.label(),
         Setting::Ssh => settings.ssh.label(),
         Setting::Performance => settings.performance.label(),
@@ -422,19 +424,19 @@ pub fn settings_screen(width: usize, height: usize, view: &SettingsView, frame: 
                 canvas.text_cased_at(&value, right - text_width(&value, TEXT_SCALE), text_y, TEXT_SCALE, text_color);
             }
             Setting::BootMessages => {
-                let label = view.boot_messages.map_or("UNKNOWN", BootMessages::label);
+                let label = view.boot_messages.map_or(tr("UNKNOWN"), BootMessages::label);
                 let value = if selected { format!("< {label} >") } else { label.to_string() };
                 canvas.text_at(&value, right - text_width(&value, TEXT_SCALE), text_y, TEXT_SCALE, text_color);
             }
             Setting::RootPassword => {
-                let value = if view.login.password { "SET >" } else { "NOT SET >" };
+                let value = if view.login.password { tr("SET >") } else { tr("NOT SET >") };
                 canvas.text_at(value, right - text_width(value, TEXT_SCALE), text_y, TEXT_SCALE, text_color);
             }
             Setting::SshKeys => {
                 let value = match view.login.keys {
-                    0 => "NONE".to_string(),
-                    1 => "1 KEY".to_string(),
-                    keys => format!("{keys} KEYS"),
+                    0 => tr("NONE").to_string(),
+                    1 => tr("1 KEY").to_string(),
+                    keys => trf("{} KEYS", &[&keys]),
                 };
                 canvas.text_at(&value, right - text_width(&value, TEXT_SCALE), text_y, TEXT_SCALE, text_color);
             }
@@ -458,20 +460,20 @@ pub fn settings_screen(width: usize, height: usize, view: &SettingsView, frame: 
         canvas.text(message, below, TEXT_SCALE, canvas.theme.accent);
     }
     let changes = settings.iter().any(|setting| setting.changes_with_left_right());
-    hint(&mut canvas, if changes { "A SELECTS - LEFT RIGHT CHANGES - B BACK" } else { "A SELECTS - B BACK" });
+    hint(&mut canvas, if changes { tr("A SELECTS - LEFT RIGHT CHANGES - B BACK") } else { tr("A SELECTS - B BACK") });
     canvas
 }
 
 pub fn info_screen(width: usize, height: usize, lines: &[(String, String)], frame: &Frame) -> Canvas {
     let mut canvas = Canvas::new(width, height, frame.theme);
-    header(&mut canvas, &icons::SETTINGS, "SYSTEM INFO", frame.battery);
+    header(&mut canvas, &icons::SETTINGS, tr("SYSTEM INFO"), frame.battery);
     let right = width.saturating_sub(SETTINGS_RIGHT);
     for (row, (label, value)) in lines.iter().enumerate() {
         let y = row_text_y(SETTINGS_TOP + row * SETTINGS_ROW, SETTINGS_ROW - 4);
         canvas.text_at(label, SETTINGS_LEFT, y, TEXT_SCALE, MUTED);
         canvas.text_at(value, right.saturating_sub(text_width(value, TEXT_SCALE)), y, TEXT_SCALE, TEXT);
     }
-    hint(&mut canvas, "B BACK");
+    hint(&mut canvas, tr("B BACK"));
     canvas
 }
 
@@ -491,7 +493,7 @@ pub fn home_tiles_screen(
     frame: &Frame,
 ) -> Canvas {
     let mut canvas = Canvas::new(width, height, frame.theme);
-    header(&mut canvas, &icons::THEME, "HOME SCREEN TILES", frame.battery);
+    header(&mut canvas, &icons::THEME, tr("HOME SCREEN TILES"), frame.battery);
     let right = width.saturating_sub(SETTINGS_RIGHT);
     let first = first_visible(selected);
     for (line, (index, row)) in rows.iter().enumerate().skip(first).take(PAGE).enumerate() {
@@ -507,14 +509,14 @@ pub fn home_tiles_screen(
         canvas.icon(row.icon, LIST_ICON_LEFT, y + (LIST_ROW - 2 - icons::HEIGHT) / 2, 1);
         let text_y = row_text_y(y, LIST_ROW - 2);
         canvas.text_at(row.label, LIST_ICON_TEXT_LEFT, text_y, TEXT_SCALE, label_color);
-        let value = if row.shown { "SHOWN" } else { "HIDDEN" };
+        let value = if row.shown { tr("SHOWN") } else { tr("HIDDEN") };
         canvas.text_at(value, right.saturating_sub(text_width(value, TEXT_SCALE)), text_y, TEXT_SCALE, value_color);
     }
     // Hiding the settings tile is fine, but worth a reminder of the way back.
     if rows.last().is_some_and(|settings| !settings.shown) {
-        canvas.text("START OPENS SETTINGS FROM ANYWHERE", LIST_TOP + rows.len().min(PAGE) * LIST_ROW + 10, TEXT_SCALE, MUTED);
+        canvas.text(tr("START OPENS SETTINGS FROM ANYWHERE"), LIST_TOP + rows.len().min(PAGE) * LIST_ROW + 10, TEXT_SCALE, MUTED);
     }
-    hint(&mut canvas, "A SHOWS OR HIDES - B BACK");
+    hint(&mut canvas, tr("A SHOWS OR HIDES - B BACK"));
     canvas
 }
 
@@ -542,7 +544,7 @@ fn clip(text: &str, columns: usize) -> String {
 
 pub fn boxart_screen(width: usize, height: usize, view: &BoxArtView, frame: &Frame) -> Canvas {
     let mut canvas = Canvas::new(width, height, frame.theme);
-    header(&mut canvas, &icons::SETTINGS, "BOX ART", frame.battery);
+    header(&mut canvas, &icons::SETTINGS, tr("BOX ART"), frame.battery);
     canvas.text_at(&clip(view.status, BOXART_COLUMNS), LIST_LEFT, BOXART_TOP, TEXT_SCALE, TEXT);
     canvas.text_at(&clip(view.detail, BOXART_COLUMNS), LIST_LEFT, BOXART_TOP + 30, TEXT_SCALE, MUTED);
     let bar_w = width.saturating_sub(2 * LIST_LEFT);
@@ -554,13 +556,13 @@ pub fn boxart_screen(width: usize, height: usize, view: &BoxArtView, frame: &Fra
     }
     if !view.missing.is_empty() {
         let top = BOXART_TOP + 100;
-        canvas.text_at("NO COVER FOUND FOR", LIST_LEFT, top, TEXT_SCALE, MUTED);
+        canvas.text_at(tr("NO COVER FOUND FOR"), LIST_LEFT, top, TEXT_SCALE, MUTED);
         let shown = if view.missing.len() > BOXART_MISSING_ROWS { BOXART_MISSING_ROWS - 1 } else { view.missing.len() };
         for (row, name) in view.missing.iter().take(shown).enumerate() {
             canvas.text_at(&clip(name, BOXART_COLUMNS), LIST_LEFT, top + (row + 1) * LIST_ROW, TEXT_SCALE, TEXT);
         }
         if shown < view.missing.len() {
-            let more = format!("AND {} MORE", view.missing.len() - shown);
+            let more = trf("AND {} MORE", &[&(view.missing.len() - shown)]);
             canvas.text_at(&more, LIST_LEFT, top + (shown + 1) * LIST_ROW, TEXT_SCALE, MUTED);
         }
     }
@@ -602,11 +604,11 @@ fn padlock(canvas: &mut Canvas, x: usize, top: usize, color: Rgb) {
 
 pub fn wifi_screen(width: usize, height: usize, view: &WifiView, frame: &Frame) -> Canvas {
     let mut canvas = Canvas::new(width, height, frame.theme);
-    header(&mut canvas, &icons::WIFI, "WI-FI", frame.battery);
+    header(&mut canvas, &icons::WIFI, tr("WI-FI"), frame.battery);
     let status_color = if view.connected { canvas.theme.accent } else { MUTED };
     canvas.text_cased_at(view.status, LIST_LEFT, 76, TEXT_SCALE, status_color);
     if view.entries.is_empty() {
-        canvas.text("NO NETWORKS FOUND YET", WIFI_TOP + 60, TEXT_SCALE, MUTED);
+        canvas.text(tr("NO NETWORKS FOUND YET"), WIFI_TOP + 60, TEXT_SCALE, MUTED);
     }
     let advance = (font::WIDTH + 1) * TEXT_SCALE;
     let first = view.selected / wifi_menu::PAGE * wifi_menu::PAGE;
@@ -629,11 +631,11 @@ pub fn wifi_screen(width: usize, height: usize, view: &WifiView, frame: &Frame) 
             padlock(&mut canvas, lock_x, y + (row_h - 14) / 2, muted);
         }
         let label = if entry.connected {
-            "CONNECTED"
+            tr("CONNECTED")
         } else if entry.saved.is_some() {
-            "SAVED"
+            tr("SAVED")
         } else if entry.security == Security::Unsupported {
-            "NOT SUPPORTED"
+            tr("NOT SUPPORTED")
         } else {
             ""
         };
@@ -647,7 +649,7 @@ pub fn wifi_screen(width: usize, height: usize, view: &WifiView, frame: &Frame) 
     if let Some(message) = view.message {
         canvas.text(message, WIFI_TOP + wifi_menu::PAGE * WIFI_ROW + 14, TEXT_SCALE, canvas.theme.accent);
     }
-    hint(&mut canvas, "A CONNECTS - X FORGETS - Y SCANS - B BACK");
+    hint(&mut canvas, tr("A CONNECTS - X FORGETS - Y SCANS - B BACK"));
     canvas
 }
 
@@ -727,7 +729,7 @@ pub fn keyboard_screen(
     if !keyboard.can_finish() {
         canvas.text(view.valid_note, KEYS_TOP + 5 * (KEY_H + KEY_GAP) + 4, TEXT_SCALE, MUTED);
     }
-    hint(&mut canvas, "A TYPES - B DELETES - X CASE - Y SPACE - START OK");
+    hint(&mut canvas, tr("A TYPES - B DELETES - X CASE - Y SPACE - START OK"));
     canvas
 }
 
@@ -788,11 +790,11 @@ pub fn resume_screen(width: usize, height: usize, icon: &Icon, name: &str, theme
     let mut canvas = Canvas::new(width, height, theme);
     let scale = 4;
     canvas.icon(icon, width.saturating_sub(icons::WIDTH * scale) / 2, 90, scale);
-    canvas.text("RESUMING", 90 + icons::HEIGHT * scale + 30, 3, canvas.theme.accent);
+    canvas.text(tr("RESUMING"), 90 + icons::HEIGHT * scale + 30, 3, canvas.theme.accent);
     let columns = width.saturating_sub(32) / ((font::WIDTH + 1) * TEXT_SCALE);
     let visible: String = name.chars().take(columns).collect();
     canvas.text(&visible, 90 + icons::HEIGHT * scale + 76, TEXT_SCALE, TEXT);
-    hint(&mut canvas, "B CANCELS");
+    hint(&mut canvas, tr("B CANCELS"));
     canvas
 }
 
@@ -807,14 +809,14 @@ const USB_DRIVE_TOP: usize = 108;
 
 pub fn usb_drive_screen(width: usize, height: usize, view: &UsbDriveView, frame: &Frame) -> Canvas {
     let mut canvas = Canvas::new(width, height, frame.theme);
-    header(&mut canvas, &icons::SYSTEM, "USB STORAGE", frame.battery);
+    header(&mut canvas, &icons::SYSTEM, tr("USB STORAGE"), frame.battery);
     canvas.text_at(view.status, LIST_LEFT, USB_DRIVE_TOP, TEXT_SCALE, canvas.theme.accent);
     let lines = [
-        "THE CARD'S TETSU-DATA PARTITION IS A USB",
-        "DRIVE ON THE PC. GAMES GO IN ITS ROMS FOLDER.",
+        tr("THE CARD'S TETSU-DATA PARTITION IS A USB"),
+        tr("DRIVE ON THE PC. GAMES GO IN ITS ROMS FOLDER."),
         "",
-        "THE GAMES AND SETTINGS ARE BACK ON THE",
-        "DEVICE ONCE THE PC EJECTS THE DRIVE.",
+        tr("THE GAMES AND SETTINGS ARE BACK ON THE"),
+        tr("DEVICE ONCE THE PC EJECTS THE DRIVE."),
     ];
     for (row, line) in lines.iter().enumerate() {
         canvas.text_at(line, LIST_LEFT, USB_DRIVE_TOP + 50 + row * LIST_ROW, TEXT_SCALE, MUTED);

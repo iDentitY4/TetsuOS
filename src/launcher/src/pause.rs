@@ -1,5 +1,6 @@
 //! The in-game menu's choices, kept apart from drawing and the core so they can be tested.
 
+use crate::i18n::tr;
 use crate::input::{Button, Event};
 
 /// Save state slots per game.
@@ -32,7 +33,7 @@ pub const ITEMS: [Item; 9] = [
 
 impl Item {
     pub fn label(self) -> &'static str {
-        match self {
+        tr(match self {
             Self::Resume => "RESUME",
             Self::SaveState => "SAVE STATE",
             Self::LoadState => "LOAD STATE",
@@ -42,7 +43,7 @@ impl Item {
             Self::Effect => "SCREEN EFFECT",
             Self::Ghosting => "LCD GHOSTING",
             Self::Quit => "QUIT",
-        }
+        })
     }
 }
 

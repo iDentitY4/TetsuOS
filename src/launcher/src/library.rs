@@ -1,5 +1,6 @@
 //! The games on the card, sorted onto shelves by console, and the home screen's tiles.
 
+use crate::i18n::tr;
 use crate::*;
 use crate::icons;
 use crate::launcher::{Game, Launcher, Library, List, Shelf, Tile};
@@ -114,10 +115,10 @@ pub(crate) fn hidden_tiles() -> Vec<Tile> {
 /// A tile's pictogram and name, as the home screen shows it.
 pub(crate) fn tile_look(tile: Tile) -> (&'static icons::Icon, &'static str) {
     match tile {
-        Tile::Recent => (&icons::RECENT, "RECENT"),
-        Tile::Favorites => (&icons::FAVORITES, "FAVORITES"),
+        Tile::Recent => (&icons::RECENT, tr("RECENT")),
+        Tile::Favorites => (&icons::FAVORITES, tr("FAVORITES")),
         Tile::System(system) => (SYSTEMS[system].icon, SYSTEMS[system].label),
-        Tile::Settings => (&icons::SETTINGS, "SETTINGS"),
+        Tile::Settings => (&icons::SETTINGS, tr("SETTINGS")),
     }
 }
 

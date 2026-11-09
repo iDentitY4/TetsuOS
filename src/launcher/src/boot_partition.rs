@@ -3,6 +3,7 @@
 //! console in its `extlinux.conf`. It isn't mounted while the launcher runs, so each use
 //! mounts it, as `S99bootlog` does, and unmounts it again.
 
+use crate::i18n::tr;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -25,8 +26,8 @@ pub enum BootMessages {
 impl BootMessages {
     pub fn label(self) -> &'static str {
         match self {
-            Self::Logo => "LOGO",
-            Self::Text => "TEXT",
+            Self::Logo => tr("LOGO"),
+            Self::Text => tr("TEXT"),
         }
     }
 

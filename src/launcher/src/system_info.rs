@@ -1,5 +1,6 @@
 //! Settings > SYSTEM > SYSTEM INFO, and boot timing for the log.
 
+use crate::i18n::{tr, trf};
 use crate::canvas::Battery;
 use crate::{power, wifi};
 use std::path::Path;
@@ -45,7 +46,7 @@ pub(crate) fn parse_os_build(os_release: &str) -> Option<String> {
     let version = version.trim_matches('"').trim_start_matches('-');
     let version = version.strip_prefix('g').unwrap_or(version);
     match version.strip_suffix("-dirty") {
-        Some(revision) => Some(format!("{revision} MODIFIED")),
+        Some(revision) => Some(trf("{} MODIFIED", &[&revision])),
         None => (!version.is_empty()).then(|| version.to_string()),
     }
 }
@@ -107,18 +108,18 @@ fn wifi_line() -> Option<String> {
 
 /// The lines the system info screen shows. There is room for 11.
 pub(crate) fn system_info(battery: Option<Battery>, games: usize) -> Vec<(String, String)> {
-    let unknown = || "UNKNOWN".to_string();
+    let unknown = || tr("UNKNOWN").to_string();
     let volts = read_number(&format!("{}/voltage_now", power::battery_dir().display()))
         .map(|microvolts| format!(" - {:.2} V", microvolts as f64 / 1_000_000.0))
         .unwrap_or_default();
     let battery = battery.map_or_else(unknown, |Battery { percent, charging }| {
-        format!("{percent}%{}{volts}", if charging { " CHARGING" } else { "" })
+        format!("{percent}%{}{volts}", if charging { format!(" {}", tr("CHARGING")) } else { String::new() })
     });
     let storage = parse_df(&command_output("df", &["-k", "/mnt/data"]))
-        .map_or_else(unknown, |(free, total)| format!("{} FREE OF {}", gigabytes(free), gigabytes(total)));
+        .map_or_else(unknown, |(free, total)| trf("{} FREE OF {}", &[&gigabytes(free), &gigabytes(total)]));
     let memory = read_text("/proc/meminfo")
         .and_then(|meminfo| parse_meminfo(&meminfo))
-        .map_or_else(unknown, |(free, total)| format!("{} FREE OF {}", megabytes(free), megabytes(total)));
+        .map_or_else(unknown, |(free, total)| trf("{} FREE OF {}", &[&megabytes(free), &megabytes(total)]));
     let speed = read_number("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq").map(|khz| format!("{} MHZ", khz / 1000));
     let temperature =
         read_number("/sys/class/thermal/thermal_zone0/temp").map(|millidegrees| format!("{} C", millidegrees / 1000));
@@ -137,17 +138,17 @@ pub(crate) fn system_info(battery: Option<Battery>, games: usize) -> Vec<(String
     };
     let build = read_text("/etc/os-release").and_then(|text| parse_os_build(&text)).unwrap_or_else(unknown);
     vec![
-        ("BATTERY".to_string(), battery),
-        ("GAME STORAGE".to_string(), storage),
-        ("GAMES".to_string(), games.to_string()),
-        ("MEMORY".to_string(), memory),
+        (tr("BATTERY").to_string(), battery),
+        (tr("GAME STORAGE").to_string(), storage),
+        (tr("GAMES").to_string(), games.to_string()),
+        (tr("MEMORY").to_string(), memory),
         ("CPU".to_string(), cpu),
-        ("WI-FI".to_string(), wifi_line().unwrap_or_else(|| "NOT CONNECTED".into())),
-        ("SSH OVER USB".to_string(), address),
-        ("RUNNING FOR".to_string(), uptime),
+        (tr("WI-FI").to_string(), wifi_line().unwrap_or_else(|| tr("NOT CONNECTED").into())),
+        (tr("SSH OVER USB").to_string(), address),
+        (tr("RUNNING FOR").to_string(), uptime),
         ("KERNEL".to_string(), kernel),
-        ("SYSTEM BUILD".to_string(), build),
-        ("APP VERSION".to_string(), env!("CARGO_PKG_VERSION").to_string()),
+        (tr("SYSTEM BUILD").to_string(), build),
+        (tr("APP VERSION").to_string(), env!("CARGO_PKG_VERSION").to_string()),
     ]
 }
 

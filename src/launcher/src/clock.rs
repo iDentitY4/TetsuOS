@@ -5,6 +5,7 @@
 //! so games get it through their environment. The rules are the current ones from the
 //! IANA database, from the footer of each zone's file; a test checks them against it.
 
+use crate::i18n::{tr, trf};
 use jiff::tz::TimeZone;
 use jiff::{Timestamp, Zoned};
 
@@ -118,8 +119,8 @@ pub fn corner_text(time: Timestamp, zone: &Zone, format: ClockFormat) -> Option<
     (format != ClockFormat::Off).then(|| time_text(&local(time, zone), format))
 }
 
-const WEEKDAYS: [&str; 7] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
-const MONTHS: [&str; 12] = [
+pub(crate) const WEEKDAYS: [&str; 7] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
+pub(crate) const MONTHS: [&str; 12] = [
     "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER",
     "DECEMBER",
 ];
@@ -129,7 +130,7 @@ pub fn date_text(time: &Zoned, format: ClockFormat) -> String {
     let weekday = WEEKDAYS[time.weekday().to_monday_zero_offset() as usize];
     let month = MONTHS[time.month() as usize - 1];
     let clock = if format == ClockFormat::Off { ClockFormat::Hours24 } else { format };
-    format!("{weekday} {} {month} {}, {}", time.day(), time.year(), time_text(time, clock))
+    trf("{} {} {} {}, {}", &[&tr(weekday), &time.day(), &tr(month), &time.year(), &time_text(time, clock)])
 }
 
 /// When ntpd last set the clock, from the last line of its log, which

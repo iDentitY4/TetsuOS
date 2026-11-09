@@ -1,5 +1,6 @@
 //! The Wi-Fi screen, from Settings: networks in range, joining and forgetting them.
 
+use crate::i18n::{tr, trf};
 use crate::*;
 use crate::icons;
 use crate::input::{Button, Event};
@@ -15,7 +16,10 @@ pub(crate) const WIFI_POLL: Duration = Duration::from_secs(1);
 /// How often it scans again while open.
 pub(crate) const WIFI_SCAN_EVERY: Duration = Duration::from_secs(10);
 
-pub(crate) const PASSWORD_NOTE: &str = "8 TO 63 CHARACTERS";
+/// What a Wi-Fi password has to be.
+pub(crate) fn password_note() -> &'static str {
+    tr("8 TO 63 CHARACTERS")
+}
 
 /// `prefix`, the network's name and `suffix` on one line of at most `columns`
 /// characters, shortening the name to fit.
@@ -25,24 +29,30 @@ pub(crate) fn wifi_status_text(prefix: &str, name: &str, suffix: &str, columns: 
     format!("{prefix}{name}{suffix}")
 }
 
+/// A text with a `{}` for the network's name, then `after`, shortening the name to fit.
+fn status_with_name(template: &str, name: &str, after: &str, columns: usize) -> String {
+    let (prefix, suffix) = template.split_once("{}").unwrap_or((template, ""));
+    wifi_status_text(prefix, name, &format!("{suffix}{after}"), columns)
+}
+
 /// The line under the Wi-Fi screen's title.
 pub(crate) fn wifi_status_line(running: bool, status: &wifi::Status, attempt: Option<&wifi_menu::Attempt>) -> String {
     const COLUMNS: usize = 49;
     if !running {
-        return "WI-FI IS NOT RUNNING".into();
+        return tr("WI-FI IS NOT RUNNING").into();
     }
     if let Some(attempt) = attempt {
-        return wifi_status_text("CONNECTING TO ", &wifi::display_name(&attempt.ssid), "...", COLUMNS);
+        return status_with_name(tr("CONNECTING TO {}..."), &wifi::display_name(&attempt.ssid), "", COLUMNS);
     }
     if !status.connected() {
-        return "NOT CONNECTED".into();
+        return tr("NOT CONNECTED").into();
     }
     let name = wifi::display_name(status.ssid.as_deref().unwrap_or_default());
     let suffix = match &status.address {
         Some(address) => format!(" - {address}"),
-        None => " - GETTING AN ADDRESS".into(),
+        None => format!(" - {}", tr("GETTING AN ADDRESS")),
     };
-    wifi_status_text("CONNECTED TO ", &name, &suffix, COLUMNS)
+    status_with_name(tr("CONNECTED TO {}"), &name, &suffix, COLUMNS)
 }
 
 /// Starts joining a network. Returns the attempt, or why it couldn't start.
@@ -128,12 +138,12 @@ pub(crate) fn wifi_settings(framebuffer: &mut fb::Framebuffer, events: &Receiver
 
         let mut canvas = match &menu.keyboard {
             Some((ssid, keyboard)) => {
-                let subtitle = format!("FOR {}", wifi::display_name(ssid));
+                let subtitle = trf("FOR {}", &[&wifi::display_name(ssid)]);
                 let view = screens::KeyboardView {
                     icon: &icons::WIFI,
-                    title: "PASSWORD",
+                    title: tr("PASSWORD"),
                     subtitle: &subtitle,
-                    valid_note: PASSWORD_NOTE,
+                    valid_note: password_note(),
                 };
                 screens::keyboard_screen(size.0, size.1, &view, keyboard, &screen_frame(battery))
             }
@@ -216,7 +226,7 @@ pub(crate) fn wifi_settings(framebuffer: &mut fb::Framebuffer, events: &Receiver
                         }
                         Err(error) => {
                             eprintln!("wifi: could not connect: {error}");
-                            menu.message = Some("COULD NOT CONNECT".into());
+                            menu.message = Some(tr("COULD NOT CONNECT").into());
                         }
                     }
                     last_poll = None;
@@ -224,10 +234,10 @@ pub(crate) fn wifi_settings(framebuffer: &mut fb::Framebuffer, events: &Receiver
                 Request::Forget(id) => {
                     if let Some(wpa) = &control {
                         menu.message = Some(match wpa.forget(id) {
-                            Ok(()) => "NETWORK FORGOTTEN".into(),
+                            Ok(()) => tr("NETWORK FORGOTTEN").into(),
                             Err(error) => {
                                 eprintln!("wifi: could not forget: {error}");
-                                "COULD NOT FORGET THE NETWORK".into()
+                                tr("COULD NOT FORGET THE NETWORK").into()
                             }
                         });
                     }

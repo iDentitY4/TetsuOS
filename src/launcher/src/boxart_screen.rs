@@ -1,5 +1,6 @@
 //! Settings > BOX ART's download screen.
 
+use crate::i18n::{tr, trf};
 use crate::*;
 use crate::input::{Button, Event};
 use crate::launcher::ArtDownload;
@@ -12,12 +13,12 @@ use std::time::{Duration, Instant};
 /// Why covers can't be downloaded now, if they can't.
 pub(crate) fn internet_problem() -> Option<&'static str> {
     let Ok(control) = wifi::Control::open(Path::new(wifi::CONTROL_PATH)) else {
-        return Some("WI-FI IS NOT RUNNING");
+        return Some(tr("WI-FI IS NOT RUNNING"));
     };
     match control.status() {
         Ok(status) if status.connected() && status.address.is_some() => None,
-        Ok(_) => Some("NOT CONNECTED - JOIN A NETWORK IN WI-FI"),
-        Err(_) => Some("WI-FI IS NOT RUNNING"),
+        Ok(_) => Some(tr("NOT CONNECTED - JOIN A NETWORK IN WI-FI")),
+        Err(_) => Some(tr("WI-FI IS NOT RUNNING")),
     }
 }
 
@@ -84,12 +85,12 @@ impl Download {
             .collect();
         if jobs.is_empty() {
             download.status = match mode {
-                ArtDownload::Missing => "EVERY GAME HAS A COVER".into(),
-                ArtDownload::All => "NO GAMES CAN HAVE A COVER".into(),
+                ArtDownload::Missing => tr("EVERY GAME HAS A COVER").into(),
+                ArtDownload::All => tr("NO GAMES CAN HAVE A COVER").into(),
             };
             return download;
         }
-        download.status = format!("DOWNLOADING 1 OF {}", jobs.len());
+        download.status = trf("DOWNLOADING {} OF {}", &[&1, &jobs.len()]);
         download.percent = Some(0);
         download.progress = Some(boxart_fetch::spawn(jobs, PathBuf::from(boxart::ART_DIR), stop));
         download
@@ -110,12 +111,12 @@ impl Download {
             Ok(message) => message,
             Err(RecvTimeoutError::Timeout) => return false,
             Err(RecvTimeoutError::Disconnected) => {
-                Progress::Finished(boxart_fetch::Summary { error: Some("DOWNLOAD FAILED".into()), ..Default::default() })
+                Progress::Finished(boxart_fetch::Summary { error: Some(tr("DOWNLOAD FAILED").into()), ..Default::default() })
             }
         };
         match message {
             Progress::Fetching { done, total, name } => {
-                self.status = format!("DOWNLOADING {} OF {total}", done + 1);
+                self.status = trf("DOWNLOADING {} OF {}", &[&(done + 1), &total]);
                 self.detail = names::short_name(&name);
                 self.percent = Some((done * 100 / total.max(1)) as u32);
             }
@@ -124,16 +125,16 @@ impl Download {
                 self.percent = None;
                 self.detail.clear();
                 let covers = match summary.found {
-                    1 => "1 COVER SAVED".to_string(),
-                    found => format!("{found} COVERS SAVED"),
+                    1 => tr("1 COVER SAVED").to_string(),
+                    found => trf("{} COVERS SAVED", &[&found]),
                 };
                 self.status = match (&summary.error, summary.stopped) {
                     (Some(error), _) => error.clone(),
-                    (None, true) => format!("STOPPED - {covers}"),
+                    (None, true) => trf("STOPPED - {}", &[&covers]),
                     (None, false) => covers.clone(),
                 };
                 if summary.error.is_some() && summary.found > 0 {
-                    self.detail = format!("{covers} BEFORE THAT");
+                    self.detail = trf("{} BEFORE THAT", &[&covers]);
                 }
                 self.missing = summary.missing.iter().map(|stem| names::short_name(stem)).collect();
             }
@@ -175,11 +176,11 @@ pub(crate) fn download_box_art(framebuffer: &mut fb::Framebuffer, events: &Recei
         redraw |= framebuffer.sign_wait().is_zero();
         if redraw {
             let hint = if stopping {
-                "STOPPING AFTER THIS GAME"
+                tr("STOPPING AFTER THIS GAME")
             } else if download.running() {
-                "B STOPS"
+                tr("B STOPS")
             } else {
-                "A AGAIN - B BACK"
+                tr("A AGAIN - B BACK")
             };
             let view = screens::BoxArtView {
                 status: &download.status,

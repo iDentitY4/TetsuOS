@@ -1,6 +1,7 @@
 //! The Wi-Fi screen's list and buttons, kept apart from wpa_supplicant and drawing so
 //! they can be tested. `main.rs` runs it with a `wifi::Control`.
 
+use crate::i18n::tr;
 use crate::input::Button;
 use crate::keyboard::{Keyboard, Outcome};
 use crate::wifi::{self, Network, Saved, Security, Status};
@@ -102,9 +103,9 @@ impl Attempt {
         if status.connected() && status.id == Some(self.id) {
             Progress::Connected
         } else if saved.iter().any(|known| known.id == self.id && known.failed) {
-            Progress::Failed(if self.added { "COULD NOT CONNECT - CHECK THE PASSWORD" } else { "COULD NOT CONNECT" })
+            Progress::Failed(if self.added { tr("COULD NOT CONNECT - CHECK THE PASSWORD") } else { tr("COULD NOT CONNECT") })
         } else if now.duration_since(self.started) > CONNECT_TIMEOUT {
-            Progress::Failed("COULD NOT CONNECT")
+            Progress::Failed(tr("COULD NOT CONNECT"))
         } else {
             Progress::Waiting
         }
@@ -170,7 +171,7 @@ impl WifiMenu {
         match button {
             Button::B => return Request::Back,
             Button::Y => {
-                self.message = Some("SCANNING".into());
+                self.message = Some(tr("SCANNING").into());
                 return Request::Scan;
             }
             _ if count == 0 => {}
@@ -182,7 +183,7 @@ impl WifiMenu {
                 let entry = self.entries[self.index].clone();
                 self.message = None;
                 if entry.connected {
-                    self.message = Some("ALREADY CONNECTED".into());
+                    self.message = Some(tr("ALREADY CONNECTED").into());
                 } else if let Some(id) = entry.saved {
                     return Request::Connect { ssid: entry.ssid, saved: Some(id), password: None };
                 } else {
@@ -192,7 +193,7 @@ impl WifiMenu {
                             self.keyboard = Some((entry.ssid, Keyboard::new(64, wifi::valid_password)));
                         }
                         Security::Unsupported => {
-                            self.message = Some("THIS KIND OF NETWORK IS NOT SUPPORTED".into());
+                            self.message = Some(tr("THIS KIND OF NETWORK IS NOT SUPPORTED").into());
                         }
                     }
                 }
@@ -201,9 +202,9 @@ impl WifiMenu {
                 Some(id) if forgetting == Some(id) => return Request::Forget(id),
                 Some(id) => {
                     self.forgetting = Some(id);
-                    self.message = Some("PRESS X AGAIN TO FORGET THIS NETWORK".into());
+                    self.message = Some(tr("PRESS X AGAIN TO FORGET THIS NETWORK").into());
                 }
-                None => self.message = Some("THIS NETWORK IS NOT SAVED".into()),
+                None => self.message = Some(tr("THIS NETWORK IS NOT SAVED").into()),
             },
             _ => {}
         }

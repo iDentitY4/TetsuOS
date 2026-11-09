@@ -75,7 +75,7 @@ pub(crate) fn write_pause_preview(path: &str) -> io::Result<()> {
     menu.press(Button::Down);
     menu.press(Button::Down);
     menu.press(Button::Right);
-    menu.set_message("SAVED TO SLOT 2".to_string());
+    menu.set_message(i18n::trf("SAVED TO SLOT {}", &[&2]));
     let view = canvas::PauseView {
         menu: &menu,
         slot_used: false,
@@ -116,7 +116,7 @@ pub(crate) fn write_wifi_preview(path: &str) -> io::Result<()> {
         selected: menu.selected(),
         status: &line,
         connected: true,
-        message: Some("SCANNING"),
+        message: Some(i18n::tr("SCANNING")),
     };
     let (width, height) = PREVIEW_SIZE;
     let battery = Some(Battery { percent: 95, charging: true });
@@ -133,9 +133,9 @@ pub(crate) fn write_keyboard_preview(path: &str) -> io::Result<()> {
     let battery = Some(Battery { percent: 95, charging: true });
     let view = screens::KeyboardView {
         icon: &icons::WIFI,
-        title: "PASSWORD",
-        subtitle: "FOR FRITZ!Box 7590 XY",
-        valid_note: PASSWORD_NOTE,
+        title: i18n::tr("PASSWORD"),
+        subtitle: &i18n::trf("FOR {}", &[&"FRITZ!Box 7590 XY"]),
+        valid_note: password_note(),
     };
     write_ppm(&screens::keyboard_screen(width, height, &view, &keyboard, &screen_frame(battery)), path)
 }

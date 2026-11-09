@@ -1,5 +1,6 @@
 //! The launcher's main loop: drawing its screens and carrying out what presses ask for.
 
+use crate::i18n::{tr, trf};
 use crate::*;
 use crate::canvas::{self, Battery};
 use crate::icons;
@@ -147,10 +148,10 @@ pub(crate) fn launcher_canvas(
                 .tiles()
                 .iter()
                 .map(|tile| match *tile {
-                    Tile::Recent => screens::TileView { icon: &icons::RECENT, label: "RECENT", count: None },
+                    Tile::Recent => screens::TileView { icon: &icons::RECENT, label: tr("RECENT"), count: None },
                     Tile::Favorites => screens::TileView {
                         icon: &icons::FAVORITES,
-                        label: "FAVORITES",
+                        label: tr("FAVORITES"),
                         count: Some(library.favorites.len()),
                     },
                     Tile::System(system) => screens::TileView {
@@ -158,7 +159,7 @@ pub(crate) fn launcher_canvas(
                         label: SYSTEMS[system].label,
                         count: Some(library.games(List::System(system)).len()),
                     },
-                    Tile::Settings => screens::TileView { icon: &icons::SETTINGS, label: "SETTINGS", count: None },
+                    Tile::Settings => screens::TileView { icon: &icons::SETTINGS, label: tr("SETTINGS"), count: None },
                 })
                 .collect();
             let settings = settings::get();
@@ -167,8 +168,8 @@ pub(crate) fn launcher_canvas(
         }
         Screen::Games(list) => {
             let (icon, title) = match list {
-                List::Recent => (&icons::RECENT, "RECENT"),
-                List::Favorites => (&icons::FAVORITES, "FAVORITES"),
+                List::Recent => (&icons::RECENT, tr("RECENT")),
+                List::Favorites => (&icons::FAVORITES, tr("FAVORITES")),
                 List::System(system) => (SYSTEMS[system].icon, SYSTEMS[system].console),
             };
             let rows: Vec<screens::RowView> = library
@@ -212,10 +213,10 @@ pub(crate) fn launcher_canvas(
             let note = match group {
                 Group::BoxArt => {
                     let (covered, total) = art_counts();
-                    Some(format!("{covered} OF {total} GAMES HAVE A COVER"))
+                    Some(trf("{} OF {} GAMES HAVE A COVER", &[&covered, &total]))
                 }
                 Group::Time => Some(time_note()),
-                Group::System if current.idle_minutes > 0 => Some("THE POWER BUTTON WAKES IT FROM SLEEP".into()),
+                Group::System if current.idle_minutes > 0 => Some(tr("THE POWER BUTTON WAKES IT FROM SLEEP").into()),
                 Group::Advanced => advanced_note(current.ssh, login),
                 _ => None,
             };
@@ -257,15 +258,15 @@ pub(crate) fn launcher_canvas(
 pub(crate) fn advanced_note(access: settings::SshAccess, login: ssh::Login) -> Option<String> {
     let mut lines = Vec::new();
     if !login.allows_wifi() {
-        lines.push("USB + WI-FI NEEDS A ROOT PASSWORD OR A KEY".to_string());
+        lines.push(tr("USB + WI-FI NEEDS A ROOT PASSWORD OR A KEY").to_string());
     }
     match access {
         settings::SshAccess::Wifi => {
             if let Some(address) = parse_ifconfig(&command_output("ifconfig", &["wlan0"])) {
-                lines.push(format!("SSH OVER WI-FI: ROOT@{address}"));
+                lines.push(trf("SSH OVER WI-FI: ROOT@{}", &[&address]));
             }
         }
-        settings::SshAccess::Off => lines.push("THE USB CONSOLE STILL WORKS".to_string()),
+        settings::SshAccess::Off => lines.push(tr("THE USB CONSOLE STILL WORKS").to_string()),
         settings::SshAccess::Usb => {}
     }
     (!lines.is_empty()).then(|| lines.join("\n"))
@@ -324,7 +325,7 @@ pub(crate) fn act(
         Action::Nothing => {}
         Action::Play(rom) => {
             match play_game(&rom, events) {
-                Ok(Ending::BatteryEmpty) => shut_down(framebuffer, "BATTERY EMPTY", &power::poweroff_command())?,
+                Ok(Ending::BatteryEmpty) => shut_down(framebuffer, tr("BATTERY EMPTY"), &power::poweroff_command())?,
                 Ok(Ending::Quit) => {}
                 Err(error) => eprintln!("launcher: could not start the game: {error}"),
             }
@@ -387,6 +388,7 @@ pub(crate) fn act(
             return Ok(true);
         }
         Action::StartScreen(steps) => change_settings(|s| s.start_screen = s.start_screen.cycle(steps)),
+        Action::Language(steps) => change_settings(|s| s.language = s.language.cycle(steps)),
         Action::Accent(steps) => {
             change_settings(|s| s.accent = s.accent.cycle(steps));
         }
@@ -450,8 +452,8 @@ pub(crate) fn act(
         Action::SaveLogs => save_logs(framebuffer)?,
         // The PC may have changed the games, covers and lists.
         Action::UsbStorage => return usb_drive(framebuffer, events),
-        Action::Reboot => shut_down(framebuffer, "REBOOTING", "reboot")?,
-        Action::PowerOff => shut_down(framebuffer, "POWERING OFF", &power::poweroff_command())?,
+        Action::Reboot => shut_down(framebuffer, tr("REBOOTING"), "reboot")?,
+        Action::PowerOff => shut_down(framebuffer, tr("POWERING OFF"), &power::poweroff_command())?,
     }
     Ok(false)
 }
@@ -462,8 +464,8 @@ pub(crate) fn edit_title(framebuffer: &mut fb::Framebuffer, events: &Receiver<Ev
     let (width, height) = framebuffer.size();
     let mut keyboard = keyboard::Keyboard::new(settings::MAX_TITLE_LENGTH, |_| true);
     keyboard.text = settings::get().title().to_string();
-    let subtitle = format!("EMPTY BRINGS BACK {}", settings::DEFAULT_TITLE);
-    let view = screens::KeyboardView { icon: &icons::THEME, title: "TITLE", subtitle: &subtitle, valid_note: "" };
+    let subtitle = trf("EMPTY BRINGS BACK {}", &[&settings::DEFAULT_TITLE]);
+    let view = screens::KeyboardView { icon: &icons::THEME, title: tr("TITLE"), subtitle: &subtitle, valid_note: "" };
     let battery = read_battery(&power::battery_dir());
     loop {
         let mut canvas = screens::keyboard_screen(width, height, &view, &keyboard, &screen_frame(battery));
@@ -499,12 +501,12 @@ pub(crate) fn edit_title(framebuffer: &mut fb::Framebuffer, events: &Receiver<Ev
 /// Settings > SYSTEM > SAVE LOGS TO CARD, saying where they went or that they couldn't be.
 pub(crate) fn save_logs(framebuffer: &mut fb::Framebuffer) -> io::Result<()> {
     let (width, height) = framebuffer.size();
-    framebuffer.draw(&screens::message_screen(width, height, "SAVING LOGS", current_theme()))?;
+    framebuffer.draw(&screens::message_screen(width, height, tr("SAVING LOGS"), current_theme()))?;
     let message = match boot_partition::save_logs() {
-        Ok(folder) => format!("LOGS SAVED TO {folder}"),
+        Ok(folder) => trf("LOGS SAVED TO {}", &[&folder]),
         Err(error) => {
             eprintln!("warning: could not save the logs: {error}");
-            "COULD NOT SAVE THE LOGS".to_string()
+            tr("COULD NOT SAVE THE LOGS").to_string()
         }
     };
     framebuffer.draw(&screens::message_screen(width, height, &message, current_theme()))?;
@@ -518,11 +520,11 @@ pub(crate) fn edit_root_password(framebuffer: &mut fb::Framebuffer, events: &Rec
     let (width, height) = framebuffer.size();
     let mut keyboard = keyboard::Keyboard::new(ssh::MAX_PASSWORD_LENGTH, ssh::valid_password);
     let subtitle = if ssh::Login::read().password {
-        "R1 MAKES ONE UP - START WHILE EMPTY REMOVES IT"
+        tr("R1 MAKES ONE UP - START WHILE EMPTY REMOVES IT")
     } else {
-        "R1 MAKES ONE UP - FOR SSH AND THE CONSOLE"
+        tr("R1 MAKES ONE UP - FOR SSH AND THE CONSOLE")
     };
-    let view = screens::KeyboardView { icon: &icons::ADVANCED, title: "ROOT PASSWORD", subtitle, valid_note: "" };
+    let view = screens::KeyboardView { icon: &icons::ADVANCED, title: tr("ROOT PASSWORD"), subtitle, valid_note: "" };
     let battery = read_battery(&power::battery_dir());
     loop {
         let mut canvas = screens::keyboard_screen(width, height, &view, &keyboard, &screen_frame(battery));
@@ -621,7 +623,7 @@ pub(crate) fn run_launcher() -> io::Result<()> {
     loop {
         if monitor.check(Instant::now()) == Some(power::Level::Critical) {
             eprintln!("the battery is empty: powering off");
-            shut_down(&mut framebuffer, "BATTERY EMPTY", &power::poweroff_command())?;
+            shut_down(&mut framebuffer, tr("BATTERY EMPTY"), &power::poweroff_command())?;
         }
         // Covers copied since the home screen was last shown appear on the way back in.
         if launcher.screen() == Screen::Home {

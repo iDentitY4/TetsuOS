@@ -1,5 +1,6 @@
 //! Reads the buttons from the Linux input devices.
 
+use crate::i18n::{tr, trf};
 use evdev::raw_stream::RawDevice;
 use evdev::{EventType, KeyCode, SwitchCode};
 use std::collections::HashSet;
@@ -89,10 +90,10 @@ impl Button {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Up => "UP",
-            Self::Down => "DOWN",
-            Self::Left => "LEFT",
-            Self::Right => "RIGHT",
+            Self::Up => tr("UP"),
+            Self::Down => tr("DOWN"),
+            Self::Left => tr("LEFT"),
+            Self::Right => tr("RIGHT"),
             Self::A => "A",
             Self::B => "B",
             Self::X => "X",
@@ -106,7 +107,7 @@ impl Button {
             Self::Start => "START",
             Self::VolumeDown => "VOL-",
             Self::VolumeUp => "VOL+",
-            Self::Lid => "LID",
+            Self::Lid => tr("LID"),
         }
     }
 }
@@ -184,7 +185,7 @@ impl Controls {
             }
             // Shows codes the device tree doesn't list, so a surprise is visible.
             None if event.event_type == EV_KEY && pressed => {
-                self.last = Some(format!("KEY {}", event.code));
+                self.last = Some(trf("KEY {}", &[&event.code]));
                 true
             }
             None => false,

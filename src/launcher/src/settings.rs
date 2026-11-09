@@ -66,10 +66,11 @@ macro_rules! choices {
                 }
             }
 
+            /// What Settings shows, in the current language.
             pub fn label(self) -> &'static str {
-                match self {
+                $crate::i18n::tr(match self {
                     $(Self::$variant => $label,)+
-                }
+                })
             }
 
             pub fn cycle(self, steps: i32) -> Self {
@@ -295,9 +296,18 @@ pub const IDLE_SLEEP_MINUTES: [u32; 5] = [0, 2, 5, 10, 30];
 
 pub fn idle_sleep_label(minutes: u32) -> String {
     if minutes == 0 {
-        "OFF".into()
+        crate::i18n::tr("OFF").into()
     } else {
         format!("{minutes} MIN")
+    }
+}
+
+choices! {
+    /// The language of the menus. A language has its own name in every language, so
+    /// `lang/` files don't list these.
+    pub enum Language (default English) {
+        English => "en", "ENGLISH";
+        German => "de", "DEUTSCH";
     }
 }
 
@@ -332,6 +342,7 @@ pub struct Settings {
     pub grid: GridSize,
     /// Home screen tiles turned off, by key, such as `recent` or `gba`.
     pub hidden_tiles: Vec<String>,
+    pub language: Language,
     pub start_screen: StartScreen,
     pub game_names: GameNames,
     /// Lists leave out the cover panel, so names have the whole width.
@@ -349,9 +360,10 @@ pub struct Settings {
 
 impl Settings {
     /// Settings > ADVANCED > RESET SETTINGS: everything back to its default but the volume
-    /// and brightness, which live in the hardware and are set as the device is used.
+    /// and brightness, which live in the hardware and are set as the device is used, and
+    /// the language, so the menus stay readable to whoever is using it.
     pub fn reset(&self) -> Self {
-        Self { volume: self.volume, brightness: self.brightness, ..Self::default() }
+        Self { volume: self.volume, brightness: self.brightness, language: self.language, ..Self::default() }
     }
 }
 
@@ -421,6 +433,7 @@ fn parse(text: &str) -> Settings {
                 settings.hidden_tiles =
                     value.split(',').map(str::trim).filter(|key| !key.is_empty()).map(String::from).collect();
             }
+            "language" => choose(&mut settings.language, Language::from_key(value)),
             "start" => choose(&mut settings.start_screen, StartScreen::from_key(value)),
             "names" => choose(&mut settings.game_names, GameNames::from_key(value)),
             "covers" => settings.covers_hidden = value == "off",
@@ -463,6 +476,7 @@ fn format(settings: &Settings) -> String {
     if !settings.hidden_tiles.is_empty() {
         lines.push(format!("hidden_tiles={}", settings.hidden_tiles.join(",")));
     }
+    lines.push(format!("language={}", settings.language.key()));
     lines.push(format!("start={}", settings.start_screen.key()));
     lines.push(format!("names={}", settings.game_names.key()));
     lines.push(format!("covers={}", on_off(!settings.covers_hidden)));
@@ -508,6 +522,16 @@ pub fn update(change: impl FnOnce(&mut Settings)) -> io::Result<()> {
         format(settings)
     });
     write_atomic(Path::new(SETTINGS_PATH), text.as_bytes())
+}
+
+/// The language chosen, which every text on screen asks for, so it doesn't copy the rest.
+pub fn language() -> Language {
+    with_current(|settings| settings.language)
+}
+
+/// Sets the language without saving it, for rendering previews in it on the PC.
+pub fn preview_language(language: Language) {
+    with_current(|settings| settings.language = language);
 }
 
 /// Reads the file again, for changes another process made, such as a game's menu.
@@ -642,6 +666,7 @@ mod tests {
             title: Some("Game = Fun & more".into()),
             grid: GridSize::Large,
             hidden_tiles: vec!["recent".into(), "gba".into()],
+            language: Language::German,
             start_screen: StartScreen::LastGame,
             game_names: GameNames::Full,
             covers_hidden: true,
@@ -656,7 +681,8 @@ mod tests {
         assert_eq!(parse(&format(&settings)), settings);
         let reset = settings.reset();
         assert_eq!((reset.volume, reset.brightness), (Some(25), Some(1250)));
-        assert_eq!(reset, Settings { volume: Some(25), brightness: Some(1250), ..Settings::default() });
+        let kept = Settings { volume: Some(25), brightness: Some(1250), language: Language::German, ..Settings::default() };
+        assert_eq!(reset, kept);
         // S50dropbear reads the ssh line with sed, so it must be exactly this.
         assert!(format(&settings).lines().any(|line| line == "ssh=wifi"));
     }

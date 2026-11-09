@@ -1,6 +1,7 @@
 //! Device-independent drawing, which keeps the screen testable away from the hardware.
 
 use crate::font;
+use crate::i18n::{tr, trf};
 use crate::boxart::Image;
 use crate::icons::{self, Icon};
 use crate::input::{Button, Controls};
@@ -84,12 +85,12 @@ impl Canvas {
     }
 
     pub(crate) fn text_at(&mut self, text: &str, x: usize, y: usize, scale: usize, color: Rgb) {
-        self.glyphs_at(text, x, y, scale, color, font::glyph);
+        self.glyphs_at(text, x, y, scale, color, false);
     }
 
     /// Like `text_at`, but showing lowercase letters as lowercase.
     pub(crate) fn text_cased_at(&mut self, text: &str, x: usize, y: usize, scale: usize, color: Rgb) {
-        self.glyphs_at(text, x, y, scale, color, font::glyph_cased);
+        self.glyphs_at(text, x, y, scale, color, true);
     }
 
     fn glyphs_at(
@@ -99,11 +100,18 @@ impl Canvas {
         y: usize,
         scale: usize,
         color: Rgb,
-        glyph: fn(char) -> [u8; font::HEIGHT],
+        cased: bool,
     ) {
         let advance = (font::WIDTH + 1) * scale;
         for c in text.chars() {
-            for (row, bits) in glyph(c).iter().enumerate() {
+            if font::dots_above(c, cased) {
+                let dots_y = y.saturating_sub(font::DOTS_ROWS_ABOVE * scale);
+                for col in font::DOT_COLUMNS {
+                    self.rect(x + col * scale, dots_y, scale, scale, color);
+                }
+            }
+            let glyph = if cased { font::glyph_cased(c) } else { font::glyph(c) };
+            for (row, bits) in glyph.iter().enumerate() {
                 for col in 0..font::WIDTH {
                     if bits & (1 << (font::WIDTH - 1 - col)) != 0 {
                         self.rect(x + col * scale, y + row * scale, scale, scale, color);
@@ -134,16 +142,22 @@ impl Canvas {
             if glyph_x + advance <= clip_left as isize {
                 continue;
             }
+            let mut cell = |col: usize, top: usize| {
+                for dx in 0..scale {
+                    let px = glyph_x + (col * scale + dx) as isize;
+                    if px >= clip_left as isize && px < clip_right as isize {
+                        self.rect(px as usize, top, 1, scale, color);
+                    }
+                }
+            };
+            if font::dots_above(c, false) {
+                let dots_y = y.saturating_sub(font::DOTS_ROWS_ABOVE * scale);
+                font::DOT_COLUMNS.into_iter().for_each(|col| cell(col, dots_y));
+            }
             for (row, bits) in font::glyph(c).iter().enumerate() {
                 for col in 0..font::WIDTH {
-                    if bits & (1 << (font::WIDTH - 1 - col)) == 0 {
-                        continue;
-                    }
-                    for dx in 0..scale {
-                        let px = glyph_x + (col * scale + dx) as isize;
-                        if px >= clip_left as isize && px < clip_right as isize {
-                            self.rect(px as usize, y + row * scale, 1, scale, color);
-                        }
+                    if bits & (1 << (font::WIDTH - 1 - col)) != 0 {
+                        cell(col, y + row * scale);
                     }
                 }
             }
@@ -257,16 +271,16 @@ const TILES: [Tile; 18] = [
 /// Lays out the button test.
 pub fn button_screen(width: usize, height: usize, controls: &Controls, theme: Theme) -> Canvas {
     let mut canvas = Canvas::new(width, height, theme);
-    canvas.text("BUTTON TEST", 20, 4, TEXT);
+    canvas.text(tr("BUTTON TEST"), 20, 4, TEXT);
     canvas.text("TETSU OS", 58, 2, canvas.theme.accent);
     for tile in &TILES {
         canvas.tile(tile, controls);
     }
     match controls.last() {
         Some(last) => canvas.text(last, 390, 4, canvas.theme.accent),
-        None => canvas.text("PRESS ANY BUTTON", 394, 3, MUTED),
+        None => canvas.text(tr("PRESS ANY BUTTON"), 394, 3, MUTED),
     }
-    canvas.text("HOLD MENU + START TO LEAVE", 448, 2, MUTED);
+    canvas.text(tr("HOLD MENU + START TO LEAVE"), 448, 2, MUTED);
     canvas
 }
 
@@ -332,7 +346,7 @@ pub fn pause_screen(
 
     let (panel_x, panel_y, panel_w, panel_h) = PAUSE_PANEL;
     canvas.rect(panel_x, panel_y, panel_w, panel_h, canvas.theme.background);
-    canvas.text("PAUSED", panel_y + 20, 3, TEXT);
+    canvas.text(tr("PAUSED"), panel_y + 20, 3, TEXT);
 
     let label_x = panel_x + 20;
     let value_right = panel_x + panel_w - 20;
@@ -367,9 +381,9 @@ pub fn pause_screen(
             Item::Scaling => view.display.scaling.label().to_string(),
             Item::Effect => view.display.effect.label().to_string(),
             Item::Ghosting => view.display.ghosting.label().to_string(),
-            Item::SaveState => format!("SLOT {}", menu.slot()),
-            Item::LoadState if view.slot_used => format!("SLOT {}", menu.slot()),
-            Item::LoadState => format!("SLOT {} EMPTY", menu.slot()),
+            Item::SaveState => trf("SLOT {}", &[&menu.slot()]),
+            Item::LoadState if view.slot_used => trf("SLOT {}", &[&menu.slot()]),
+            Item::LoadState => trf("SLOT {} EMPTY", &[&menu.slot()]),
             _ => continue,
         };
         let value = if selected { format!("< {value} >") } else { value };
@@ -381,7 +395,7 @@ pub fn pause_screen(
     if let Some(message) = menu.message() {
         canvas.text(message, message_y, PAUSE_TEXT_SCALE, canvas.theme.accent);
     }
-    canvas.text("A SELECTS - B RESUMES", message_y + 30, PAUSE_TEXT_SCALE, MUTED);
+    canvas.text(tr("A SELECTS - B RESUMES"), message_y + 30, PAUSE_TEXT_SCALE, MUTED);
     canvas
 }
 
@@ -493,6 +507,25 @@ mod tests {
 
     fn pause_view(menu: &PauseMenu) -> PauseView<'_> {
         PauseView { menu, slot_used: false, volume_percent: Some(80), brightness_percent: None, display: GameDisplay::default() }
+    }
+
+    #[test]
+    fn umlauts_are_full_capitals_with_dots_above_them() {
+        let mut plain = Canvas::new(40, 40, Theme::default());
+        let mut dotted = Canvas::new(40, 40, Theme::default());
+        let mut scrolled = Canvas::new(40, 40, Theme::default());
+        plain.text_at("A", 10, 10, 2, TEXT);
+        dotted.text_at("Ä", 10, 10, 2, TEXT);
+        scrolled.text_clipped("Ä", 10, 10, 2, TEXT, (0, 40));
+        assert_eq!(dotted.pixels, scrolled.pixels);
+        let row = |canvas: &Canvas, y: usize| canvas.pixels[y * 40..(y + 1) * 40].to_vec();
+        for y in 10..24 {
+            assert_eq!(row(&dotted, y), row(&plain, y), "the letter itself is unchanged");
+        }
+        let dots_y = 10 - font::DOTS_ROWS_ABOVE * 2;
+        let lit = row(&dotted, dots_y).iter().filter(|&&pixel| pixel == TEXT).count();
+        assert_eq!(lit, font::DOT_COLUMNS.len() * 2, "two dots, each two pixels wide");
+        assert_eq!(row(&plain, dots_y), vec![Theme::default().background; 40]);
     }
 
     #[test]

@@ -2,6 +2,7 @@
 //! row of wide keys. A types the selected key, B deletes, X switches case, Y types a
 //! space, Select switches to symbols and Start finishes.
 
+use crate::i18n::tr;
 use crate::input::Button;
 
 /// Characters per row, and so columns in the grid.
@@ -48,8 +49,8 @@ impl Key {
             Self::Case => "ABC".into(),
             Self::Symbols if layer == Layer::Symbols => "abc".into(),
             Self::Symbols => "#+=".into(),
-            Self::Space => "SPACE".into(),
-            Self::Delete => "DEL".into(),
+            Self::Space => tr("SPACE").into(),
+            Self::Delete => tr("DEL").into(),
             Self::Done => "OK".into(),
         }
     }

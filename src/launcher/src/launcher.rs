@@ -1,6 +1,7 @@
 //! The launcher's screens and what each button does on them, kept apart from drawing and
 //! from running games so they can be tested.
 
+use crate::i18n::tr;
 use crate::input::Button;
 use crate::settings::GridSize;
 use std::collections::HashMap;
@@ -94,11 +95,11 @@ pub const GROUPS: [Group; 8] = [
 ];
 
 /// The most settings a group has, which the settings screen makes room for.
-pub const MAX_GROUP_SETTINGS: usize = 7;
+pub const MAX_GROUP_SETTINGS: usize = 8;
 
 impl Group {
     pub fn label(self) -> &'static str {
-        match self {
+        tr(match self {
             Self::General => "GENERAL",
             Self::GameScreen => "GAME SCREEN",
             Self::Wifi => "WI-FI",
@@ -107,7 +108,7 @@ impl Group {
             Self::Time => "TIME",
             Self::System => "SYSTEM",
             Self::Advanced => "ADVANCED",
-        }
+        })
     }
 
     pub fn settings(self) -> &'static [Setting] {
@@ -121,6 +122,7 @@ impl Group {
                     Setting::Battery,
                     Setting::MenuSounds,
                     Setting::BootJingle,
+                    Setting::Language,
                 ],
             Self::GameScreen => &[Setting::Scaling, Setting::Effect, Setting::Ghosting],
             Self::Wifi => &[],
@@ -169,6 +171,7 @@ pub enum Setting {
     Battery,
     MenuSounds,
     BootJingle,
+    Language,
     Scaling,
     Effect,
     Ghosting,
@@ -202,7 +205,7 @@ pub enum Setting {
 
 impl Setting {
     pub fn label(self) -> &'static str {
-        match self {
+        tr(match self {
             Self::Volume => "VOLUME",
             Self::Brightness => "BRIGHTNESS",
             Self::StartScreen => "START SCREEN",
@@ -210,6 +213,7 @@ impl Setting {
             Self::Battery => "BATTERY",
             Self::MenuSounds => "MENU SOUNDS",
             Self::BootJingle => "BOOT JINGLE",
+            Self::Language => "LANGUAGE",
             Self::Scaling => "SCALING",
             Self::Effect => "SCREEN EFFECT",
             Self::Ghosting => "LCD GHOSTING",
@@ -239,7 +243,7 @@ impl Setting {
             Self::BootMessages => "BOOT MESSAGES",
             Self::ResetSettings => "RESET SETTINGS",
             Self::SaveLogs => "SAVE LOGS TO CARD",
-        }
+        })
     }
 
     /// Whether A opens another screen, shown with a `>`.
@@ -268,6 +272,7 @@ impl Setting {
                 | Self::Battery
                 | Self::MenuSounds
                 | Self::BootJingle
+                | Self::Language
                 | Self::IdleSleep
                 | Self::ShowCovers
                 | Self::Scaling
@@ -336,6 +341,7 @@ pub enum Command {
     ToggleSounds,
     /// Turns the boot jingle on if it is off, or off.
     ToggleJingle,
+    Language(i32),
     IdleSleep(i32),
     Scaling(i32),
     Effect(i32),
@@ -509,11 +515,11 @@ impl Launcher {
     /// The question to show while a setting waits for confirmation.
     pub fn confirmation(&self) -> Option<&'static str> {
         match self.confirming? {
-            Setting::DeleteArt => Some("PRESS A AGAIN TO DELETE ALL COVERS"),
-            Setting::Reboot => Some("PRESS A AGAIN TO REBOOT"),
-            Setting::PowerOff => Some("PRESS A AGAIN TO POWER OFF"),
-            Setting::SshKeys => Some("PRESS A AGAIN TO REMOVE THE SSH KEYS"),
-            Setting::ResetSettings => Some("PRESS A AGAIN TO RESET ALL SETTINGS"),
+            Setting::DeleteArt => Some(tr("PRESS A AGAIN TO DELETE ALL COVERS")),
+            Setting::Reboot => Some(tr("PRESS A AGAIN TO REBOOT")),
+            Setting::PowerOff => Some(tr("PRESS A AGAIN TO POWER OFF")),
+            Setting::SshKeys => Some(tr("PRESS A AGAIN TO REMOVE THE SSH KEYS")),
+            Setting::ResetSettings => Some(tr("PRESS A AGAIN TO RESET ALL SETTINGS")),
             _ => None,
         }
     }
@@ -652,6 +658,7 @@ impl Launcher {
                 Setting::Battery => return Command::BatteryDisplay(step),
                 Setting::MenuSounds => return Command::ToggleSounds,
                 Setting::BootJingle => return Command::ToggleJingle,
+                Setting::Language => return Command::Language(step),
                 Setting::IdleSleep => return Command::IdleSleep(step),
                 Setting::ShowCovers => return Command::ToggleCovers,
                 Setting::Scaling => return Command::Scaling(step),
@@ -695,6 +702,7 @@ impl Launcher {
                 | Setting::Battery
                 | Setting::MenuSounds
                 | Setting::BootJingle
+                | Setting::Language
                 | Setting::IdleSleep
                 | Setting::ShowCovers
                 | Setting::Scaling
@@ -941,6 +949,8 @@ mod tests {
         assert_eq!(launcher.press(Button::Left, &library), Command::ToggleSounds);
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Right, &library), Command::ToggleJingle);
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::Left, &library), Command::Language(-1));
         press_all(&mut launcher, &library, &[Button::B, Button::Right, Button::A]);
         assert_eq!(launcher.press(Button::Right, &library), Command::Scaling(1));
         launcher.press(Button::Down, &library);

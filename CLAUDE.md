@@ -29,6 +29,7 @@ Launcher: a tile grid with RECENT and FAVORITES, lists with covers and scrolling
 box art downloaded on the device, and a settings grid (GENERAL, GAME SCREEN, WI-FI,
 BOX ART, THEME, TIME, SYSTEM, ADVANCED) with colours, background, title, grid size,
 hidden tiles, start screen, game names, battery display, menu sounds, the boot jingle and sleep when idle.
+The launcher and in-game menu are in English or German (Settings > GENERAL > LANGUAGE).
 
 ## Not yet checked by the user
 
@@ -39,6 +40,7 @@ hidden tiles, start screen, game names, battery display, menu sounds, the boot j
 - A game's own clock (Pokemon's RTC) showing local time
 - A real empty battery, a wrong Wi-Fi password, a failing certificate check
 - USB STORAGE on Windows and macOS (Linux is checked)
+- The German wording, written by Claude; USB STORAGE, the box art download and messages in German
 - Settings > ADVANCED: SSH from another machine over Wi-Fi, games at BATTERY or
   PERFORMANCE, and the battery gauge over a whole charge with CHARGE TO below FULL
 
@@ -72,6 +74,10 @@ hidden tiles, start screen, game names, battery display, menu sounds, the boot j
   editing the file while it runs.
 - **Colours:** each `Canvas` carries a `Theme` (accent, background, battery display) built
   from the settings; screens with the top-right corner take a `screens::Frame`.
+- **Text on screen** goes through `i18n::tr("ENGLISH")`, or `trf` with values for `{}`, and
+  needs a line in `lang/de.txt`; the tests there say what is missing or too long for the
+  fixed-width font. A language is a `lang/` file, a `settings::Language` variant and a
+  line in `i18n::table`.
 - **Crates** are fine to use. `package/launcher/launcher.mk` vendors them before each
   build, because a `local` package skips Buildroot's vendoring; they are cached in
   `dl/br-cargo-home`. HTTPS is `ureq` with rustls and built-in roots, so the image has no
@@ -143,7 +149,8 @@ In short here; `docs/features.md` has them in full.
   `logo.ppm`
 - `external.mk`: includes the packages, builds Mesa without LLVM, installs the logo
 - `package/launcher/`, `package/libretro-*/`: Buildroot packages for the app and the cores
-- `src/launcher/`: the Rust launcher; `testdata/` has the PNG test images
+- `src/launcher/`: the Rust launcher; `testdata/` has the PNG test images, `lang/` the
+  translations
 - `scripts/`: `flash.sh`, `push.sh`, `press.py`, `screenshot.py`, `boxart.py`,
   `data-partition.sh`
 - `docs/features.md`: every feature in detail
@@ -195,8 +202,9 @@ physical like the lid.
   Groups remember their selected row, and Up and Down wrap. Starting a game moves its
   resume point and puts it first in RECENT, so say when that happens. Menu + Start needs
   both held in one write to the input device, which `press.py` can't do.
-- **Test hooks:** `LAUNCHER_BATTERY_DIR` points the battery reading at test files and
-  `LAUNCHER_POWEROFF` replaces `poweroff`. An RTC alarm can wake the device from sleep:
+- **Test hooks:** `LAUNCHER_BATTERY_DIR` points the battery reading at test files,
+  `LAUNCHER_POWEROFF` replaces `poweroff` and `LAUNCHER_PREVIEW_LANGUAGE=de` renders
+  `--preview*` in German. An RTC alarm can wake the device from sleep:
   `echo +60 > /sys/class/rtc/rtc0/wakealarm`. Don't inject a lid close: only a real lid
   wakes the device from lid sleep.
 - **Console:** `screen /dev/ttyACM0 115200`, Enter, `root` with no password.

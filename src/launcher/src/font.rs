@@ -3,6 +3,18 @@
 pub const WIDTH: usize = 5;
 pub const HEIGHT: usize = 7;
 
+/// The columns of the dots over Ä, Ö and Ü, and how many rows above the letter they go.
+/// Capitals take the font's whole height, and squeezing them to fit the dots made them
+/// look like lowercase beside the others. Every line of text has this much room above it.
+pub const DOT_COLUMNS: [usize; 2] = [1, 3];
+pub const DOTS_ROWS_ABOVE: usize = 2;
+
+/// Whether `c` is drawn with dots above its glyph. With `cased`, ä, ö and ü are lowercase
+/// letters, which have room for their dots inside the glyph.
+pub fn dots_above(c: char, cased: bool) -> bool {
+    matches!(c, 'Ä' | 'Ö' | 'Ü') || (!cased && matches!(c, 'ä' | 'ö' | 'ü'))
+}
+
 /// Returns the glyph for `c`. Lowercase maps to uppercase; unknown characters are blank.
 pub fn glyph(c: char) -> [u8; HEIGHT] {
     match c.to_ascii_uppercase() {
@@ -32,6 +44,11 @@ pub fn glyph(c: char) -> [u8; HEIGHT] {
         'X' => [0x11, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11],
         'Y' => [0x11, 0x11, 0x11, 0x0A, 0x04, 0x04, 0x04],
         'Z' => [0x1F, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1F],
+        // Full capitals, with their dots drawn above them: see `dots_above`.
+        'Ä' | 'ä' => [0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11],
+        'Ö' | 'ö' => [0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E],
+        'Ü' | 'ü' => [0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E],
+        'ß' => [0x0E, 0x11, 0x11, 0x16, 0x11, 0x11, 0x16],
         '0' => [0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E],
         '1' => [0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E],
         '2' => [0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F],
@@ -108,6 +125,9 @@ pub fn glyph_cased(c: char) -> [u8; HEIGHT] {
         'x' => [0x00, 0x00, 0x11, 0x0A, 0x04, 0x0A, 0x11],
         'y' => [0x00, 0x11, 0x11, 0x11, 0x0F, 0x01, 0x0E],
         'z' => [0x00, 0x00, 0x1F, 0x02, 0x04, 0x08, 0x1F],
+        'ä' => [0x0A, 0x00, 0x0E, 0x01, 0x0F, 0x11, 0x0F],
+        'ö' => [0x0A, 0x00, 0x0E, 0x11, 0x11, 0x11, 0x0E],
+        'ü' => [0x0A, 0x00, 0x11, 0x11, 0x11, 0x13, 0x0D],
         _ => glyph(c),
     }
 }
@@ -122,6 +142,19 @@ mod tests {
             assert_ne!(glyph_cased(c), [0; HEIGHT], "{c:?}");
         }
         assert_eq!(glyph_cased(' '), [0; HEIGHT]);
+    }
+
+    #[test]
+    fn german_letters_have_glyphs_of_both_cases() {
+        for c in "ÄÖÜäöüß".chars() {
+            assert_ne!(glyph(c), [0; HEIGHT], "{c}");
+            assert_ne!(glyph_cased(c), [0; HEIGHT], "{c}");
+        }
+        assert_eq!(glyph('ä'), glyph('Ä'));
+        assert_ne!(glyph_cased('ä'), glyph_cased('Ä'));
+        assert_eq!(glyph('Ä'), glyph('A'), "the same capital, with dots above it");
+        assert!(dots_above('Ä', false) && dots_above('ä', false) && dots_above('Ä', true));
+        assert!(!dots_above('ä', true) && !dots_above('A', false));
     }
 
     #[test]

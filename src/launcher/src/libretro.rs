@@ -1,5 +1,6 @@
 //! A minimal libretro frontend: loads a core, and runs one game on the framebuffer.
 
+use crate::i18n::{tr, trf};
 use crate::canvas::{self, PauseView};
 use crate::fb::Framebuffer;
 use crate::input::{self, Button, Controls, Event};
@@ -1112,10 +1113,10 @@ fn pause(
             Action::Save(slot) => {
                 let saved = core.save_state().and_then(|state| write_atomic(&slot_path(save, slot), &state));
                 menu.set_message(match saved {
-                    Ok(()) => format!("SAVED TO SLOT {slot}"),
+                    Ok(()) => trf("SAVED TO SLOT {}", &[&slot]),
                     Err(error) => {
                         eprintln!("warning: could not save to slot {slot}: {error}");
-                        format!("COULD NOT SAVE TO SLOT {slot}")
+                        trf("COULD NOT SAVE TO SLOT {}", &[&slot])
                     }
                 });
             }
@@ -1124,15 +1125,15 @@ fn pause(
                     Ok(()) => break AfterMenu::Resume,
                     Err(error) => {
                         eprintln!("warning: could not load slot {slot}: {error}");
-                        menu.set_message(format!("COULD NOT LOAD SLOT {slot}"));
+                        menu.set_message(trf("COULD NOT LOAD SLOT {}", &[&slot]));
                     }
                 },
                 Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                    menu.set_message(format!("SLOT {slot} IS EMPTY"));
+                    menu.set_message(trf("SLOT {} IS EMPTY", &[&slot]));
                 }
                 Err(error) => {
                     eprintln!("warning: could not read slot {slot}: {error}");
-                    menu.set_message(format!("COULD NOT LOAD SLOT {slot}"));
+                    menu.set_message(trf("COULD NOT LOAD SLOT {}", &[&slot]));
                 }
             },
             Action::Volume(steps) => {
@@ -1239,7 +1240,7 @@ pub fn play(
             Some(Level::Critical) => {
                 eprintln!("the battery is empty: saving and powering off");
                 let (width, height) = framebuffer.size();
-                framebuffer.draw(&screens::message_screen(width, height, "BATTERY EMPTY", crate::current_theme()))?;
+                framebuffer.draw(&screens::message_screen(width, height, tr("BATTERY EMPTY"), crate::current_theme()))?;
                 ending = Ending::BatteryEmpty;
                 break;
             }

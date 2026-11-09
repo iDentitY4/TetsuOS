@@ -1,5 +1,6 @@
 //! The top-right corner: the battery level and the clock, and the time settings' note.
 
+use crate::i18n::{tr, trf};
 use crate::*;
 use crate::canvas::{self, Battery};
 use std::path::Path;
@@ -40,8 +41,8 @@ pub(crate) fn time_note() -> String {
     let now = clock::date_text(&clock::local(jiff::Timestamp::now(), zone), format);
     let synced = std::fs::read_to_string(NTP_LOG).ok().and_then(|log| clock::last_sync(&log));
     let network = match synced {
-        Some(time) => format!("SET FROM THE NETWORK AT {}", clock::time_text(&clock::local(time, zone), format)),
-        None => "WAITING FOR THE TIME FROM THE NETWORK".into(),
+        Some(time) => trf("SET FROM THE NETWORK AT {}", &[&clock::time_text(&clock::local(time, zone), format)]),
+        None => tr("WAITING FOR THE TIME FROM THE NETWORK").into(),
     };
     format!("{now}\n{network}")
 }

@@ -4,6 +4,7 @@
 //! to the art panel and saved as PPM files where `boxart::BoxArt` reads them. Games that already have
 //! a cover are skipped, so running it again only fetches new games.
 
+use crate::i18n::tr;
 use crate::boxart::Image;
 use crate::canvas::Rgb;
 use crate::png;
@@ -95,10 +96,10 @@ impl Source for Https {
 fn failure_message(error: &ureq::Error) -> &'static str {
     match error {
         ureq::Error::HostNotFound | ureq::Error::ConnectionFailed | ureq::Error::Timeout(_) | ureq::Error::Io(_) => {
-            "NO CONNECTION TO GITHUB"
+            tr("NO CONNECTION TO GITHUB")
         }
-        ureq::Error::Tls(_) | ureq::Error::Rustls(_) => "SECURE CONNECTION FAILED - CHECK THE DATE",
-        _ => "DOWNLOAD FAILED",
+        ureq::Error::Tls(_) | ureq::Error::Rustls(_) => tr("SECURE CONNECTION FAILED - CHECK THE DATE"),
+        _ => tr("DOWNLOAD FAILED"),
     }
 }
 
