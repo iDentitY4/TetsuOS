@@ -6,7 +6,8 @@ use crate::launcher::{Game, Library};
 use crate::libretro::{self, Ending, Persistence};
 use std::io;
 use std::path::Path;
-use std::process::Command;
+use std::io::Write;
+use std::process::{Command, Stdio};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
@@ -48,14 +49,25 @@ pub(crate) fn play_game(rom: &Path, events: &Receiver<Event>) -> io::Result<Endi
         .arg(persistence_arg(system.persistence))
         // Cores read local time for games' clocks, such as Pokemon's, through glibc.
         .env("TZ", settings::get().time_zone().posix)
+        .stdin(Stdio::piped())
         .spawn()?;
+    // The game draws the screen, so it shows the volume. This process changes it, as it
+    // can run `amixer` without holding up a frame, and tells the game the new level.
+    let mut game_input = game.stdin.take();
     let status = loop {
         if let Some(status) = game.try_wait()? {
             break status;
         }
         if let Ok(event) = events.recv_timeout(Duration::from_millis(100)) {
             match event.pressed() {
-                Some(button @ (Button::VolumeUp | Button::VolumeDown)) => change_volume(button),
+                Some(button @ (Button::VolumeUp | Button::VolumeDown)) => {
+                    // Saving writes every setting, and the game's menu may have changed some.
+                    settings::reload();
+                    if let (Some(percent), Some(input)) = (change_volume(button), game_input.as_mut()) {
+                        // It fails only when the game has just ended.
+                        let _ = input.write_all(&[percent as u8]);
+                    }
+                }
                 Some(Button::Lid) => {
                     // The game saves where it is when it sees the lid close.
                     sleep(SAVE_BEFORE_SLEEP);

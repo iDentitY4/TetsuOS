@@ -10,13 +10,13 @@ use crate::settings::{self, Effect, GameDisplay, Ghosting, Scaling};
 use crate::storage::write_atomic;
 use std::cell::RefCell;
 use std::ffi::{c_char, c_int, c_uint, c_void, CStr, CString};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock};
-use std::sync::mpsc::{Receiver, RecvTimeoutError};
+use std::sync::mpsc::{channel, Receiver, RecvTimeoutError};
 use std::thread::{sleep, spawn, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -969,26 +969,63 @@ const FAST_FORWARD_MAX: u32 = 8;
 /// every system's picture, like the battery warning's corner.
 fn draw_fast_forward(framebuffer: &mut Framebuffer, on: bool) -> io::Result<()> {
     let canvas = screens::fast_forward_sign(on, crate::current_theme());
-    let pixels: Vec<u32> = canvas
-        .pixels
-        .iter()
-        .map(|color| u32::from(color.0) << 16 | u32::from(color.1) << 8 | u32::from(color.2))
-        .collect();
     let (width, _) = framebuffer.size();
     let x = width.saturating_sub(canvas.width + WARNING_POSITION.0);
-    framebuffer.blit(&pixels, canvas.width, canvas.height, x, WARNING_POSITION.1)
+    framebuffer.blit_canvas(&canvas, x, WARNING_POSITION.1)
 }
 
 /// Shows the charge level in the corner while the battery is low.
 fn draw_battery_warning(framebuffer: &mut Framebuffer, percent: u32) -> io::Result<()> {
-    let canvas = screens::battery_warning(percent);
-    let pixels: Vec<u32> = canvas
-        .pixels
-        .iter()
-        .map(|color| u32::from(color.0) << 16 | u32::from(color.1) << 8 | u32::from(color.2))
-        .collect();
     let (x, y) = WARNING_POSITION;
-    framebuffer.blit(&pixels, canvas.width, canvas.height, x, y)
+    framebuffer.blit_canvas(&screens::battery_warning(percent), x, y)
+}
+
+/// The volume levels the launcher sends when a volume button is pressed, each one byte of
+/// percent on this process's standard input.
+fn volume_levels() -> Receiver<u32> {
+    let (sender, receiver) = channel();
+    spawn(move || {
+        for byte in io::stdin().lock().bytes().map_while(Result::ok) {
+            if sender.send(u32::from(byte)).is_err() {
+                return;
+            }
+        }
+    });
+    receiver
+}
+
+/// What belongs in an area of the screen without a sign: the centred picture, and black
+/// around it, as the game only redraws its own area.
+fn picture_in_area(
+    frame: &[u32],
+    (frame_w, frame_h): (usize, usize),
+    (screen_w, screen_h): (usize, usize),
+    (x, y, w, h): crate::fb::Area,
+) -> Vec<u32> {
+    let (left, top) = (screen_w.saturating_sub(frame_w) / 2, screen_h.saturating_sub(frame_h) / 2);
+    let mut pixels = vec![0; w * h];
+    for row in 0..h {
+        for column in 0..w {
+            let (screen_x, screen_y) = (x + column, y + row);
+            if (left..left + frame_w).contains(&screen_x) && (top..top + frame_h).contains(&screen_y) {
+                pixels[row * w + column] = frame[(screen_y - top) * frame_w + screen_x - left];
+            }
+        }
+    }
+    pixels
+}
+
+/// Shows a new volume level during play, and takes the sign away when its time is up.
+fn update_volume_sign(framebuffer: &mut Framebuffer, levels: &Receiver<u32>) -> io::Result<()> {
+    if let Some(percent) = levels.try_iter().last() {
+        crate::show_volume(framebuffer, percent)?;
+    }
+    if let Some(area) = framebuffer.take_due_sign() {
+        let size = framebuffer.size();
+        let pixels = with_host(|host| picture_in_area(&host.frame, host.frame_size, size, area));
+        framebuffer.blit(&pixels, area.2, area.3, area.0, area.1)?;
+    }
+    Ok(())
 }
 
 /// Writes the game's save file, and the state to resume from where there is one.
@@ -1012,6 +1049,8 @@ fn change_display(change: impl FnOnce(&mut GameDisplay)) {
         host.options_changed = true;
         host.display
     });
+    // Saving writes every setting, and the launcher saves the volume buttons' level.
+    settings::reload();
     if let Err(error) = settings::update(|settings| settings.display = display) {
         eprintln!("warning: could not save the display settings: {error}");
     }
@@ -1031,6 +1070,7 @@ fn pause(
     menu: &mut PauseMenu,
     framebuffer: &mut Framebuffer,
     events: &Receiver<Event>,
+    volume_levels: &Receiver<u32>,
 ) -> io::Result<AfterMenu> {
     let (width, height) = framebuffer.size();
     let (frame, frame_size) = with_host(|host| (host.frame.clone(), host.frame_size));
@@ -1039,6 +1079,12 @@ fn pause(
     let mut settings_changed = false;
     let mut redraw = true;
     let after = loop {
+        if let Some(percent) = volume_levels.try_iter().last() {
+            crate::show_volume(framebuffer, percent)?;
+            redraw = true;
+        }
+        // Drawing again removes the volume sign.
+        redraw |= framebuffer.sign_wait().is_zero();
         if redraw {
             let view = PauseView {
                 menu,
@@ -1058,7 +1104,6 @@ fn pause(
         };
         with_host(|host| host.controls.apply(&event));
         let Some(button) = event.pressed() else { continue };
-        // The volume buttons change levels from the launcher, which this shows too.
         redraw = true;
         match menu.press(button) {
             Action::Nothing => {}
@@ -1152,6 +1197,7 @@ pub fn play(
 
     let frame_time = Duration::from_secs_f64(1.0 / fps);
     let events = input::spawn_readers();
+    let levels = volume_levels();
     framebuffer.clear()?;
 
     let mut next_frame = Instant::now();
@@ -1200,9 +1246,10 @@ pub fn play(
             Some(Level::Low(percent)) => draw_battery_warning(framebuffer, percent)?,
             Some(Level::Fine) | None => {}
         }
+        update_volume_sign(framebuffer, &levels)?;
         if open_menu {
             hold_cpu_speed();
-            if pause(&mut core, save, &mut menu, framebuffer, &events)? == AfterMenu::Quit {
+            if pause(&mut core, save, &mut menu, framebuffer, &events, &levels)? == AfterMenu::Quit {
                 break;
             }
             release_at = Some(frames - frames % STATS_FRAMES + CPU_HOLD_FRAMES);
@@ -1387,6 +1434,13 @@ pub fn render(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_sign_gives_way_to_the_picture_and_black_around_it() {
+        // A picture 2 wide and 1 tall, centred on a 4 by 3 screen, at (1, 1).
+        let pixels = picture_in_area(&[7, 8], (2, 1), (4, 3), (0, 1, 3, 2));
+        assert_eq!(pixels, [0, 7, 8, 0, 0, 0]);
+    }
 
     #[test]
     fn a_gba_screen_fills_the_panel_width() {

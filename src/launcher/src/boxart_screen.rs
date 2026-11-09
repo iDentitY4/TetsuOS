@@ -171,6 +171,8 @@ pub(crate) fn download_box_art(framebuffer: &mut fb::Framebuffer, events: &Recei
             redraw |= time != shown_clock;
             shown_clock = time;
         }
+        // Drawing again removes the volume sign.
+        redraw |= framebuffer.sign_wait().is_zero();
         if redraw {
             let hint = if stopping {
                 "STOPPING AFTER THIS GAME"
@@ -218,7 +220,7 @@ pub(crate) fn download_box_art(framebuffer: &mut fb::Framebuffer, events: &Recei
                 sleep_until_lid_opens(events);
                 redraw = true;
             }
-            Some(button @ (Button::VolumeUp | Button::VolumeDown)) => change_volume(button),
+            Some(button @ (Button::VolumeUp | Button::VolumeDown)) => press_volume(framebuffer, button)?,
             _ => {}
         }
     }

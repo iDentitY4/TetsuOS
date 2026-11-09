@@ -79,6 +79,7 @@ fn main() -> ExitCode {
         [flag, path] if flag == "--preview-keyboard" => write_keyboard_preview(path),
         [flag, path] if flag == "--preview-pause" => write_pause_preview(path),
         [flag, path] if flag == "--preview-splash" => write_plain_ppm(&screens::splash(), path),
+        [flag, path] if flag == "--preview-volume" => write_ppm(&screens::volume_sign(80, current_theme()), path),
         [flag, core, rom, save, persistence] if flag == "--play" => {
             let ending = parse_persistence(persistence).and_then(|persistence| {
                 run_game(Path::new(core), Path::new(rom), Path::new(save), persistence)
@@ -108,6 +109,7 @@ fn main() -> ExitCode {
                 "usage: launcher [--preview | --preview-list | --preview-recent | --preview-settings FILE.ppm\n\
                  \x20              | --preview-buttons | --preview-wifi | --preview-keyboard FILE.ppm\n\
                  \x20              | --preview-pause FILE.ppm | --preview-splash FILE.ppm\n\
+                 \x20              | --preview-volume FILE.ppm\n\
                  \x20              | --play CORE ROM SAVE battery|state\n\
                  \x20              | --render CORE ROM SAVE battery|state FRAMES FILE.ppm]"
             );

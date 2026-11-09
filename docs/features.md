@@ -77,6 +77,28 @@ Working on the test unit, confirmed by the user:
   the device over SSH with injected presses and screenshots: saving, loading, levels,
   quitting, resuming and Menu + Start. The user tried it with FireRed
   on 2026-11-08 and confirmed it feels right
+- The volume sign: a press of a volume button shows `VOL`, a bar and the percentage,
+  centred at the top of the screen for 1.5 s, in the menus, during a game and in the
+  in-game menu (`screens::volume_sign`, `app::show_volume`). It is 20 pixels tall and 6
+  from the top, so it stays in the border above a GBA picture, and covers the top of
+  taller pictures. `fb::Framebuffer` holds it: `draw` stamps it on each screen, and `blit`
+  writes around its area, so a game's picture never overwrites it and it doesn't flicker,
+  with no cost per frame beyond splitting those rows. When its time is up, the menus draw
+  again, and a game fills the area with its picture and black around it
+  (`libretro::picture_in_area`), as it only redraws its own area. During a game the
+  launcher process still changes the volume, as `amixer` there doesn't hold up a frame,
+  and writes the new percent as one byte to the game's standard input
+  (`libretro::volume_levels`). So the game shows the level that was set, not one read too
+  early. Only the buttons show it: VOLUME in the settings and in-game menu has its own
+  bar. Claude checked it on the device with injected presses and screenshots on 2026-11-09:
+  a game list, Wi-Fi, the title keyboard, Super Mario Land during play and in its menu, and
+  closing the menu with the sign up. A press every 1.4 s or so during play kept 59.6-59.75
+  fps with no underruns, the same as without. How it looks while moving and
+  on a real button press is for the user to check
+- During a game two processes save `settings.txt`, and saving writes every setting, so
+  each reads the file again just before: the launcher before a volume button's save, or it
+  undoes the game menu's display changes, and the game before saving those, or it brings
+  back the old volume. Reproduced and checked on the device on 2026-11-09
 - NES through `package/libretro-fceumm`, SNES through `package/libretro-snes9x` (free for
   non-commercial use only), and Game Boy and Game Boy Color through mGBA. Consoles
   appear in release order, set by the order of `SYSTEMS` in `systems.rs`. New systems name saves with the full file name, such as `Tetris.gb.srm`;

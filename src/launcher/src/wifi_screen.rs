@@ -153,7 +153,8 @@ pub(crate) fn wifi_settings(framebuffer: &mut fb::Framebuffer, events: &Receiver
         framebuffer.draw(&canvas)?;
 
         let poll_due = last_poll.map_or(Duration::ZERO, |time| (time + WIFI_POLL).saturating_duration_since(Instant::now()));
-        let timeout = repeater.wait(Instant::now()).map_or(poll_due, |wait| wait.min(poll_due));
+        // Drawing again removes the volume sign.
+        let timeout = repeater.wait(Instant::now()).map_or(poll_due, |wait| wait.min(poll_due)).min(framebuffer.sign_wait());
         let buttons: Vec<Button> = match events.recv_timeout(timeout) {
             Ok(event) => {
                 if let Some(button) = event.released() {
@@ -167,7 +168,7 @@ pub(crate) fn wifi_settings(framebuffer: &mut fb::Framebuffer, events: &Receiver
                         vec![]
                     }
                     Some(button @ (Button::VolumeUp | Button::VolumeDown)) => {
-                        change_volume(button);
+                        press_volume(framebuffer, button)?;
                         vec![]
                     }
                     Some(button) => {

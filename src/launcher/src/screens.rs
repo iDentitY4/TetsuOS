@@ -15,6 +15,8 @@ use std::time::Duration;
 use crate::settings::{idle_sleep_label, Settings};
 
 const TEXT_SCALE: usize = 2;
+/// How far from the top of the screen the volume sign shows.
+pub const VOLUME_SIGN_TOP: usize = 6;
 const HINT_Y: usize = 448;
 /// A slightly lighter body, for the inside of the selected tile.
 const RAISED: Rgb = Rgb(0x3A, 0x41, 0x55);
@@ -749,6 +751,21 @@ pub fn fast_forward_sign(on: bool, theme: Theme) -> Canvas {
     canvas
 }
 
+/// Shows the volume over a menu or a game. Short enough for the border above a GBA
+/// picture, and black to blend into it.
+pub fn volume_sign(percent: u32, theme: Theme) -> Canvas {
+    let (width, height) = (240, font::HEIGHT * TEXT_SCALE + 6);
+    let mut canvas = Canvas::new(width, height, theme);
+    canvas.pixels.fill(Rgb(0, 0, 0));
+    canvas.text_at("VOL", 6, 3, TEXT_SCALE, TEXT);
+    let text = format!("{percent}%");
+    canvas.text_at(&text, width - 4 - text_width(&text, TEXT_SCALE), 3, TEXT_SCALE, TEXT);
+    let (bar_x, bar_w) = (48, 132);
+    canvas.rect(bar_x, 5, bar_w, height - 10, BODY);
+    canvas.rect(bar_x, 5, bar_w * percent.min(100) as usize / 100, height - 10, canvas.theme.accent);
+    canvas
+}
+
 /// The kernel's boot logo, shown centred on black until the launcher starts. It is made
 /// with `launcher --preview-splash` and kept as `board/rg35xxsp/logo.ppm`, in the first
 /// theme colour whatever is chosen, since the kernel shows it.
@@ -1118,6 +1135,18 @@ mod tests {
         assert!(6 + sign.height <= 27 && 6 + sign.width <= 46);
         assert!(sign.pixels.contains(&Theme::default().accent));
         assert!(!fast_forward_sign(false, Theme::default()).pixels.contains(&Theme::default().accent));
+    }
+
+    #[test]
+    fn the_volume_sign_stays_above_the_gba_picture_and_shows_the_level() {
+        let accent = Theme::default().accent;
+        let filled = |percent| volume_sign(percent, Theme::default()).pixels.iter().filter(|&&p| p == accent).count();
+        let sign = volume_sign(100, Theme::default());
+        assert!(VOLUME_SIGN_TOP + sign.height <= 27, "shorter than the GBA border");
+        assert_eq!(filled(0), 0);
+        assert!(filled(6) > 0, "the lowest step shows");
+        assert!(filled(50) < filled(100));
+        assert_eq!(filled(100), 132 * (sign.height - 10));
     }
 
     #[test]

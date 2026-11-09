@@ -5,6 +5,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{self, Seek, SeekFrom, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::FileExt;
+use std::time::{Duration, Instant};
 
 use libc::{c_ulong, ioctl, Ioctl};
 
@@ -76,10 +77,37 @@ fn pack(color: Rgb, red: Bitfield, green: Bitfield, blue: Bitfield) -> u32 {
     pack_channel(color.0, red) | pack_channel(color.1, green) | pack_channel(color.2, blue)
 }
 
+/// A part of the screen: left, top, width and height.
+pub type Area = (usize, usize, usize, usize);
+
+/// Something shown on top of whatever else is drawn, for a moment.
+struct Sign {
+    pixels: Vec<u32>,
+    area: Area,
+    until: Instant,
+}
+
+/// The columns of a row, starting at `left` and `width` long, that an area covers on
+/// screen line `y`, counted from the row's start.
+fn covered_columns((x, top, w, h): Area, left: usize, y: usize, width: usize) -> Option<(usize, usize)> {
+    let start = x.max(left);
+    let end = (x + w).min(left + width);
+    (y >= top && y < top + h && start < end).then(|| (start - left, end - left))
+}
+
+fn xrgb_pixels(canvas: &Canvas) -> Vec<u32> {
+    canvas
+        .pixels
+        .iter()
+        .map(|color| u32::from(color.0) << 16 | u32::from(color.1) << 8 | u32::from(color.2))
+        .collect()
+}
+
 pub struct Framebuffer {
     file: File,
     var: VarScreenInfo,
     line_length: usize,
+    sign: Option<Sign>,
 }
 
 impl Framebuffer {
@@ -106,6 +134,7 @@ impl Framebuffer {
             file,
             line_length: fix.line_length as usize,
             var,
+            sign: None,
         })
     }
 
@@ -120,7 +149,49 @@ impl Framebuffer {
 
     pub fn clear(&mut self) -> io::Result<()> {
         let buffer = vec![0u8; self.line_length * self.var.yres as usize];
-        self.file.write_all_at(&buffer, self.screen_offset())
+        self.file.write_all_at(&buffer, self.screen_offset())?;
+        self.write_sign()
+    }
+
+    /// Shows a sign centred at the top of the screen, in place of any other, until `time`
+    /// has passed. Everything drawn until then leaves it showing, so a game's picture
+    /// doesn't flicker over it. Whoever draws has to replace it when `sign_wait` runs out:
+    /// the next `draw` leaves it out, and `take_due_sign` gives the area to fill in.
+    pub fn show_sign(&mut self, canvas: &Canvas, top: usize, time: Duration) -> io::Result<()> {
+        let left = self.size().0.saturating_sub(canvas.width) / 2;
+        self.sign = Some(Sign {
+            pixels: xrgb_pixels(canvas),
+            area: (left, top, canvas.width, canvas.height),
+            until: Instant::now() + time,
+        });
+        self.write_sign()
+    }
+
+    /// How long until the sign should go: zero once it should, and for ever without one.
+    pub fn sign_wait(&self) -> Duration {
+        self.sign.as_ref().map_or(Duration::MAX, |sign| sign.until.saturating_duration_since(Instant::now()))
+    }
+
+    /// Ends a sign whose time is up, and returns the area it covered.
+    pub fn take_due_sign(&mut self) -> Option<Area> {
+        if !self.sign_wait().is_zero() {
+            return None;
+        }
+        self.sign.take().map(|sign| sign.area)
+    }
+
+    fn write_sign(&mut self) -> io::Result<()> {
+        // Taken out, as `blit` leaves the sign's area alone.
+        let Some(sign) = self.sign.take() else { return Ok(()) };
+        let (left, top, width, height) = sign.area;
+        let result = self.blit(&sign.pixels, width, height, left, top);
+        self.sign = Some(sign);
+        result
+    }
+
+    /// Writes a canvas with its top left corner at `left`, `top`.
+    pub fn blit_canvas(&mut self, canvas: &Canvas, left: usize, top: usize) -> io::Result<()> {
+        self.blit(&xrgb_pixels(canvas), canvas.width, canvas.height, left, top)
     }
 
     /// Writes XRGB8888 pixels to the middle of the screen, leaving the rest alone.
@@ -132,36 +203,43 @@ impl Framebuffer {
     }
 
     /// Writes XRGB8888 pixels with their top left corner at `left`, `top`, clipped to the
-    /// screen, leaving the rest alone.
+    /// screen, leaving the rest and any sign alone.
     pub fn blit(&mut self, pixels: &[u32], width: usize, height: usize, left: usize, top: usize) -> io::Result<()> {
         let (screen_w, screen_h) = self.size();
         if left >= screen_w || top >= screen_h || width == 0 {
             return Ok(());
         }
-        let bytes_per_pixel = self.var.bits_per_pixel as usize / 8;
-        let row_bytes = width.min(screen_w - left) * bytes_per_pixel;
-        let left = left * bytes_per_pixel;
-        let is_xrgb = bytes_per_pixel == 4
-            && (self.var.red.offset, self.var.green.offset, self.var.blue.offset) == (16, 8, 0);
-
-        let mut row_buffer = vec![0u8; if is_xrgb { 0 } else { row_bytes }];
+        let shown = width.min(screen_w - left);
+        let sign = self.sign.as_ref().map(|sign| sign.area);
         for (y, row) in pixels.chunks_exact(width).take(height.min(screen_h - top)).enumerate() {
-            let offset = self.screen_offset() + ((top + y) * self.line_length + left) as u64;
-            if is_xrgb {
-                // SAFETY: the bytes of a u32 are always valid, and row_bytes is within the
-                // row. The device's arm64 and this format are both little-endian.
-                let bytes = unsafe { std::slice::from_raw_parts(row.as_ptr() as *const u8, row_bytes) };
-                self.file.write_all_at(bytes, offset)?;
-            } else {
-                for (bytes, pixel) in row_buffer.chunks_exact_mut(bytes_per_pixel).zip(row) {
-                    let color = Rgb((pixel >> 16) as u8, (pixel >> 8) as u8, *pixel as u8);
-                    let value = pack(color, self.var.red, self.var.green, self.var.blue);
-                    bytes.copy_from_slice(&value.to_le_bytes()[..bytes_per_pixel]);
+            let (row, y) = (&row[..shown], top + y);
+            match sign.and_then(|area| covered_columns(area, left, y, shown)) {
+                Some((start, end)) => {
+                    self.write_row(&row[..start], left, y)?;
+                    self.write_row(&row[end..], left + end, y)?;
                 }
-                self.file.write_all_at(&row_buffer, offset)?;
+                None => self.write_row(row, left, y)?,
             }
         }
         Ok(())
+    }
+
+    fn write_row(&self, row: &[u32], x: usize, y: usize) -> io::Result<()> {
+        let bytes_per_pixel = self.var.bits_per_pixel as usize / 8;
+        let offset = self.screen_offset() + (y * self.line_length + x * bytes_per_pixel) as u64;
+        if bytes_per_pixel == 4 && (self.var.red.offset, self.var.green.offset, self.var.blue.offset) == (16, 8, 0) {
+            // SAFETY: the bytes of a u32 are always valid. The device's arm64 and this
+            // format are both little-endian.
+            let bytes = unsafe { std::slice::from_raw_parts(row.as_ptr() as *const u8, row.len() * 4) };
+            return self.file.write_all_at(bytes, offset);
+        }
+        let mut buffer = vec![0u8; row.len() * bytes_per_pixel];
+        for (bytes, pixel) in buffer.chunks_exact_mut(bytes_per_pixel).zip(row) {
+            let color = Rgb((pixel >> 16) as u8, (pixel >> 8) as u8, *pixel as u8);
+            let value = pack(color, self.var.red, self.var.green, self.var.blue);
+            bytes.copy_from_slice(&value.to_le_bytes()[..bytes_per_pixel]);
+        }
+        self.file.write_all_at(&buffer, offset)
     }
 
     /// Waits for the panel to finish a refresh. A full-screen write that starts right
@@ -186,12 +264,27 @@ impl Framebuffer {
                     .copy_from_slice(&value.to_le_bytes()[..bytes_per_pixel]);
             }
         }
+        if self.sign_wait().is_zero() {
+            self.sign = None;
+        }
+        if let Some(Sign { pixels, area: (left, top, width, _), .. }) = &self.sign {
+            for (y, row) in pixels.chunks_exact(*width).enumerate() {
+                for (x, pixel) in row.iter().enumerate() {
+                    let color = Rgb((pixel >> 16) as u8, (pixel >> 8) as u8, *pixel as u8);
+                    let value = pack(color, self.var.red, self.var.green, self.var.blue);
+                    let start = (top + y) * self.line_length + (left + x) * bytes_per_pixel;
+                    buffer[start..start + bytes_per_pixel]
+                        .copy_from_slice(&value.to_le_bytes()[..bytes_per_pixel]);
+                }
+            }
+        }
         let offset = u64::from(self.var.yoffset) * self.line_length as u64;
         self.file.seek(SeekFrom::Start(offset))?;
         self.file.write_all(&buffer)
     }
 
-    /// Draws only part of a full-screen canvas, for small changes like a scrolling name.
+    /// Draws only part of a full-screen canvas, for small changes like a scrolling name,
+    /// which are all below where signs show.
     pub fn draw_area(&mut self, canvas: &Canvas, (x, y, w, h): (usize, usize, usize, usize)) -> io::Result<()> {
         let bytes_per_pixel = self.var.bits_per_pixel as usize / 8;
         let w = w.min(canvas.width.saturating_sub(x));
@@ -231,6 +324,19 @@ mod tests {
     fn kernel_struct_sizes_match() {
         assert_eq!(std::mem::size_of::<VarScreenInfo>(), 160);
         assert_eq!(std::mem::size_of::<FixScreenInfo>(), 80);
+    }
+
+    #[test]
+    fn a_row_is_only_covered_where_it_meets_the_area() {
+        let sign = (200, 6, 240, 20);
+        assert_eq!(covered_columns(sign, 0, 6, 640), Some((200, 440)));
+        assert_eq!(covered_columns(sign, 0, 25, 640), Some((200, 440)));
+        assert_eq!(covered_columns(sign, 0, 26, 640), None, "below it");
+        assert_eq!(covered_columns(sign, 0, 5, 640), None, "above it");
+        // A picture narrower than the sign, or starting inside it.
+        assert_eq!(covered_columns(sign, 256, 10, 128), Some((0, 128)));
+        assert_eq!(covered_columns(sign, 300, 10, 340), Some((0, 140)));
+        assert_eq!(covered_columns(sign, 440, 10, 200), None, "beside it");
     }
 
     #[test]

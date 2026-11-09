@@ -22,8 +22,8 @@ Games: NES (FCEUmm), SNES (Snes9x), Game Boy, Color and Advance (mGBA), PlayStat
 ReARMed), Mega Drive, Master System and Game Gear (Genesis Plus GX), PC Engine (Beetle PCE
 Fast), Neo Geo Pocket and Color (Beetle NeoPop), WonderSwan and Color (Beetle Cygne), Lynx
 (Handy) and Tamagotchi (tamalib), with an in-game menu (8 save slots, levels, display
-options), resume on leaving and after power-off, fast-forward on R2, and sharp-bilinear
-scaling with CRT and LCD effects.
+options), resume on leaving and after power-off, fast-forward on R2, sharp-bilinear
+scaling with CRT and LCD effects, and a volume sign on the volume buttons, also in the menus.
 
 Launcher: a tile grid with RECENT and FAVORITES, lists with covers and scrolling names,
 box art downloaded on the device, and a settings grid (GENERAL, GAME SCREEN, WI-FI,
@@ -33,6 +33,7 @@ hidden tiles, start screen, game names, battery display, menu sounds, the boot j
 ## Not yet checked by the user
 
 - Game Boy SGB games without their border; PlayStation sound and feel
+- The volume sign on real button presses, over a moving game
 - Neo Geo Pocket, WonderSwan and Lynx sound and controls; a Neo Geo Pocket game that saves
 - Sleep when idle: the screen dark while asleep, and waking with the power button
 - The lid since input moved to the `evdev` crate; the lid during a box art download

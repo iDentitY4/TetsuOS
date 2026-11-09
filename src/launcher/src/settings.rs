@@ -543,10 +543,11 @@ pub fn volume_percent() -> Option<u32> {
     Some(volume()? * 100 / VOLUME_MAX)
 }
 
-pub fn change_volume(steps: i32) {
-    if let Some(raw) = volume() {
-        set_volume(step(raw, steps, 1, 0, VOLUME_MAX));
-    }
+/// Returns the new volume as a percentage, if it could be read.
+pub fn change_volume(steps: i32) -> Option<u32> {
+    let raw = step(volume()?, steps, 1, 0, VOLUME_MAX);
+    set_volume(raw);
+    Some(raw * 100 / VOLUME_MAX)
 }
 
 fn read_number(path: &Path) -> Option<u32> {

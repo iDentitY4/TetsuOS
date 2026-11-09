@@ -24,6 +24,9 @@ pub(crate) const FB_WAIT_SECONDS: u32 = 10;
 /// How often a long name moves while it scrolls.
 pub(crate) const SCROLL_TICK: Duration = Duration::from_millis(50);
 
+/// How long the volume stays on screen after a volume button.
+const VOLUME_SIGN_TIME: Duration = Duration::from_millis(1500);
+
 pub(crate) fn open_framebuffer() -> io::Result<fb::Framebuffer> {
     let mut remaining = FB_WAIT_SECONDS;
     loop {
@@ -68,11 +71,26 @@ pub(crate) fn keyboard_sound(button: Button) {
     }
 }
 
-pub(crate) fn change_volume(button: Button) {
+/// Returns the new volume as a percentage, if it could be read.
+pub(crate) fn change_volume(button: Button) -> Option<u32> {
     let direction = if button == Button::VolumeUp { 1 } else { -1 };
-    settings::change_volume(direction * settings::VOLUME_STEP);
+    let percent = settings::change_volume(direction * settings::VOLUME_STEP);
     if let Err(error) = settings::save_levels() {
         eprintln!("warning: could not save the settings: {error}");
+    }
+    percent
+}
+
+pub(crate) fn show_volume(framebuffer: &mut fb::Framebuffer, percent: u32) -> io::Result<()> {
+    let sign = screens::volume_sign(percent, current_theme());
+    framebuffer.show_sign(&sign, screens::VOLUME_SIGN_TOP, VOLUME_SIGN_TIME)
+}
+
+/// A volume button in the menus: changes the volume and shows it.
+pub(crate) fn press_volume(framebuffer: &mut fb::Framebuffer, button: Button) -> io::Result<()> {
+    match change_volume(button) {
+        Some(percent) => show_volume(framebuffer, percent),
+        None => Ok(()),
     }
 }
 
@@ -451,10 +469,15 @@ pub(crate) fn edit_title(framebuffer: &mut fb::Framebuffer, events: &Receiver<Ev
         let mut canvas = screens::keyboard_screen(width, height, &view, &keyboard, &screen_frame(battery));
         add_clock(&mut canvas, battery);
         framebuffer.draw(&canvas)?;
-        let Ok(event) = events.recv() else { return Ok(()) };
+        let event = match events.recv_timeout(framebuffer.sign_wait()) {
+            Ok(event) => event,
+            // The volume sign's time is up, and drawing again removes it.
+            Err(RecvTimeoutError::Timeout) => continue,
+            Err(RecvTimeoutError::Disconnected) => return Ok(()),
+        };
         match event.pressed() {
             Some(Button::Lid) => sleep_until_lid_opens(events),
-            Some(button @ (Button::VolumeUp | Button::VolumeDown)) => change_volume(button),
+            Some(button @ (Button::VolumeUp | Button::VolumeDown)) => press_volume(framebuffer, button)?,
             Some(button) => {
                 keyboard_sound(button);
                 match keyboard.press(button) {
@@ -505,10 +528,15 @@ pub(crate) fn edit_root_password(framebuffer: &mut fb::Framebuffer, events: &Rec
         let mut canvas = screens::keyboard_screen(width, height, &view, &keyboard, &screen_frame(battery));
         add_clock(&mut canvas, battery);
         framebuffer.draw(&canvas)?;
-        let Ok(event) = events.recv() else { return Ok(()) };
+        let event = match events.recv_timeout(framebuffer.sign_wait()) {
+            Ok(event) => event,
+            // The volume sign's time is up, and drawing again removes it.
+            Err(RecvTimeoutError::Timeout) => continue,
+            Err(RecvTimeoutError::Disconnected) => return Ok(()),
+        };
         match event.pressed() {
             Some(Button::Lid) => sleep_until_lid_opens(events),
-            Some(button @ (Button::VolumeUp | Button::VolumeDown)) => change_volume(button),
+            Some(button @ (Button::VolumeUp | Button::VolumeDown)) => press_volume(framebuffer, button)?,
             // Shown in the field to note down, edit or replace with another, and saved
             // with Start like a typed one.
             Some(Button::R1) => match ssh::random_password() {
@@ -634,8 +662,11 @@ pub(crate) fn run_launcher() -> io::Result<()> {
             if scrolling.is_some() {
                 timeout = timeout.min(SCROLL_TICK);
             }
+            timeout = timeout.min(framebuffer.sign_wait());
             match events.recv_timeout(timeout) {
                 Ok(event) => break Wake::Event(event),
+                // Drawing again removes the volume sign.
+                Err(RecvTimeoutError::Timeout) if framebuffer.sign_wait().is_zero() => break Wake::Redraw,
                 Err(RecvTimeoutError::Timeout) if repeater.wait(Instant::now()).is_some() => {}
                 Err(RecvTimeoutError::Timeout) => {
                     // Checked at least once a second, with the battery.
@@ -701,7 +732,7 @@ pub(crate) fn run_launcher() -> io::Result<()> {
                         Action::Nothing
                     }
                     Some(button @ (Button::VolumeUp | Button::VolumeDown)) => {
-                        change_volume(button);
+                        press_volume(&mut framebuffer, button)?;
                         Action::Nothing
                     }
                     Some(button) => {
