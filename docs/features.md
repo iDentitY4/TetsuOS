@@ -24,7 +24,7 @@ Working on the test unit, confirmed by the user:
 - The launcher lists games from `/mnt/data/roms` and the folders inside it, in any
   arrangement, as the file extension decides the console; hidden files and folders are
   left out. It has the button test as a menu entry and working volume buttons
-- A libretro frontend in the same app, in `libretro.rs`, runs the mGBA core from
+- A libretro frontend in the same app, in `libretro/`, runs the mGBA core from
   `package/libretro-mgba`. Pokemon FireRed runs at 59.7 fps with clean sound and no tearing,
   at about 50 C. Holding Menu + Start leaves a game. `/var/log/launcher.log` has timings
 - Games and saves are in `roms` and `saves` on the TETSU-DATA partition. They survive leaving a
@@ -124,7 +124,7 @@ Working on the test unit, confirmed by the user:
   Screens and button handling are in `launcher.rs` and `screens.rs`. Claude checked every
   screen on the device with injected presses and screenshots, and the user confirmed on
   2026-11-08 that it feels very good
-- Game Boy games fill the screen height. `CORE_OPTIONS` in `libretro.rs` turns off
+- Game Boy games fill the screen height. `CORE_OPTIONS` in `libretro/` turns off
   mGBA's Super Game Boy border, which shrank SGB-enhanced games to half the screen. Not
   yet seen by the user
 
@@ -139,7 +139,7 @@ Working on the test unit, confirmed by the user:
   read nothing ahead from the disc, which caused 33 ms underruns while FF7 loaded. Pictures
   are shown at 4:3 (`CoreSetup::aspect`), since its modes run from 256 to 640 pixels wide.
   Frames of 128 lines or more are scaled in two bands on two cores (`Band` in
-  `libretro.rs`), the same output as one pass, which took FF7 from 8.7 to 4.1 ms per frame
+  `libretro/scale.rs`), the same output as one pass, which took FF7 from 8.7 to 4.1 ms per frame
   of the 20 ms that 50 Hz European games have. Claude ran Final Fantasy VII, Metal Slug X
   and Star Wars Episode I (all European) on the device: 50 fps, Metal Slug X in play at
   the lowest 480 MHz and 44 C with no underruns, FF7 sees a formatted card, and save
@@ -295,7 +295,7 @@ Working on the test unit, confirmed by the user:
   CHANGE DISC in the in-game menu (`Item::Disc`) appears when the core reports more than
   one disc, so multi-disc `.pbp` files should get it too; no such file has been tried.
   Left and Right choose a disc and A inserts it and resumes. The frontend answers the
-  core's `SET_DISK_CONTROL_EXT_INTERFACE` (`DiskControl` in `libretro.rs`): it opens the
+  core's `SET_DISK_CONTROL_EXT_INTERFACE` (`DiskControl` in `libretro/host.rs`): it opens the
   lid, sets the disc and closes it, and PCSX ReARMed reports the lid as open for two more
   seconds, which is how a game notices. A disc whose file is missing is refused first,
   because the core would otherwise be left with no disc. If the core fails anyway, the
@@ -636,7 +636,7 @@ Built but not yet tested on the device:
 
 - Display options, in Settings and the in-game menu, saved in `settings.txt`, after
   research into emulator shader techniques. Scaling is sharp-bilinear (`axis_weights` in
-  `libretro.rs`): a screen line across a game pixel boundary blends the two by coverage,
+  `libretro/scale.rs`): a screen line across a game pixel boundary blends the two by coverage,
   so pixels look even at non-whole FIT scales. SCALING INTEGER uses whole multiples: NES
   512x480, SNES 512x448, Game Boy 480x432, GBA 480x320. SCREEN EFFECT CRT darkens the gap
   between game rows by up to 75% for dark pixels and 25% for bright ones, brightened 1.25

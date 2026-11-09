@@ -63,9 +63,16 @@ mod tests {
     /// The literal text in each `tr("...")` and `trf("...", ...)` in the launcher's source.
     fn keys_in_source() -> HashSet<String> {
         let mut keys = HashSet::new();
-        let folder = concat!(env!("CARGO_MANIFEST_DIR"), "/src");
-        for file in std::fs::read_dir(folder).unwrap() {
-            let source = std::fs::read_to_string(file.unwrap().path()).unwrap();
+        let mut folders = vec![std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/src"))];
+        let mut files = Vec::new();
+        while let Some(folder) = folders.pop() {
+            for entry in std::fs::read_dir(folder).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() { folders.push(path) } else { files.push(path) }
+            }
+        }
+        for file in files {
+            let source = std::fs::read_to_string(file).unwrap();
             let code = source.split("#[cfg(test)]\nmod tests").next().unwrap();
             for start in ["tr(\"", "trf(\""] {
                 for (at, _) in code.match_indices(start) {

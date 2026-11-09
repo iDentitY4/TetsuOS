@@ -79,7 +79,7 @@ ADVANCED > RUN SETUP AGAIN repeats.
 - **Modules:** `main.rs` declares them and picks the mode from the arguments (no arguments:
   the menus; `--play`: one game in its own process; `--preview*`: PC screenshots).
   `app.rs` has the menus' loop and actions, `systems.rs` the consoles, `library.rs` the
-  games and tiles, `game.rs` running and resuming games, `libretro.rs` the frontend,
+  games and tiles, `game.rs` running and resuming games, `libretro/` the frontend (`ffi`, `host`, `core`, `scale`, `save`, `audio`, `menu`, `play`),
   `rom_zip.rs` games in ZIPs, `controls.rs` button layouts and turbo, `core_options.rs` cores' own options, `cheats.rs` cheat files and the CHEATS page, `achievements.rs` RetroAchievements through rcheevos, `game_files.rs` which files are a game's, `screenshot.rs` the in-game menu's pictures, `sleep.rs`, `corner.rs` (clock and battery), `launcher.rs` the button logic,
   `screens.rs` and `canvas.rs` the drawing. They reach each other through `use crate::*`.
 - **Settings:** `settings.rs` reads `/mnt/data/settings.txt` once per process.

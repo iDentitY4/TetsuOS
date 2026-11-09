@@ -1,0 +1,508 @@
+//! Running one game: the frame loop, and rendering frames without a screen.
+
+use crate::{
+    achievements, cheats, controls, core_options, input, power, screens, settings,
+};
+use crate::achievements::{Notice, Session};
+use crate::cheats::CheatSource;
+use crate::controls::Layout;
+use crate::fb::Framebuffer;
+use crate::i18n::tr;
+use crate::input::{Button, Controls};
+use crate::pause::{MenuTrigger, PauseMenu};
+use crate::play_time::PlayClock;
+use crate::power::Level;
+use crate::systems::{CoreSetup, Persistence};
+use std::io;
+use std::collections::VecDeque;
+use std::io::{Read, Write};
+use std::path::Path;
+use std::sync::{Arc, LazyLock};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{channel, Receiver};
+use std::thread::{sleep, spawn};
+use std::time::{Duration, Instant};
+use super::host::{set_host, with_host};
+use super::scale::picture_in_area;
+use super::core::Core;
+use super::save::{autosave_frames, load_resume, resume_path, save_progress};
+use super::audio::{AUDIO_PROBE_FRAMES, playback_rate, start_audio};
+use super::menu::{Achievements, AfterMenu, Game, chosen_options, hardcore_off_notice, pause};
+
+/// Set when the system asks the game to stop with SIGTERM, as it does at power-off.
+pub(super) static TERMINATING: LazyLock<Arc<AtomicBool>> = LazyLock::new(|| Arc::new(AtomicBool::new(false)));
+
+const STATS_FRAMES: u64 = 600;
+
+const CPU_SPEED_PATH: &str = "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq";
+
+const CPU_MIN_SPEED_PATH: &str = "/sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq";
+
+const CPU_LOWEST_SPEED_PATH: &str = "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_min_freq";
+
+/// The speed games normally run at, in kHz.
+const CPU_GAME_SPEED: &str = "1008000";
+
+/// How long the CPU stays at game speed after the menu closes, while the governor
+/// catches up. It raises the speed slowly from idle, because a game waits for the
+/// panel between frames, so the first second after a pause stuttered.
+const CPU_HOLD_FRAMES: u64 = 120;
+
+/// Keeps the CPU at game speed or faster, so it is ready when the menu closes.
+fn hold_cpu_speed() {
+    if let Err(error) = std::fs::write(CPU_MIN_SPEED_PATH, CPU_GAME_SPEED) {
+        eprintln!("warning: could not hold the CPU speed: {error}");
+    }
+}
+
+/// Lets the governor choose the CPU speed freely again.
+pub fn release_cpu_speed() {
+    let lowest = std::fs::read_to_string(CPU_LOWEST_SPEED_PATH).unwrap_or_default();
+    if let Err(error) = std::fs::write(CPU_MIN_SPEED_PATH, lowest.trim()) {
+        eprintln!("warning: could not release the CPU speed: {error}");
+    }
+}
+
+/// How a game ended.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Ending {
+    /// Left from the menu, with Menu + Start, or because the system asked.
+    Quit,
+    /// The battery ran out, so the device should power off now that the game is saved.
+    BatteryEmpty,
+}
+
+/// Where the battery warning goes: a corner that is border for every system's picture.
+const WARNING_POSITION: (usize, usize) = (6, 6);
+
+/// Holding this runs the game faster. No supported system uses it.
+const FAST_FORWARD_BUTTON: Button = Button::R2;
+
+/// How long each panel refresh may spend on extra frames while fast-forwarding. With the
+/// frame that is shown, this stays inside one refresh, so sound keeps flowing: at 8 ms,
+/// some refreshes were missed, and the sound ran out.
+const FAST_FORWARD_BUDGET: Duration = Duration::from_millis(6);
+
+/// The most frames per refresh, so a light core doesn't race ahead uncontrollably.
+const FAST_FORWARD_MAX: u32 = 8;
+
+/// Shows or clears the fast-forward sign in the top right corner, which is border for
+/// every system's picture, like the battery warning's corner.
+fn draw_fast_forward(framebuffer: &mut Framebuffer, on: bool) -> io::Result<()> {
+    let canvas = screens::fast_forward_sign(on, crate::corner::current_theme());
+    let (width, _) = framebuffer.size();
+    let x = width.saturating_sub(canvas.width + WARNING_POSITION.0);
+    framebuffer.blit_canvas(&canvas, x, WARNING_POSITION.1)
+}
+
+/// Shows the charge level in the corner while the battery is low.
+fn draw_battery_warning(framebuffer: &mut Framebuffer, percent: u32) -> io::Result<()> {
+    let (x, y) = WARNING_POSITION;
+    framebuffer.blit_canvas(&screens::battery_warning(percent), x, y)
+}
+
+/// The volume levels the launcher sends when a volume button is pressed, each one byte of
+/// percent on this process's standard input.
+pub(super) fn volume_levels() -> Receiver<u32> {
+    let (sender, receiver) = channel();
+    spawn(move || {
+        for byte in io::stdin().lock().bytes().map_while(Result::ok) {
+            if sender.send(u32::from(byte)).is_err() {
+                return;
+            }
+        }
+    });
+    receiver
+}
+
+/// Shows a new volume level during play, and takes the sign away when its time is up.
+fn update_volume_sign(framebuffer: &mut Framebuffer, levels: &Receiver<u32>) -> io::Result<()> {
+    if let Some(percent) = levels.try_iter().last() {
+        crate::app::show_volume(framebuffer, percent)?;
+    }
+    if let Some(area) = framebuffer.take_due_sign() {
+        let size = framebuffer.size();
+        let pixels = with_host(|host| picture_in_area(&host.frame, host.frame_size, size, area));
+        framebuffer.blit(&pixels, area.2, area.3, area.0, area.1)?;
+    }
+    Ok(())
+}
+
+/// The layout a game starts with: its own, or its console's.
+fn layout_for(save: &Path, console: Option<&str>) -> Layout {
+    controls::read_game_layout(save)
+        .or_else(|| console.map(|console| settings::get().controls_for(console)))
+        .unwrap_or_default()
+}
+
+fn save_play_time(clock: &mut PlayClock) {
+    if let Err(error) = clock.save(Instant::now()) {
+        eprintln!("warning: could not save the play time: {error}");
+    }
+}
+
+/// Starts `RetroAchievements` for the game, when an account is logged in and its console has
+/// them. Hardcore needs the core's options to keep to its rules, or the game plays in
+/// softcore.
+fn start_achievements(core: &Core, rom: &Path, save: &Path, console: Option<&str>, notices: &mut VecDeque<Notice>) -> Option<Session> {
+    let id = achievements::console_id(console?)?;
+    let account = achievements::Account::read(Path::new(achievements::ACCOUNT_PATH))?;
+    if settings::get().achievements_off {
+        println!("achievements: off in the settings");
+        return None;
+    }
+    if achievements::is_off_for_game(save) {
+        println!("achievements: off for this game");
+        return None;
+    }
+    let mut hardcore = settings::get().hardcore;
+    if hardcore {
+        if let Some(key) = achievements::disallowed_option(&core.library_name, &chosen_options()) {
+            println!("achievements: {key} isn't allowed in hardcore, so the game plays in softcore");
+            notices.push_back(hardcore_off_notice(&key));
+            hardcore = false;
+        }
+    }
+    match Session::start(&account, id, rom, save, hardcore, core.memory()) {
+        Ok(session) => Some(session),
+        Err(error) => {
+            eprintln!("achievements: could not start: {error}");
+            None
+        }
+    }
+}
+
+/// Where notices show: at the bottom, where games tend to have least.
+const NOTICE_BOTTOM: usize = 8;
+
+/// Shows the next notice once the screen has no sign.
+fn show_next_notice(framebuffer: &mut Framebuffer, notices: &mut VecDeque<Notice>, session: Option<&mut Session>) -> io::Result<()> {
+    if framebuffer.sign_wait() != Duration::MAX {
+        return Ok(());
+    }
+    let Some(notice) = notices.pop_front() else { return Ok(()) };
+    let badge = match (session, &notice.badge) {
+        (Some(session), Some(name)) => session.badges().get(name, achievements::NOTICE_BADGE, false),
+        _ => None,
+    };
+    let canvas = screens::achievement_notice(&notice, badge.as_ref(), crate::corner::current_theme());
+    let top = framebuffer.size().1.saturating_sub(canvas.height + NOTICE_BOTTOM);
+    framebuffer.show_sign(&canvas, top, notice.time)
+}
+
+fn wants_to_leave(controls: &Controls) -> bool {
+    TERMINATING.load(Ordering::Relaxed)
+        || (controls.is_held(Button::Menu) && controls.is_held(Button::Start))
+}
+
+/// Runs a game on the framebuffer until it is quit from the menu, or Menu and Start are
+/// held together.
+pub fn play(
+    core_path: &Path,
+    rom: &Path,
+    save: &Path,
+    persistence: Persistence,
+    setup: CoreSetup,
+    console: Option<&'static str>,
+    cheat_source: Option<CheatSource>,
+    framebuffer: &mut Framebuffer,
+) -> io::Result<Ending> {
+    if let Err(error) = signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&TERMINATING)) {
+        eprintln!("warning: a power-off may not save the game: {error}");
+    }
+    let directory = save.parent().unwrap_or(Path::new("."));
+    set_host(directory, framebuffer.size(), setup, console, layout_for(save, console))?;
+    with_host(|host| host.choices = core_options::choices_for(save, console));
+    let mut core = Core::load(core_path, rom)?;
+    let mut notices = VecDeque::new();
+    let mut session = start_achievements(&core, rom, save, console, &mut notices);
+    // Hardcore allows neither going back to a state nor cheats.
+    let restricted = session.as_ref().is_some_and(Session::restricts);
+    let mut save_file = core.open_save(save, persistence)?;
+    let resume = resume_path(save, persistence);
+    match &resume {
+        Some(_) if restricted => println!("achievements: hardcore, so the game starts from its save"),
+        Some(path) => load_resume(&mut core, path)?,
+        None => {}
+    }
+    if let Some(source) = cheat_source.as_ref().filter(|_| !restricted) {
+        // Only codes still in the file, should it have changed or gone since.
+        let enabled = cheats::read_enabled(save);
+        let codes: Vec<String> = cheats::read(source).into_iter().map(|cheat| cheat.code).filter(|code| enabled.contains(code)).collect();
+        if !codes.is_empty() {
+            core.apply_cheats(&codes.iter().map(String::as_str).collect::<Vec<_>>());
+            println!("cheats: {} on", codes.len());
+        }
+    }
+    let (fps, sample_rate) = (core.av_info.timing.fps, core.av_info.timing.sample_rate);
+    println!("playing {} at {fps:.2} fps, {sample_rate:.0} Hz", rom.display());
+
+    let frame_time = Duration::from_secs_f64(1.0 / fps);
+    let events = input::spawn_readers();
+    let levels = volume_levels();
+    framebuffer.clear()?;
+
+    let mut next_frame = Instant::now();
+    let mut play_clock = PlayClock::start(save, next_frame);
+    let mut stats_start = next_frame;
+    let mut run_time = Duration::ZERO;
+    let mut screen_time = Duration::ZERO;
+    let mut vsync_time = Duration::ZERO;
+    let mut vsync_works = true;
+    let mut frames = 0u64;
+    let discs = with_host(|host| host.disk_control).map_or(0, |control| control.count());
+    let mut menu = PauseMenu::with(discs, cheat_source.is_some() && !restricted, session.is_some());
+    let mut trigger = MenuTrigger::new();
+    let mut release_at = None;
+    let mut battery = power::Monitor::new();
+    let mut fast_forwarding = false;
+    // Extra frames run by fast-forward since the last statistics line.
+    let mut fast_frames = 0u64;
+    let mut ending = Ending::Quit;
+    loop {
+        let (leave, open_menu, lid_closed) = with_host(|host| {
+            let (mut open_menu, mut lid_closed) = (false, false);
+            for event in events.try_iter() {
+                host.controls.apply(&event);
+                open_menu |= trigger.update(&event);
+                lid_closed |= event.pressed() == Some(Button::Lid);
+            }
+            (wants_to_leave(&host.controls), open_menu, lid_closed)
+        });
+        if leave {
+            break;
+        }
+        if lid_closed {
+            // The launcher puts the device to sleep shortly. The battery can run out while
+            // it sleeps, so save where the game is first.
+            if let Err(error) = save_progress(&mut core, persistence, &mut save_file, resume.as_deref()) {
+                eprintln!("warning: could not save before sleeping: {error}");
+            }
+            save_play_time(&mut play_clock);
+        }
+        match battery.check(Instant::now()) {
+            Some(Level::Critical) => {
+                eprintln!("the battery is empty: saving and powering off");
+                let (width, height) = framebuffer.size();
+                framebuffer.draw(&screens::message_screen(width, height, tr("BATTERY EMPTY"), crate::corner::current_theme()))?;
+                ending = Ending::BatteryEmpty;
+                break;
+            }
+            Some(Level::Low(percent)) => draw_battery_warning(framebuffer, percent)?,
+            Some(Level::Fine) | None => {}
+        }
+        update_volume_sign(framebuffer, &levels)?;
+        if let Some(session) = session.as_mut() {
+            achievements::queue(&mut notices, session.pump());
+        }
+        show_next_notice(framebuffer, &mut notices, session.as_mut())?;
+        if open_menu {
+            save_play_time(&mut play_clock);
+            hold_cpu_speed();
+            let game = Game { rom, save, cheat_source: cheat_source.as_ref() };
+            let mut achievements = Achievements { session: &mut session, notices: &mut notices };
+            if pause(&mut core, &game, &mut achievements, &mut menu, framebuffer, &events, &levels)? == AfterMenu::Quit {
+                break;
+            }
+            release_at = Some(frames - frames % STATS_FRAMES + CPU_HOLD_FRAMES);
+            // The pause shouldn't count as slow frames, or make the game catch up.
+            stats_start = Instant::now();
+            next_frame = stats_start;
+            frames -= frames % STATS_FRAMES;
+            run_time = Duration::ZERO;
+            screen_time = Duration::ZERO;
+            vsync_time = Duration::ZERO;
+            with_host(|host| {
+                host.scale_time = Duration::ZERO;
+                host.audio_time = Duration::ZERO;
+            });
+        }
+        // A button changed in the layout is for the game alone.
+        let fast = with_host(|host| host.controls.is_held(FAST_FORWARD_BUTTON) && host.layout.is_unchanged(FAST_FORWARD_BUTTON))
+            && !session.as_ref().is_some_and(Session::restricts);
+        if fast != fast_forwarding {
+            draw_fast_forward(framebuffer, fast)?;
+            fast_forwarding = fast;
+            // From idle, the governor is too slow to keep up with the first extra frames.
+            if fast {
+                hold_cpu_speed();
+            } else if release_at.is_none() {
+                release_cpu_speed();
+            }
+        }
+        let run_start = Instant::now();
+        if fast {
+            // Extra frames, with only the last one's picture and sound kept.
+            with_host(|host| host.skip_output = true);
+            let mut extra = 0;
+            while extra + 1 < FAST_FORWARD_MAX && run_start.elapsed() < FAST_FORWARD_BUDGET {
+                core.run_frame();
+                if let Some(session) = session.as_mut() {
+                    session.do_frame();
+                }
+                extra += 1;
+            }
+            with_host(|host| host.skip_output = false);
+            fast_frames += u64::from(extra);
+        }
+        core.run_frame();
+        if let Some(session) = session.as_mut() {
+            session.do_frame();
+        }
+        run_time += run_start.elapsed();
+        with_host(|host| -> io::Result<()> {
+            if host.frame_ready {
+                if vsync_works {
+                    let vsync_start = Instant::now();
+                    if let Err(error) = framebuffer.wait_for_vsync() {
+                        eprintln!("warning: can't wait for the panel, so the game may tear: {error}");
+                        vsync_works = false;
+                    }
+                    vsync_time += vsync_start.elapsed();
+                }
+                let screen_start = Instant::now();
+                let (width, height) = host.frame_size;
+                framebuffer.blit_centred(&host.frame, width, height)?;
+                host.frame_ready = false;
+                screen_time += screen_start.elapsed();
+            }
+            Ok(())
+        })?;
+
+        frames += 1;
+        if play_clock.tick(Instant::now()) {
+            save_play_time(&mut play_clock);
+        }
+        if frames == AUDIO_PROBE_FRAMES && with_host(|host| host.audio.is_none()) {
+            let measured = with_host(|host| host.audio_bytes) as f64 / 4.0 / AUDIO_PROBE_FRAMES as f64;
+            // Starting games can make less sound than they do later, so the measurement
+            // can only raise the amount the core's timing says, as Super Game Boy games
+            // need. LeafGreen measured 1065 against 1097 from its timing, and lowering the
+            // rate to match made it wait on the audio at 58.1 fps.
+            let samples_per_frame = measured.max(sample_rate / fps);
+            let rate = playback_rate(sample_rate, samples_per_frame);
+            println!("{samples_per_frame:.1} samples per frame: playing sound at {rate:.0} Hz");
+            match start_audio(rate) {
+                Ok(audio) => with_host(|host| host.audio = Some(audio)),
+                Err(error) => eprintln!("warning: no audio: {error}"),
+            }
+        }
+        if release_at == Some(frames) {
+            // Fast-forward keeps holding it until the button is let go.
+            if !fast_forwarding {
+                release_cpu_speed();
+            }
+            release_at = None;
+        }
+        if frames.is_multiple_of(autosave_frames(persistence)) {
+            let saved = core.snapshot(persistence).and_then(|progress| save_file.update(&progress));
+            if let Err(error) = saved {
+                eprintln!("warning: could not save: {error}");
+            }
+        }
+        if frames.is_multiple_of(STATS_FRAMES) {
+            let fps = STATS_FRAMES as f64 / stats_start.elapsed().as_secs_f64();
+            let (scale, audio) = with_host(|host| {
+                (std::mem::take(&mut host.scale_time), std::mem::take(&mut host.audio_time))
+            });
+            let per_frame = |time: Duration| time.as_secs_f64() * 1000.0 / STATS_FRAMES as f64;
+            let emulate = run_time.saturating_sub(scale + audio);
+            let speed = std::fs::read_to_string(CPU_SPEED_PATH).unwrap_or_default();
+            println!(
+                "{fps:.2} fps, ms per frame: emulate {:.1}, scale {:.1}, screen {:.1}, audio wait {:.1}, vsync wait {:.1}, cpu {} kHz, speed {:.1}x",
+                per_frame(emulate),
+                per_frame(scale),
+                per_frame(screen_time),
+                per_frame(audio),
+                per_frame(vsync_time),
+                speed.trim(),
+                (STATS_FRAMES + fast_frames) as f64 / STATS_FRAMES as f64,
+            );
+            fast_frames = 0;
+            run_time = Duration::ZERO;
+            screen_time = Duration::ZERO;
+            vsync_time = Duration::ZERO;
+            stats_start = Instant::now();
+        }
+
+        // The panel and audio pace the game. This only covers them both failing.
+        if !vsync_works {
+            next_frame += frame_time;
+            let now = Instant::now();
+            if next_frame > now {
+                sleep(next_frame - now);
+            } else if now - next_frame > Duration::from_millis(100) {
+                next_frame = now;
+            }
+        }
+    }
+
+    if release_at.is_some() || fast_forwarding {
+        release_cpu_speed();
+    }
+    save_play_time(&mut play_clock);
+    save_progress(&mut core, persistence, &mut save_file, resume.as_deref())?;
+    if let Some(session) = session.take() {
+        session.finish();
+    }
+    let audio = with_host(|host| host.audio.take());
+    if let Some(mut audio) = audio {
+        drop(audio.stdin.take());
+        let _ = audio.wait();
+    }
+    // SAFETY: the game is loaded, and nothing uses the core after this.
+    unsafe {
+        (core.unload_game)();
+        (core.deinit)();
+    }
+    Ok(ending)
+}
+
+/// Runs a game with no display, audio or pacing, to check a core away from the device.
+/// Writes the last frame as a PPM image.
+pub fn render(
+    core_path: &Path,
+    rom: &Path,
+    save: &Path,
+    persistence: Persistence,
+    setup: CoreSetup,
+    frames: u64,
+    output: &Path,
+) -> io::Result<()> {
+    set_host(save.parent().unwrap_or(Path::new(".")), (640, 480), setup, None, Layout::default())?;
+    let mut core = Core::load(core_path, rom)?;
+    let console = crate::systems::system_for(rom).and_then(|system| achievements::console_id(system.key));
+    // At load, where a session first looks, and after the frames, as some cores, such as
+    // mGBA, give their memory map only in their first frame.
+    if let Some(console) = console {
+        let (bytes, regions) = achievements::memory_found(console, core.memory());
+        println!("achievement memory at load: {bytes} bytes in {regions} regions");
+    }
+    let mut save_file = core.open_save(save, persistence)?;
+    let start = Instant::now();
+    for _ in 0..frames {
+        core.run_frame();
+    }
+    let elapsed = start.elapsed().as_secs_f64();
+    save_file.update(&core.snapshot(persistence)?)?;
+
+    let (bytes, width, height, pixels, source) = with_host(|host| {
+        let (width, height) = host.frame_size;
+        (host.audio_bytes, width, height, std::mem::take(&mut host.frame), host.source_size)
+    });
+    println!("{frames} frames in {elapsed:.2} s: {:.0} fps", frames as f64 / elapsed);
+    println!("core timing: {:.2} fps, {:.0} Hz", core.av_info.timing.fps, core.av_info.timing.sample_rate);
+    println!("audio: {bytes} bytes, save RAM: {} bytes", core.save_ram().len());
+    println!("last frame: {}x{} from the core, shown at {width}x{height}", source.0, source.1);
+    if let Some(console) = console {
+        let (bytes, regions) = achievements::memory_found(console, core.memory());
+        println!("achievement memory after {frames} frames: {bytes} bytes in {regions} regions");
+    }
+
+    let mut file = io::BufWriter::new(std::fs::File::create(output)?);
+    write!(file, "P6\n{width} {height}\n255\n")?;
+    for pixel in pixels {
+        file.write_all(&[(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8])?;
+    }
+    file.flush()
+}
