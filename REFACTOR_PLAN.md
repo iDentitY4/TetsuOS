@@ -129,7 +129,7 @@ batches 1, 5 and 7.
 - [x] **5. `canvas` split** — A1: in-game menu drawing out of `canvas.rs`, into `pause_screens.rs`.
 - [x] **6. Explicit imports and visibility** — A6, P1. The crate has no glob imports left, which shows the real graph: the cycle of 24 is now one of 14 (the screens and flows, `libretro`, `achievements`) and one of 5 (`settings`, `i18n`, `input`, `controls`, `clock`). Not done: I1, whose premise was wrong (in a binary crate the compiler already reports unused `pub` items, so `pub(crate)` would be 650 changed lines for style only), and the rest of A3 (`i18n` reads the language from `settings` on every call; giving it a copy of its own could change when a language switch shows).
 - [x] **7. `libretro` split** — A5: `libretro/{ffi,host,core,scale,save,audio,menu,play}.rs` as moves (one commit), then `pause` (267 → 108 lines) and `play` (262 → 186) cut into steps (another). Items shared between the files are `pub(super)`.
-- [ ] **8. Long functions** — A7.
+- [x] **8. Long functions** — A7: `launcher_canvas` (175 → 60 lines, one function per screen), `run_launcher` (179 → 95; `wait_for_wake`, `action_for`, `resume_interrupted_game`, the loop's state in `Watch`), `wifi_settings` (164 → 30; `poll`, `wifi_canvas`, `pressed_buttons`, `carry_out`), `press_group` (the Left/Right table in `step_command`), and `play` takes one `GameSpec` in place of 8 arguments. Default clippy is clean. Left over 100 lines: `act` (145) and `environment` (108), each one flat `match` with short arms, and `play`'s frame loop (162).
 - [ ] **9. Paths and casts** — A9, P2, then I6 to record the lint bar.
 
 Flagged, not planned: C5 (adds log lines), B2/B3 (dependency changes), and any change to

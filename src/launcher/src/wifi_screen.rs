@@ -2,6 +2,7 @@
 
 use crate::{fb, icons, power, screens, wifi, wifi_menu};
 use crate::app::{keyboard_sound, press_volume};
+use crate::canvas::{Battery, Canvas};
 use crate::corner::{add_clock, read_battery, screen_frame};
 use crate::i18n::{tr, trf};
 use crate::input::{Button, Event};
@@ -75,18 +76,190 @@ pub(crate) fn start_connecting(
     Ok(wifi_menu::Attempt { id, ssid, added, started: Instant::now() })
 }
 
+/// What the Wi-Fi screen knows from `wpa_supplicant`.
+struct Link {
+    control: Option<wifi::Control>,
+    status: wifi::Status,
+    /// The network being joined.
+    attempt: Option<wifi_menu::Attempt>,
+    last_scan: Option<Instant>,
+}
+
+/// Reads the status and the networks into the menu, scans when it is time to, and follows
+/// the attempt to join a network.
+fn poll(link: &mut Link, menu: &mut wifi_menu::WifiMenu, now: Instant) {
+    use wifi_menu::Progress;
+    if link.control.is_none() {
+        link.control = wifi::Control::open(Path::new(wifi::CONTROL_PATH))
+            .inspect_err(|error| eprintln!("wifi: no control socket: {error}"))
+            .ok();
+    }
+    if let Some(wpa) = &link.control {
+        if link.last_scan.is_none_or(|time| now.duration_since(time) >= WIFI_SCAN_EVERY) {
+            wpa.scan();
+            link.last_scan = Some(now);
+        }
+        match (wpa.status(), wpa.saved(), wpa.scan_results()) {
+            (Ok(reading), Ok(mut saved), Ok(networks)) => {
+                link.status = reading;
+                let progress = link.attempt.as_ref().map(|current| current.progress(&link.status, &saved, now));
+                match (progress, link.attempt.take()) {
+                    (Some(Progress::Connected), Some(_)) => {
+                        if let Err(error) = wpa.keep() {
+                            eprintln!("wifi: could not save the network: {error}");
+                        }
+                        menu.message = None;
+                    }
+                    (Some(Progress::Failed(reason)), Some(failed)) => {
+                        eprintln!("wifi: {reason}");
+                        if let Err(error) = wpa.give_up(failed.id, failed.added) {
+                            eprintln!("wifi: {error}");
+                        }
+                        menu.message = Some(reason.into());
+                    }
+                    (_, current) => link.attempt = current,
+                }
+                if link.attempt.is_none() {
+                    saved = wpa.saved().unwrap_or(saved);
+                }
+                menu.set_entries(wifi_menu::entries(&networks, &saved, &link.status));
+            }
+            _ => {
+                // wpa_supplicant stopped; try again on the next poll.
+                link.control = None;
+                link.attempt = None;
+            }
+        }
+    }
+}
+
+/// The list of networks, or the keyboard while a password is typed.
+fn wifi_canvas(size: (usize, usize), menu: &wifi_menu::WifiMenu, link: &Link, battery: Option<Battery>) -> Canvas {
+    let mut canvas = match &menu.keyboard {
+        Some((ssid, keyboard)) => {
+            let subtitle = trf("FOR {}", &[&wifi::display_name(ssid)]);
+            let view = screens::KeyboardView {
+                icon: &icons::WIFI,
+                title: tr("PASSWORD"),
+                subtitle: &subtitle,
+                valid_note: password_note(),
+            };
+            screens::keyboard_screen(size.0, size.1, &view, keyboard, &screen_frame(battery))
+        }
+        None => {
+            let line = wifi_status_line(link.control.is_some(), &link.status, link.attempt.as_ref());
+            let view = screens::WifiView {
+                entries: &menu.entries,
+                selected: menu.selected(),
+                status: &line,
+                connected: link.attempt.is_none() && link.status.connected(),
+                message: menu.message.as_deref(),
+            };
+            screens::wifi_screen(size.0, size.1, &view, &screen_frame(battery))
+        }
+    };
+    add_clock(&mut canvas, battery);
+    canvas
+}
+
+/// Waits for a press, and gives the buttons the menu should take: a new press, a held
+/// button's repeats, or none. `None` when the input has ended.
+fn pressed_buttons(
+    framebuffer: &mut fb::Framebuffer,
+    events: &Receiver<Event>,
+    repeater: &mut Repeater,
+    timeout: Duration,
+    last_poll: &mut Option<Instant>,
+) -> io::Result<Option<Vec<Button>>> {
+    Ok(Some(match events.recv_timeout(timeout) {
+        Ok(event) => {
+            if let Some(button) = event.released() {
+                repeater.release(button);
+            }
+            match event.pressed() {
+                Some(Button::Lid) => {
+                    repeater.stop();
+                    sleep_until_lid_opens(events);
+                    *last_poll = None;
+                    vec![]
+                }
+                Some(button @ (Button::VolumeUp | Button::VolumeDown)) => {
+                    press_volume(framebuffer, button)?;
+                    vec![]
+                }
+                Some(button) => {
+                    repeater.press(button, Instant::now());
+                    vec![button]
+                }
+                None => vec![],
+            }
+        }
+        Err(RecvTimeoutError::Timeout) => match repeater.due(Instant::now()) {
+            Some((button, count)) => vec![button; count],
+            None => vec![],
+        },
+        Err(RecvTimeoutError::Disconnected) => return Ok(None),
+    }))
+}
+
+/// Carries out what a press in the menu asked for. True when it asked to leave the screen.
+fn carry_out(request: wifi_menu::Request, link: &mut Link, menu: &mut wifi_menu::WifiMenu, last_poll: &mut Option<Instant>) -> bool {
+    use wifi_menu::Request;
+    match request {
+        Request::Nothing => {}
+        Request::Back => {
+            if let (Some(wpa), Some(current)) = (&link.control, link.attempt.take()) {
+                let _ = wpa.give_up(current.id, current.added);
+            }
+            return true;
+        }
+        Request::Scan => {
+            if let Some(wpa) = &link.control {
+                wpa.scan();
+                link.last_scan = Some(Instant::now());
+            }
+        }
+        Request::Connect { ssid, saved, password } => {
+            let Some(wpa) = &link.control else { return false };
+            if let Some(current) = link.attempt.take() {
+                let _ = wpa.give_up(current.id, current.added);
+            }
+            match start_connecting(wpa, ssid, saved, password.as_deref()) {
+                Ok(started) => {
+                    link.attempt = Some(started);
+                    menu.message = None;
+                }
+                Err(error) => {
+                    eprintln!("wifi: could not connect: {error}");
+                    menu.message = Some(tr("COULD NOT CONNECT").into());
+                }
+            }
+            *last_poll = None;
+        }
+        Request::Forget(id) => {
+            if let Some(wpa) = &link.control {
+                menu.message = Some(match wpa.forget(id) {
+                    Ok(()) => tr("NETWORK FORGOTTEN").into(),
+                    Err(error) => {
+                        eprintln!("wifi: could not forget: {error}");
+                        tr("COULD NOT FORGET THE NETWORK").into()
+                    }
+                });
+            }
+            *last_poll = None;
+        }
+    }
+    false
+}
+
 /// The Wi-Fi screen, from Settings: networks in range, joining them with a password typed
 /// on an on-screen keyboard, and forgetting them. Returns when B is pressed.
 pub(crate) fn wifi_settings(framebuffer: &mut fb::Framebuffer, events: &Receiver<Event>) -> io::Result<()> {
-    use wifi_menu::{Progress, Request};
     let size = framebuffer.size();
     let mut menu = wifi_menu::WifiMenu::new();
     let mut repeater = Repeater::new();
-    let mut control: Option<wifi::Control> = None;
-    let mut status = wifi::Status::default();
-    let mut attempt: Option<wifi_menu::Attempt> = None;
+    let mut link = Link { control: None, status: wifi::Status::default(), attempt: None, last_scan: None };
     let mut last_poll: Option<Instant> = None;
-    let mut last_scan: Option<Instant> = None;
     let mut battery = read_battery(&power::battery_dir());
 
     loop {
@@ -94,157 +267,23 @@ pub(crate) fn wifi_settings(framebuffer: &mut fb::Framebuffer, events: &Receiver
         if last_poll.is_none_or(|time| now.duration_since(time) >= WIFI_POLL) {
             last_poll = Some(now);
             battery = read_battery(&power::battery_dir());
-            if control.is_none() {
-                control = wifi::Control::open(Path::new(wifi::CONTROL_PATH))
-                    .inspect_err(|error| eprintln!("wifi: no control socket: {error}"))
-                    .ok();
-            }
-            if let Some(wpa) = &control {
-                if last_scan.is_none_or(|time| now.duration_since(time) >= WIFI_SCAN_EVERY) {
-                    wpa.scan();
-                    last_scan = Some(now);
-                }
-                match (wpa.status(), wpa.saved(), wpa.scan_results()) {
-                    (Ok(reading), Ok(mut saved), Ok(networks)) => {
-                        status = reading;
-                        let progress = attempt.as_ref().map(|current| current.progress(&status, &saved, now));
-                        match (progress, attempt.take()) {
-                            (Some(Progress::Connected), Some(_)) => {
-                                if let Err(error) = wpa.keep() {
-                                    eprintln!("wifi: could not save the network: {error}");
-                                }
-                                menu.message = None;
-                            }
-                            (Some(Progress::Failed(reason)), Some(failed)) => {
-                                eprintln!("wifi: {reason}");
-                                if let Err(error) = wpa.give_up(failed.id, failed.added) {
-                                    eprintln!("wifi: {error}");
-                                }
-                                menu.message = Some(reason.into());
-                            }
-                            (_, current) => attempt = current,
-                        }
-                        if attempt.is_none() {
-                            saved = wpa.saved().unwrap_or(saved);
-                        }
-                        menu.set_entries(wifi_menu::entries(&networks, &saved, &status));
-                    }
-                    _ => {
-                        // wpa_supplicant stopped; try again on the next poll.
-                        control = None;
-                        attempt = None;
-                    }
-                }
-            }
+            poll(&mut link, &mut menu, now);
         }
-
-        let mut canvas = match &menu.keyboard {
-            Some((ssid, keyboard)) => {
-                let subtitle = trf("FOR {}", &[&wifi::display_name(ssid)]);
-                let view = screens::KeyboardView {
-                    icon: &icons::WIFI,
-                    title: tr("PASSWORD"),
-                    subtitle: &subtitle,
-                    valid_note: password_note(),
-                };
-                screens::keyboard_screen(size.0, size.1, &view, keyboard, &screen_frame(battery))
-            }
-            None => {
-                let line = wifi_status_line(control.is_some(), &status, attempt.as_ref());
-                let view = screens::WifiView {
-                    entries: &menu.entries,
-                    selected: menu.selected(),
-                    status: &line,
-                    connected: attempt.is_none() && status.connected(),
-                    message: menu.message.as_deref(),
-                };
-                screens::wifi_screen(size.0, size.1, &view, &screen_frame(battery))
-            }
-        };
-        add_clock(&mut canvas, battery);
-        framebuffer.draw(&canvas)?;
+        framebuffer.draw(&wifi_canvas(size, &menu, &link, battery))?;
 
         let poll_due = last_poll.map_or(Duration::ZERO, |time| (time + WIFI_POLL).saturating_duration_since(Instant::now()));
         // Drawing again removes the volume sign.
         let timeout = repeater.wait(Instant::now()).map_or(poll_due, |wait| wait.min(poll_due)).min(framebuffer.sign_wait());
-        let buttons: Vec<Button> = match events.recv_timeout(timeout) {
-            Ok(event) => {
-                if let Some(button) = event.released() {
-                    repeater.release(button);
-                }
-                match event.pressed() {
-                    Some(Button::Lid) => {
-                        repeater.stop();
-                        sleep_until_lid_opens(events);
-                        last_poll = None;
-                        vec![]
-                    }
-                    Some(button @ (Button::VolumeUp | Button::VolumeDown)) => {
-                        press_volume(framebuffer, button)?;
-                        vec![]
-                    }
-                    Some(button) => {
-                        repeater.press(button, Instant::now());
-                        vec![button]
-                    }
-                    None => vec![],
-                }
-            }
-            Err(RecvTimeoutError::Timeout) => match repeater.due(Instant::now()) {
-                Some((button, count)) => vec![button; count],
-                None => vec![],
-            },
-            Err(RecvTimeoutError::Disconnected) => return Ok(()),
+        let Some(buttons) = pressed_buttons(framebuffer, events, &mut repeater, timeout, &mut last_poll)? else {
+            return Ok(());
         };
-
         for button in buttons {
             if menu.keyboard.is_some() {
                 keyboard_sound(button);
             }
-            match menu.press(button) {
-                Request::Nothing => {}
-                Request::Back => {
-                    if let (Some(wpa), Some(current)) = (&control, attempt.take()) {
-                        let _ = wpa.give_up(current.id, current.added);
-                    }
-                    events.try_iter().for_each(drop);
-                    return Ok(());
-                }
-                Request::Scan => {
-                    if let Some(wpa) = &control {
-                        wpa.scan();
-                        last_scan = Some(Instant::now());
-                    }
-                }
-                Request::Connect { ssid, saved, password } => {
-                    let Some(wpa) = &control else { continue };
-                    if let Some(current) = attempt.take() {
-                        let _ = wpa.give_up(current.id, current.added);
-                    }
-                    match start_connecting(wpa, ssid, saved, password.as_deref()) {
-                        Ok(started) => {
-                            attempt = Some(started);
-                            menu.message = None;
-                        }
-                        Err(error) => {
-                            eprintln!("wifi: could not connect: {error}");
-                            menu.message = Some(tr("COULD NOT CONNECT").into());
-                        }
-                    }
-                    last_poll = None;
-                }
-                Request::Forget(id) => {
-                    if let Some(wpa) = &control {
-                        menu.message = Some(match wpa.forget(id) {
-                            Ok(()) => tr("NETWORK FORGOTTEN").into(),
-                            Err(error) => {
-                                eprintln!("wifi: could not forget: {error}");
-                                tr("COULD NOT FORGET THE NETWORK").into()
-                            }
-                        });
-                    }
-                    last_poll = None;
-                }
+            if carry_out(menu.press(button), &mut link, &mut menu, &mut last_poll) {
+                events.try_iter().for_each(drop);
+                return Ok(());
             }
         }
     }

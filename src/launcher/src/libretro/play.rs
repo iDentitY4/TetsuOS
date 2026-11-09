@@ -307,18 +307,23 @@ fn start_probed_audio(sample_rate: f64, fps: f64) {
     }
 }
 
+/// A game to play, and how its console runs.
+#[derive(Clone, Copy)]
+pub struct GameSpec<'a> {
+    pub core: &'a Path,
+    pub rom: &'a Path,
+    pub save: &'a Path,
+    pub persistence: Persistence,
+    pub setup: CoreSetup,
+    pub console: Option<&'static str>,
+    /// Where the game's cheats are, for a console that has them.
+    pub cheats: Option<&'a CheatSource>,
+}
+
 /// Runs a game on the framebuffer until it is quit from the menu, or Menu and Start are
 /// held together.
-pub fn play(
-    core_path: &Path,
-    rom: &Path,
-    save: &Path,
-    persistence: Persistence,
-    setup: CoreSetup,
-    console: Option<&'static str>,
-    cheat_source: Option<CheatSource>,
-    framebuffer: &mut Framebuffer,
-) -> io::Result<Ending> {
+pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending> {
+    let GameSpec { core: core_path, rom, save, persistence, setup, console, cheats: cheat_source } = *game;
     if let Err(error) = signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&TERMINATING)) {
         eprintln!("warning: a power-off may not save the game: {error}");
     }
@@ -337,7 +342,7 @@ pub fn play(
         Some(path) => load_resume(&mut core, path)?,
         None => {}
     }
-    if let Some(source) = cheat_source.as_ref().filter(|_| !restricted) {
+    if let Some(source) = cheat_source.filter(|_| !restricted) {
         apply_saved_cheats(&mut core, source, save);
     }
     let (fps, sample_rate) = (core.av_info.timing.fps, core.av_info.timing.sample_rate);
@@ -400,7 +405,7 @@ pub fn play(
         if open_menu {
             save_play_time(&mut play_clock);
             hold_cpu_speed();
-            let game = Game { rom, save, cheat_source: cheat_source.as_ref() };
+            let game = Game { rom, save, cheat_source };
             let mut achievements = Achievements { session: &mut session, notices: &mut notices };
             if pause(&mut core, &game, &mut achievements, &mut menu, framebuffer, &events, &levels)? == AfterMenu::Quit {
                 break;

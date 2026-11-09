@@ -145,6 +145,186 @@ pub(crate) fn button_test(
     Ok(())
 }
 
+/// The home screen, with a tile for each list that is shown.
+fn home_canvas((width, height): (usize, usize), launcher: &Launcher, library: &Library, frame: &screens::Frame) -> canvas::Canvas {
+    let tiles: Vec<screens::TileView> = library
+        .tiles()
+        .iter()
+        .map(|tile| match *tile {
+            Tile::Recent => screens::TileView { icon: &icons::RECENT, label: tr("RECENT"), count: None },
+            Tile::Favorites => screens::TileView {
+                icon: &icons::FAVORITES,
+                label: tr("FAVORITES"),
+                count: Some(library.favorites.len()),
+            },
+            Tile::System(system) => screens::TileView {
+                icon: SYSTEMS[system].icon,
+                label: SYSTEMS[system].label,
+                count: Some(library.games(List::System(system)).len()),
+            },
+            Tile::Settings => screens::TileView { icon: &icons::SETTINGS, label: tr("SETTINGS"), count: None },
+        })
+        .collect();
+    let settings = settings::get();
+    let selected = launcher.home_selected(library);
+    screens::home_screen(width, height, settings.shown_title(), library.grid, &tiles, selected, frame)
+}
+
+/// A list of games, and the area of the selected row if its name scrolls.
+fn games_canvas(
+    (width, height): (usize, usize),
+    list: List,
+    launcher: &Launcher,
+    library: &Library,
+    art: &mut boxart::BoxArt,
+    scrolled: Duration,
+    frame: &screens::Frame,
+) -> (canvas::Canvas, Option<(usize, usize, usize, usize)>) {
+    let (icon, title) = match list {
+        List::Recent => (&icons::RECENT, tr("RECENT")),
+        List::Favorites => (&icons::FAVORITES, tr("FAVORITES")),
+        List::Search => (&icons::SEARCH, tr("SEARCH")),
+        List::System(system) => (SYSTEMS[system].icon, SYSTEMS[system].console),
+    };
+    let rows: Vec<screens::RowView> = library
+        .games(list)
+        .iter()
+        .map(|game| screens::RowView {
+            name: &game.name,
+            // Lists of games from several consoles show each one's console.
+            icon: matches!(list, List::Recent | List::Favorites | List::Search).then_some(SYSTEMS[game.system].icon),
+            starred: library.is_favorite(game),
+        })
+        .collect();
+    let selected = launcher.list_selected(library, list);
+    let game = library.games(list).get(selected);
+    // Without covers, the list leaves out the panel and names have the whole width.
+    let shown = !settings::get().covers_hidden;
+    let cover = game.filter(|_| shown).and_then(|game| art.get(&game.path));
+    let art = match (&cover, game) {
+        _ if !shown => None,
+        (Some(image), _) => Some(screens::Art::Cover(image)),
+        (None, Some(game)) => Some(screens::Art::Placeholder(SYSTEMS[game.system].icon)),
+        (None, None) => None,
+    };
+    let mut scrolling = None;
+    let overflow = screens::name_overflow(width, &rows, selected, art.is_some());
+    if overflow > 0 {
+        scrolling = Some(screens::selected_row_area(width, &rows, selected, art.is_some()));
+    }
+    let scroll = screens::scroll_offset(scrolled, overflow);
+    let letters = library.jumps_by_letter(list);
+    let view = screens::ListView { icon, title, rows: &rows, selected, art, scroll, letters };
+    (screens::list_screen(width, height, &view, frame), scrolling)
+}
+
+/// A game's details.
+fn details_canvas(
+    (width, height): (usize, usize),
+    launcher: &Launcher,
+    library: &Library,
+    art: &mut boxart::BoxArt,
+    frame: &screens::Frame,
+) -> canvas::Canvas {
+    let game = launcher.details_game(library);
+    let (icon, name, facts, starred) = match game {
+        Some(game) => {
+            let files = game_files::GameFiles::of(&game.path);
+            let settings = settings::get();
+            let played = files.last_played().and_then(|time| jiff::Timestamp::try_from(time).ok());
+            let played = played.map_or(tr("NOT YET").to_string(), |time| {
+                clock::short_date_text(&clock::local(time, settings.time_zone()))
+            });
+            // Unknown for a game played before play time was counted.
+            let time = match files.play_time() {
+                Some(time) => game_files::play_time_text(time),
+                None if files.last_played().is_some() => tr("UNKNOWN").to_string(),
+                None => tr("NOT YET").to_string(),
+            };
+            let facts = vec![
+                (tr("CONSOLE"), SYSTEMS[game.system].console.to_string()),
+                (tr("SIZE"), game_files::size_text(files.size())),
+                (tr("LAST PLAYED"), played),
+                (tr("PLAY TIME"), time),
+                (tr("SAVE FILES"), files.save_count().to_string()),
+            ];
+            let mut facts = facts;
+            // Only for a game played with RetroAchievements, which saved its count.
+            let summary = SYSTEMS[game.system].key;
+            let summary = achievements::console_id(summary)
+                .and_then(|_| achievements::Summary::read(&achievements::summary_path(&save_path(&game.path, &SYSTEMS[game.system]))));
+            if let Some(summary) = summary {
+                facts.push((tr("ACHIEVEMENTS"), trf("{} OF {}", &[&summary.unlocked, &summary.total])));
+            }
+            (SYSTEMS[game.system].icon, rom_label(&game.path), facts, library.is_favorite(game))
+        }
+        // Only for the moment before the launcher goes back to the list.
+        None => (&icons::RECENT, String::new(), Vec::new(), false),
+    };
+    let shown = !settings::get().covers_hidden;
+    let cover = game.filter(|_| shown).and_then(|game| art.get(&game.path));
+    let art = match &cover {
+        _ if !shown => None,
+        Some(image) => Some(screens::Art::Cover(image)),
+        None => Some(screens::Art::Placeholder(icon)),
+    };
+    let rows = launcher.detail_rows(library);
+    let achievements_off = game.is_some_and(|game| {
+        achievements::is_off_for_game(&save_path(&game.path, &SYSTEMS[game.system]))
+    });
+    let view = screens::DetailsView {
+        icon,
+        name: &name,
+        facts: &facts,
+        rows: &rows,
+        selected: launcher.details_row(library),
+        starred,
+        achievements_off,
+        art,
+        message: launcher.details_confirmation(),
+    };
+    screens::details_screen(width, height, &view, frame)
+}
+
+/// One group of the settings, with its note and what it shows from outside the settings.
+fn settings_group_canvas((width, height): (usize, usize), group: Group, launcher: &Launcher, frame: &screens::Frame) -> canvas::Canvas {
+    let mut current = settings::get();
+    let login = if group == Group::Advanced { ssh::Login::read() } else { ssh::Login::default() };
+    let account = if group == Group::Achievements {
+        achievements::Account::read(Path::new(achievements::ACCOUNT_PATH))
+    } else {
+        None
+    };
+    // As the server runs it, in case a key or password went missing.
+    current.ssh = ssh::effective(current.ssh, login);
+    let note = match group {
+        Group::BoxArt => {
+            let (covered, total) = art_counts();
+            Some(trf("{} OF {} GAMES HAVE A COVER", &[&covered, &total]))
+        }
+        Group::Time => Some(time_note()),
+        Group::GameScreen => Some(game_screen_note(&current)),
+        Group::System if current.idle_minutes > 0 => Some(tr("THE POWER BUTTON WAKES IT FROM SLEEP").into()),
+        Group::Advanced => advanced_note(current.ssh, login),
+        Group::Achievements => Some(achievements_note(&current, account.is_some())),
+        _ => None,
+    };
+    let view = screens::SettingsView {
+        group,
+        selected: launcher.setting_selected(group).unwrap_or(launcher::Setting::Volume),
+        settings: &current,
+        volume_percent: settings::volume_percent(),
+        brightness_percent: settings::brightness_percent(),
+        message: launcher.confirmation(),
+        note: note.as_deref(),
+        login,
+        // Read from the card the first time the group opens, then kept.
+        boot_messages: if group == Group::Advanced { boot_partition::boot_messages() } else { None },
+        achievements_user: account.as_ref().map(|account| account.user.as_str()),
+    };
+    screens::settings_screen(width, height, &view, frame)
+}
+
 /// Lays out the launcher's current screen.
 /// Also returns the area of the selected row when its name is too long and scrolls, which
 /// is all that needs drawing again as it moves. `scrolled` is how long the selection has
@@ -160,167 +340,18 @@ pub(crate) fn launcher_canvas(
     let mut scrolling = None;
     let frame = screen_frame(battery);
     let mut canvas = match launcher.screen() {
-        Screen::Home => {
-            let tiles: Vec<screens::TileView> = library
-                .tiles()
-                .iter()
-                .map(|tile| match *tile {
-                    Tile::Recent => screens::TileView { icon: &icons::RECENT, label: tr("RECENT"), count: None },
-                    Tile::Favorites => screens::TileView {
-                        icon: &icons::FAVORITES,
-                        label: tr("FAVORITES"),
-                        count: Some(library.favorites.len()),
-                    },
-                    Tile::System(system) => screens::TileView {
-                        icon: SYSTEMS[system].icon,
-                        label: SYSTEMS[system].label,
-                        count: Some(library.games(List::System(system)).len()),
-                    },
-                    Tile::Settings => screens::TileView { icon: &icons::SETTINGS, label: tr("SETTINGS"), count: None },
-                })
-                .collect();
-            let settings = settings::get();
-            let selected = launcher.home_selected(library);
-            screens::home_screen(width, height, settings.shown_title(), library.grid, &tiles, selected, &frame)
-        }
+        Screen::Home => home_canvas((width, height), launcher, library, &frame),
         Screen::Games(list) => {
-            let (icon, title) = match list {
-                List::Recent => (&icons::RECENT, tr("RECENT")),
-                List::Favorites => (&icons::FAVORITES, tr("FAVORITES")),
-                List::Search => (&icons::SEARCH, tr("SEARCH")),
-                List::System(system) => (SYSTEMS[system].icon, SYSTEMS[system].console),
-            };
-            let rows: Vec<screens::RowView> = library
-                .games(list)
-                .iter()
-                .map(|game| screens::RowView {
-                    name: &game.name,
-                    // Lists of games from several consoles show each one's console.
-                    icon: matches!(list, List::Recent | List::Favorites | List::Search).then_some(SYSTEMS[game.system].icon),
-                    starred: library.is_favorite(game),
-                })
-                .collect();
-            let selected = launcher.list_selected(library, list);
-            let game = library.games(list).get(selected);
-            // Without covers, the list leaves out the panel and names have the whole width.
-            let shown = !settings::get().covers_hidden;
-            let cover = game.filter(|_| shown).and_then(|game| art.get(&game.path));
-            let art = match (&cover, game) {
-                _ if !shown => None,
-                (Some(image), _) => Some(screens::Art::Cover(image)),
-                (None, Some(game)) => Some(screens::Art::Placeholder(SYSTEMS[game.system].icon)),
-                (None, None) => None,
-            };
-            let overflow = screens::name_overflow(width, &rows, selected, art.is_some());
-            if overflow > 0 {
-                scrolling = Some(screens::selected_row_area(width, &rows, selected, art.is_some()));
-            }
-            let scroll = screens::scroll_offset(scrolled, overflow);
-            let letters = library.jumps_by_letter(list);
-            let view = screens::ListView { icon, title, rows: &rows, selected, art, scroll, letters };
-            screens::list_screen(width, height, &view, &frame)
+            let (canvas, area) = games_canvas((width, height), list, launcher, library, art, scrolled, &frame);
+            scrolling = area;
+            canvas
         }
-        Screen::Details(_) => {
-            let game = launcher.details_game(library);
-            let (icon, name, facts, starred) = match game {
-                Some(game) => {
-                    let files = game_files::GameFiles::of(&game.path);
-                    let settings = settings::get();
-                    let played = files.last_played().and_then(|time| jiff::Timestamp::try_from(time).ok());
-                    let played = played.map_or(tr("NOT YET").to_string(), |time| {
-                        clock::short_date_text(&clock::local(time, settings.time_zone()))
-                    });
-                    // Unknown for a game played before play time was counted.
-                    let time = match files.play_time() {
-                        Some(time) => game_files::play_time_text(time),
-                        None if files.last_played().is_some() => tr("UNKNOWN").to_string(),
-                        None => tr("NOT YET").to_string(),
-                    };
-                    let facts = vec![
-                        (tr("CONSOLE"), SYSTEMS[game.system].console.to_string()),
-                        (tr("SIZE"), game_files::size_text(files.size())),
-                        (tr("LAST PLAYED"), played),
-                        (tr("PLAY TIME"), time),
-                        (tr("SAVE FILES"), files.save_count().to_string()),
-                    ];
-                    let mut facts = facts;
-                    // Only for a game played with RetroAchievements, which saved its count.
-                    let summary = SYSTEMS[game.system].key;
-                    let summary = achievements::console_id(summary)
-                        .and_then(|_| achievements::Summary::read(&achievements::summary_path(&save_path(&game.path, &SYSTEMS[game.system]))));
-                    if let Some(summary) = summary {
-                        facts.push((tr("ACHIEVEMENTS"), trf("{} OF {}", &[&summary.unlocked, &summary.total])));
-                    }
-                    (SYSTEMS[game.system].icon, rom_label(&game.path), facts, library.is_favorite(game))
-                }
-                // Only for the moment before the launcher goes back to the list.
-                None => (&icons::RECENT, String::new(), Vec::new(), false),
-            };
-            let shown = !settings::get().covers_hidden;
-            let cover = game.filter(|_| shown).and_then(|game| art.get(&game.path));
-            let art = match &cover {
-                _ if !shown => None,
-                Some(image) => Some(screens::Art::Cover(image)),
-                None => Some(screens::Art::Placeholder(icon)),
-            };
-            let rows = launcher.detail_rows(library);
-            let achievements_off = game.is_some_and(|game| {
-                achievements::is_off_for_game(&save_path(&game.path, &SYSTEMS[game.system]))
-            });
-            let view = screens::DetailsView {
-                icon,
-                name: &name,
-                facts: &facts,
-                rows: &rows,
-                selected: launcher.details_row(library),
-                starred,
-                achievements_off,
-                art,
-                message: launcher.details_confirmation(),
-            };
-            screens::details_screen(width, height, &view, &frame)
-        }
+        Screen::Details(_) => details_canvas((width, height), launcher, library, art, &frame),
         Screen::Settings => {
             let selected = GROUPS.iter().position(|&group| group == launcher.group_selected()).unwrap_or(0);
             screens::settings_grid(width, height, &GROUPS, selected, &frame)
         }
-        Screen::SettingsGroup(group) => {
-            let mut current = settings::get();
-            let login = if group == Group::Advanced { ssh::Login::read() } else { ssh::Login::default() };
-            let account = if group == Group::Achievements {
-                achievements::Account::read(Path::new(achievements::ACCOUNT_PATH))
-            } else {
-                None
-            };
-            // As the server runs it, in case a key or password went missing.
-            current.ssh = ssh::effective(current.ssh, login);
-            let note = match group {
-                Group::BoxArt => {
-                    let (covered, total) = art_counts();
-                    Some(trf("{} OF {} GAMES HAVE A COVER", &[&covered, &total]))
-                }
-                Group::Time => Some(time_note()),
-                Group::GameScreen => Some(game_screen_note(&current)),
-                Group::System if current.idle_minutes > 0 => Some(tr("THE POWER BUTTON WAKES IT FROM SLEEP").into()),
-                Group::Advanced => advanced_note(current.ssh, login),
-                Group::Achievements => Some(achievements_note(&current, account.is_some())),
-                _ => None,
-            };
-            let view = screens::SettingsView {
-                group,
-                selected: launcher.setting_selected(group).unwrap_or(launcher::Setting::Volume),
-                settings: &current,
-                volume_percent: settings::volume_percent(),
-                brightness_percent: settings::brightness_percent(),
-                message: launcher.confirmation(),
-                note: note.as_deref(),
-                login,
-                // Read from the card the first time the group opens, then kept.
-                boot_messages: if group == Group::Advanced { boot_partition::boot_messages() } else { None },
-                achievements_user: account.as_ref().map(|account| account.user.as_str()),
-            };
-            screens::settings_screen(width, height, &view, &frame)
-        }
+        Screen::SettingsGroup(group) => settings_group_canvas((width, height), group, launcher, &frame),
         Screen::Info => {
             let games = library.shelves.iter().map(|shelf| shelf.games.len()).sum();
             screens::info_screen(width, height, &system_info(battery, games), &frame)
@@ -427,6 +458,32 @@ pub(crate) fn change_settings(change: impl FnOnce(&mut settings::Settings)) {
 pub(crate) fn save_levels() {
     if let Err(error) = settings::save_levels() {
         eprintln!("warning: could not save the volume and brightness: {error}");
+    }
+}
+
+/// Puts every setting back to its default, with what games and consoles keep of their own.
+fn reset_settings() {
+    change_settings(|s| *s = s.reset());
+    controls::remove_all_game_layouts(Path::new(SAVE_DIR));
+    core_options::remove_all(Path::new(SAVE_DIR), Path::new(core_options::CONSOLE_DIR));
+    cheats::remove_all_enabled(Path::new(SAVE_DIR));
+    achievements::remove_all_off(Path::new(SAVE_DIR));
+    let current = settings::get();
+    performance::apply(current.performance);
+    power::apply_charge_limit(current.charge);
+    ssh::restart_server();
+    println!("settings: reset to defaults");
+}
+
+/// Turns one game's achievements off, or back on.
+fn toggle_game_achievements(rom: &Path) {
+    if let Some(system) = system_for(rom) {
+        let save = save_path(rom, system);
+        let off = !achievements::is_off_for_game(&save);
+        match achievements::set_off_for_game(&save, off) {
+            Ok(()) => println!("achievements: {} for {}", if off { "off" } else { "on" }, rom.display()),
+            Err(error) => eprintln!("warning: could not change the game's achievements: {error}"),
+        }
     }
 }
 
@@ -572,16 +629,7 @@ pub(crate) fn act(
         }
         Action::UseDisplayForAllConsoles => change_settings(|s| s.console_displays.clear()),
         Action::ResetSettings => {
-            change_settings(|s| *s = s.reset());
-            controls::remove_all_game_layouts(Path::new(SAVE_DIR));
-            core_options::remove_all(Path::new(SAVE_DIR), Path::new(core_options::CONSOLE_DIR));
-            cheats::remove_all_enabled(Path::new(SAVE_DIR));
-            achievements::remove_all_off(Path::new(SAVE_DIR));
-            let current = settings::get();
-            performance::apply(current.performance);
-            power::apply_charge_limit(current.charge);
-            ssh::restart_server();
-            println!("settings: reset to defaults");
+            reset_settings();
             // The home screen's tiles, names and grid are made again.
             return Ok(true);
         }
@@ -594,14 +642,7 @@ pub(crate) fn act(
         Action::ToggleHardcore => change_settings(|s| s.hardcore = !s.hardcore),
         Action::ToggleAchievements => change_settings(|s| s.achievements_off = !s.achievements_off),
         Action::ToggleGameAchievements(rom) => {
-            if let Some(system) = system_for(&rom) {
-                let save = save_path(&rom, system);
-                let off = !achievements::is_off_for_game(&save);
-                match achievements::set_off_for_game(&save, off) {
-                    Ok(()) => println!("achievements: {} for {}", if off { "off" } else { "on" }, rom.display()),
-                    Err(error) => eprintln!("warning: could not change the game's achievements: {error}"),
-                }
-            }
+            toggle_game_achievements(&rom);
         }
         // The PC may have changed the games, covers and lists.
         Action::UsbStorage => return usb_drive(framebuffer, events),
@@ -895,6 +936,146 @@ pub(crate) fn log_in_to_achievements(framebuffer: &mut fb::Framebuffer, events: 
     }
 }
 
+/// Offers to continue the game that was running when the device lost power, if there is one.
+fn resume_interrupted_game(framebuffer: &mut fb::Framebuffer, events: &Receiver<Event>, library: &mut Library) -> io::Result<()> {
+    let noted = std::fs::read_to_string(PLAYING_PATH).unwrap_or_default();
+    if let Some(game) = interrupted_game(library, &noted) {
+        let rom = game.path.clone();
+        if confirm_resume(framebuffer, events, game)? {
+            if act(Action::Play(rom), framebuffer, events)? {
+                *library = load_library();
+            }
+        } else {
+            forget_running_game();
+        }
+    } else if !noted.is_empty() {
+        // The game is no longer on the card.
+        forget_running_game();
+    }
+    Ok(())
+}
+
+/// What the launcher's loop keeps between draws, to know when to draw again or sleep.
+struct Watch {
+    battery: Option<Battery>,
+    battery_read: Instant,
+    /// The minute shown, to redraw when it changes. The time settings show it too.
+    shown_clock: Option<String>,
+    /// Since when no button has been pressed, for sleeping when idle.
+    last_press: Instant,
+    /// Set when only the scrolling name needs drawing again.
+    scroll_tick: bool,
+}
+
+/// Waits for input or a held button's repeat, waking to redraw when the battery changes and
+/// a few times a second while a long name scrolls. `None` when the input has ended.
+fn wait_for_wake(
+    framebuffer: &fb::Framebuffer,
+    events: &Receiver<Event>,
+    repeater: &mut Repeater,
+    launcher: &Launcher,
+    watch: &mut Watch,
+    scrolling: bool,
+) -> Option<Wake> {
+    let idle_after = Duration::from_secs(u64::from(settings::get().idle_minutes) * 60);
+    loop {
+        let now = Instant::now();
+        if let Some((button, count)) = repeater.due(now) {
+            return Some(Wake::Repeat(button, count));
+        }
+        let battery_due = (watch.battery_read + BATTERY_REFRESH).saturating_duration_since(now);
+        let mut timeout = repeater.wait(now).map_or(battery_due, |wait| wait.min(battery_due));
+        if scrolling {
+            timeout = timeout.min(SCROLL_TICK);
+        }
+        timeout = timeout.min(framebuffer.sign_wait());
+        match events.recv_timeout(timeout) {
+            Ok(event) => return Some(Wake::Event(event)),
+            // Drawing again removes the volume sign.
+            Err(RecvTimeoutError::Timeout) if framebuffer.sign_wait().is_zero() => return Some(Wake::Redraw),
+            Err(RecvTimeoutError::Timeout) if repeater.wait(Instant::now()).is_some() => {}
+            Err(RecvTimeoutError::Timeout) => {
+                // Checked at least once a second, with the battery.
+                if !idle_after.is_zero() && watch.last_press.elapsed() >= idle_after {
+                    return Some(Wake::Idle);
+                }
+                if watch.battery_read.elapsed() >= BATTERY_REFRESH {
+                    watch.battery_read = Instant::now();
+                    let reading = read_battery(&power::battery_dir());
+                    if reading != watch.battery {
+                        watch.battery = reading;
+                        return Some(Wake::Redraw);
+                    }
+                    if clock_minute(launcher) != watch.shown_clock {
+                        return Some(Wake::Redraw);
+                    }
+                }
+                if scrolling {
+                    watch.scroll_tick = true;
+                    return Some(Wake::Redraw);
+                }
+            }
+            Err(RecvTimeoutError::Disconnected) => return None,
+        }
+    }
+}
+
+/// What a wake-up asks for. Sleeping, the volume buttons and a held button's repeats are
+/// carried out here, and ask for nothing more.
+fn action_for(
+    wake: Wake,
+    launcher: &mut Launcher,
+    library: &Library,
+    repeater: &mut Repeater,
+    framebuffer: &mut fb::Framebuffer,
+    events: &Receiver<Event>,
+    watch: &mut Watch,
+) -> io::Result<Action> {
+    Ok(match wake {
+        Wake::Redraw => Action::Nothing,
+        Wake::Idle => {
+            repeater.stop();
+            println!("sleeping after {} idle minutes {}", settings::get().idle_minutes, boot_time());
+            sleep_until_woken(events);
+            println!("woke {}", boot_time());
+            watch.last_press = Instant::now();
+            Action::Nothing
+        }
+        Wake::Repeat(button, count) => {
+            for _ in 0..count {
+                let action = launcher.press(button, library);
+                // Holding Left or Right on a level keeps changing it. Nothing else
+                // that a press asks for repeats.
+                if matches!(action, Action::Volume(_) | Action::Brightness(_)) {
+                    act(action, framebuffer, events)?;
+                }
+            }
+            Action::Nothing
+        }
+        Wake::Event(event) => {
+            if let Some(button) = event.released() {
+                repeater.release(button);
+            }
+            match event.pressed() {
+                Some(Button::Lid) => {
+                    repeater.stop();
+                    sleep_until_lid_opens(events);
+                    Action::Nothing
+                }
+                Some(button @ (Button::VolumeUp | Button::VolumeDown)) => {
+                    press_volume(framebuffer, button)?;
+                    Action::Nothing
+                }
+                Some(button) => {
+                    repeater.press(button, Instant::now());
+                    launcher.press(button, library)
+                }
+                None => Action::Nothing,
+            }
+        }
+    })
+}
+
 pub(crate) fn run_launcher() -> io::Result<()> {
     println!("launcher started {}", boot_time());
     settings::restore_levels();
@@ -920,33 +1101,19 @@ pub(crate) fn run_launcher() -> io::Result<()> {
     }
     open_start_screen(&mut launcher, &library);
 
-    let noted = std::fs::read_to_string(PLAYING_PATH).unwrap_or_default();
-    if let Some(game) = interrupted_game(&library, &noted) {
-        let rom = game.path.clone();
-        if confirm_resume(&mut framebuffer, &events, game)? {
-            if act(Action::Play(rom), &mut framebuffer, &events)? {
-                library = load_library();
-            }
-        } else {
-            forget_running_game();
-        }
-    } else if !noted.is_empty() {
-        // The game is no longer on the card.
-        forget_running_game();
-    }
+    resume_interrupted_game(&mut framebuffer, &events, &mut library)?;
 
     let mut first_draw = true;
     // The selection a long name scrolls for, and since when.
     let mut scroll_for = None;
     let mut scroll_start = Instant::now();
-    // Set when only the scrolling name needs drawing again.
-    let mut scroll_tick = false;
-    let mut battery = read_battery(&power::battery_dir());
-    let mut battery_read = Instant::now();
-    // The minute shown, to redraw when it changes. The time settings show it too.
-    let mut shown_clock: Option<String>;
-    // Since when no button has been pressed, for sleeping when idle.
-    let mut last_press = Instant::now();
+    let mut watch = Watch {
+        battery: read_battery(&power::battery_dir()),
+        battery_read: Instant::now(),
+        shown_clock: None,
+        last_press: Instant::now(),
+        scroll_tick: false,
+    };
 
     loop {
         if monitor.check(Instant::now()) == Some(power::Level::Critical) {
@@ -966,113 +1133,32 @@ pub(crate) fn run_launcher() -> io::Result<()> {
             scroll_start = Instant::now();
         }
         let size = framebuffer.size();
-        shown_clock = clock_minute(&launcher);
+        watch.shown_clock = clock_minute(&launcher);
         let (canvas, scrolling) =
-            launcher_canvas(size, &launcher, &library, &mut art, battery, scroll_start.elapsed());
+            launcher_canvas(size, &launcher, &library, &mut art, watch.battery, scroll_start.elapsed());
         match scrolling {
-            Some(area) if scroll_tick => framebuffer.draw_area(&canvas, area)?,
+            Some(area) if watch.scroll_tick => framebuffer.draw_area(&canvas, area)?,
             _ => framebuffer.draw(&canvas)?,
         }
-        scroll_tick = false;
+        watch.scroll_tick = false;
         if first_draw {
             println!("launcher drawn {}", boot_time());
             first_draw = false;
         }
 
-        // Wait for input or a held button's repeat, redrawing when the battery changes and
-        // a few times a second while a long name scrolls.
-        let idle_after = Duration::from_secs(u64::from(settings::get().idle_minutes) * 60);
-        let wake = loop {
-            let now = Instant::now();
-            if let Some((button, count)) = repeater.due(now) {
-                break Wake::Repeat(button, count);
-            }
-            let battery_due = (battery_read + BATTERY_REFRESH).saturating_duration_since(now);
-            let mut timeout = repeater.wait(now).map_or(battery_due, |wait| wait.min(battery_due));
-            if scrolling.is_some() {
-                timeout = timeout.min(SCROLL_TICK);
-            }
-            timeout = timeout.min(framebuffer.sign_wait());
-            match events.recv_timeout(timeout) {
-                Ok(event) => break Wake::Event(event),
-                // Drawing again removes the volume sign.
-                Err(RecvTimeoutError::Timeout) if framebuffer.sign_wait().is_zero() => break Wake::Redraw,
-                Err(RecvTimeoutError::Timeout) if repeater.wait(Instant::now()).is_some() => {}
-                Err(RecvTimeoutError::Timeout) => {
-                    // Checked at least once a second, with the battery.
-                    if !idle_after.is_zero() && last_press.elapsed() >= idle_after {
-                        break Wake::Idle;
-                    }
-                    if battery_read.elapsed() >= BATTERY_REFRESH {
-                        battery_read = Instant::now();
-                        let reading = read_battery(&power::battery_dir());
-                        if reading != battery {
-                            battery = reading;
-                            break Wake::Redraw;
-                        }
-                        if clock_minute(&launcher) != shown_clock {
-                            break Wake::Redraw;
-                        }
-                    }
-                    if scrolling.is_some() {
-                        scroll_tick = true;
-                        break Wake::Redraw;
-                    }
-                }
-                Err(RecvTimeoutError::Disconnected) => return Ok(()),
-            }
+        let Some(wake) = wait_for_wake(&framebuffer, &events, &mut repeater, &launcher, &mut watch, scrolling.is_some())
+        else {
+            return Ok(());
         };
         if matches!(wake, Wake::Event(_) | Wake::Repeat(..)) {
-            last_press = Instant::now();
+            watch.last_press = Instant::now();
         }
         if let Some(sound) = menu_sound(&wake) {
             if settings::get().menu_sounds {
                 sounds::play(sound);
             }
         }
-        let action = match wake {
-            Wake::Redraw => Action::Nothing,
-            Wake::Idle => {
-                repeater.stop();
-                println!("sleeping after {} idle minutes {}", idle_after.as_secs() / 60, boot_time());
-                sleep_until_woken(&events);
-                println!("woke {}", boot_time());
-                last_press = Instant::now();
-                Action::Nothing
-            }
-            Wake::Repeat(button, count) => {
-                for _ in 0..count {
-                    let action = launcher.press(button, &library);
-                    // Holding Left or Right on a level keeps changing it. Nothing else
-                    // that a press asks for repeats.
-                    if matches!(action, Action::Volume(_) | Action::Brightness(_)) {
-                        act(action, &mut framebuffer, &events)?;
-                    }
-                }
-                Action::Nothing
-            }
-            Wake::Event(event) => {
-                if let Some(button) = event.released() {
-                    repeater.release(button);
-                }
-                match event.pressed() {
-                    Some(Button::Lid) => {
-                        repeater.stop();
-                        sleep_until_lid_opens(&events);
-                        Action::Nothing
-                    }
-                    Some(button @ (Button::VolumeUp | Button::VolumeDown)) => {
-                        press_volume(&mut framebuffer, button)?;
-                        Action::Nothing
-                    }
-                    Some(button) => {
-                        repeater.press(button, Instant::now());
-                        launcher.press(button, &library)
-                    }
-                    None => Action::Nothing,
-                }
-            }
-        };
+        let action = action_for(wake, &mut launcher, &library, &mut repeater, &mut framebuffer, &events, &mut watch)?;
         if !matches!(action, Action::Nothing | Action::Volume(_) | Action::Brightness(_)) {
             // A game or the button test takes over the buttons until it ends.
             repeater.stop();

@@ -878,6 +878,40 @@ impl Launcher {
         Command::Nothing
     }
 
+    /// What Left or Right does on a setting, for those with something to change in place.
+    fn step_command(setting: Setting, step: i32) -> Option<Command> {
+        Some(match setting {
+            Setting::Volume => Command::Volume(step),
+            Setting::Brightness => Command::Brightness(step),
+            Setting::StartScreen => Command::StartScreen(step),
+            Setting::GameNames => Command::GameNames(step),
+            Setting::SortGames => Command::SortGames(step),
+            Setting::Battery => Command::BatteryDisplay(step),
+            Setting::MenuSounds => Command::ToggleSounds,
+            Setting::BootJingle => Command::ToggleJingle,
+            Setting::Language => Command::Language(step),
+            Setting::IdleSleep => Command::IdleSleep(step),
+            Setting::ShowCovers => Command::ToggleCovers,
+            Setting::ScreenshotCovers => Command::ToggleScreenshotCovers,
+            Setting::Scaling => Command::Scaling(step),
+            Setting::Effect => Command::Effect(step),
+            Setting::Ghosting => Command::Ghosting(step),
+            Setting::AccentColor => Command::Accent(step),
+            Setting::Background => Command::Background(step),
+            Setting::ShowTitle => Command::ToggleTitle,
+            Setting::GridSize => Command::GridSize(step),
+            Setting::TimeZone => Command::TimeZone(step),
+            Setting::ClockFormat => Command::ClockFormat(step),
+            Setting::Ssh => Command::SshAccess(step),
+            Setting::Performance => Command::Performance(step),
+            Setting::ChargeLimit => Command::ChargeLimit(step),
+            Setting::BootMessages => Command::ToggleBootMessages,
+            Setting::Hardcore => Command::ToggleHardcore,
+            Setting::AchievementsOn => Command::ToggleAchievements,
+            _ => return None,
+        })
+    }
+
     fn press_group(&mut self, button: Button, group: Group, confirming: Option<Setting>) -> Command {
         let settings = group.settings();
         let Some(setting) = self.setting_selected(group) else {
@@ -897,36 +931,11 @@ impl Launcher {
             Button::Down => {
                 self.group_rows.insert(group, (row + 1) % settings.len());
             }
-            Button::Left | Button::Right => match setting {
-                Setting::Volume => return Command::Volume(step),
-                Setting::Brightness => return Command::Brightness(step),
-                Setting::StartScreen => return Command::StartScreen(step),
-                Setting::GameNames => return Command::GameNames(step),
-                Setting::SortGames => return Command::SortGames(step),
-                Setting::Battery => return Command::BatteryDisplay(step),
-                Setting::MenuSounds => return Command::ToggleSounds,
-                Setting::BootJingle => return Command::ToggleJingle,
-                Setting::Language => return Command::Language(step),
-                Setting::IdleSleep => return Command::IdleSleep(step),
-                Setting::ShowCovers => return Command::ToggleCovers,
-                Setting::ScreenshotCovers => return Command::ToggleScreenshotCovers,
-                Setting::Scaling => return Command::Scaling(step),
-                Setting::Effect => return Command::Effect(step),
-                Setting::Ghosting => return Command::Ghosting(step),
-                Setting::AccentColor => return Command::Accent(step),
-                Setting::Background => return Command::Background(step),
-                Setting::ShowTitle => return Command::ToggleTitle,
-                Setting::GridSize => return Command::GridSize(step),
-                Setting::TimeZone => return Command::TimeZone(step),
-                Setting::ClockFormat => return Command::ClockFormat(step),
-                Setting::Ssh => return Command::SshAccess(step),
-                Setting::Performance => return Command::Performance(step),
-                Setting::ChargeLimit => return Command::ChargeLimit(step),
-                Setting::BootMessages => return Command::ToggleBootMessages,
-                Setting::Hardcore => return Command::ToggleHardcore,
-                Setting::AchievementsOn => return Command::ToggleAchievements,
-                _ => {}
-            },
+            Button::Left | Button::Right => {
+                if let Some(command) = Self::step_command(setting, step) {
+                    return command;
+                }
+            }
             Button::B => self.screen = Screen::Settings,
             Button::A if setting.needs_confirming() && confirming != Some(setting) => {
                 self.confirming = Some(setting);

@@ -165,14 +165,15 @@ pub(crate) fn run_game(core: &Path, rom: &Path, save: &Path, persistence: Persis
             stem: rom.file_stem()?.to_string_lossy().into_owned(),
         })
     });
+    let game = libretro::GameSpec { core, rom, save, persistence, setup, console, cheats: cheats.as_ref() };
     if !rom_zip::is_zip(rom) {
-        return libretro::play(core, rom, save, persistence, setup, console, cheats, &mut open_framebuffer()?);
+        return libretro::play(&game, &mut open_framebuffer()?);
     }
     let folder = Path::new(rom_zip::UNPACK_DIR);
     let started = Instant::now();
     let unpacked = rom_zip::unpack(rom, folder)?;
     println!("unpacked {} in {:.2} s", rom.display(), started.elapsed().as_secs_f32());
-    let ending = libretro::play(core, &unpacked, save, persistence, setup, console, cheats, &mut open_framebuffer()?);
+    let ending = libretro::play(&libretro::GameSpec { rom: &unpacked, ..game }, &mut open_framebuffer()?);
     if let Err(error) = std::fs::remove_dir_all(folder) {
         eprintln!("warning: could not remove the unpacked game: {error}");
     }
