@@ -769,11 +769,41 @@ pub const ADVANCED: Icon = [
     "................................",
 ];
 
+/// The Tetsu OS logo: a tetsubin, the Japanese iron kettle (tetsu means iron), with a
+/// gamepad's controls on its side. The handle, lid and body mirror around x = 17.
+pub const LOGO: Icon = [
+    ".............KKKKKKKK...........",
+    "...........KKGGGGGGGGKK.........",
+    "..........KLLLLLLLLLLLLK........",
+    ".........KGGKKKKKKKKKKGGK.......",
+    "........KGGK..........KGGK......",
+    "........KGGK..........KGGK......",
+    "........KGGK..........KGGK......",
+    "........KGGK...KKKK...KGGK......",
+    "........KGGK..KGGGGK..KGGK......",
+    "........KGGKKKKLLLLKKKKGGK......",
+    "........KGGKGGGGGGGGGGKGGK......",
+    "..KK...KKLLLLLLLLLLLLLLLLKK.....",
+    ".KDDK.KLLLLLLLLLLLLLLLLLLLLK....",
+    ".KGGDKGGGGGKKKGGGGGGGGGGGGGDK...",
+    ".KLGGGGGGGGKKKGGGGGGGGGRRGGDK...",
+    "..KGGGGGGKKKKKKKGGGGGGGRRGGDK...",
+    "...KGGGGGKKKKKKKGGGGGGGGGGGDK...",
+    "....KGGGGKKKKKKKGGGRRGGGGGGDK...",
+    ".....KGGGGGKKKGGGGGRRGGGGGGDK...",
+    ".....KGGGGGKKKGGGGGGGGGGGGGDK...",
+    "......KGGGGGGGGGGGGGGGGGGGDK....",
+    ".......KKDDDDDDDDDDDDDDDDKK.....",
+    ".........KKKKKKKKKKKKKKKK.......",
+    "................................",
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const ALL: [&Icon; 27] = [
+    const ALL: [&Icon; 28] = [
+        &LOGO,
         &THEME,
         &TIME,
         &GENERAL,

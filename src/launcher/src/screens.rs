@@ -753,11 +753,15 @@ pub fn fast_forward_sign(on: bool, theme: Theme) -> Canvas {
 /// theme colour whatever is chosen, since the kernel shows it.
 pub fn splash() -> Canvas {
     let (title, subtitle) = ("TETSU", "OS");
+    let icon_scale = 5;
+    let title_y = 8 + icons::HEIGHT * icon_scale + 16;
+    let subtitle_y = title_y + font::HEIGHT * 6 + 12;
     let width = text_width(title, 6) + 16;
-    let mut canvas = Canvas::new(width, font::HEIGHT * 6 + 12 + font::HEIGHT * 3 + 16, Theme::default());
+    let mut canvas = Canvas::new(width, subtitle_y + font::HEIGHT * 3 + 8, Theme::default());
     canvas.pixels.fill(Rgb(0, 0, 0));
-    canvas.text(title, 8, 6, canvas.theme.accent);
-    canvas.text(subtitle, 8 + font::HEIGHT * 6 + 12, 3, TEXT);
+    canvas.icon(&icons::LOGO, (width - icons::WIDTH * icon_scale) / 2, 8, icon_scale);
+    canvas.text(title, title_y, 6, canvas.theme.accent);
+    canvas.text(subtitle, subtitle_y, 3, TEXT);
     canvas
 }
 

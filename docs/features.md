@@ -185,7 +185,11 @@ Built but not yet tested on the device:
   `scripts/push.sh uboot` writes U-Boot at 8 KiB on the card over SSH and checks it by
   reading it back. The user saw the logo with a kernel warning over it; with `ttynull`
   it is clean. On 2026-11-08 the logo became TETSU over a smaller OS, and the user saw it
-  on the device with no kernel text over it
+  on the device with no kernel text over it. On 2026-11-09 the user chose the project's
+  logo, a tetsubin (iron kettle, as tetsu means iron) with a gamepad's controls on its
+  side: `icons::LOGO`, on the launcher's 32 by 24 grid, drawn above TETSU OS at 5 times
+  its size. Its handle, lid and body mirror around x = 17, and the spout balances the
+  body sitting a pixel right of the grid's centre
 
 - Scrolling names: a selected name too long for its row pauses 1.2 s, scrolls at 48
   pixels a second to its end, pauses, and starts over (`screens::scroll_offset`). Only
