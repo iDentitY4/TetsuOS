@@ -120,6 +120,7 @@ impl Group {
                     Setting::GameNames,
                     Setting::Battery,
                     Setting::MenuSounds,
+                    Setting::BootJingle,
                 ],
             Self::GameScreen => &[Setting::Scaling, Setting::Effect, Setting::Ghosting],
             Self::Wifi => &[],
@@ -167,6 +168,7 @@ pub enum Setting {
     GameNames,
     Battery,
     MenuSounds,
+    BootJingle,
     Scaling,
     Effect,
     Ghosting,
@@ -207,6 +209,7 @@ impl Setting {
             Self::GameNames => "GAME NAMES",
             Self::Battery => "BATTERY",
             Self::MenuSounds => "MENU SOUNDS",
+            Self::BootJingle => "BOOT JINGLE",
             Self::Scaling => "SCALING",
             Self::Effect => "SCREEN EFFECT",
             Self::Ghosting => "LCD GHOSTING",
@@ -264,6 +267,7 @@ impl Setting {
                 | Self::GameNames
                 | Self::Battery
                 | Self::MenuSounds
+                | Self::BootJingle
                 | Self::IdleSleep
                 | Self::ShowCovers
                 | Self::Scaling
@@ -330,6 +334,8 @@ pub enum Command {
     BatteryDisplay(i32),
     /// Turns menu sounds on if they are off, or off.
     ToggleSounds,
+    /// Turns the boot jingle on if it is off, or off.
+    ToggleJingle,
     IdleSleep(i32),
     Scaling(i32),
     Effect(i32),
@@ -645,6 +651,7 @@ impl Launcher {
                 Setting::GameNames => return Command::GameNames(step),
                 Setting::Battery => return Command::BatteryDisplay(step),
                 Setting::MenuSounds => return Command::ToggleSounds,
+                Setting::BootJingle => return Command::ToggleJingle,
                 Setting::IdleSleep => return Command::IdleSleep(step),
                 Setting::ShowCovers => return Command::ToggleCovers,
                 Setting::Scaling => return Command::Scaling(step),
@@ -687,6 +694,7 @@ impl Launcher {
                 | Setting::GameNames
                 | Setting::Battery
                 | Setting::MenuSounds
+                | Setting::BootJingle
                 | Setting::IdleSleep
                 | Setting::ShowCovers
                 | Setting::Scaling
@@ -931,6 +939,8 @@ mod tests {
         assert_eq!(launcher.press(Button::Right, &library), Command::BatteryDisplay(1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Left, &library), Command::ToggleSounds);
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::Right, &library), Command::ToggleJingle);
         press_all(&mut launcher, &library, &[Button::B, Button::Right, Button::A]);
         assert_eq!(launcher.press(Button::Right, &library), Command::Scaling(1));
         launcher.press(Button::Down, &library);

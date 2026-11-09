@@ -9,7 +9,8 @@ measured and how it was tested. Read the part you work on.
 
 ## What works (2026-11-08)
 
-Boot to the launcher in 3.6 s with a logo; power button on and off; USB console, SSH and
+Boot to the launcher in 3.8 s with a logo, or 5.8 s with the boot jingle (on by default);
+power button on and off; USB console, SSH and
 updates over USB networking (`10.35.35.1`); audio with headphone switching; Panfrost GPU;
 CPU scaling to 1512 MHz; lid sleep (`s2idle`), with Wi-Fi and USB kept through it; Wi-Fi
 set up on the device; network time (`ntpd`) and a time zone setting; battery level,
@@ -27,7 +28,7 @@ scaling with CRT and LCD effects.
 Launcher: a tile grid with RECENT and FAVORITES, lists with covers and scrolling names,
 box art downloaded on the device, and a settings grid (GENERAL, GAME SCREEN, WI-FI,
 BOX ART, THEME, TIME, SYSTEM, ADVANCED) with colours, background, title, grid size,
-hidden tiles, start screen, game names, battery display, menu sounds and sleep when idle.
+hidden tiles, start screen, game names, battery display, menu sounds, the boot jingle and sleep when idle.
 
 ## Not yet checked by the user
 
@@ -113,7 +114,8 @@ In short here; `docs/features.md` has them in full.
 - **Modules are off and nothing could load them.** Add drivers to `linux.fragment` as `=y`.
   Don't turn `CONFIG_MODULES` off over a config with `=m` entries: they all become built in.
 - **Audio:** `amixer` percentages are raw steps. If the `DAC` switch is off, playback
-  fails with error -5. Headphones are silent while the `Speaker` path is on.
+  fails with error -5. Headphones are silent while the `Speaker` path is on. The driver
+  waits 700 ms for the amp when the card opens after about 5 s idle.
 - **The CPU governor raises the speed slowly from idle,** so after the in-game menu the CPU
   is held at 1008 MHz for two seconds, or games stutter.
 - **Save states keep mGBA's SGB border mode,** so states from before the border was

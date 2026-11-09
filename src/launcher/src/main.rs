@@ -64,6 +64,7 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.as_slice() {
         [] => run_launcher(),
+        [flag] if flag == "--jingle" => sounds::boot_jingle(),
         [flag, path] if flag == "--preview" => write_launcher_preview(path, &[Button::Right]),
         [flag, path] if flag == "--preview-list" => {
             write_launcher_preview(path, &[Button::Right, Button::Right, Button::A, Button::Down])

@@ -350,6 +350,12 @@ pub(crate) fn act(
                 sounds::play(sounds::Sound::Select);
             }
         }
+        Action::ToggleJingle => {
+            change_settings(|s| s.jingle_off = !s.jingle_off);
+            if !settings::get().jingle_off {
+                sounds::play_jingle();
+            }
+        }
         Action::IdleSleep(steps) => {
             change_settings(|s| s.idle_minutes = settings::cycle(&settings::IDLE_SLEEP_MINUTES, s.idle_minutes, steps));
         }
@@ -552,6 +558,9 @@ pub(crate) fn run_launcher() -> io::Result<()> {
     let mut monitor = power::Monitor::new();
     let mut art = boxart::BoxArt::new();
     open_start_screen(&mut launcher, &library);
+    // Nothing has been drawn yet, so the boot logo is still up. A game resumed below also
+    // needs the sound card free.
+    sounds::wait_for_boot_jingle();
 
     let noted = std::fs::read_to_string(PLAYING_PATH).unwrap_or_default();
     if let Some(game) = interrupted_game(&library, &noted) {

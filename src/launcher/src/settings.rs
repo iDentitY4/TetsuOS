@@ -338,6 +338,8 @@ pub struct Settings {
     /// Minutes without a press in the menus before sleeping, one of `IDLE_SLEEP_MINUTES`.
     pub idle_minutes: u32,
     pub menu_sounds: bool,
+    /// The boot jingle is off. It plays by default, also for a settings file from before it.
+    pub jingle_off: bool,
     pub ssh: SshAccess,
     pub performance: CpuLevel,
     pub charge: ChargeLimit,
@@ -423,6 +425,7 @@ fn parse(text: &str) -> Settings {
             "battery" => choose(&mut settings.battery, BatteryDisplay::from_key(value)),
             "idle" => choose(&mut settings.idle_minutes, IDLE_SLEEP_MINUTES.into_iter().find(|&m| value.parse() == Ok(m))),
             "sounds" => settings.menu_sounds = value == "on",
+            "jingle" => settings.jingle_off = value == "off",
             "ssh" => choose(&mut settings.ssh, SshAccess::from_key(value)),
             "performance" => choose(&mut settings.performance, CpuLevel::from_key(value)),
             "charge" => choose(&mut settings.charge, ChargeLimit::from_key(value)),
@@ -464,6 +467,7 @@ fn format(settings: &Settings) -> String {
     lines.push(format!("battery={}", settings.battery.key()));
     lines.push(format!("idle={}", settings.idle_minutes));
     lines.push(format!("sounds={}", on_off(settings.menu_sounds)));
+    lines.push(format!("jingle={}", on_off(!settings.jingle_off)));
     lines.push(format!("ssh={}", settings.ssh.key()));
     lines.push(format!("performance={}", settings.performance.key()));
     lines.push(format!("charge={}", settings.charge.key()));
@@ -629,6 +633,7 @@ mod tests {
             battery: BatteryDisplay::WhenLow,
             idle_minutes: 10,
             menu_sounds: true,
+            jingle_off: true,
             ssh: SshAccess::Wifi,
             performance: CpuLevel::Battery,
             charge: ChargeLimit::Less,
@@ -649,7 +654,7 @@ mod tests {
         assert_eq!(old.time_zone().name, "Etc/UTC");
         assert_eq!((old.accent, old.title_hidden, old.title()), (Accent::Teal, false, DEFAULT_TITLE));
         assert_eq!(old.display.ghosting, Ghosting::Smart);
-        assert!(!old.covers_hidden && !old.menu_sounds && old.idle_minutes == 0);
+        assert!(!old.covers_hidden && !old.menu_sounds && !old.jingle_off && old.idle_minutes == 0);
         assert_eq!((old.grid, old.background, old.battery), (GridSize::Normal, Background::Dark, BatteryDisplay::Percent));
         assert_eq!((old.start_screen, old.game_names), (StartScreen::Home, GameNames::Short));
     }

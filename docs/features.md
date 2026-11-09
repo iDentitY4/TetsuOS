@@ -240,6 +240,24 @@ Built but not yet tested on the device:
   now have room for 6 settings. Claude checked on the device that presses play without
   errors, and the user confirmed on 2026-11-08 that they work and are satisfying, in the
   menus and on the keyboard
+- Boot jingle: Settings > GENERAL > BOOT JINGLE, ON (default, also for a settings file
+  from before it) or OFF, chosen by the user on 2026-11-09 from 16 candidates heard as WAV
+  files and 3 on the device. It is original and 1.3 s long: a spoon tapping an iron kettle,
+  G6 G6 A6 B6, up to a bright chord on G7 (`sounds::jingle_samples`, tones with an iron
+  bar's inharmonic partials, peak 11000 of 32767). `S21jingle` runs `launcher --jingle` in the
+  background just after `S20audio`, logging to `/var/log/jingle.log`, and writes its process
+  to `/run/jingle.pid`. The launcher loads as usual, then waits for that process before it
+  draws anything (`sounds::wait_for_boot_jingle`, at most 3 s), so the logo stays up until
+  the jingle ends and a resumed game finds the card free. aplay starts before the samples
+  are made (0.16 s), as that fits inside the amp's wait. Turning the setting on plays it
+  once. Measured on the device: the launcher drew 5.84 s after power on with the jingle,
+  3.83 s without. Of the 2.0 s, 1.3 s is the jingle and 0.7 s the amp's wait, below; the
+  user chose to keep that over a kernel patch shortening the wait or drawing the launcher
+  during the last chord. It doesn't play when waking from sleep. Claude checked the samples
+  matched the chosen WAV exactly, and on the device the setting's screen, the file line and
+  a silent boot with it off. The user confirmed on 2026-11-09 that it sounds right, the
+  logo stays up until it ends, headphones work and an interrupted game resumes after it,
+  and that it may also play when USB power starts the device
 - Sleep when idle: Settings > SYSTEM > SLEEP WHEN IDLE: OFF (default), 2, 5, 10 or 30
   minutes without a press in the launcher's own screens (home, lists, settings), not in
   games, the Wi-Fi screen, the keyboard or a download (`Wake::Idle`, `sleep_until_woken`).
@@ -562,6 +580,10 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   `Line Out` at 50% total about -58 dB, which sounded silent. If the `DAC` switch is off,
   the DAC never runs and playback fails with error -5.
 - **Headphones are silent while the `Speaker` path is on,** so the two can't play at once.
+- **Opening the sound card after about 5 s idle takes 700 ms longer:** `msleep(700)` in
+  `sun4i_codec_spk_event` in the kernel's `sun4i-codec.c`, waiting for the amp. Measured
+  with 1.0 s of silence through aplay: 1.80 s after 12 s idle, 1.08 s straight after
+  another sound or after 2 s idle.
 - **The display is `card1`,** because Panfrost now takes `card0`. Name it explicitly, as
   in `kmscube -D /dev/dri/card1`, and stop the launcher first with
   `/etc/init.d/S90launcher stop`.

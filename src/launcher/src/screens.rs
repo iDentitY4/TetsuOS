@@ -376,6 +376,7 @@ fn setting_value(setting: Setting, settings: &Settings) -> Option<String> {
         Setting::GameNames => settings.game_names.label(),
         Setting::Battery => settings.battery.label(),
         Setting::MenuSounds => on_off(settings.menu_sounds),
+        Setting::BootJingle => on_off(!settings.jingle_off),
         Setting::IdleSleep => return Some(idle_sleep_label(settings.idle_minutes)),
         Setting::Scaling => settings.display.scaling.label(),
         Setting::Effect => settings.display.effect.label(),
