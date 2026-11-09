@@ -93,8 +93,8 @@ Working on the test unit, confirmed by the user:
   bar. Claude checked it on the device with injected presses and screenshots on 2026-11-09:
   a game list, Wi-Fi, the title keyboard, Super Mario Land during play and in its menu, and
   closing the menu with the sign up. A press every 1.4 s or so during play kept 59.6-59.75
-  fps with no underruns, the same as without. How it looks while moving and
-  on a real button press is for the user to check
+  fps with no underruns, the same as without. The user confirmed on 2026-11-09 that it
+  feels good on real presses, and that the lowest step is quiet but audible
 - Volume moves in steps of 5%, by the buttons and by the VOLUME rows
   (`settings::VOLUME_STEP`). The hardware has levels 0 to 31 at 1.5 dB each, with 0 and 1
   muted, so each step uses its nearest level (`percent_level`: 0, 2, 3, 5, 6, 8 ... 29, 31),

@@ -33,7 +33,6 @@ hidden tiles, start screen, game names, battery display, menu sounds, the boot j
 ## Not yet checked by the user
 
 - Game Boy SGB games without their border; PlayStation sound and feel
-- The volume sign on real button presses, over a moving game
 - Neo Geo Pocket, WonderSwan and Lynx sound and controls; a Neo Geo Pocket game that saves
 - Sleep when idle: the screen dark while asleep, and waking with the power button
 - The lid since input moved to the `evdev` crate; the lid during a box art download
