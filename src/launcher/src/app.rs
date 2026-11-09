@@ -256,6 +256,7 @@ pub(crate) fn launcher_canvas(
                     Some(trf("{} OF {} GAMES HAVE A COVER", &[&covered, &total]))
                 }
                 Group::Time => Some(time_note()),
+                Group::GameScreen => Some(game_screen_note(&current)),
                 Group::System if current.idle_minutes > 0 => Some(tr("THE POWER BUTTON WAKES IT FROM SLEEP").into()),
                 Group::Advanced => advanced_note(current.ssh, login),
                 _ => None,
@@ -292,6 +293,17 @@ pub(crate) fn launcher_canvas(
     };
     add_clock(&mut canvas, battery);
     (canvas, scrolling)
+}
+
+/// Under the GAME SCREEN settings: that they are a default, and how many consoles differ.
+pub(crate) fn game_screen_note(settings: &settings::Settings) -> String {
+    let mut note = tr("THE DEFAULT, UNTIL A GAME'S MENU CHANGES ITS CONSOLE").to_string();
+    let own = settings.console_displays.len();
+    if own > 0 {
+        note.push('\n');
+        note.push_str(&trf("CONSOLES WITH THEIR OWN: {}", &[&own]));
+    }
+    note
 }
 
 /// Under the ADVANCED settings: how to reach SSH, or what USB + WI-FI is missing.
@@ -491,6 +503,7 @@ pub(crate) fn act(
             // USB STORAGE may have changed the games.
             return Ok(true);
         }
+        Action::UseDisplayForAllConsoles => change_settings(|s| s.console_displays.clear()),
         Action::ResetSettings => {
             change_settings(|s| *s = s.reset());
             let current = settings::get();

@@ -141,7 +141,7 @@ impl Group {
                     Setting::BootJingle,
                     Setting::Language,
                 ],
-            Self::GameScreen => &[Setting::Scaling, Setting::Effect, Setting::Ghosting],
+            Self::GameScreen => &[Setting::Scaling, Setting::Effect, Setting::Ghosting, Setting::UseForAllConsoles],
             Self::Wifi => &[],
             Self::BoxArt => &[Setting::ShowCovers, Setting::DownloadMissingArt, Setting::DownloadAllArt, Setting::DeleteArt],
             Self::Theme => {
@@ -219,6 +219,7 @@ pub enum Setting {
     BootMessages,
     RunSetup,
     ResetSettings,
+    UseForAllConsoles,
     SaveLogs,
 }
 
@@ -262,6 +263,7 @@ impl Setting {
             Self::BootMessages => "BOOT MESSAGES",
             Self::RunSetup => "RUN SETUP AGAIN",
             Self::ResetSettings => "RESET SETTINGS",
+            Self::UseForAllConsoles => "USE FOR ALL CONSOLES",
             Self::SaveLogs => "SAVE LOGS TO CARD",
         })
     }
@@ -314,7 +316,7 @@ impl Setting {
 
     /// Whether A must be pressed twice, because it can't be undone.
     fn needs_confirming(self) -> bool {
-        matches!(self, Self::DeleteArt | Self::Reboot | Self::PowerOff | Self::SshKeys | Self::ResetSettings)
+        matches!(self, Self::DeleteArt | Self::Reboot | Self::PowerOff | Self::SshKeys | Self::ResetSettings | Self::UseForAllConsoles)
     }
 }
 
@@ -418,6 +420,8 @@ pub enum Command {
     ToggleBootMessages,
     RunSetup,
     ResetSettings,
+    /// Drops every console's own display, so they all use the settings' one.
+    UseDisplayForAllConsoles,
     SaveLogs,
     /// The card's TETSU-DATA partition as a USB drive on the PC.
     UsbStorage,
@@ -621,6 +625,7 @@ impl Launcher {
             Setting::PowerOff => Some(tr("PRESS A AGAIN TO POWER OFF")),
             Setting::SshKeys => Some(tr("PRESS A AGAIN TO REMOVE THE SSH KEYS")),
             Setting::ResetSettings => Some(tr("PRESS A AGAIN TO RESET ALL SETTINGS")),
+            Setting::UseForAllConsoles => Some(tr("PRESS A AGAIN TO USE THESE FOR ALL CONSOLES")),
             _ => None,
         }
     }
@@ -837,6 +842,7 @@ impl Launcher {
                 Setting::SshKeys => return Command::RemoveSshKeys,
                 Setting::RunSetup => return Command::RunSetup,
                 Setting::ResetSettings => return Command::ResetSettings,
+                Setting::UseForAllConsoles => return Command::UseDisplayForAllConsoles,
                 Setting::SaveLogs => return Command::SaveLogs,
                 Setting::Volume
                 | Setting::Brightness

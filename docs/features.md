@@ -145,6 +145,22 @@ Working on the test unit, confirmed by the user:
   the lowest 480 MHz and 44 C with no underruns, FF7 sees a formatted card, and save
   states (4.4 MB) save and load. 50 Hz games can't match the 59.94 Hz panel, so some
   frames show twice. The user hasn't tried it yet, so sound and feel are unchecked
+- Display settings per console. Changing scaling, effect or ghosting in the in-game menu
+  saves all three for that console, as `display.gb=fit,crt,smart` in `settings.txt`
+  (`Settings::console_displays`, read with `display_for`). A console's key comes from
+  `SYSTEMS`, so Game Boy and Color are separate. Settings > GAME SCREEN is the default for
+  consoles with no such line, with a note saying so and how many have their own, and USE FOR
+  ALL CONSOLES, which takes A twice, removes those lines. RESET SETTINGS does too. A line
+  with an unknown value is ignored as a whole. The game process finds its console from the
+  game (`game::run_game`), through to `Host::console`. An existing setting carries on as the
+  default, and a console takes it as its starting point the first time its menu changes.
+
+  Claude tested on the device on 2026-11-09 with saves in `/tmp`: an effect changed in a Game
+  Boy game wrote only `display.gb`, an NES game still showed the default, the Game Boy game
+  showed its choice after a restart, the note counted one console, and a first press of USE
+  FOR ALL CONSOLES changed nothing while a second removed the line. `settings.txt` was put
+  back afterwards. How the effects look on each console is the user's to judge
+
 - A game's details. Y in a game list opens them (`Screen::Details`, `screens::details_screen`):
   the file's full name, console, size, last played, how many save files, and the cover, with
   PLAY, STAR or REMOVE STAR, and DELETE GAME AND SAVES. The screen holds the game's path, not

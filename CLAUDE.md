@@ -23,7 +23,7 @@ ReARMed, with discs grouped by name or an `.m3u`, and CHANGE DISC), Mega Drive, 
 Fast), Neo Geo Pocket and Color (Beetle NeoPop), WonderSwan and Color (Beetle Cygne), Lynx
 (Handy) and Tamagotchi (tamalib), cartridge games also in ZIP files, with an in-game menu (8 save slots, levels, display
 options), resume on leaving and after power-off, fast-forward on R2, sharp-bilinear
-scaling with CRT and LCD effects, and a volume sign on the volume buttons, also in the menus.
+scaling with CRT and LCD effects, kept per console, and a volume sign on the volume buttons, also in the menus.
 
 Launcher: a tile grid with RECENT and FAVORITES, lists with covers and scrolling names,
 jumping by letter on L1 and R1, search on X, a game's details and deleting it on Y,
@@ -57,12 +57,11 @@ ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Next steps
 
-1. Per-game or per-console display settings (scaling, effect, ghosting)
-2. Play time per game, shown in the details screen
-3. Sort options for lists: name, last played, play time
-4. Proposed, not confirmed: before a release, decide whether USB ONLY should keep root's
+1. Play time per game, shown in the details screen
+2. Sort options for lists: name, last played, play time
+3. Proposed, not confirmed: before a release, decide whether USB ONLY should keep root's
    empty password, as the serial console does
-5. Rewind, moved to the end by the user
+4. Rewind, moved to the end by the user
 
 ## How the launcher is built
 

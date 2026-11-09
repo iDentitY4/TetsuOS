@@ -266,6 +266,8 @@ struct Host {
     /// Set for the extra frames that fast-forward runs, whose picture and sound are dropped.
     skip_output: bool,
     display: GameDisplay,
+    /// The console's key, which a change in the menu is saved for.
+    console: Option<&'static str>,
     /// Set when a core option changed, until the core asks and reads them again.
     options_changed: bool,
     /// Copied out before calling it, as the core may call back into the host meanwhile.
@@ -915,7 +917,7 @@ fn load_resume(core: &mut Core, path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn set_host(directory: &Path, target: (usize, usize), setup: CoreSetup) -> io::Result<()> {
+fn set_host(directory: &Path, target: (usize, usize), setup: CoreSetup, console: Option<&'static str>) -> io::Result<()> {
     let host = Host {
         format: PixelFormat::Rgb1555,
         directory: c_path(directory)?,
@@ -932,7 +934,8 @@ fn set_host(directory: &Path, target: (usize, usize), setup: CoreSetup) -> io::R
         scale_time: Duration::ZERO,
         audio_time: Duration::ZERO,
         skip_output: false,
-        display: settings::get().display,
+        display: console.map_or(settings::get().display, |console| settings::get().display_for(console)),
+        console,
         options_changed: false,
             disk_control: None,
     };
@@ -1116,14 +1119,18 @@ fn save_progress(
 
 /// Changes how the game is shown, from its next frame, and saves the choice.
 fn change_display(change: impl FnOnce(&mut GameDisplay)) {
-    let display = with_host(|host| {
+    let (display, console) = with_host(|host| {
         change(&mut host.display);
         host.options_changed = true;
-        host.display
+        (host.display, host.console)
     });
     // Saving writes every setting, and the launcher saves the volume buttons' level.
     settings::reload();
-    if let Err(error) = settings::update(|settings| settings.display = display) {
+    let saved = settings::update(|settings| match console {
+        Some(console) => settings.set_console_display(console, display),
+        None => settings.display = display,
+    });
+    if let Err(error) = saved {
         eprintln!("warning: could not save the display settings: {error}");
     }
 }
@@ -1269,13 +1276,14 @@ pub fn play(
     save: &Path,
     persistence: Persistence,
     setup: CoreSetup,
+    console: Option<&'static str>,
     framebuffer: &mut Framebuffer,
 ) -> io::Result<Ending> {
     if let Err(error) = signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&TERMINATING)) {
         eprintln!("warning: a power-off may not save the game: {error}");
     }
     let directory = save.parent().unwrap_or(Path::new("."));
-    set_host(directory, framebuffer.size(), setup)?;
+    set_host(directory, framebuffer.size(), setup, console)?;
     let mut core = Core::load(core_path, rom)?;
     let mut save_file = core.open_save(save, persistence)?;
     let resume = resume_path(save, persistence);
@@ -1493,7 +1501,7 @@ pub fn render(
     frames: u64,
     output: &Path,
 ) -> io::Result<()> {
-    set_host(save.parent().unwrap_or(Path::new(".")), (640, 480), setup)?;
+    set_host(save.parent().unwrap_or(Path::new(".")), (640, 480), setup, None)?;
     let mut core = Core::load(core_path, rom)?;
     let mut save_file = core.open_save(save, persistence)?;
     let start = Instant::now();

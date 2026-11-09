@@ -330,7 +330,10 @@ pub struct Settings {
     /// The levels saved last, applied at start. The live levels are in the hardware.
     pub volume: Option<u32>,
     pub brightness: Option<u32>,
+    /// How games are shown on consoles without a choice of their own.
     pub display: GameDisplay,
+    /// What a game's menu chose for its console, by the console's key, such as `gba`.
+    pub console_displays: Vec<(String, GameDisplay)>,
     /// The time zone's IANA name, one of `clock::ZONES`. UTC until chosen.
     pub zone: Option<&'static str>,
     pub clock: ClockFormat,
@@ -370,6 +373,17 @@ impl Settings {
 }
 
 impl Settings {
+    /// How a console's games are shown.
+    pub fn display_for(&self, console: &str) -> GameDisplay {
+        self.console_displays.iter().find(|(key, _)| key == console).map_or(self.display, |&(_, display)| display)
+    }
+
+    /// Keeps a console's own choice, replacing any it had.
+    pub fn set_console_display(&mut self, console: &str, display: GameDisplay) {
+        self.console_displays.retain(|(key, _)| key != console);
+        self.console_displays.push((console.to_string(), display));
+    }
+
     pub fn time_zone(&self) -> &'static Zone {
         self.zone.and_then(clock::zone_named).unwrap_or(clock::UTC)
     }
@@ -405,11 +419,32 @@ fn choose<T>(slot: &mut T, choice: Option<T>) {
     }
 }
 
+/// Starts the line for a console's own display, as in `display.gba=fit,lcd,smart`.
+const CONSOLE_DISPLAY_PREFIX: &str = "display.";
+
+/// A console's scaling, effect and ghosting. With any of them unknown, the whole line is
+/// ignored, as a console with its own choice uses all three.
+fn parse_display(value: &str) -> Option<GameDisplay> {
+    let mut parts = value.split(',').map(str::trim);
+    let display = GameDisplay {
+        scaling: Scaling::from_key(parts.next()?)?,
+        effect: Effect::from_key(parts.next()?)?,
+        ghosting: Ghosting::from_key(parts.next()?)?,
+    };
+    parts.next().is_none().then_some(display)
+}
+
 fn parse(text: &str) -> Settings {
     let mut settings = Settings::default();
     for line in text.lines() {
         let Some((key, value)) = line.split_once('=') else { continue };
         let value = value.trim();
+        if let Some(console) = key.trim().strip_prefix(CONSOLE_DISPLAY_PREFIX) {
+            if let Some(display) = parse_display(value) {
+                settings.set_console_display(console, display);
+            }
+            continue;
+        }
         match key.trim() {
             "volume" => settings.volume = value.parse().ok(),
             "brightness" => settings.brightness = value.parse().ok(),
@@ -465,6 +500,14 @@ fn format(settings: &Settings) -> String {
     lines.push(format!("scaling={}", settings.display.scaling.key()));
     lines.push(format!("effect={}", settings.display.effect.key()));
     lines.push(format!("ghosting={}", settings.display.ghosting.key()));
+    for (console, display) in &settings.console_displays {
+        lines.push(format!(
+            "{CONSOLE_DISPLAY_PREFIX}{console}={},{},{}",
+            display.scaling.key(),
+            display.effect.key(),
+            display.ghosting.key(),
+        ));
+    }
     if let Some(zone) = settings.zone {
         lines.push(format!("timezone={zone}"));
     }
@@ -660,6 +703,40 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_console_uses_its_own_display_or_the_default() {
+        let lcd = GameDisplay { effect: Effect::Lcd, ..GameDisplay::default() };
+        let crt = GameDisplay { effect: Effect::Crt, ..GameDisplay::default() };
+        let mut settings = Settings { display: crt, ..Settings::default() };
+        assert_eq!(settings.display_for("gb"), crt);
+        settings.set_console_display("gb", lcd);
+        assert_eq!(settings.display_for("gb"), lcd);
+        assert_eq!(settings.display_for("nes"), crt);
+        // A newer choice replaces the old, and the default is left as it was.
+        settings.set_console_display("gb", GameDisplay::default());
+        assert_eq!(settings.display_for("gb"), GameDisplay::default());
+        assert_eq!(settings.console_displays.len(), 1);
+        assert_eq!(settings.display, crt);
+    }
+
+    #[test]
+    fn console_displays_survive_the_file_and_bad_lines_are_ignored() {
+        let lcd = GameDisplay { effect: Effect::Lcd, ..GameDisplay::default() };
+        let mut settings = Settings::default();
+        settings.set_console_display("gb", lcd);
+        settings.set_console_display("ps1", GameDisplay { scaling: Scaling::ALL[1], ..GameDisplay::default() });
+        assert_eq!(parse(&format(&settings)).console_displays, settings.console_displays);
+        let text = "display.gb=sparkles,lcd,off\ndisplay.nes=fit\ndisplay.md=fit,none,off,extra\n";
+        assert!(parse(text).console_displays.is_empty());
+    }
+
+    #[test]
+    fn resetting_clears_the_consoles_displays() {
+        let mut settings = Settings::default();
+        settings.set_console_display("gb", GameDisplay { effect: Effect::Lcd, ..GameDisplay::default() });
+        assert!(settings.reset().console_displays.is_empty());
+    }
+
+    #[test]
     fn reads_mono_and_stereo_amixer_values() {
         let mono = "numid=2,iface=MIXER,name='Line Out Playback Volume'\n  ; type=INTEGER\n  : values=25\n";
         assert_eq!(parse_amixer(mono), Some(25));
@@ -674,6 +751,7 @@ mod tests {
             volume: Some(25),
             brightness: Some(1250),
             display,
+            console_displays: vec![("gba".to_string(), GameDisplay::default())],
             zone: Some("Europe/Berlin"),
             clock: ClockFormat::Hours12,
             accent: Accent::Pink,

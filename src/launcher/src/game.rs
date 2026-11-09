@@ -151,14 +151,15 @@ pub(crate) fn confirm_resume(framebuffer: &mut fb::Framebuffer, events: &Receive
 /// The separate process that `play_game` starts.
 pub(crate) fn run_game(core: &Path, rom: &Path, save: &Path, persistence: Persistence) -> io::Result<Ending> {
     let setup = system_for(rom).map(|system| system.setup).unwrap_or_default();
+    let console = system_for(rom).map(|system| system.key);
     if !rom_zip::is_zip(rom) {
-        return libretro::play(core, rom, save, persistence, setup, &mut open_framebuffer()?);
+        return libretro::play(core, rom, save, persistence, setup, console, &mut open_framebuffer()?);
     }
     let folder = Path::new(rom_zip::UNPACK_DIR);
     let started = Instant::now();
     let unpacked = rom_zip::unpack(rom, folder)?;
     println!("unpacked {} in {:.2} s", rom.display(), started.elapsed().as_secs_f32());
-    let ending = libretro::play(core, &unpacked, save, persistence, setup, &mut open_framebuffer()?);
+    let ending = libretro::play(core, &unpacked, save, persistence, setup, console, &mut open_framebuffer()?);
     if let Err(error) = std::fs::remove_dir_all(folder) {
         eprintln!("warning: could not remove the unpacked game: {error}");
     }
