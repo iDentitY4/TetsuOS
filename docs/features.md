@@ -95,6 +95,14 @@ Working on the test unit, confirmed by the user:
   closing the menu with the sign up. A press every 1.4 s or so during play kept 59.6-59.75
   fps with no underruns, the same as without. How it looks while moving and
   on a real button press is for the user to check
+- Volume moves in steps of 5%, by the buttons and by the VOLUME rows
+  (`settings::VOLUME_STEP`). The hardware has levels 0 to 31 at 1.5 dB each, with 0 and 1
+  muted, so each step uses its nearest level (`percent_level`: 0, 2, 3, 5, 6, 8 ... 29, 31),
+  which makes only 0% silent. `settings.txt` still saves the level, and one between steps,
+  from an older version, snaps to the nearest step at start (`level_percent`). Before, a
+  press moved two levels, so going down from the top showed different numbers from going
+  up. Checked on the device on 2026-11-09: a walk from 0 to 100 and back hit the same levels,
+  stopped at each end, and a saved level of 1 came back as 2
 - During a game two processes save `settings.txt`, and saving writes every setting, so
   each reads the file again just before: the launcher before a volume button's save, or it
   undoes the game menu's display changes, and the game before saving those, or it brings

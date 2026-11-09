@@ -1144,7 +1144,7 @@ mod tests {
         let sign = volume_sign(100, Theme::default());
         assert!(VOLUME_SIGN_TOP + sign.height <= 27, "shorter than the GBA border");
         assert_eq!(filled(0), 0);
-        assert!(filled(6) > 0, "the lowest step shows");
+        assert!(filled(5) > 0, "the lowest step shows");
         assert!(filled(50) < filled(100));
         assert_eq!(filled(100), 132 * (sign.height - 10));
     }

@@ -19,7 +19,9 @@ const SETTINGS_PATH: &str = "/mnt/data/settings.txt";
 const VOLUME_CONTROL: &str = "name=Line Out Playback Volume";
 /// The control's raw range. 0 and 1 both mute.
 const VOLUME_MAX: u32 = 31;
-pub const VOLUME_STEP: i32 = 2;
+/// In percent. The hardware's 32 levels can't all be shown as round numbers, so the volume
+/// only stops at the level nearest each step.
+pub const VOLUME_STEP: i32 = 5;
 const BACKLIGHT: &str = "/sys/class/backlight/backlight";
 /// Brightness changes in tenths of the range, and never goes below one tenth, so the
 /// screen can't be turned fully dark from a menu that needs the screen to undo it.
@@ -538,16 +540,27 @@ fn set_volume(raw: u32) {
     }
 }
 
-/// The volume as a percentage of its range.
-pub fn volume_percent() -> Option<u32> {
-    Some(volume()? * 100 / VOLUME_MAX)
+/// The step of `VOLUME_STEP` percent nearest a hardware level.
+fn level_percent(raw: u32) -> u32 {
+    let step = VOLUME_STEP as u32;
+    (raw.min(VOLUME_MAX) * 100 + VOLUME_MAX * step / 2) / (VOLUME_MAX * step) * step
 }
 
-/// Returns the new volume as a percentage, if it could be read.
-pub fn change_volume(steps: i32) -> Option<u32> {
-    let raw = step(volume()?, steps, 1, 0, VOLUME_MAX);
-    set_volume(raw);
-    Some(raw * 100 / VOLUME_MAX)
+/// The hardware level nearest a percentage. Levels 0 and 1 are muted, so only 0% is silent.
+fn percent_level(percent: u32) -> u32 {
+    (percent.min(100) * VOLUME_MAX + 50) / 100
+}
+
+/// The volume as a percentage, on one of its steps.
+pub fn volume_percent() -> Option<u32> {
+    Some(level_percent(volume()?))
+}
+
+/// Moves the volume by `change` percent, and returns the new percentage, if it could be read.
+pub fn change_volume(change: i32) -> Option<u32> {
+    let percent = step(volume_percent()?, change, 1, 0, 100);
+    set_volume(percent_level(percent));
+    Some(percent)
 }
 
 fn read_number(path: &Path) -> Option<u32> {
@@ -594,7 +607,8 @@ pub fn save_levels() -> io::Result<()> {
 pub fn restore_levels() {
     let settings = get();
     if let Some(volume) = settings.volume {
-        set_volume(volume);
+        // Older versions could leave it between steps.
+        set_volume(percent_level(level_percent(volume)));
     }
     if let Some(brightness) = settings.brightness {
         set_brightness(brightness);
@@ -737,6 +751,25 @@ mod tests {
         assert!(settings.tile_hidden("gba") && settings.tile_hidden("nes"));
         settings.toggle_tile("gba");
         assert_eq!(settings.hidden_tiles, ["nes"]);
+    }
+
+    #[test]
+    fn each_volume_step_has_its_own_level_and_reads_back_the_same() {
+        let levels: Vec<u32> = (0..=100).step_by(5).map(percent_level).collect();
+        assert_eq!((levels[0], levels[1], levels[20]), (0, 2, 31), "only 0% is muted");
+        assert!(levels.windows(2).all(|pair| pair[0] < pair[1]));
+        for percent in (0..=100).step_by(5) {
+            assert_eq!(level_percent(percent_level(percent)), percent);
+        }
+    }
+
+    #[test]
+    fn a_level_between_steps_snaps_to_the_nearest() {
+        assert_eq!(level_percent(23), 75);
+        assert_eq!(level_percent(19), 60);
+        assert_eq!(level_percent(1), 5, "muted, so restoring it moves it up to 5%");
+        assert_eq!(percent_level(level_percent(1)), 2);
+        assert_eq!(level_percent(99), 100);
     }
 
     #[test]
