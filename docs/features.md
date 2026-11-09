@@ -41,6 +41,19 @@ Working on the test unit, confirmed by the user:
   Sound stops in sleep (patch 0011) and resumes on opening. A power button press with the
   lid closed doesn't shut down (patch 0010), and the device goes back to sleep. The
   Tamagotchi carries on correctly after sleep
+- Power-off after a long lid sleep (2026-11-10): after 2 hours of lid sleep on battery,
+  an RTC alarm (`/sys/class/rtc/rtc0/wakealarm`, set to the time left before each
+  `freeze`) wakes the device, and it powers off, so s2idle doesn't drain the battery.
+  A game in progress saved its resume state when the lid closed, and saves again on the
+  shutdown's SIGTERM; `playing.txt` stays, so it resumes at the next start. On USB power
+  (status other than `Discharging`) it keeps sleeping for another 2 hours instead, as the
+  battery doesn't drain and USB power may start the device again. The time counts with
+  `CLOCK_BOOTTIME`, as `Instant` stops in s2idle. Waking for a power button press doesn't
+  reset it. `LAUNCHER_LONG_SLEEP` sets it in seconds, for testing. Claude checked on the
+  device that a `+40` alarm wakes s2idle, that the boot clock advanced 41.7 s across it and
+  that the alarm clears once it fires. The user confirmed on 2026-11-10, with
+  `LAUNCHER_LONG_SLEEP=120` and the cable unplugged, that the device powered off with the
+  lid closed during a game and that the game resumed at the next start
 - The battery level in the menu
 - Updating over USB. The gadget is serial plus CDC Ethernet, set up through configfs by
   `/usr/sbin/usb-gadget start` from `S41usbnet`, with the fixed MACs and the USB ID

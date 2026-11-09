@@ -12,7 +12,8 @@ measured and how it was tested. Read the part you work on.
 Boot to the launcher in 3.8 s with a logo, or 5.8 s with the boot jingle (on by default);
 power button on and off; USB console, SSH and
 updates over USB networking (`10.35.35.1`); audio with headphone switching; Panfrost GPU;
-CPU scaling to 1512 MHz; lid sleep (`s2idle`), with Wi-Fi and USB kept through it; Wi-Fi
+CPU scaling to 1512 MHz; lid sleep (`s2idle`), with Wi-Fi and USB kept through it, and
+power-off after 2 hours of it on battery; Wi-Fi
 set up on the device; network time (`ntpd`) and a time zone setting; battery level,
 low-battery save and power-off; SSH over USB only by default, over Wi-Fi with a key or
 root password; a CPU performance setting; USB STORAGE, which shows TETSU-DATA to a PC as
@@ -232,7 +233,8 @@ physical like the lid.
   the launcher, move the file aside, start the launcher, and move the file back with the
   launcher stopped afterwards. Check `setup: started` in the log before pressing anything.
 - **Test hooks:** `LAUNCHER_BATTERY_DIR` points the battery reading at test files,
-  `LAUNCHER_POWEROFF` replaces `poweroff` and `LAUNCHER_PREVIEW_LANGUAGE=de` renders
+  `LAUNCHER_POWEROFF` replaces `poweroff`, `LAUNCHER_LONG_SLEEP` sets the lid sleep
+before power-off in seconds and `LAUNCHER_PREVIEW_LANGUAGE=de` renders
   `--preview*` in German. An RTC alarm can wake the device from sleep:
   `echo +60 > /sys/class/rtc/rtc0/wakealarm`. Don't inject a lid close: only a real lid
   wakes the device from lid sleep.
