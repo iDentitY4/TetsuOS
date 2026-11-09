@@ -682,6 +682,13 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   `sun4i_codec_spk_event` in the kernel's `sun4i-codec.c`, waiting for the amp. Measured
   with 1.0 s of silence through aplay: 1.80 s after 12 s idle, 1.08 s straight after
   another sound or after 2 s idle.
+- **The amp stays on for 5 s after a sound** (`pmdown_time`; PI5 measured high for 5.29 s),
+  while BusyBox `init` pauses only 2 s between the shutdown scripts and power-off. A
+  shutdown right after a menu sound or a game could therefore cut the power with the amp
+  on, which made the speaker crackle on some shutdowns. `S20audio stop` turns off
+  `Line Out`, then `Speaker`, after the launcher has exited, which drops PI5 at once
+  (0.02 s measured), and the user no longer hears the crackle. The controls are back on
+  after a reboot (checked).
 - **The display is `card1`,** because Panfrost now takes `card0`. Name it explicitly, as
   in `kmscube -D /dev/dri/card1`, and stop the launcher first with
   `/etc/init.d/S90launcher stop`.

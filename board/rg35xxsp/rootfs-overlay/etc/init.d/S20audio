@@ -9,6 +9,10 @@ start)
 	amixer -q sset 'Line Out Source' Stereo
 	;;
 stop)
+	# The amp stays on for 5 s after a sound, longer than the rest of a shutdown takes,
+	# and it crackles if the power goes while it's on. The launcher has exited by now.
+	amixer -q sset 'Line Out' off
+	amixer -q sset 'Speaker' off
 	;;
 *)
 	echo "Usage: $0 {start|stop}"
