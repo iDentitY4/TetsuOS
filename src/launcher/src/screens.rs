@@ -94,6 +94,8 @@ pub struct SettingsView<'a> {
     pub login: ssh::Login,
     /// Where the boot messages go, read from the card; None if it couldn't be.
     pub boot_messages: Option<BootMessages>,
+    /// The RetroAchievements account logged in, for the ACHIEVEMENTS group.
+    pub achievements_user: Option<&'a str>,
 }
 
 fn row_text_y(top: usize, height: usize) -> usize {
@@ -175,6 +177,7 @@ pub fn group_icon(group: Group) -> &'static Icon {
         Group::System => &icons::SYSTEM,
         Group::Advanced => &icons::ADVANCED,
         Group::Cores => &icons::CORES,
+        Group::Achievements => &icons::ACHIEVEMENTS,
     }
 }
 
@@ -183,7 +186,7 @@ pub fn settings_grid(width: usize, height: usize, groups: &[Group], selected: us
     let mut canvas = Canvas::new(width, height, frame.theme);
     header(&mut canvas, &icons::SETTINGS, tr("SETTINGS"), frame.battery);
     let tiles: Vec<TileView> =
-        groups.iter().map(|&group| TileView { icon: group_icon(group), label: group.label(), count: None }).collect();
+        groups.iter().map(|&group| TileView { icon: group_icon(group), label: group.tile_label(), count: None }).collect();
     tile_grid(&mut canvas, &tiles, selected, GRID_TOP, COLUMNS, None);
     hint(&mut canvas, tr("A OPENS - B BACK - START CLOSES"));
     canvas
@@ -345,8 +348,12 @@ pub struct DetailsView<'a> {
     pub name: &'a str,
     /// Each row's label and value.
     pub facts: &'a [(&'a str, String)],
+    /// The rows this game has, from `Launcher::detail_rows`.
+    pub rows: &'a [DetailRow],
     pub selected: DetailRow,
     pub starred: bool,
+    /// RetroAchievements are off for this game.
+    pub achievements_off: bool,
     pub art: Option<Art<'a>>,
     pub message: Option<&'a str>,
 }
@@ -354,7 +361,10 @@ pub struct DetailsView<'a> {
 const DETAILS_NAME_LINES: usize = 3;
 const DETAILS_FACTS_TOP: usize = 150;
 const DETAILS_FACT_ROW: usize = 24;
-const DETAILS_ROWS_TOP: usize = 276;
+/// The most facts a game has: the five every game has, and its achievements.
+const DETAILS_MAX_FACTS: usize = 6;
+const DETAILS_ROWS_TOP: usize = 296;
+const _: () = assert!(DETAILS_FACTS_TOP + DETAILS_MAX_FACTS * DETAILS_FACT_ROW <= DETAILS_ROWS_TOP);
 const DETAILS_MESSAGE_Y: usize = DETAILS_ROWS_TOP + DETAIL_ROWS.len() * LIST_ROW + 12;
 /// The rows end before the cover's panel.
 const DETAILS_RIGHT: usize = ART_PANEL.0 - 8;
@@ -393,7 +403,7 @@ pub fn details_screen(width: usize, height: usize, view: &DetailsView, frame: &F
         let x = (DETAILS_RIGHT - 8).saturating_sub(text_width(value, TEXT_SCALE));
         canvas.text_at(value, x, y, TEXT_SCALE, TEXT);
     }
-    for (row, &item) in DETAIL_ROWS.iter().enumerate() {
+    for (row, &item) in view.rows.iter().enumerate() {
         let y = DETAILS_ROWS_TOP + row * LIST_ROW;
         let color = if item == view.selected {
             canvas.rect(0, y, DETAILS_RIGHT, LIST_ROW - 2, canvas.theme.accent);
@@ -405,15 +415,25 @@ pub fn details_screen(width: usize, height: usize, view: &DetailsView, frame: &F
             DetailRow::Play => tr("PLAY"),
             DetailRow::Star if view.starred => tr("REMOVE STAR"),
             DetailRow::Star => tr("STAR"),
+            DetailRow::Achievements => tr("ACHIEVEMENTS"),
             DetailRow::Delete => tr("DELETE GAME AND SAVES"),
         };
-        canvas.text_at(label, LIST_LEFT, row_text_y(y, LIST_ROW - 2), TEXT_SCALE, color);
+        let text_y = row_text_y(y, LIST_ROW - 2);
+        canvas.text_at(label, LIST_LEFT, text_y, TEXT_SCALE, color);
+        if item == DetailRow::Achievements {
+            // As a setting shows it: the state it is in, with arrows while selected.
+            let state = if view.achievements_off { tr("OFF") } else { tr("ON") };
+            let value = if item == view.selected { format!("< {state} >") } else { state.to_string() };
+            let x = (DETAILS_RIGHT - 8).saturating_sub(text_width(&value, TEXT_SCALE));
+            canvas.text_at(&value, x, text_y, TEXT_SCALE, color);
+        }
     }
     if let Some(message) = view.message {
         canvas.text_at(message, LIST_LEFT, DETAILS_MESSAGE_Y, TEXT_SCALE, canvas.theme.accent);
     }
     draw_art(&mut canvas, &view.art);
-    hint(&mut canvas, tr("A SELECTS - B BACK"));
+    let changes = view.rows.contains(&DetailRow::Achievements);
+    hint(&mut canvas, if changes { tr("A SELECTS - LEFT RIGHT CHANGES - B BACK") } else { tr("A SELECTS - B BACK") });
     canvas
 }
 
@@ -485,6 +505,8 @@ pub(crate) fn setting_value(setting: Setting, settings: &Settings) -> Option<Str
         Setting::Ssh => settings.ssh.label(),
         Setting::Performance => settings.performance.label(),
         Setting::ChargeLimit => settings.charge.label(),
+        Setting::Hardcore => on_off(settings.hardcore),
+        Setting::AchievementsOn => on_off(!settings.achievements_off),
         _ => return None,
     };
     Some(label.to_string())
@@ -521,6 +543,10 @@ pub fn settings_screen(width: usize, height: usize, view: &SettingsView, frame: 
             Setting::RootPassword => {
                 let value = if view.login.password { tr("SET >") } else { tr("NOT SET >") };
                 canvas.text_at(value, right - text_width(value, TEXT_SCALE), text_y, TEXT_SCALE, text_color);
+            }
+            Setting::AchievementsAccount => {
+                let value = view.achievements_user.map_or_else(|| tr("LOG IN >").to_string(), str::to_string);
+                canvas.text_cased_at(&value, right - text_width(&value, TEXT_SCALE), text_y, TEXT_SCALE, text_color);
             }
             Setting::SshKeys => {
                 let value = match view.login.keys {
@@ -628,7 +654,7 @@ const OPTION_NOTE_LINE: usize = 18;
 const OPTION_VALUE_COLUMNS: usize = 16;
 
 /// `text` cut to `columns` characters, ending in `..` when it was longer.
-fn cut(text: &str, columns: usize) -> String {
+pub(crate) fn cut(text: &str, columns: usize) -> String {
     if text.chars().count() <= columns {
         return text.to_string();
     }
@@ -1023,6 +1049,30 @@ pub fn fast_forward_sign(on: bool, theme: Theme) -> Canvas {
     if on {
         canvas.text_at(text, 2, 2, TEXT_SCALE, canvas.theme.accent);
     }
+    canvas
+}
+
+/// An achievement unlocked, or other news from RetroAchievements, shown over the game: the
+/// badge if there is one, what happened, and the achievement or game it was.
+pub fn achievement_notice(notice: &crate::achievements::Notice, badge: Option<&Image>, theme: Theme) -> Canvas {
+    let pad = 6;
+    let badge_w = badge.map_or(0, |image| image.width + pad);
+    let lines_h = 2 * font::HEIGHT * TEXT_SCALE + 8;
+    let height = badge.map_or(lines_h, |image| image.height.max(lines_h)) + 2 * pad;
+    let width = 520;
+    let mut canvas = Canvas::new(width, height, theme);
+    canvas.pixels.fill(Rgb(0, 0, 0));
+    // A frame in the theme colour, so it stands out from the game.
+    canvas.rect(0, 0, width, 2, canvas.theme.accent);
+    canvas.rect(0, height - 2, width, 2, canvas.theme.accent);
+    if let Some(image) = badge {
+        canvas.image(image, pad, (height - image.height) / 2);
+    }
+    let x = pad + badge_w + 4;
+    let columns = (width - x - pad) / ((font::WIDTH + 1) * TEXT_SCALE);
+    let top = (height - lines_h) / 2;
+    canvas.text_at(&cut(&notice.heading, columns), x, top, TEXT_SCALE, canvas.theme.accent);
+    canvas.text_cased_at(&cut(&notice.title, columns), x, top + font::HEIGHT * TEXT_SCALE + 8, TEXT_SCALE, TEXT);
     canvas
 }
 
@@ -1467,8 +1517,10 @@ mod tests {
             icon: &icons::NES,
             name: &long,
             facts: &facts,
+            rows: &DETAIL_ROWS,
             selected: DetailRow::Delete,
             starred: true,
+            achievements_off: true,
             art: Some(Art::Placeholder(&icons::NES)),
             message: Some("PRESS A AGAIN TO DELETE FOREVER"),
         };
@@ -1556,6 +1608,7 @@ mod tests {
             note: None,
             login: ssh::Login::default(),
             boot_messages: None,
+            achievements_user: None,
         };
         let canvas = settings_screen(640, 480, &view, &frame());
         let row = Group::System.settings().iter().position(|&s| s == Setting::PowerOff).unwrap();
@@ -1611,7 +1664,7 @@ mod tests {
             ..Settings::default()
         };
         for group in GROUPS {
-            assert!(text_width(group.label(), TEXT_SCALE) + 2 * TILE_BORDER <= TILE_W, "{group:?}");
+            assert!(text_width(group.tile_label(), TEXT_SCALE) + 2 * TILE_BORDER <= TILE_W, "{group:?}");
             for setting in group.settings() {
                 // The label and a value or bar on the right don't meet.
                 assert!(SETTINGS_LEFT + text_width(setting.label(), TEXT_SCALE) + 16 + BAR_W <= 640 - SETTINGS_RIGHT, "{setting:?}");
@@ -1632,6 +1685,7 @@ mod tests {
                 note: Some("WEDNESDAY 30 SEPTEMBER 2026, 12:30 PM\nWAITING FOR THE TIME FROM THE NETWORK"),
                 login: ssh::Login { password: true, keys: 12 },
                 boot_messages: Some(BootMessages::Text),
+                achievements_user: Some("Player"),
             };
             assert_eq!(settings_screen(640, 480, &view, &frame()).pixels.len(), 640 * 480);
         }

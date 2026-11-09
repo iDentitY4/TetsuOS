@@ -13,6 +13,7 @@ pub enum Item {
     LoadState,
     Disc,
     Screenshot,
+    Achievements,
     Volume,
     Brightness,
     Scaling,
@@ -24,14 +25,16 @@ pub enum Item {
     Quit,
 }
 
-/// Every choice, as a game with several discs and cheats shows them. Others go without
-/// `Item::Disc`, and games whose core ignores codes without `Item::Cheats`.
-pub const ITEMS: [Item; 14] = [
+/// Every choice, as a game with several discs, cheats and achievements shows them. Others
+/// go without `Item::Disc`, games whose core ignores codes or that play in hardcore without
+/// `Item::Cheats`, and games without RetroAchievements without `Item::Achievements`.
+pub const ITEMS: [Item; 15] = [
     Item::Resume,
     Item::SaveState,
     Item::LoadState,
     Item::Disc,
     Item::Screenshot,
+    Item::Achievements,
     Item::Volume,
     Item::Brightness,
     Item::Scaling,
@@ -51,6 +54,7 @@ impl Item {
             Self::LoadState => "LOAD STATE",
             Self::Disc => "CHANGE DISC",
             Self::Screenshot => "SCREENSHOT",
+            Self::Achievements => "ACHIEVEMENTS",
             Self::Volume => "VOLUME",
             Self::Brightness => "BRIGHTNESS",
             Self::Scaling => "SCALING",
@@ -86,6 +90,8 @@ pub enum Action {
     CoreOptions,
     /// Opens the CHEATS page.
     Cheats,
+    /// Opens the ACHIEVEMENTS page.
+    Achievements,
 }
 
 pub struct PauseMenu {
@@ -102,10 +108,20 @@ pub struct PauseMenu {
 impl PauseMenu {
     /// `discs` is how many the game has. With one or none, the menu doesn't offer changing.
     /// `cheats` is whether the game's core applies codes.
+    #[cfg(test)]
     pub fn new(discs: usize, cheats: bool) -> Self {
+        Self::with(discs, cheats, false)
+    }
+
+    /// Also offers the game's achievements, when it plays with RetroAchievements.
+    pub fn with(discs: usize, cheats: bool, achievements: bool) -> Self {
         let items = ITEMS
             .into_iter()
-            .filter(|&item| (item != Item::Disc || discs > 1) && (item != Item::Cheats || cheats))
+            .filter(|&item| {
+                (item != Item::Disc || discs > 1)
+                    && (item != Item::Cheats || cheats)
+                    && (item != Item::Achievements || achievements)
+            })
             .collect();
         Self { items, selected: 0, slot: 1, discs, disc: 0, message: None }
     }
@@ -164,7 +180,13 @@ impl PauseMenu {
                     Item::Scaling => return Action::Scaling(step),
                     Item::Effect => return Action::Effect(step),
                     Item::Ghosting => return Action::Ghosting(step),
-                    Item::Resume | Item::Screenshot | Item::Controls | Item::CoreOptions | Item::Cheats | Item::Quit => {}
+                    Item::Resume
+                    | Item::Screenshot
+                    | Item::Achievements
+                    | Item::Controls
+                    | Item::CoreOptions
+                    | Item::Cheats
+                    | Item::Quit => {}
                 }
             }
             Button::A => {
@@ -177,6 +199,7 @@ impl PauseMenu {
                     Item::Controls => Action::Controls,
                     Item::CoreOptions => Action::CoreOptions,
                     Item::Cheats => Action::Cheats,
+                    Item::Achievements => Action::Achievements,
                     Item::Quit => Action::Quit,
                     Item::Volume | Item::Brightness | Item::Scaling | Item::Effect | Item::Ghosting => {
                         Action::Nothing
@@ -288,6 +311,10 @@ mod tests {
     fn only_a_core_that_applies_codes_offers_cheats() {
         assert!(PauseMenu::new(1, true).items().contains(&Item::Cheats));
         assert!(!PauseMenu::new(1, false).items().contains(&Item::Cheats));
+        assert!(!PauseMenu::new(1, true).items().contains(&Item::Achievements));
+        let menu = PauseMenu::with(1, true, true);
+        let at = |item| menu.items().iter().position(|&other| other == item).unwrap();
+        assert_eq!(at(Item::Achievements), at(Item::Screenshot) + 1);
     }
 
     #[test]

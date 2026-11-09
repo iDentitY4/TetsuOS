@@ -824,6 +824,34 @@ pub const CORES: Icon = [
     "................................",
 ];
 
+/// RetroAchievements, Settings > ACHIEVEMENTS: a trophy.
+pub const ACHIEVEMENTS: Icon = [
+    "................................",
+    "........KKKKKKKKKKKKKKKK........",
+    "........KYYYYYYYYYYYYYYK........",
+    "...KKKKKKYWYYYYYYYYYYYYKKKKKK...",
+    "..KYYYYKKYWYYYYYYYYYYYYKKYYYYK..",
+    "..KYKKKKKYWYYYYYYYYYYYYKKKKKYK..",
+    "..KYK...KYWYYYYYYYYYYYYK...KYK..",
+    "..KYK...KYWYYYYYYYYYYYYK...KYK..",
+    "..KYKK..KYYYYYYYYYYYYYYK..KKYK..",
+    "...KYYK.KYYYYYYYYYYYYYYK.KYYK...",
+    "....KKYKKYYYYYYYYYYYYYYKKYKK....",
+    ".....KKKKYYYYYYYYYYYYYYKKKK.....",
+    ".........KYYYYYYYYYYYYK.........",
+    "..........KYYYYYYYYYYK..........",
+    "...........KKYYYYYYKK...........",
+    ".............KYYYYK.............",
+    ".............KYYYYK.............",
+    ".............KYYYYK.............",
+    "............KKYYYYKK............",
+    "..........KKYYYYYYYYKK..........",
+    "..........KDDDDDDDDDDK..........",
+    "..........KDDDDDDDDDDK..........",
+    "..........KKKKKKKKKKKK..........",
+    "................................",
+];
+
 /// The Tetsu OS logo: a tetsubin, the Japanese iron kettle (tetsu means iron), with a
 /// gamepad's controls on its side. The handle, lid and body mirror around x = 17.
 pub const LOGO: Icon = [
@@ -857,8 +885,10 @@ pub const LOGO: Icon = [
 mod tests {
     use super::*;
 
-    const ALL: [&Icon; 28] = [
+    const ALL: [&Icon; 30] = [
         &LOGO,
+        &ACHIEVEMENTS,
+        &CORES,
         &THEME,
         &TIME,
         &GENERAL,

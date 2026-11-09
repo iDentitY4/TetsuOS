@@ -262,6 +262,7 @@ dependencies = [
 name = "launcher"
 version = "0.1.0"
 dependencies = [
+ "cc",
  "evdev",
  "jiff",
  "libc",

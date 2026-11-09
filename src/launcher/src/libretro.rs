@@ -2,6 +2,7 @@
 
 use crate::i18n::{tr, trf};
 use crate::canvas::{self, PauseView};
+use crate::achievements::{self, Notice, Session};
 use crate::cheats::{self, CheatAction, CheatSource, CheatsPage, Downloaded};
 use crate::controls::{self, ControlsMenu, Layout, PageAction, Pad, Scope};
 use crate::core_options::{self, current, default_value, Category, Choice, Choices, Declarations, Declared, OptionsPage};
@@ -16,6 +17,7 @@ use crate::screenshot;
 use crate::settings::{self, Effect, GameDisplay, Ghosting, Scaling};
 use crate::storage::write_atomic;
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::ffi::{c_char, c_int, c_uint, c_void, CStr, CString, OsStr};
 use std::io::{self, Read, Write};
 use std::os::fd::AsRawFd;
@@ -39,6 +41,8 @@ const ENVIRONMENT_GET_VARIABLE: c_uint = 15;
 const ENVIRONMENT_SET_VARIABLES: c_uint = 16;
 const ENVIRONMENT_GET_VARIABLE_UPDATE: c_uint = 17;
 const ENVIRONMENT_GET_SAVE_DIRECTORY: c_uint = 31;
+/// Where the game's memory is, for achievements.
+const ENVIRONMENT_SET_MEMORY_MAPS: c_uint = 36;
 const ENVIRONMENT_GET_CORE_OPTIONS_VERSION: c_uint = 52;
 const ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY: c_uint = 55;
 const ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION: c_uint = 57;
@@ -526,6 +530,10 @@ unsafe extern "C" fn environment(command: c_uint, data: *mut c_void) -> bool {
             with_host(|host| host.disk_control = Some(control));
             true
         }
+        ENVIRONMENT_SET_MEMORY_MAPS => {
+            achievements::keep_memory_map(data);
+            true
+        }
         // Everything else is optional for a core.
         _ => false,
     }
@@ -902,6 +910,8 @@ struct Core {
     cheat_reset: Option<unsafe extern "C" fn()>,
     cheat_set: Option<unsafe extern "C" fn(c_uint, bool, *const c_char)>,
     av_info: AvInfo,
+    /// The core's name, such as "Snes9x", which hardcore's rules on options go by.
+    library_name: String,
     /// The core may read from this for as long as the game is loaded.
     _rom: Vec<u8>,
 }
@@ -932,7 +942,7 @@ pub fn print_core_options(core_path: &Path) -> io::Result<()> {
     io::stdout().flush()
 }
 
-fn c_path(path: &Path) -> io::Result<CString> {
+pub(crate) fn c_path(path: &Path) -> io::Result<CString> {
     use std::os::unix::ffi::OsStrExt;
     CString::new(path.as_os_str().as_bytes()).map_err(io::Error::other)
 }
@@ -1002,9 +1012,15 @@ impl Core {
                     .ok()
                     .map(|symbol| *symbol),
                 av_info,
+                library_name: c_text(info.library_name),
                 _rom: rom,
             })
         }
+    }
+
+    /// The core's functions that show its memory, for achievements.
+    fn memory(&self) -> achievements::CoreMemory {
+        achievements::CoreMemory { data: self.memory_data, size: self.memory_size }
     }
 
     /// The game's battery-backed memory. Empty if it has none.
@@ -1482,16 +1498,108 @@ enum AfterMenu {
     Quit,
 }
 
+/// The game being played, as the in-game menu needs it.
+struct Game<'a> {
+    rom: &'a Path,
+    save: &'a Path,
+    cheat_source: Option<&'a CheatSource>,
+}
+
+/// The game's RetroAchievements, if it plays with them, and the notices waiting to show.
+struct Achievements<'a> {
+    session: &'a mut Option<Session>,
+    notices: &'a mut VecDeque<Notice>,
+}
+
+impl Achievements<'_> {
+    fn restricts(&self) -> bool {
+        self.session.as_ref().is_some_and(Session::restricts)
+    }
+}
+
+/// Starts RetroAchievements for the game, when an account is logged in and its console has
+/// them. Hardcore needs the core's options to keep to its rules, or the game plays in
+/// softcore.
+fn start_achievements(core: &Core, rom: &Path, save: &Path, console: Option<&str>, notices: &mut VecDeque<Notice>) -> Option<Session> {
+    let id = achievements::console_id(console?)?;
+    let account = achievements::Account::read(Path::new(achievements::ACCOUNT_PATH))?;
+    if settings::get().achievements_off {
+        println!("achievements: off in the settings");
+        return None;
+    }
+    if achievements::is_off_for_game(save) {
+        println!("achievements: off for this game");
+        return None;
+    }
+    let mut hardcore = settings::get().hardcore;
+    if hardcore {
+        if let Some(key) = achievements::disallowed_option(&core.library_name, &chosen_options()) {
+            println!("achievements: {key} isn't allowed in hardcore, so the game plays in softcore");
+            notices.push_back(hardcore_off_notice(&key));
+            hardcore = false;
+        }
+    }
+    match Session::start(&account, id, rom, save, hardcore, core.memory()) {
+        Ok(session) => Some(session),
+        Err(error) => {
+            eprintln!("achievements: could not start: {error}");
+            None
+        }
+    }
+}
+
+/// Says that hardcore ended, because of the core option with this key.
+fn hardcore_off_notice(key: &str) -> Notice {
+    let label = with_host(|host| host.declarations.option(key).map(|option| option.label.clone())).unwrap_or_else(|| key.to_string());
+    Notice { time: Duration::from_secs(6), ..Notice::new(tr("HARDCORE OFF FOR THIS GAME: CORE OPTION"), label) }
+}
+
+/// The core's options as the game has them.
+fn chosen_options() -> Vec<(String, String)> {
+    with_host(|host| {
+        host.declarations.options.iter().map(|option| (option.key.clone(), current(option, &host.choices).to_string())).collect()
+    })
+}
+
+/// Ends hardcore if a core option was changed to one it disallows.
+fn check_hardcore_options(core: &Core, achievements: &mut Achievements) {
+    let Some(session) = achievements.session.as_mut().filter(|session| session.hardcore()) else { return };
+    if let Some(key) = achievements::disallowed_option(&core.library_name, &chosen_options()) {
+        println!("achievements: {key} isn't allowed in hardcore, so the game continues in softcore");
+        session.end_hardcore();
+        achievements.notices.push_back(hardcore_off_notice(&key));
+    }
+}
+
+/// Where notices show: at the bottom, where games tend to have least.
+const NOTICE_BOTTOM: usize = 8;
+
+/// Shows the next notice once the screen has no sign.
+fn show_next_notice(framebuffer: &mut Framebuffer, notices: &mut VecDeque<Notice>, session: Option<&mut Session>) -> io::Result<()> {
+    if framebuffer.sign_wait() != Duration::MAX {
+        return Ok(());
+    }
+    let Some(notice) = notices.pop_front() else { return Ok(()) };
+    let badge = match (session, &notice.badge) {
+        (Some(session), Some(name)) => session.badges().get(name, achievements::NOTICE_BADGE, false),
+        _ => None,
+    };
+    let canvas = screens::achievement_notice(&notice, badge.as_ref(), crate::current_theme());
+    let top = framebuffer.size().1.saturating_sub(canvas.height + NOTICE_BOTTOM);
+    framebuffer.show_sign(&canvas, top, notice.time)
+}
+
 /// Shows the in-game menu over the paused game until it closes.
 fn pause(
     core: &mut Core,
-    save: &Path,
-    cheat_source: Option<&CheatSource>,
+    game: &Game,
+    achievements: &mut Achievements,
     menu: &mut PauseMenu,
     framebuffer: &mut Framebuffer,
     events: &Receiver<Event>,
     volume_levels: &Receiver<u32>,
 ) -> io::Result<AfterMenu> {
+    let Game { rom, save, cheat_source } = *game;
     let (width, height) = framebuffer.size();
     let (frame, frame_size) = with_host(|host| (host.frame.clone(), host.frame_size));
     let _silence = Silence::start(core.av_info.timing.sample_rate);
@@ -1505,8 +1613,20 @@ fn pause(
     // The CHEATS page, while it is open, and a download it started.
     let mut cheats_page: Option<CheatsPage> = None;
     let mut download: Option<Receiver<Downloaded>> = None;
+    // The ACHIEVEMENTS page, while it is open.
+    let mut achievements_page: Option<achievements::Page> = None;
     let mut redraw = true;
     let after = loop {
+        if let Some(session) = achievements.session.as_mut() {
+            session.idle();
+            let new = session.pump();
+            // The page shows the game as soon as it has loaded.
+            if !new.is_empty() && achievements_page.is_some() {
+                achievements_page = Some(achievements::Page::new(session.lines()));
+                redraw = true;
+            }
+            achievements::queue(achievements.notices, new);
+        }
         if let Some(receiver) = &download {
             let result = match receiver.try_recv() {
                 Ok(result) => Some(result),
@@ -1530,6 +1650,19 @@ fn pause(
         if redraw {
             let theme = crate::current_theme();
             let screen = match (&controls_page, &options_page, &cheats_page) {
+                _ if achievements_page.is_some() => {
+                    let session = achievements.session.as_mut();
+                    let summary = session.as_ref().map(|session| session.summary()).unwrap_or_default();
+                    let status = session.as_ref().map_or(achievements::Status::Loading, |session| session.status().clone());
+                    let mut empty = achievements::Badges::new(Path::new(achievements::BADGE_DIR));
+                    let view = canvas::AchievementsView {
+                        page: achievements_page.as_ref().expect("checked above"),
+                        status: &status,
+                        summary,
+                    };
+                    let badges = session.map_or(&mut empty, |session| session.badges());
+                    canvas::achievements_screen(width, height, &frame, frame_size, &view, badges, theme)
+                }
                 (Some(page), _, _) => canvas::controls_screen(width, height, &frame, frame_size, page, theme),
                 (None, Some(page), _) => canvas::core_options_screen(width, height, &frame, frame_size, page, theme),
                 (None, None, Some(page)) => canvas::cheats_screen(width, height, &frame, frame_size, page, theme),
@@ -1556,6 +1689,12 @@ fn pause(
         with_host(|host| host.controls.apply(&event));
         let Some(button) = event.pressed() else { continue };
         redraw = true;
+        if let Some(page) = achievements_page.as_mut() {
+            if page.press(button, canvas::ACHIEVEMENT_ROWS) {
+                achievements_page = None;
+            }
+            continue;
+        }
         if let Some(page) = controls_page.as_mut() {
             match page.press(button) {
                 PageAction::Nothing => {}
@@ -1567,7 +1706,10 @@ fn pause(
         if let Some(page) = options_page.as_mut() {
             match page.press(button) {
                 PageAction::Nothing => {}
-                PageAction::Changed => apply_core_options(page, save),
+                PageAction::Changed => {
+                    apply_core_options(page, save);
+                    check_hardcore_options(core, achievements);
+                }
                 PageAction::Back => options_page = None,
             }
             continue;
@@ -1601,9 +1743,17 @@ fn pause(
                     }
                 });
             }
+            Action::Load(_) if achievements.restricts() => {
+                menu.set_message(tr("HARDCORE ALLOWS NO LOADING").to_string());
+            }
             Action::Load(slot) => match std::fs::read(slot_path(save, slot)) {
                 Ok(state) => match core.load_state(&state) {
-                    Ok(()) => break AfterMenu::Resume,
+                    Ok(()) => {
+                        if let Some(session) = achievements.session.as_mut() {
+                            session.reset_progress();
+                        }
+                        break AfterMenu::Resume;
+                    }
                     Err(error) => {
                         eprintln!("warning: could not load slot {slot}: {error}");
                         menu.set_message(trf("COULD NOT LOAD SLOT {}", &[&slot]));
@@ -1628,6 +1778,10 @@ fn pause(
                     menu.set_message(trf("DISC {} IS MISSING", &[&number]));
                 } else if control.change(disc) {
                     println!("changed to disc {number}");
+                    let disc_path = crate::is_m3u(rom).then(|| crate::read_m3u(rom).get(disc).cloned()).flatten();
+                    if let (Some(session), Some(path)) = (achievements.session.as_mut(), disc_path) {
+                        session.change_disc(&path);
+                    }
                     break AfterMenu::Resume;
                 } else {
                     eprintln!("warning: the core could not change to disc {number}");
@@ -1670,6 +1824,10 @@ fn pause(
                     core_options::read_console(Path::new(core_options::CONSOLE_DIR), console)
                 });
                 options_page = Some(OptionsPage::for_game(declarations, hidden, console, core_options::read_game(save)));
+            }
+            Action::Achievements => {
+                let lines = achievements.session.as_ref().map(Session::lines).unwrap_or_default();
+                achievements_page = Some(achievements::Page::new(lines));
             }
             Action::Cheats => {
                 let Some(source) = cheat_source else { continue };
@@ -1723,12 +1881,18 @@ pub fn play(
     set_host(directory, framebuffer.size(), setup, console, layout_for(save, console))?;
     with_host(|host| host.choices = core_options::choices_for(save, console));
     let mut core = Core::load(core_path, rom)?;
+    let mut notices = VecDeque::new();
+    let mut session = start_achievements(&core, rom, save, console, &mut notices);
+    // Hardcore allows neither going back to a state nor cheats.
+    let restricted = session.as_ref().is_some_and(Session::restricts);
     let mut save_file = core.open_save(save, persistence)?;
     let resume = resume_path(save, persistence);
-    if let Some(path) = &resume {
-        load_resume(&mut core, path)?;
+    match &resume {
+        Some(_) if restricted => println!("achievements: hardcore, so the game starts from its save"),
+        Some(path) => load_resume(&mut core, path)?,
+        None => {}
     }
-    if let Some(source) = &cheat_source {
+    if let Some(source) = cheat_source.as_ref().filter(|_| !restricted) {
         // Only codes still in the file, should it have changed or gone since.
         let enabled = cheats::read_enabled(save);
         let codes: Vec<String> = cheats::read(source).into_iter().map(|cheat| cheat.code).filter(|code| enabled.contains(code)).collect();
@@ -1754,7 +1918,7 @@ pub fn play(
     let mut vsync_works = true;
     let mut frames = 0u64;
     let discs = with_host(|host| host.disk_control).map_or(0, |control| control.count());
-    let mut menu = PauseMenu::new(discs, cheat_source.is_some());
+    let mut menu = PauseMenu::with(discs, cheat_source.is_some() && !restricted, session.is_some());
     let mut trigger = MenuTrigger::new();
     let mut release_at = None;
     let mut battery = power::Monitor::new();
@@ -1795,10 +1959,16 @@ pub fn play(
             Some(Level::Fine) | None => {}
         }
         update_volume_sign(framebuffer, &levels)?;
+        if let Some(session) = session.as_mut() {
+            achievements::queue(&mut notices, session.pump());
+        }
+        show_next_notice(framebuffer, &mut notices, session.as_mut())?;
         if open_menu {
             save_play_time(&mut play_clock);
             hold_cpu_speed();
-            if pause(&mut core, save, cheat_source.as_ref(), &mut menu, framebuffer, &events, &levels)? == AfterMenu::Quit {
+            let game = Game { rom, save, cheat_source: cheat_source.as_ref() };
+            let mut achievements = Achievements { session: &mut session, notices: &mut notices };
+            if pause(&mut core, &game, &mut achievements, &mut menu, framebuffer, &events, &levels)? == AfterMenu::Quit {
                 break;
             }
             release_at = Some(frames - frames % STATS_FRAMES + CPU_HOLD_FRAMES);
@@ -1815,7 +1985,8 @@ pub fn play(
             });
         }
         // A button changed in the layout is for the game alone.
-        let fast = with_host(|host| host.controls.is_held(FAST_FORWARD_BUTTON) && host.layout.is_unchanged(FAST_FORWARD_BUTTON));
+        let fast = with_host(|host| host.controls.is_held(FAST_FORWARD_BUTTON) && host.layout.is_unchanged(FAST_FORWARD_BUTTON))
+            && !session.as_ref().is_some_and(Session::restricts);
         if fast != fast_forwarding {
             draw_fast_forward(framebuffer, fast)?;
             fast_forwarding = fast;
@@ -1833,12 +2004,18 @@ pub fn play(
             let mut extra = 0;
             while extra + 1 < FAST_FORWARD_MAX && run_start.elapsed() < FAST_FORWARD_BUDGET {
                 core.run_frame();
+                if let Some(session) = session.as_mut() {
+                    session.do_frame();
+                }
                 extra += 1;
             }
             with_host(|host| host.skip_output = false);
             fast_frames += u64::from(extra);
         }
         core.run_frame();
+        if let Some(session) = session.as_mut() {
+            session.do_frame();
+        }
         run_time += run_start.elapsed();
         with_host(|host| -> io::Result<()> {
             if host.frame_ready {
@@ -1932,6 +2109,9 @@ pub fn play(
     }
     save_play_time(&mut play_clock);
     save_progress(&mut core, persistence, &mut save_file, resume.as_deref())?;
+    if let Some(session) = session.take() {
+        session.finish();
+    }
     let audio = with_host(|host| host.audio.take());
     if let Some(mut audio) = audio {
         drop(audio.stdin.take());
@@ -1958,6 +2138,13 @@ pub fn render(
 ) -> io::Result<()> {
     set_host(save.parent().unwrap_or(Path::new(".")), (640, 480), setup, None, Layout::default())?;
     let mut core = Core::load(core_path, rom)?;
+    let console = crate::system_for(rom).and_then(|system| achievements::console_id(system.key));
+    // At load, where a session first looks, and after the frames, as some cores, such as
+    // mGBA, give their memory map only in their first frame.
+    if let Some(console) = console {
+        let (bytes, regions) = achievements::memory_found(console, core.memory());
+        println!("achievement memory at load: {bytes} bytes in {regions} regions");
+    }
     let mut save_file = core.open_save(save, persistence)?;
     let start = Instant::now();
     for _ in 0..frames {
@@ -1974,6 +2161,10 @@ pub fn render(
     println!("core timing: {:.2} fps, {:.0} Hz", core.av_info.timing.fps, core.av_info.timing.sample_rate);
     println!("audio: {bytes} bytes, save RAM: {} bytes", core.save_ram().len());
     println!("last frame: {}x{} from the core, shown at {width}x{height}", source.0, source.1);
+    if let Some(console) = console {
+        let (bytes, regions) = achievements::memory_found(console, core.memory());
+        println!("achievement memory after {frames} frames: {bytes} bytes in {regions} regions");
+    }
 
     let mut file = io::BufWriter::new(std::fs::File::create(output)?);
     write!(file, "P6\n{width} {height}\n255\n")?;

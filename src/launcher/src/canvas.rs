@@ -6,6 +6,7 @@ use crate::boxart::Image;
 use crate::icons::{self, Icon};
 use crate::input::{Button, Controls};
 use crate::controls::{self, ControlsMenu, Row};
+use crate::achievements::{self, Badges, Line, Page as AchievementsPage, Status, Summary};
 use crate::cheats::CheatsPage;
 use crate::core_options::OptionsPage;
 use crate::screens::{self, OptionsLayout};
@@ -315,7 +316,8 @@ pub struct PauseView<'a> {
 
 const PAUSE_PANEL: (usize, usize, usize, usize) = (110, 15, 420, 450);
 const PAUSE_TOP: usize = 65;
-const PAUSE_ROW: usize = 23;
+/// 22 fits every item: at 23, the fifteenth pushed the hint past the panel.
+const PAUSE_ROW: usize = 22;
 const PAUSE_TEXT_SCALE: usize = 2;
 const PAUSE_BAR_WIDTH: usize = 120;
 
@@ -526,6 +528,107 @@ pub fn cheats_screen(
     }
     let hint = if page.has_cheats() { tr("A TURNS ON OR OFF - L1 R1 PAGES - B BACK") } else { tr("A SELECTS - B BACK") };
     canvas.text(hint, below + 30, PAUSE_TEXT_SCALE, MUTED);
+    canvas
+}
+
+/// What the in-game menu's ACHIEVEMENTS page shows.
+pub struct AchievementsView<'a> {
+    pub page: &'a AchievementsPage,
+    pub status: &'a Status,
+    pub summary: Summary,
+}
+
+/// Lines on the ACHIEVEMENTS page at once, which L1 and R1 page by.
+pub const ACHIEVEMENT_ROWS: usize = 8;
+const ACHIEVEMENT_TOP: usize = 84;
+const ACHIEVEMENT_ROW: usize = 36;
+const ACHIEVEMENT_SUMMARY_Y: usize = OPTIONS_TITLE_Y + font::HEIGHT * 3 + 12;
+/// Below the rows, and the line that parts them from the description.
+const ACHIEVEMENT_RULE_Y: usize = ACHIEVEMENT_TOP + ACHIEVEMENT_ROWS * ACHIEVEMENT_ROW + 4;
+const ACHIEVEMENT_DESCRIPTION_Y: usize = ACHIEVEMENT_RULE_Y + 12;
+const ACHIEVEMENT_HINT_Y: usize = ACHIEVEMENT_DESCRIPTION_Y + 2 * 20 + 6;
+// The summary clears the title, and the hint ends inside the panel.
+const _: () = assert!(ACHIEVEMENT_SUMMARY_Y + font::HEIGHT * PAUSE_TEXT_SCALE + 8 <= ACHIEVEMENT_TOP);
+const _: () = assert!(ACHIEVEMENT_HINT_Y + font::HEIGHT * PAUSE_TEXT_SCALE <= OPTIONS_PANEL.1 + OPTIONS_PANEL.3);
+
+
+/// The in-game menu's ACHIEVEMENTS page, on the wide panel: the game's achievements with
+/// their badges, grey while locked, and the selected one's description below them.
+pub fn achievements_screen(
+    width: usize,
+    height: usize,
+    frame: &[u32],
+    frame_size: (usize, usize),
+    view: &AchievementsView,
+    badges: &mut Badges,
+    theme: Theme,
+) -> Canvas {
+    let mut canvas = backdrop_with_panel(width, height, frame, frame_size, theme, OPTIONS_PANEL);
+    let (panel_x, _, panel_w, _) = OPTIONS_PANEL;
+    canvas.text(tr("ACHIEVEMENTS"), OPTIONS_TITLE_Y, 3, TEXT);
+    let waiting = match view.status {
+        Status::Loading => Some(tr("LOADING THE ACHIEVEMENTS").to_string()),
+        Status::NoAchievements => Some(tr("NO ACHIEVEMENTS FOR THIS GAME YET").to_string()),
+        Status::NotRecognised => Some(tr("RETROACHIEVEMENTS DOESN'T KNOW THIS GAME").to_string()),
+        Status::Failed(message) => Some(message.clone()),
+        Status::Ready => None,
+    };
+    if let Some(message) = waiting {
+        canvas.text(&message, 220, PAUSE_TEXT_SCALE, MUTED);
+        canvas.text(tr("B BACK"), ACHIEVEMENT_HINT_Y, PAUSE_TEXT_SCALE, MUTED);
+        return canvas;
+    }
+    let summary = view.summary;
+    let mut line = trf("{} OF {} UNLOCKED - {}/{} POINTS", &[&summary.unlocked, &summary.total, &summary.points, &summary.points_total]);
+    if summary.hardcore {
+        line = format!("{line} - {}", tr("HARDCORE"));
+    }
+    canvas.text(&line, ACHIEVEMENT_SUMMARY_Y, PAUSE_TEXT_SCALE, MUTED);
+
+    let advance = (font::WIDTH + 1) * PAUSE_TEXT_SCALE;
+    let (left, right) = (panel_x + 16, panel_x + panel_w - 16);
+    let page = view.page;
+    let first = page.first_shown(ACHIEVEMENT_ROWS);
+    for (row, (index, line)) in page.lines().iter().enumerate().skip(first).take(ACHIEVEMENT_ROWS).enumerate() {
+        let y = ACHIEVEMENT_TOP + row * ACHIEVEMENT_ROW;
+        let text_y = y + (ACHIEVEMENT_ROW - 2 - font::HEIGHT * PAUSE_TEXT_SCALE) / 2;
+        let entry = match line {
+            Line::Heading(label) => {
+                canvas.text_at(label, left, text_y + 4, PAUSE_TEXT_SCALE, canvas.theme.accent);
+                continue;
+            }
+            Line::Achievement(entry) => entry,
+        };
+        let selected = index == page.selected();
+        let color = if selected {
+            canvas.rect(panel_x, y, panel_w, ACHIEVEMENT_ROW - 2, canvas.theme.accent);
+            canvas.theme.background
+        } else if entry.unlocked {
+            TEXT
+        } else {
+            MUTED
+        };
+        let badge_y = y + (ACHIEVEMENT_ROW - 2 - achievements::SMALL_BADGE) / 2;
+        match badges.get(&entry.badge, achievements::SMALL_BADGE, !entry.unlocked) {
+            Some(image) => canvas.image(&image, left, badge_y),
+            None => canvas.rect(left, badge_y, achievements::SMALL_BADGE, achievements::SMALL_BADGE, BODY),
+        }
+        // Progress for one under way, or else its points.
+        let value = if !entry.unlocked && !entry.progress.is_empty() { entry.progress.clone() } else { entry.points.to_string() };
+        let value_x = right - text_width(&value, PAUSE_TEXT_SCALE);
+        canvas.text_cased_at(&value, value_x, text_y, PAUSE_TEXT_SCALE, color);
+        let title_x = left + achievements::SMALL_BADGE + 10;
+        let columns = value_x.saturating_sub(title_x + 12) / advance;
+        canvas.text_cased_at(&screens::cut(&entry.title, columns), title_x, text_y, PAUSE_TEXT_SCALE, color);
+    }
+    canvas.rect(left, ACHIEVEMENT_RULE_Y, right - left, 2, BODY);
+    if let Some(entry) = page.selected_entry() {
+        let columns = (right - left) / advance;
+        for (number, text) in screens::wrapped_lines(&entry.description, columns, 2).iter().enumerate() {
+            canvas.text_cased_at(text, left, ACHIEVEMENT_DESCRIPTION_Y + number * 20, PAUSE_TEXT_SCALE, TEXT);
+        }
+    }
+    canvas.text(tr("L1 R1 PAGES - B BACK"), ACHIEVEMENT_HINT_Y, PAUSE_TEXT_SCALE, MUTED);
     canvas
 }
 

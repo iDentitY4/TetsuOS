@@ -71,8 +71,8 @@ pub(crate) fn write_pause_preview(path: &str) -> io::Result<()> {
             (x * 255 / 640) << 16 | (y * 255 / 426) << 8 | 0x80
         })
         .collect();
-    // With several discs, the fullest the menu gets.
-    let mut menu = pause::PauseMenu::new(3, true);
+    // With several discs and achievements, the fullest the menu gets.
+    let mut menu = pause::PauseMenu::with(3, true, true);
     menu.press(Button::Down);
     menu.press(Button::Down);
     menu.press(Button::Right);
@@ -246,4 +246,81 @@ pub(crate) fn write_button_preview(path: &str) -> io::Result<()> {
     controls.apply(&Event::key(BTN_DPAD_UP, 0));
     controls.apply(&Event::key(BTN_EAST, 1));
     write_ppm(&canvas::button_screen(width, height, &controls, current_theme()), path)
+}
+
+/// Made-up badges for the previews: coloured squares with a frame, in a folder of their own.
+fn preview_badges() -> io::Result<achievements::Badges> {
+    let dir = std::env::temp_dir().join(format!("launcher-preview-badges-{}", std::process::id()));
+    std::fs::create_dir_all(&dir)?;
+    for (index, name) in ["1", "2", "3", "4", "5", "6", "7", "8"].iter().enumerate() {
+        let samples: Vec<u8> = (0..64 * 64)
+            .flat_map(|i| {
+                let (x, y) = (i % 64, i / 64);
+                let edge = !(4..60).contains(&x) || !(4..60).contains(&y);
+                let hue = (index * 37) as u8;
+                if edge { [240, 200, 60] } else { [hue.wrapping_mul(3), (x * 3) as u8, 255 - (y * 3) as u8] }
+            })
+            .collect();
+        let file = png::encode(64, 64, &samples).map_err(io::Error::other)?;
+        std::fs::write(dir.join(format!("{name}.png")), file)?;
+    }
+    Ok(achievements::Badges::new(&dir))
+}
+
+/// Renders the in-game menu's ACHIEVEMENTS page for a made-up game, with one achievement
+/// under way and a few unlocked.
+pub(crate) fn write_achievements_preview(path: &str) -> io::Result<()> {
+    use achievements::{Entry, Line, Page, Status, Summary};
+    let (width, height) = PREVIEW_SIZE;
+    let entry = |title: &str, description: &str, points: u32, unlocked: bool, progress: &str, badge: &str| {
+        Line::Achievement(Entry {
+            title: title.into(),
+            description: description.into(),
+            points,
+            unlocked,
+            progress: progress.into(),
+            badge: badge.into(),
+        })
+    };
+    let lines = vec![
+        Line::Heading(i18n::tr("ALMOST THERE")),
+        entry("Collector", "Collect 100 coins in a single level without losing a life", 10, false, "73/100", "1"),
+        Line::Heading(i18n::tr("LOCKED")),
+        entry("Speed Runner", "Finish the first world in under five minutes", 25, false, "", "2"),
+        entry("A Very Long Achievement Name That Needs Cutting", "Do everything", 50, false, "", "3"),
+        entry("Pacifist", "Clear a castle without defeating an enemy", 10, false, "", "4"),
+        Line::Heading(i18n::tr("UNLOCKED")),
+        entry("First Steps", "Finish the first level", 1, true, "", "5"),
+        entry("Explorer", "Find a secret exit", 5, true, "", "6"),
+    ];
+    let mut page = Page::new(lines);
+    page.press(Button::Down, canvas::ACHIEVEMENT_ROWS);
+    page.press(Button::Down, canvas::ACHIEVEMENT_ROWS);
+    page.press(Button::Up, canvas::ACHIEVEMENT_ROWS);
+    let summary = Summary { unlocked: 2, total: 6, points: 6, points_total: 101, hardcore: true };
+    let view = canvas::AchievementsView { page: &page, status: &Status::Ready, summary };
+    let frame = vec![0x0040_6080u32; width * height];
+    let mut badges = preview_badges()?;
+    write_ppm(&canvas::achievements_screen(width, height, &frame, PREVIEW_SIZE, &view, &mut badges, current_theme()), path)
+}
+
+/// Renders an unlock notice at the bottom of a test pattern, where a game shows it.
+pub(crate) fn write_notice_preview(path: &str) -> io::Result<()> {
+    let (width, height) = PREVIEW_SIZE;
+    let notice = achievements::Notice {
+        badge: Some("5".into()),
+        ..achievements::Notice::new(i18n::trf("ACHIEVEMENT UNLOCKED - {} POINTS", &[&10]), "First Steps")
+    };
+    let badge = preview_badges()?.get("5", achievements::NOTICE_BADGE, false);
+    let sign = screens::achievement_notice(&notice, badge.as_ref(), current_theme());
+    let mut canvas = canvas::Canvas::new(width, height, current_theme());
+    for (index, pixel) in canvas.pixels.iter_mut().enumerate() {
+        let (x, y) = (index % width, index / width);
+        *pixel = canvas::Rgb((x * 255 / width) as u8, (y * 255 / height) as u8, 0x80);
+    }
+    let (left, top) = ((width - sign.width) / 2, height - sign.height - 8);
+    for (row, line) in sign.pixels.chunks_exact(sign.width).enumerate() {
+        canvas.pixels[(top + row) * width + left..][..sign.width].copy_from_slice(line);
+    }
+    write_ppm(&canvas, path)
 }

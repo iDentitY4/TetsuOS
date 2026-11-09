@@ -385,6 +385,10 @@ pub struct Settings {
     pub ssh: SshAccess,
     pub performance: CpuLevel,
     pub charge: ChargeLimit,
+    /// RetroAchievements unlocks count as hardcore, and games keep to its rules.
+    pub hardcore: bool,
+    /// RetroAchievements are off for every game.
+    pub achievements_off: bool,
     /// The setup hasn't finished: there was no settings file, or it was left partway.
     pub setup_pending: bool,
 }
@@ -531,6 +535,8 @@ fn parse(text: &str) -> Settings {
             "ssh" => choose(&mut settings.ssh, SshAccess::from_key(value)),
             "performance" => choose(&mut settings.performance, CpuLevel::from_key(value)),
             "charge" => choose(&mut settings.charge, ChargeLimit::from_key(value)),
+            "hardcore" => settings.hardcore = value == "on",
+            "achievements" => settings.achievements_off = value == "off",
             "setup" => settings.setup_pending = value == "pending",
             _ => {}
         }
@@ -588,6 +594,8 @@ fn format(settings: &Settings) -> String {
     lines.push(format!("ssh={}", settings.ssh.key()));
     lines.push(format!("performance={}", settings.performance.key()));
     lines.push(format!("charge={}", settings.charge.key()));
+    lines.push(format!("hardcore={}", on_off(settings.hardcore)));
+    lines.push(format!("achievements={}", on_off(!settings.achievements_off)));
     if settings.setup_pending {
         lines.push("setup=pending".to_string());
     }
@@ -847,6 +855,8 @@ mod tests {
             ssh: SshAccess::Wifi,
             performance: CpuLevel::Battery,
             charge: ChargeLimit::Less,
+            hardcore: true,
+            achievements_off: true,
             setup_pending: true,
         };
         assert_eq!(parse(&format(&settings)), settings);

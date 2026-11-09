@@ -209,7 +209,18 @@ pub(crate) fn build_library(roms: &[PathBuf], recent: &[PathBuf], favorites: &[P
     let recent = pick(recent);
     let mut favorites = pick(favorites);
     favorites.sort_by_key(|game| game.name.to_ascii_lowercase());
-    Library { recent, favorites, shelves, systems: SYSTEMS.len(), hidden: hidden_tiles(), grid: settings::get().grid, ..Library::default() }
+    let achievement_systems =
+        (0..SYSTEMS.len()).filter(|&index| achievements::console_id(SYSTEMS[index].key).is_some()).collect();
+    Library {
+        recent,
+        favorites,
+        shelves,
+        systems: SYSTEMS.len(),
+        hidden: hidden_tiles(),
+        grid: settings::get().grid,
+        achievement_systems,
+        ..Library::default()
+    }
 }
 
 /// For comparing names: lower case and without accents, as the keyboard has none.

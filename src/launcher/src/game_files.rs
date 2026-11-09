@@ -32,9 +32,13 @@ impl GameFiles {
         self.game.iter().filter_map(|file| std::fs::metadata(file).ok()).map(|data| data.len()).sum()
     }
 
-    /// Save files as a player thinks of them, without the play time's or the settings'.
+    /// Save files as a player thinks of them, without the play time's, the settings' or the
+    /// achievement count's.
     pub(crate) fn save_count(&self) -> usize {
-        self.saves.iter().filter(|file| !play_time::is_play_time(file) && !is_game_setting(file)).count()
+        self.saves
+            .iter()
+            .filter(|file| !play_time::is_play_time(file) && !is_game_setting(file) && !achievements::is_summary(file))
+            .count()
     }
 
     /// The time played, with what its discs had as games of their own. None if none is known.
@@ -71,7 +75,10 @@ fn total_play_time(saves: &[PathBuf]) -> Option<Duration> {
 
 /// A game's own controls, core options or cheats, which are settings rather than saves.
 fn is_game_setting(file: &Path) -> bool {
-    controls::is_game_layout(file) || core_options::is_game_options(file) || cheats::is_game_cheats(file)
+    controls::is_game_layout(file)
+        || core_options::is_game_options(file)
+        || cheats::is_game_cheats(file)
+        || achievements::is_off_file(file)
 }
 
 fn newest_save(saves: &[PathBuf]) -> Option<SystemTime> {
@@ -138,6 +145,8 @@ fn saves_beside(save: &Path) -> Vec<PathBuf> {
     files.push(controls::game_layout_path(save));
     files.push(core_options::game_path(save));
     files.push(cheats::game_path(save));
+    files.push(achievements::summary_path(save));
+    files.push(achievements::off_path(save));
     files.retain(|file| file.exists());
     files
 }
@@ -299,12 +308,12 @@ mod tests {
     #[test]
     fn every_save_of_a_game_is_found() {
         let dir = folder("saves");
-        for name in ["G.gb.srm", "G.gb.resume", "G.gb.state1", "G.gb.state8", "G.gb.unreadable", "G.gb.srm.playtime", "G.gb.srm.controls", "G.gb.srm.options", "H.gb.srm", "G.gba.srm"] {
+        for name in ["G.gb.srm", "G.gb.resume", "G.gb.state1", "G.gb.state8", "G.gb.unreadable", "G.gb.srm.playtime", "G.gb.srm.controls", "G.gb.srm.options", "G.gb.srm.achievements", "H.gb.srm", "G.gba.srm"] {
             write(&dir.join(name), "x");
         }
         let mut found = names(&saves_beside(&dir.join("G.gb.srm")), &dir);
         found.sort();
-        assert_eq!(found, ["G.gb.resume", "G.gb.srm", "G.gb.srm.controls", "G.gb.srm.options", "G.gb.srm.playtime", "G.gb.state1", "G.gb.state8", "G.gb.unreadable"]);
+        assert_eq!(found, ["G.gb.resume", "G.gb.srm", "G.gb.srm.achievements", "G.gb.srm.controls", "G.gb.srm.options", "G.gb.srm.playtime", "G.gb.state1", "G.gb.state8", "G.gb.unreadable"]);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

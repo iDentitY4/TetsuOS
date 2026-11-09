@@ -44,6 +44,8 @@ pub struct Library {
     pub grid: GridSize,
     /// The order consoles' lists and favorites are in.
     pub sort: GameSort,
+    /// The systems, by index, whose games can have RetroAchievements.
+    pub achievement_systems: Vec<usize>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -83,10 +85,14 @@ pub enum Screen {
 pub enum DetailRow {
     Play,
     Star,
+    /// Turns RetroAchievements off for this game, or on again. Only for consoles with them.
+    Achievements,
     Delete,
 }
 
-pub const DETAIL_ROWS: [DetailRow; 3] = [DetailRow::Play, DetailRow::Star, DetailRow::Delete];
+/// Every row there can be, in order. A game whose console has no achievements goes
+/// without `DetailRow::Achievements`.
+pub const DETAIL_ROWS: [DetailRow; 4] = [DetailRow::Play, DetailRow::Star, DetailRow::Achievements, DetailRow::Delete];
 
 /// A tile on the settings grid. Each opens a list of its settings, except Wi-Fi, which
 /// opens the Wi-Fi screen, and Cores, which opens the consoles' core options.
@@ -101,9 +107,10 @@ pub enum Group {
     System,
     Advanced,
     Cores,
+    Achievements,
 }
 
-pub const GROUPS: [Group; 9] = [
+pub const GROUPS: [Group; 10] = [
     Group::General,
     Group::GameScreen,
     Group::Wifi,
@@ -113,6 +120,7 @@ pub const GROUPS: [Group; 9] = [
     Group::System,
     Group::Advanced,
     Group::Cores,
+    Group::Achievements,
 ];
 
 /// The most settings a group has, which the settings screen makes room for.
@@ -130,7 +138,16 @@ impl Group {
             Self::System => "SYSTEM",
             Self::Advanced => "ADVANCED",
             Self::Cores => "CORES",
+            Self::Achievements => "ACHIEVEMENTS",
         })
+    }
+
+    /// The name on its tile in the settings grid, which fits 11 characters.
+    pub fn tile_label(self) -> &'static str {
+        match self {
+            Self::Achievements => tr("TROPHIES"),
+            other => other.label(),
+        }
     }
 
     pub fn settings(self) -> &'static [Setting] {
@@ -161,6 +178,7 @@ impl Group {
                 ]
             }
             Self::Time => &[Setting::TimeZone, Setting::ClockFormat],
+            Self::Achievements => &[Setting::AchievementsOn, Setting::AchievementsAccount, Setting::Hardcore],
             Self::System => {
                 &[
                     Setting::ButtonTest,
@@ -229,6 +247,11 @@ pub enum Setting {
     ResetSettings,
     UseForAllConsoles,
     SaveLogs,
+    /// RetroAchievements for every game, or none.
+    AchievementsOn,
+    /// Logs in to RetroAchievements, or out once logged in.
+    AchievementsAccount,
+    Hardcore,
 }
 
 impl Setting {
@@ -275,6 +298,9 @@ impl Setting {
             Self::ResetSettings => "RESET SETTINGS",
             Self::UseForAllConsoles => "USE FOR ALL CONSOLES",
             Self::SaveLogs => "SAVE LOGS TO CARD",
+            Self::AchievementsOn => "ACHIEVEMENTS",
+            Self::AchievementsAccount => "ACCOUNT",
+            Self::Hardcore => "HARDCORE",
         })
     }
 
@@ -323,10 +349,13 @@ impl Setting {
                 | Self::Performance
                 | Self::ChargeLimit
                 | Self::BootMessages
+                | Self::Hardcore
+                | Self::AchievementsOn
         )
     }
 
-    /// Whether A must be pressed twice, because it can't be undone.
+    /// Whether A must be pressed twice, because it can't be undone. Logging out of
+    /// RetroAchievements is confirmed only once logged in, which the launcher knows.
     fn needs_confirming(self) -> bool {
         matches!(self, Self::DeleteArt | Self::Reboot | Self::PowerOff | Self::SshKeys | Self::ResetSettings | Self::UseForAllConsoles)
     }
@@ -393,6 +422,10 @@ pub enum Command {
     Search,
     /// Deletes the game and its saves, after a second press.
     DeleteGame(PathBuf),
+    /// Turns RetroAchievements off for the game, or on again.
+    ToggleGameAchievements(PathBuf),
+    /// Turns RetroAchievements off for every game, or on again.
+    ToggleAchievements,
     ButtonTest,
     Wifi,
     /// The consoles' core options, from Settings > CORES.
@@ -440,6 +473,11 @@ pub enum Command {
     /// Drops every console's own display, so they all use the settings' one.
     UseDisplayForAllConsoles,
     SaveLogs,
+    /// Logs in to RetroAchievements with a name and password typed on the keyboard.
+    LogInToAchievements,
+    /// Forgets the RetroAchievements account, after a second press.
+    LogOutOfAchievements,
+    ToggleHardcore,
     /// The card's TETSU-DATA partition as a USB drive on the PC.
     UsbStorage,
     Reboot,
@@ -473,6 +511,8 @@ pub struct Launcher {
     delete_armed: bool,
     /// A setting that can't be undone, waiting for a second press of A.
     confirming: Option<Setting>,
+    /// Logged in to RetroAchievements, so A on its account logs out, after a second press.
+    pub achievements_logged_in: bool,
 }
 
 impl Library {
@@ -553,6 +593,7 @@ impl Launcher {
             details_row: 0,
             delete_armed: false,
             confirming: None,
+            achievements_logged_in: false,
         }
     }
 
@@ -643,8 +684,15 @@ impl Launcher {
         library.game_at(self.details_game.as_deref()?)
     }
 
-    pub fn details_row(&self) -> DetailRow {
-        DETAIL_ROWS[self.details_row]
+    /// The rows on the details screen for its game.
+    pub fn detail_rows(&self, library: &Library) -> Vec<DetailRow> {
+        let achievements = self.details_game(library).is_some_and(|game| library.achievement_systems.contains(&game.system));
+        DETAIL_ROWS.into_iter().filter(|&row| row != DetailRow::Achievements || achievements).collect()
+    }
+
+    pub fn details_row(&self, library: &Library) -> DetailRow {
+        let rows = self.detail_rows(library);
+        rows[self.details_row.min(rows.len() - 1)]
     }
 
     /// The question to show while deleting a game waits for its second press.
@@ -673,6 +721,7 @@ impl Launcher {
             Setting::SshKeys => Some(tr("PRESS A AGAIN TO REMOVE THE SSH KEYS")),
             Setting::ResetSettings => Some(tr("PRESS A AGAIN TO RESET ALL SETTINGS")),
             Setting::UseForAllConsoles => Some(tr("PRESS A AGAIN TO USE THESE FOR ALL CONSOLES")),
+            Setting::AchievementsAccount => Some(tr("PRESS A AGAIN TO LOG OUT")),
             _ => None,
         }
     }
@@ -791,15 +840,19 @@ impl Launcher {
             return Command::Nothing;
         };
         let path = game.path.clone();
-        let count = DETAIL_ROWS.len();
+        let count = self.detail_rows(library).len();
         match button {
             Button::Up => self.details_row = (self.details_row + count - 1) % count,
             Button::Down => self.details_row = (self.details_row + 1) % count,
             Button::B => self.screen = Screen::Games(list),
             Button::Select => return Command::ToggleFavorite(path),
-            Button::A => match self.details_row() {
+            Button::Left | Button::Right if self.details_row(library) == DetailRow::Achievements => {
+                return Command::ToggleGameAchievements(path);
+            }
+            Button::A => match self.details_row(library) {
                 DetailRow::Play => return Command::Play(path),
                 DetailRow::Star => return Command::ToggleFavorite(path),
+                DetailRow::Achievements => return Command::ToggleGameAchievements(path),
                 DetailRow::Delete if delete_armed => {
                     self.screen = Screen::Games(list);
                     return Command::DeleteGame(path);
@@ -870,11 +923,23 @@ impl Launcher {
                 Setting::Performance => return Command::Performance(step),
                 Setting::ChargeLimit => return Command::ChargeLimit(step),
                 Setting::BootMessages => return Command::ToggleBootMessages,
+                Setting::Hardcore => return Command::ToggleHardcore,
+                Setting::AchievementsOn => return Command::ToggleAchievements,
                 _ => {}
             },
             Button::B => self.screen = Screen::Settings,
             Button::A if setting.needs_confirming() && confirming != Some(setting) => {
                 self.confirming = Some(setting);
+            }
+            Button::A if setting == Setting::AchievementsAccount => {
+                if !self.achievements_logged_in {
+                    return Command::LogInToAchievements;
+                }
+                if confirming != Some(setting) {
+                    self.confirming = Some(setting);
+                } else {
+                    return Command::LogOutOfAchievements;
+                }
             }
             Button::A => match setting {
                 Setting::DownloadMissingArt => return Command::DownloadBoxArt(ArtDownload::Missing),
@@ -893,6 +958,10 @@ impl Launcher {
                 Setting::ResetSettings => return Command::ResetSettings,
                 Setting::UseForAllConsoles => return Command::UseDisplayForAllConsoles,
                 Setting::SaveLogs => return Command::SaveLogs,
+                Setting::Hardcore => return Command::ToggleHardcore,
+                Setting::AchievementsOn => return Command::ToggleAchievements,
+                // Handled above.
+                Setting::AchievementsAccount => {}
                 Setting::Volume
                 | Setting::Brightness
                 | Setting::StartScreen
@@ -1148,7 +1217,7 @@ mod tests {
         let mut launcher = Launcher::new();
         let list = open_details(&mut launcher, &library);
         assert_eq!(launcher.details_game(&library).unwrap().name, "banana");
-        assert_eq!(launcher.details_row(), DetailRow::Play);
+        assert_eq!(launcher.details_row(&library), DetailRow::Play);
         assert_eq!(launcher.press(Button::A, &library), Command::Play(PathBuf::from("banana")));
         assert_eq!(launcher.press(Button::Select, &library), Command::ToggleFavorite(PathBuf::from("banana")));
         launcher.press(Button::Down, &library);
@@ -1159,12 +1228,29 @@ mod tests {
     }
 
     #[test]
+    fn a_game_with_achievements_can_turn_them_off_from_its_details() {
+        let library = Library { achievement_systems: vec![0], ..details_library() };
+        let mut launcher = Launcher::new();
+        open_details(&mut launcher, &library);
+        assert_eq!(launcher.detail_rows(&library), DETAIL_ROWS);
+        press_all(&mut launcher, &library, &[Button::Down, Button::Down]);
+        assert_eq!(launcher.details_row(&library), DetailRow::Achievements);
+        assert_eq!(launcher.press(Button::A, &library), Command::ToggleGameAchievements(PathBuf::from("banana")));
+        assert_eq!(launcher.press(Button::Left, &library), Command::ToggleGameAchievements(PathBuf::from("banana")));
+        assert_eq!(launcher.press(Button::Right, &library), Command::ToggleGameAchievements(PathBuf::from("banana")));
+        // A console without them goes without the row.
+        let without = details_library();
+        assert!(!launcher.detail_rows(&without).contains(&DetailRow::Achievements));
+        assert_eq!(launcher.details_row(&without), DetailRow::Delete, "kept within the rows");
+    }
+
+    #[test]
     fn deleting_needs_two_presses_in_a_row() {
         let library = details_library();
         let mut launcher = Launcher::new();
         let list = open_details(&mut launcher, &library);
         launcher.press(Button::Up, &library);
-        assert_eq!(launcher.details_row(), DetailRow::Delete);
+        assert_eq!(launcher.details_row(&library), DetailRow::Delete);
         assert_eq!(launcher.press(Button::A, &library), Command::Nothing);
         assert!(launcher.details_confirmation().is_some());
         // Any other press calls it off.
@@ -1185,7 +1271,7 @@ mod tests {
         launcher.press(Button::A, &library);
         launcher.press(Button::B, &library);
         launcher.press(Button::Y, &library);
-        assert_eq!(launcher.details_row(), DetailRow::Play);
+        assert_eq!(launcher.details_row(&library), DetailRow::Play);
         assert!(launcher.details_confirmation().is_none());
     }
 
@@ -1312,6 +1398,32 @@ mod tests {
     }
 
     #[test]
+    fn the_achievements_account_logs_in_or_out_after_a_second_press() {
+        let library = library();
+        let mut launcher = Launcher::new();
+        open_group(&mut launcher, &library, Group::Achievements);
+        assert_eq!(launcher.setting_selected(Group::Achievements), Some(Setting::AchievementsOn));
+        assert_eq!(launcher.press(Button::Right, &library), Command::ToggleAchievements);
+        assert_eq!(launcher.press(Button::A, &library), Command::ToggleAchievements);
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.setting_selected(Group::Achievements), Some(Setting::AchievementsAccount));
+        assert_eq!(launcher.press(Button::A, &library), Command::LogInToAchievements);
+        launcher.achievements_logged_in = true;
+        assert_eq!(launcher.press(Button::A, &library), Command::Nothing);
+        assert_eq!(launcher.confirmation(), Some("PRESS A AGAIN TO LOG OUT"));
+        assert_eq!(launcher.press(Button::A, &library), Command::LogOutOfAchievements);
+        // Anything else in between asks again.
+        launcher.press(Button::A, &library);
+        launcher.press(Button::Up, &library);
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::A, &library), Command::Nothing);
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.setting_selected(Group::Achievements), Some(Setting::Hardcore));
+        assert_eq!(launcher.press(Button::Left, &library), Command::ToggleHardcore);
+        assert_eq!(launcher.press(Button::A, &library), Command::ToggleHardcore);
+    }
+
+    #[test]
     fn settings_adjust_levels_and_open_tools() {
         let library = library();
         let mut launcher = Launcher::new();
@@ -1340,8 +1452,10 @@ mod tests {
         // Wi-Fi opens its own screen straight from the grid.
         assert_eq!(press_all(&mut launcher, &library, &[Button::B, Button::Right, Button::A]), Command::Wifi);
         assert_eq!(launcher.screen(), Screen::Settings);
-        // So does CORES, the last tile, on a row of its own.
-        assert_eq!(press_all(&mut launcher, &library, &[Button::Down, Button::Down, Button::A]), Command::CoreOptions);
+        // So does CORES, on the last row, left of ACHIEVEMENTS, where Down goes from there.
+        press_all(&mut launcher, &library, &[Button::Down, Button::Down]);
+        assert_eq!(launcher.group_selected(), Group::Achievements);
+        assert_eq!(press_all(&mut launcher, &library, &[Button::Left, Button::A]), Command::CoreOptions);
         assert_eq!((launcher.screen(), launcher.group_selected()), (Screen::Settings, Group::Cores));
         press_all(&mut launcher, &library, &[Button::Up, Button::Up, Button::Right, Button::Right]);
         assert_eq!(launcher.group_selected(), Group::Wifi);

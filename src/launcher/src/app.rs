@@ -226,6 +226,14 @@ pub(crate) fn launcher_canvas(
                         (tr("PLAY TIME"), time),
                         (tr("SAVE FILES"), files.save_count().to_string()),
                     ];
+                    let mut facts = facts;
+                    // Only for a game played with RetroAchievements, which saved its count.
+                    let summary = SYSTEMS[game.system].key;
+                    let summary = achievements::console_id(summary)
+                        .and_then(|_| achievements::Summary::read(&achievements::summary_path(&save_path(&game.path, &SYSTEMS[game.system]))));
+                    if let Some(summary) = summary {
+                        facts.push((tr("ACHIEVEMENTS"), trf("{} OF {}", &[&summary.unlocked, &summary.total])));
+                    }
                     (SYSTEMS[game.system].icon, rom_label(&game.path), facts, library.is_favorite(game))
                 }
                 // Only for the moment before the launcher goes back to the list.
@@ -238,12 +246,18 @@ pub(crate) fn launcher_canvas(
                 Some(image) => Some(screens::Art::Cover(image)),
                 None => Some(screens::Art::Placeholder(icon)),
             };
+            let rows = launcher.detail_rows(library);
+            let achievements_off = game.is_some_and(|game| {
+                achievements::is_off_for_game(&save_path(&game.path, &SYSTEMS[game.system]))
+            });
             let view = screens::DetailsView {
                 icon,
                 name: &name,
                 facts: &facts,
-                selected: launcher.details_row(),
+                rows: &rows,
+                selected: launcher.details_row(library),
                 starred,
+                achievements_off,
                 art,
                 message: launcher.details_confirmation(),
             };
@@ -256,6 +270,11 @@ pub(crate) fn launcher_canvas(
         Screen::SettingsGroup(group) => {
             let mut current = settings::get();
             let login = if group == Group::Advanced { ssh::Login::read() } else { ssh::Login::default() };
+            let account = if group == Group::Achievements {
+                achievements::Account::read(Path::new(achievements::ACCOUNT_PATH))
+            } else {
+                None
+            };
             // As the server runs it, in case a key or password went missing.
             current.ssh = ssh::effective(current.ssh, login);
             let note = match group {
@@ -267,6 +286,7 @@ pub(crate) fn launcher_canvas(
                 Group::GameScreen => Some(game_screen_note(&current)),
                 Group::System if current.idle_minutes > 0 => Some(tr("THE POWER BUTTON WAKES IT FROM SLEEP").into()),
                 Group::Advanced => advanced_note(current.ssh, login),
+                Group::Achievements => Some(achievements_note(&current, account.is_some())),
                 _ => None,
             };
             let view = screens::SettingsView {
@@ -280,6 +300,7 @@ pub(crate) fn launcher_canvas(
                 login,
                 // Read from the card the first time the group opens, then kept.
                 boot_messages: if group == Group::Advanced { boot_partition::boot_messages() } else { None },
+                achievements_user: account.as_ref().map(|account| account.user.as_str()),
             };
             screens::settings_screen(width, height, &view, &frame)
         }
@@ -312,6 +333,21 @@ pub(crate) fn game_screen_note(settings: &settings::Settings) -> String {
         note.push_str(&trf("CONSOLES WITH THEIR OWN: {}", &[&own]));
     }
     note
+}
+
+/// Under the ACHIEVEMENTS settings: where an account comes from, and what hardcore means.
+pub(crate) fn achievements_note(settings: &settings::Settings, logged_in: bool) -> String {
+    let mut lines = Vec::new();
+    if settings.achievements_off {
+        lines.push(tr("OFF FOR EVERY GAME"));
+    } else {
+        lines.push(tr("A GAME'S DETAILS (Y) TURN THEM OFF FOR IT"));
+    }
+    if !logged_in {
+        lines.push(tr("NEEDS A FREE ACCOUNT FROM RETROACHIEVEMENTS.ORG"));
+    }
+    lines.push(if settings.hardcore { tr("HARDCORE: NO LOADING, CHEATS OR FAST-FORWARD") } else { tr("HARDCORE OFF: UNLOCKS COUNT AS SOFTCORE") });
+    lines.join("\n")
 }
 
 /// Under the ADVANCED settings: how to reach SSH, or what USB + WI-FI is missing.
@@ -523,6 +559,7 @@ pub(crate) fn act(
             controls::remove_all_game_layouts(Path::new(SAVE_DIR));
             core_options::remove_all(Path::new(SAVE_DIR), Path::new(core_options::CONSOLE_DIR));
             cheats::remove_all_enabled(Path::new(SAVE_DIR));
+            achievements::remove_all_off(Path::new(SAVE_DIR));
             let current = settings::get();
             performance::apply(current.performance);
             power::apply_charge_limit(current.charge);
@@ -532,6 +569,23 @@ pub(crate) fn act(
             return Ok(true);
         }
         Action::SaveLogs => save_logs(framebuffer)?,
+        Action::LogInToAchievements => log_in_to_achievements(framebuffer, events)?,
+        Action::LogOutOfAchievements => match achievements::log_out(Path::new(achievements::ACCOUNT_PATH)) {
+            Ok(()) => println!("achievements: logged out"),
+            Err(error) => eprintln!("warning: could not log out: {error}"),
+        },
+        Action::ToggleHardcore => change_settings(|s| s.hardcore = !s.hardcore),
+        Action::ToggleAchievements => change_settings(|s| s.achievements_off = !s.achievements_off),
+        Action::ToggleGameAchievements(rom) => {
+            if let Some(system) = system_for(&rom) {
+                let save = save_path(&rom, system);
+                let off = !achievements::is_off_for_game(&save);
+                match achievements::set_off_for_game(&save, off) {
+                    Ok(()) => println!("achievements: {} for {}", if off { "off" } else { "on" }, rom.display()),
+                    Err(error) => eprintln!("warning: could not change the game's achievements: {error}"),
+                }
+            }
+        }
         // The PC may have changed the games, covers and lists.
         Action::UsbStorage => return usb_drive(framebuffer, events),
         Action::Reboot => shut_down(framebuffer, tr("REBOOTING"), "reboot")?,
@@ -718,6 +772,112 @@ pub(crate) fn edit_root_password(framebuffer: &mut fb::Framebuffer, events: &Rec
     Ok(())
 }
 
+/// Types text on the on-screen keyboard, with the icon, title and subtitle of `view`.
+/// Returns what was typed, or None for B on an empty field.
+fn type_text(
+    framebuffer: &mut fb::Framebuffer,
+    events: &Receiver<Event>,
+    view: &screens::KeyboardView,
+    keyboard: &mut keyboard::Keyboard,
+) -> io::Result<Option<String>> {
+    let (width, height) = framebuffer.size();
+    let battery = read_battery(&power::battery_dir());
+    let typed = loop {
+        let mut canvas = screens::keyboard_screen(width, height, view, keyboard, &screen_frame(battery));
+        add_clock(&mut canvas, battery);
+        framebuffer.draw(&canvas)?;
+        let event = match events.recv_timeout(framebuffer.sign_wait()) {
+            Ok(event) => event,
+            // The volume sign's time is up, and drawing again removes it.
+            Err(RecvTimeoutError::Timeout) => continue,
+            Err(RecvTimeoutError::Disconnected) => break None,
+        };
+        match event.pressed() {
+            Some(Button::Lid) => sleep_until_lid_opens(events),
+            Some(button @ (Button::VolumeUp | Button::VolumeDown)) => press_volume(framebuffer, button)?,
+            Some(button) => {
+                keyboard_sound(button);
+                match keyboard.press(button) {
+                    keyboard::Outcome::Typing => {}
+                    keyboard::Outcome::Done(text) => break Some(text),
+                    keyboard::Outcome::Cancel => break None,
+                }
+            }
+            None => {}
+        }
+    };
+    events.try_iter().for_each(drop);
+    Ok(typed)
+}
+
+/// RetroAchievements names are letters and digits, at most 20 of them.
+const MAX_ACHIEVEMENTS_NAME: usize = 20;
+/// Long enough for any password a person types.
+const MAX_ACHIEVEMENTS_PASSWORD: usize = 64;
+
+/// Settings > ACHIEVEMENTS > ACCOUNT: types the name and password, logs in, and keeps the
+/// name and the token the server gives. The password is only sent, never kept.
+///
+/// A failed login goes back to the password with both still typed and the reason above
+/// it, so a typo needs only fixing. B on an empty password goes back to the name, and B on
+/// an empty name leaves.
+pub(crate) fn log_in_to_achievements(framebuffer: &mut fb::Framebuffer, events: &Receiver<Event>) -> io::Result<()> {
+    let mut name = keyboard::Keyboard::new(MAX_ACHIEVEMENTS_NAME, |text| !text.trim().is_empty());
+    let mut password = keyboard::Keyboard::new(MAX_ACHIEVEMENTS_PASSWORD, |text| !text.is_empty());
+    let view = screens::KeyboardView {
+        icon: &icons::ACHIEVEMENTS,
+        title: tr("RETROACHIEVEMENTS"),
+        subtitle: tr("YOUR USER NAME"),
+        valid_note: "",
+    };
+    // Why the last login failed, shown over the password.
+    let mut failure: Option<String> = None;
+    let mut on_password = false;
+    let (width, height) = framebuffer.size();
+    loop {
+        if !on_password {
+            match type_text(framebuffer, events, &view, &mut name)? {
+                Some(text) => name.text = text,
+                None => return Ok(()),
+            }
+            on_password = true;
+        }
+        let subtitle = failure.as_deref().unwrap_or(tr("YOUR PASSWORD - ONLY SENT, NEVER KEPT"));
+        let password_view = screens::KeyboardView { subtitle, ..view };
+        let Some(typed) = type_text(framebuffer, events, &password_view, &mut password)? else {
+            on_password = false;
+            continue;
+        };
+        password.text = typed.clone();
+
+        framebuffer.draw(&screens::message_screen(width, height, tr("LOGGING IN"), current_theme()))?;
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let user = name.text.trim().to_string();
+        std::thread::spawn(move || {
+            let _ = sender.send(achievements::log_in(&user, &typed));
+        });
+        let result = receiver.recv().unwrap_or_else(|_| Err(tr("NO CONNECTION TO RETROACHIEVEMENTS").to_string()));
+        let saved = result.and_then(|account| {
+            account.write(Path::new(achievements::ACCOUNT_PATH)).map(|()| account).map_err(|error| {
+                eprintln!("warning: could not save the account: {error}");
+                tr("COULD NOT SAVE THE ACCOUNT").to_string()
+            })
+        });
+        // Presses made while waiting shouldn't type.
+        events.try_iter().for_each(drop);
+        match saved {
+            Ok(account) => {
+                let message = trf("LOGGED IN AS {}", &[&account.user.to_uppercase()]);
+                framebuffer.draw(&screens::message_screen(width, height, &message, current_theme()))?;
+                sleep(Duration::from_secs(2));
+                events.try_iter().for_each(drop);
+                return Ok(());
+            }
+            Err(error) => failure = Some(error),
+        }
+    }
+}
+
 pub(crate) fn run_launcher() -> io::Result<()> {
     println!("launcher started {}", boot_time());
     settings::restore_levels();
@@ -731,6 +891,7 @@ pub(crate) fn run_launcher() -> io::Result<()> {
     let mut launcher = Launcher::new();
     let mut repeater = Repeater::new();
     let mut library = load_library();
+    launcher.achievements_logged_in = achievements::Account::read(Path::new(achievements::ACCOUNT_PATH)).is_some();
     let mut monitor = power::Monitor::new();
     let mut art = boxart::BoxArt::new();
     // Nothing has been drawn yet, so the boot logo is still up. A game resumed below also
@@ -905,12 +1066,16 @@ pub(crate) fn run_launcher() -> io::Result<()> {
         if let Action::DeleteGame(rom) = &action {
             delete_game_showing_failure(&mut framebuffer, rom, &library)?;
         }
+        let account_changed = matches!(action, Action::LogInToAchievements | Action::LogOutOfAchievements);
         if act(action, &mut framebuffer, &events)? {
             art.clear();
             let selected = launcher.selected_path(&library);
             library = reload_library(&library);
             launcher.select_path(&library, selected.as_deref());
             launcher.leave_empty_list(&library);
+        }
+        if account_changed {
+            launcher.achievements_logged_in = achievements::Account::read(Path::new(achievements::ACCOUNT_PATH)).is_some();
         }
     }
 }

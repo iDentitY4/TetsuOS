@@ -22,7 +22,7 @@ Games: NES (FCEUmm), SNES (Snes9x), Game Boy, Color and Advance (mGBA), PlayStat
 ReARMed, with discs grouped by name or an `.m3u`, and CHANGE DISC), Mega Drive, Master System and Game Gear (Genesis Plus GX), PC Engine (Beetle PCE
 Fast), Neo Geo Pocket and Color (Beetle NeoPop), WonderSwan and Color (Beetle Cygne), Lynx
 (Handy) and Tamagotchi (tamalib), cartridge games also in ZIP files, with an in-game menu (8 save slots, levels, display
-options, screenshots to PNG, also used as the cover of a game without one, button remapping and turbo per console or game, each core's own options per console or game, cheat codes from `.cht` files, also downloaded on the device), resume on leaving and after power-off, fast-forward on R2, sharp-bilinear
+options, screenshots to PNG, also used as the cover of a game without one, button remapping and turbo per console or game, each core's own options per console or game, cheat codes from `.cht` files, also downloaded on the device), RetroAchievements (login, unlock notices with badges, a progress page, hardcore, off for every game or one), resume on leaving and after power-off, fast-forward on R2, sharp-bilinear
 scaling with CRT and LCD effects, kept per console, and a volume sign on the volume buttons, also in the menus.
 
 Launcher: a tile grid with RECENT and FAVORITES, lists with covers and scrolling names,
@@ -40,6 +40,8 @@ ADVANCED > RUN SETUP AGAIN repeats.
 - Core options: the German wording on the device, PCSX ReARMed and Genesis Plus GX in a
   game, options that only apply after a restart
 - Cheats: cores other than mGBA, a PlayStation code, a ZIP, the German wording on the device
+- RetroAchievements: hardcore (refused until the user's request to register the user agent
+  is granted), turning them off for every game or one game, the details screen's count
 - Remapping and turbo: how turbo feels in a real game, cores other than mGBA, Menu + Start
   with a layout, the German wording on the device
 - A real multi-disc PlayStation game asking for its next disc; a multi-disc `.pbp`
@@ -78,7 +80,7 @@ ADVANCED > RUN SETUP AGAIN repeats.
   the menus; `--play`: one game in its own process; `--preview*`: PC screenshots).
   `app.rs` has the menus' loop and actions, `systems.rs` the consoles, `library.rs` the
   games and tiles, `game.rs` running and resuming games, `libretro.rs` the frontend,
-  `rom_zip.rs` games in ZIPs, `controls.rs` button layouts and turbo, `core_options.rs` cores' own options, `cheats.rs` cheat files and the CHEATS page, `game_files.rs` which files are a game's, `screenshot.rs` the in-game menu's pictures, `sleep.rs`, `corner.rs` (clock and battery), `launcher.rs` the button logic,
+  `rom_zip.rs` games in ZIPs, `controls.rs` button layouts and turbo, `core_options.rs` cores' own options, `cheats.rs` cheat files and the CHEATS page, `achievements.rs` RetroAchievements through rcheevos, `game_files.rs` which files are a game's, `screenshot.rs` the in-game menu's pictures, `sleep.rs`, `corner.rs` (clock and battery), `launcher.rs` the button logic,
   `screens.rs` and `canvas.rs` the drawing. They reach each other through `use crate::*`.
 - **Settings:** `settings.rs` reads `/mnt/data/settings.txt` once per process.
   `settings::get()` returns the `Settings`, and `settings::update(|s| ...)` changes and
@@ -93,6 +95,8 @@ ADVANCED > RUN SETUP AGAIN repeats.
   needs a line in `lang/de.txt`; the tests there say what is missing or too long for the
   fixed-width font. A language is a `lang/` file, a `settings::Language` variant and a
   line in `i18n::table`.
+- **C code** goes in through `build.rs` and the `cc` crate, which takes Buildroot's `CC`;
+  rcheevos is the only C so far, with hand-written FFI in `achievements.rs`.
 - **Crates** are fine to use. `package/launcher/launcher.mk` vendors them before each
   build, because a `local` package skips Buildroot's vendoring; they are cached in
   `dl/br-cargo-home`. HTTPS is `ureq` with rustls and built-in roots, so the image has no
@@ -165,7 +169,7 @@ In short here; `docs/features.md` has them in full.
 - `external.mk`: includes the packages, builds Mesa without LLVM, installs the logo
 - `package/launcher/`, `package/libretro-*/`: Buildroot packages for the app and the cores
 - `src/launcher/`: the Rust launcher; `testdata/` has the PNG test images, `lang/` the
-  translations
+  translations, `rcheevos/` the RetroAchievements library that `build.rs` compiles in
 - `src/launcher/src/setup.rs`: the setup on a new install
 - `scripts/`: `flash.sh`, `push.sh`, `press.py`, `screenshot.py`, `boxart.py`,
   `data-partition.sh`

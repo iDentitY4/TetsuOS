@@ -1004,6 +1004,130 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   patched core showed the game type screen as normal. Not checked: the other cores, a PlayStation code, a ZIP, the
   German wording on the device (the previews were)
 
+- RetroAchievements (`achievements.rs`), through rcheevos v12.5.0, the library RetroArch
+  uses, copied into `src/launcher/rcheevos/` (MIT; `README.md` there says what was left
+  out and how to update) and compiled into the launcher by `build.rs` with the `cc` crate.
+  Buildroot's `TARGET_CONFIGURE_OPTS` gives it the cross compiler. The FFI is written by
+  hand, mirroring only the structs and fields read. `rcheevos/libretro/libretro.h` is the
+  part of libretro.h that `rc_libretro.c` needs: the memory constants and the memory map.
+
+  Settings > ACHIEVEMENTS (the tile says TROPHIES, as ACHIEVEMENTS is one character too
+  long for it) has ACCOUNT and HARDCORE. A on ACCOUNT types the user name and then the
+  password on the on-screen keyboard and logs in on a thread with `rc_client`'s password
+  login. A failed login goes back to the password keyboard with the name and password
+  still typed and the reason, such as WRONG NAME OR PASSWORD, above the field; B on an
+  empty password goes back to the name, also still typed, and B on an empty name leaves.
+  Only the name and the token the server returns are kept, in
+  `/mnt/data/retroachievements.txt`, mode 600, outside `settings.txt`, so RESET SETTINGS
+  keeps the account. Logged in, the row shows the name, and A asks PRESS A AGAIN TO LOG
+  OUT, which removes the file. HARDCORE is a setting, off by default (`hardcore=on`).
+
+  ACHIEVEMENTS, the group's first row, turns them off for every game (`achievements=off`),
+  keeping the account. A game's details screen (Y in a list) has an ACHIEVEMENTS row, ON or
+  OFF like a setting, which A, Left or Right switches, for games of consoles
+  RetroAchievements covers (`Library::achievement_systems`),
+  which leaves an empty `Tetris.gb.srm.achievements-off` beside the saves. Both apply from
+  the game's next start: a game with achievements off starts no session, so it has no
+  notices, no ACHIEVEMENTS item, and none of hardcore's rules. The file counts as a setting,
+  not a save, DELETE GAME AND SAVES removes it, and RESET SETTINGS removes every game's.
+  The details rows moved up 4 lines to fit a fourth.
+
+  A game process with an account, on a console RetroAchievements covers (`console_id`; all
+  but the Tamagotchi), starts a `Session` after `retro_load_game`: it logs in with the
+  token and calls `rc_client_begin_identify_and_load_game` with the game's path, which
+  rcheevos hashes itself: the file unpacked from a ZIP, an `.m3u`'s first disc, a `.cue`'s
+  data track. rcheevos' own disc reader handles `.cue`/`.bin` and `.iso`, not `.chd`, so a
+  CHD game is NOT RECOGNISED. Changing a disc of an `.m3u` game calls
+  `rc_client_begin_identify_and_change_media` with the disc's path.
+
+  Memory: `RETRO_ENVIRONMENT_SET_MEMORY_MAPS` (36) is answered, and the map is copied with
+  its address space names, as a core's own may not outlive the call. `rc_libretro_memory_init`
+  then lays the console's address space over the map, or over `retro_get_memory_data`'s
+  regions for a core without one; it knows each console's layout. A new map lays the
+  memory out again, as RetroArch does: mGBA gives its map only in its first `retro_run`
+  (its deferred setup), and before that only its work RAM, so high RAM at $FF80 was
+  missing and rcheevos disabled every Super Mario Land achievement at load (`Invalid
+  address 00FF9F`); `a_memory_map_given_after_the_start_is_used` tests it. A core that
+  shows no memory yet is asked again every 60 frames while the game loads. `rc_client_do_frame` runs
+  after every `retro_run`, fast-forward's extra frames too, and `rc_client_idle` every
+  100 ms while the menu is open.
+
+  Requests: `rc_client` hands each request to `server_call`, which runs it on a thread with
+  `ureq` (HTTPS only, 15 s to connect, 30 s in all) and the user agent
+  `TetsuOS/0.1.0 (Linux) rcheevos/12.5.0`. The answer goes back through a channel, and
+  `Session::pump`, called every frame, gives it to rcheevos on the game's thread, so
+  rcheevos and every callback run on one thread. A request that never reached the server
+  answers `RC_API_SERVER_RESPONSE_RETRYABLE_CLIENT_ERROR`, so rcheevos retries unlocks
+  itself. Leaving the game waits up to 5 s for requests still on their way.
+
+  Notices show at the bottom of the screen, centred, for 4 to 6 s, through the
+  framebuffer's sign, like the volume, and one after another: the game loaded (`3 OF 40
+  ACHIEVEMENTS UNLOCKED - HARDCORE` over its title), an unlock with its badge and points,
+  progress towards one (2 s, a newer one replacing any waiting), GAME COMPLETED or GAME
+  MASTERED, leaderboards started, failed and submitted (only in hardcore, where rcheevos
+  runs them), a game the server doesn't know or that has no achievements, a failed login
+  (WRONG NAME OR PASSWORD, LOG IN AGAIN IN SETTINGS for an expired token, NO CONNECTION TO
+  RETROACHIEVEMENTS), and unlocks waiting for a connection and sent later. Leaderboard
+  trackers and challenge indicators aren't shown.
+
+  Badges are downloaded once the game has loaded, on a thread, one after another, as
+  `/mnt/data/achievements/<badge name>.png`, stopping at the first failure to connect. The
+  page shows them at 32 pixels, averaged down from 64, and grey and darker while locked,
+  made from the same file; a notice shows them at 64.
+
+  ACHIEVEMENTS in the in-game menu, after SCREENSHOT, shows for a game with a session. Its
+  page, on the CORE OPTIONS panel, has `2 OF 6 UNLOCKED - 6/101 POINTS - HARDCORE` and the
+  achievements in rcheevos' groups (ALMOST THERE, LOCKED, UNLOCKED, ...), each with its
+  badge, title and points, or its progress such as `73/100`; Up and Down move, wrapping,
+  L1 and R1 (or Left and Right) a page, and the selected one's description is below.
+  While loading, or for a game without achievements, it says so. The in-game menu's rows
+  went from 23 to 22 lines, so the fifteenth item fits.
+
+  The game's count is saved as `Tetris.gb.srm.achievements` beside its saves when it loads
+  and after each unlock; a game's details screen shows ACHIEVEMENTS `3 OF 40` from it.
+  It counts neither as a save nor as last played, and DELETE GAME AND SAVES removes it.
+
+  Hardcore (`Session::restricts`): unlocks count as hardcore, the game starts from its save,
+  not its resume point, LOAD STATE says HARDCORE ALLOWS NO LOADING, the CHEATS item and
+  saved codes are left out, and R2 doesn't fast-forward. Saving states still works. The
+  restrictions end once the game turns out to have no achievements or isn't recognised,
+  but the resume point was already skipped. Core options that RetroArch disallows in
+  hardcore (`rc_libretro_get_disallowed_settings`: a PAL region for FCEUmm, Snes9x, Genesis
+  Plus GX and PCSX ReARMed, Game Genie for FCEUmm, Snes9x's layer and clipping options,
+  PCSX ReARMed's lower clock) switch the game to softcore at start, or when changed on the
+  CORE OPTIONS page, with HARDCORE OFF FOR THIS GAME: CORE OPTION and the option's name.
+  Loading a state in softcore calls `rc_client_deserialize_progress_sized` with nothing,
+  which restarts the achievements from the loaded state, so its memory jump isn't counted.
+
+  Tests: `cargo test achievements` runs a whole session offline against canned server
+  answers taken from rcheevos' own tests (a test-only `FAKE_SERVER`): password login and
+  a refused one, token login, hashing the file, loading the game, reading a fake 2 KiB NES
+  RAM through `rc_libretro`, an unlock with its notice, and the saved count. Previews:
+  `--preview-achievements` and `--preview-notice`. `--render` also prints how much memory
+  rcheevos finds at load and after the frames (`achievement memory at load: N bytes in M
+  regions`); only mGBA's Game Boy games differ, 5 regions at load and 11 after.
+
+  The server adds a WARNING: UNKNOWN EMULATOR achievement for this client, as it does for
+  one it doesn't know by its user agent (`TetsuOS/0.1.0 (Linux) rcheevos/12.5.0`), and
+  rcheevos unlocks it at once and leaves it out of counts. Being known takes registering
+  the client with RetroAchievements; borrowing another emulator's user agent isn't an
+  option.
+
+  Claude tested on the device on 2026-11-09: the settings grid with the TROPHIES tile, the
+  ACHIEVEMENTS group logged out with its notes, and the user name keyboard, left with B.
+  `--render` of 300 frames, with saves in `/tmp`, found memory for every core with a game on
+  the card, each the size of rcheevos' layout for the console: FCEUmm 65536 bytes in 8
+  regions (from 14 descriptors), Genesis Plus GX 40960 for the Master System and Game Gear
+  and 131072 for the Mega Drive (no memory map: `retro_get_memory_data`), Beetle PCE Fast
+  8192, mGBA 212992 for the Game Boy and Color and 360448 for the Advance, Snes9x 657408,
+  PCSX ReARMed 2098176. The user logged in on the device; unlocks in softcore work, and
+  hardcore is refused while the server doesn't know the client. Super Mario Land loaded with all
+  34 achievements disabled until the late memory map was used, then with 34 of 35 active
+  (the other is the warning). Not checked: an unlock reaching the server, notices and the
+  page with an unlock, hardcore, the Neo Geo Pocket, WonderSwan and Lynx cores (no
+  games on the card), a ZIP, a multi-disc game, the German wording on the device (the
+  previews were), and anything over a real connection to the server
+
 ## Hardware facts in full
 
 - **Don't trust the model name for hardware details.** This unit has LPDDR3 at

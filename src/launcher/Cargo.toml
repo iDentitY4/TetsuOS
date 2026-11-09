@@ -17,6 +17,9 @@ signal-hook = "0.4.6"
 ureq = "3.5.1"
 zip = { version = "9.5.0", default-features = false, features = ["deflate-flate2"] }
 
+[build-dependencies]
+cc = "1.2.56"
+
 [profile.release]
 opt-level = "s"
 lto = true
