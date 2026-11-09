@@ -38,7 +38,7 @@ pub(super) fn slot_path(save: &Path, slot: usize) -> PathBuf {
 
 /// The state saved on leaving a game, which the next start resumes from. A game whose
 /// save file is already its whole state doesn't need one.
-pub(super) fn resume_path(save: &Path, persistence: Persistence) -> Option<PathBuf> {
+pub(crate) fn resume_path(save: &Path, persistence: Persistence) -> Option<PathBuf> {
     (persistence == Persistence::BatteryRam).then(|| save.with_extension("resume"))
 }
 

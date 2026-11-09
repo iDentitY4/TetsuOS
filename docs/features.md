@@ -66,6 +66,56 @@ Working on the test unit, confirmed by the user:
   card. An empty battery leaves the screen, mounts the card and powers off. Writes need
   patch 0014 (see the MUSB fact below). Mounting, copying and deleting games and ejecting
   were checked by the user on Linux on 2026-11-08; Windows and macOS haven't been tried
+- WI-FI TRANSFER, in Settings > SYSTEM and as SEND GAMES OVER WI-FI in the setup's games
+  step (2026-11-10): a web page for a phone or PC browser on the same network, for
+  getting games on without a cable or card reader. Off unless its screen is open:
+  `transfer::wifi_transfer` starts `transfer_server::Server` (the `tiny_http` crate) on
+  port 80 of every address, so also over USB at `10.35.35.1`, and stopping it stops
+  uploads under way and waits for each request's thread. The screen shows the address,
+  a six-digit code that is new each time (`/dev/urandom`, bytes from 250 up skipped), and
+  a QR code of `http://<address>/?code=<code>` (the `qrcode` crate, version 3 at 5 pixels a
+  module, dark on a white square with the 4-module border scanners need), then what is
+  arriving with its percentage and what came of the last request. Not connected, it says
+  so and checks again every 2 s.
+  - Access: the code, from the QR address or the page's form, gets a random 128-bit
+    session cookie (`HttpOnly`, `SameSite=Lax`) and a redirect that drops the code from
+    the address; sessions end with the screen. Wrong codes are answered one at a time,
+    each after a second, so guessing would take days on average. Every change also needs
+    an `X-Tetsu` header, which a page on another site can't send without a preflight the
+    server never answers. Plain HTTP: someone watching the network could read the cookie
+  - The page (`transfer_page.html`, built in with `include_str!`) follows the device's
+    language (English or German, its own table) and builds everything with DOM calls, so
+    no file name becomes HTML. Games upload one at a time with progress: a game goes to
+    its console by extension (`.bin`, `.img`, `.iso`, `.wav`, `.sub` and `.sbi` with the
+    PlayStation, for a `.cue`), into the top-level folder in `roms` with most of that
+    console's games, or a new one named after its key (`GBA`). A ZIP waits in `roms` until
+    the game inside names its console. Uploads go to a hidden `.upload-<name>` beside the
+    destination, are synced and renamed into place, and leftovers are removed when the
+    server starts. The card keeps 16 MiB free, and FAT32's 4 GiB is the largest file.
+    Per game: COVER takes any image the browser opens, shrunk with `fit_size`'s rule to at
+    most 200 by 300 and sent as the PPM the launcher reads; covers show on the page as BMP.
+    SAVE replaces the game's save at `save_path` (at most 64 MiB) and removes its
+    `.resume`, which would load the old save over it; the page asks first if there is one.
+    DELETE GAME runs `delete_game`, as Y does. Buttons that send say so with ⤒ and change
+    with what is there (ADD COVER or REPLACE COVER, UPLOAD SAVE or REPLACE SAVE); downloads
+    are links with ⤓ and the file's name. The header and the browser's tab show the logo,
+    which `/logo.svg` draws from `icons::LOGO`, a square per pixel. Saves and screenshots download (only single
+    names in `saves` and `screenshots`), and a search filters the games. Leaving reads
+    the games again if anything changed
+  - B leaves, and asks again while an upload runs; that upload is then refused as
+    incomplete and its file removed. The lid only turns the screen off, so uploads go on,
+    as in USB STORAGE; an empty battery leaves and powers off
+  - Claude checked on the device on 2026-11-10, from the PC over the device's Wi-Fi: the
+    QR code decoded from a screenshot, the login and wrong codes (1.0 s), refusals
+    (no cookie, no header, a `.txt`, a path as a name, a 400x400 cover, a PNG as a cover,
+    `..` and other folders for downloads), a `.gb` into `GB`, a ZIP's `.gba` into `GBA`,
+    replacing, a cover sent and read back pixel for pixel, a save downloaded unchanged
+    and removing the `.resume`, deleting with save and cover, 100 MB at 6.5 MB/s with the
+    same MD5 on the card, the screen during an upload, B twice stopping one, and port 80
+    closed after leaving. In a headless Chrome, the page's own code: the QR address
+    login, the wrong-code page, the queue with a refused file, a 600x900 JPEG cover shrunk
+    to 200x300, search and deleting. Not checked: a real phone, the German page, a
+    PlayStation `.cue` with its `.bin`, a file over 4 GiB, the lid during an upload
 - USB stays connected through sleep, so SSH works after opening the lid (patch 0012).
   Before, the device dropped off the bus until the cable was re-plugged
 - The in-game menu (`pause.rs`, drawn by `canvas::pause_screen`). Tapping Menu alone

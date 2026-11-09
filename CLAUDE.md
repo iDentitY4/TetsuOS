@@ -16,7 +16,8 @@ CPU scaling to 1512 MHz; lid sleep (`s2idle`), with Wi-Fi and USB kept through i
 set up on the device; network time (`ntpd`) and a time zone setting; battery level,
 low-battery save and power-off; SSH over USB only by default, over Wi-Fi with a key or
 root password; a CPU performance setting; USB STORAGE, which shows TETSU-DATA to a PC as
-a drive.
+a drive; WI-FI TRANSFER, a web page for sending games, saves and covers from a browser,
+served only while its screen is open, with a code on screen.
 
 Games: NES (FCEUmm), SNES (Snes9x), Game Boy, Color and Advance (mGBA), PlayStation (PCSX
 ReARMed, with discs grouped by name or an `.m3u`, and CHANGE DISC), Mega Drive, Master System and Game Gear (Genesis Plus GX), PC Engine (Beetle PCE
@@ -55,6 +56,8 @@ ADVANCED > RUN SETUP AGAIN repeats.
 - A game's own clock (Pokemon's RTC) showing local time
 - A real empty battery, a wrong Wi-Fi password, a failing certificate check
 - USB STORAGE on Windows and macOS (Linux is checked)
+- WI-FI TRANSFER from a real phone, the German page, a PlayStation `.cue` with its `.bin`,
+  the lid during an upload
 - The lid during the setup
 - Settings > ADVANCED: SSH from another machine over Wi-Fi, games at BATTERY or
   PERFORMANCE, and the battery gauge over a whole charge with CHARGE TO below FULL
@@ -80,7 +83,8 @@ ADVANCED > RUN SETUP AGAIN repeats.
   the menus; `--play`: one game in its own process; `--preview*`: PC screenshots).
   `app.rs` has the menus' loop and actions, `systems.rs` the consoles, `library.rs` the
   games and tiles, `game.rs` running and resuming games, `libretro/` the frontend (`ffi`, `host`, `core`, `scale`, `save`, `audio`, `menu`, `play`),
-  `rom_zip.rs` games in ZIPs, `controls.rs` button layouts and turbo, `core_options.rs` cores' own options, `cheats.rs` cheat files and the CHEATS page, `achievements.rs` RetroAchievements through rcheevos, `game_files.rs` which files are a game's, `screenshot.rs` the in-game menu's pictures, `sleep.rs`, `corner.rs` (clock and battery), `launcher.rs` the button logic,
+  `rom_zip.rs` games in ZIPs, `transfer.rs` and `transfer_server.rs` the Wi-Fi transfer
+  screen and web page (`transfer_page.html`), `controls.rs` button layouts and turbo, `core_options.rs` cores' own options, `cheats.rs` cheat files and the CHEATS page, `achievements.rs` RetroAchievements through rcheevos, `game_files.rs` which files are a game's, `screenshot.rs` the in-game menu's pictures, `sleep.rs`, `corner.rs` (clock and battery), `launcher.rs` the button logic,
   `screens.rs` and `canvas.rs` the drawing, `pause_screens.rs` the in-game menu's, `paths.rs`
   the device's paths and the macros a module builds its own from. Imports are by name, and
   `[lints.clippy]` in `Cargo.toml` is the bar: `cargo clippy --all-targets` stays clean.

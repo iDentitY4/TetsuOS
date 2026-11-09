@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tetsu OS</title>
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
+<style>
+:root {
+  --bg: #f4f5f8; --card: #ffffff; --text: #1c2030; --muted: #646b7d; --line: #dde0e8;
+  --accent: #2f7de1; --accent-text: #ffffff; --danger: #c93838; --bar: #e3e6ee;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1b1e28; --card: #2b303f; --text: #f2f4f8; --muted: #8a92a6; --line: #3a4155;
+    --accent: #5c9cf0; --accent-text: #10131b; --danger: #f06464; --bar: #3a4155;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+header {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 16px; max-width: 860px; margin: 0 auto;
+}
+h1 { font-size: 22px; margin: 0; letter-spacing: 0.02em; display: flex; align-items: center; gap: 10px; }
+h1 img { width: 48px; height: 36px; image-rendering: pixelated; }
+h2 { font-size: 18px; margin: 0 0 8px; }
+main { max-width: 860px; margin: 0 auto; padding: 0 16px 48px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+.muted { color: var(--muted); }
+.small { font-size: 14px; }
+button, .button {
+  font: inherit; font-size: 15px; border: 1px solid var(--line); background: var(--card); color: var(--text);
+  border-radius: 8px; padding: 6px 12px; cursor: pointer; display: inline-block;
+}
+button.primary, .button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+button.danger { color: var(--danger); }
+button:disabled { opacity: 0.5; cursor: default; }
+input[type=search], input[name=code] {
+  font: inherit; width: 100%; padding: 10px 12px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--card); color: var(--text);
+}
+input[name=code] { font-size: 28px; letter-spacing: 0.2em; text-align: center; max-width: 260px; display: block; margin: 12px 0; }
+.drop { border: 2px dashed var(--line); text-align: center; }
+.drop.over { border-color: var(--accent); }
+.queue { text-align: left; margin-top: 12px; }
+.item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.item .name { overflow-wrap: anywhere; }
+.item > span:nth-child(2) { max-width: 55vw; text-align: right; }
+.bar { grid-column: 1 / -1; height: 6px; background: var(--bar); border-radius: 3px; overflow: hidden; }
+.bar > div { height: 100%; width: 0; background: var(--accent); }
+.ok { color: var(--accent); }
+.bad { color: var(--danger); }
+details { margin-bottom: 8px; }
+summary { cursor: pointer; font-weight: 600; padding: 8px 0; }
+.game { display: flex; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.cover { width: 50px; height: 75px; flex: none; border-radius: 4px; background: var(--bar); object-fit: contain; }
+.info { flex: 1; min-width: 0; }
+.title { font-weight: 600; overflow-wrap: anywhere; }
+.actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.saves { font-size: 14px; margin-top: 4px; }
+.saves a { display: inline-block; margin-right: 10px; color: var(--accent); overflow-wrap: anywhere; }
+.shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.shots a { color: var(--muted); font-size: 12px; text-decoration: none; overflow-wrap: anywhere; }
+.shots img { width: 100%; border-radius: 4px; display: block; image-rendering: pixelated; background: var(--bar); }
+#search { margin-bottom: 16px; }
+#notice { position: fixed; left: 16px; right: 16px; bottom: 16px; max-width: 560px; margin: 0 auto; padding: 12px 16px;
+  border-radius: 10px; background: var(--text); color: var(--bg); box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header><h1><img src="/logo.svg" alt="">Tetsu OS</h1><span id="free" class="muted small"></span></header>
+
+<main id="login" hidden>
+  <div class="card">
+    <h2 data-t="Enter the code"></h2>
+    <p class="muted" data-t="The code is on the device's screen, under Settings > SYSTEM > WI-FI TRANSFER."></p>
+    <form action="/" method="get">
+      <input name="code" inputmode="numeric" autocomplete="one-time-code" required autofocus>
+      <button class="primary" data-t="Open"></button>
+    </form>
+    <p id="wrong" class="bad" hidden data-t="That code is not right. Look at the device's screen again."></p>
+  </div>
+</main>
+
+<main id="gone" hidden>
+  <div class="card">
+    <h2 data-t="The device has stopped the transfer"></h2>
+    <p class="muted" data-t="Open Settings > SYSTEM > WI-FI TRANSFER on it again, then reload this page."></p>
+    <button class="primary" onclick="location.reload()" data-t="Reload"></button>
+  </div>
+</main>
+
+<main id="app" hidden>
+  <section class="card drop" id="drop">
+    <h2 data-t="Add games"></h2>
+    <p class="muted small" data-t="Drop game files here or choose them. Each goes to its console by its file type; a ZIP by the game inside. For a PlayStation disc, send the .cue with its .bin files."></p>
+    <label class="button primary"><input type="file" id="pick" multiple hidden><span data-t="Choose files"></span></label>
+    <div class="queue" id="queue"></div>
+  </section>
+  <input type="search" id="search" data-placeholder="Search the games">
+  <div id="consoles"></div>
+  <section class="card" id="shots-card" hidden>
+    <h2 data-t="Screenshots"></h2>
+    <div class="shots" id="shots"></div>
+  </section>
+</main>
+
+<div id="notice" hidden></div>
+
+<script>
+"use strict";
+const GERMAN = {
+  "Enter the code": "Code eingeben",
+  "The code is on the device's screen, under Settings > SYSTEM > WI-FI TRANSFER.": "Der Code steht auf dem Bildschirm des Geräts, unter Optionen > SYSTEM > WLAN-ÜBERTRAGUNG.",
+  "Open": "Öffnen",
+  "That code is not right. Look at the device's screen again.": "Der Code stimmt nicht. Schau noch einmal auf den Bildschirm des Geräts.",
+  "The device has stopped the transfer": "Das Gerät hat die Übertragung beendet",
+  "Open Settings > SYSTEM > WI-FI TRANSFER on it again, then reload this page.": "Öffne dort wieder Optionen > SYSTEM > WLAN-ÜBERTRAGUNG und lade diese Seite neu.",
+  "Reload": "Neu laden",
+  "Add games": "Spiele hinzufügen",
+  "Drop game files here or choose them. Each goes to its console by its file type; a ZIP by the game inside. For a PlayStation disc, send the .cue with its .bin files.": "Spieldateien hier ablegen oder auswählen. Jede kommt anhand ihres Dateityps zu ihrer Konsole, ein ZIP anhand des Spiels darin. Für eine PlayStation-Disc die .cue mit ihren .bin-Dateien senden.",
+  "Choose files": "Dateien auswählen",
+  "Search the games": "Spiele durchsuchen",
+  "Screenshots": "Screenshots",
+  "{0} free": "{0} frei",
+  "Waiting": "Wartet",
+  "Sending {0}%": "Sende {0} %",
+  "Added": "Hinzugefügt",
+  "Replaced": "Ersetzt",
+  "Not sent: {0}": "Nicht gesendet: {0}",
+  "Add cover": "Cover hinzufügen",
+  "Replace cover": "Cover ersetzen",
+  "Upload save": "Spielstand hochladen",
+  "Replace save": "Spielstand ersetzen",
+  "Delete game": "Spiel löschen",
+  "Download saves:": "Spielstände herunterladen:",
+  "{0} saves": "{0} Spielstände",
+  "1 save": "1 Spielstand",
+  "No saves": "Keine Spielstände",
+  "Delete {0} with its saves and cover?": "{0} mit Spielständen und Cover löschen?",
+  "This replaces the save of {0}. Its resume point is removed, so the game starts from the new save. Download the old save first to keep it.": "Das ersetzt den Spielstand von {0}. Der Fortsetzungspunkt wird entfernt, damit das Spiel mit dem neuen Spielstand startet. Lade den alten vorher herunter, um ihn zu behalten.",
+  "Cover saved for {0}": "Cover für {0} gespeichert",
+  "Save replaced for {0}": "Spielstand für {0} ersetzt",
+  "Deleted {0}": "{0} gelöscht",
+  "The device runs no console with this file type": "Für diesen Dateityp gibt es keine Konsole auf dem Gerät",
+  "There is not enough room on the card": "Auf der Karte ist nicht genug Platz",
+  "The file is too large": "Die Datei ist zu groß",
+  "The file name can't be used on the card": "Dieser Dateiname geht auf der Karte nicht",
+  "The image could not be read": "Das Bild konnte nicht gelesen werden",
+  "The file did not arrive whole": "Die Datei kam nicht vollständig an",
+  "The card could not be written": "Die Karte konnte nicht beschrieben werden",
+  "The game is no longer on the card": "Das Spiel ist nicht mehr auf der Karte",
+  "No connection to the device": "Keine Verbindung zum Gerät",
+  "Something went wrong": "Etwas ist schiefgegangen",
+};
+let language = "en";
+const t = (text, ...values) => {
+  const translated = (language === "de" && GERMAN[text]) || text;
+  return translated.replace(/\{(\d)\}/g, (_, index) => values[index]);
+};
+const REASONS = {
+  "not-a-game": "The device runs no console with this file type",
+  "no-room": "There is not enough room on the card",
+  "too-large": "The file is too large",
+  "bad-name": "The file name can't be used on the card",
+  "not-a-cover": "The image could not be read",
+  "incomplete": "The file did not arrive whole",
+  "write-failed": "The card could not be written",
+  "no-game": "The game is no longer on the card",
+  "network": "No connection to the device",
+};
+const reason = (code) => t(REASONS[code] || "Something went wrong");
+const $ = (id) => document.getElementById(id);
+
+function el(tag, properties = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(properties)) {
+    if (key === "class") node.className = value;
+    else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+    else node[key] = value;
+  }
+  for (const child of children) node.append(child);
+  return node;
+}
+
+function translatePage() {
+  document.documentElement.lang = language;
+  for (const node of document.querySelectorAll("[data-t]")) node.textContent = t(node.dataset.t);
+  for (const node of document.querySelectorAll("[data-placeholder]")) node.placeholder = t(node.dataset.placeholder);
+}
+
+function size(bytes) {
+  const units = ["B", "KB", "MB", "GB"];
+  let unit = 0;
+  while (bytes >= 1024 && unit < units.length - 1) { bytes /= 1024; unit++; }
+  const number = unit === 0 ? String(bytes) : bytes.toFixed(bytes < 10 ? 1 : 0);
+  return (language === "de" ? number.replace(".", ",") : number) + " " + units[unit];
+}
+
+let noticeTimer;
+function notice(text) {
+  const box = $("notice");
+  box.textContent = text;
+  box.hidden = false;
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => { box.hidden = true; }, 4000);
+}
+
+// Every change sends X-Tetsu, which a page on another site can't.
+function send(method, url, body, progress) {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open(method, url);
+    request.setRequestHeader("X-Tetsu", "1");
+    if (progress) request.upload.onprogress = (event) => event.lengthComputable && progress(event.loaded / event.total);
+    request.onload = () => {
+      let answer = {};
+      try { answer = JSON.parse(request.responseText); } catch (error) { /* an empty answer */ }
+      if (request.status === 401) { showLogin(); reject("login"); }
+      else if (request.status < 300) resolve(answer);
+      else reject(answer.error || "failed");
+    };
+    request.onerror = () => reject("network");
+    request.send(body);
+  });
+}
+
+let listing = null;
+
+async function refresh() {
+  let response;
+  try {
+    response = await fetch("/api/list", { headers: { "X-Tetsu": "1" } });
+  } catch (error) {
+    showOnly("gone");
+    return;
+  }
+  const answer = await response.json().catch(() => ({}));
+  if (answer.language) language = answer.language;
+  if (response.status === 401) { showLogin(); return; }
+  if (!response.ok) { notice(reason(answer.error)); return; }
+  listing = answer;
+  translatePage();
+  showOnly("app");
+  render();
+}
+
+function showOnly(id) {
+  for (const page of ["login", "gone", "app"]) $(page).hidden = page !== id;
+}
+
+function showLogin() {
+  translatePage();
+  $("wrong").hidden = !location.search.includes("wrong");
+  showOnly("login");
+}
+
+function render() {
+  $("free").textContent = listing.free == null ? "" : t("{0} free", size(listing.free));
+  const filter = $("search").value.trim().toLowerCase();
+  const consoles = $("consoles");
+  const open = new Set([...consoles.querySelectorAll("details[open]")].map((node) => node.dataset.key));
+  consoles.replaceChildren();
+  for (const system of listing.consoles) {
+    const games = system.games.filter((game) => !filter || game.name.toLowerCase().includes(filter));
+    if (games.length === 0) continue;
+    const details = el("details", { class: "card" });
+    details.dataset.key = system.key;
+    details.open = Boolean(filter) || open.has(system.key);
+    details.append(el("summary", {}, `${system.name} (${games.length})`));
+    for (const game of games) details.append(gameRow(game));
+    consoles.append(details);
+  }
+  const shots = $("shots");
+  shots.replaceChildren();
+  for (const shot of listing.screenshots) {
+    const link = el("a", { href: fileUrl(shot.path), download: shot.name });
+    link.append(el("img", { src: fileUrl(shot.path), loading: "lazy", alt: "" }), shot.name);
+    shots.append(link);
+  }
+  $("shots-card").hidden = listing.screenshots.length === 0;
+}
+
+const fileUrl = (path) => "/api/file?path=" + encodeURIComponent(path);
+const gameArgument = (game) => "game=" + encodeURIComponent(game.path);
+let coverVersion = Date.now();
+
+function gameRow(game) {
+  const cover = game.cover
+    ? el("img", { class: "cover", src: `/api/cover?${gameArgument(game)}&v=${coverVersion}`, alt: "" })
+    : el("div", { class: "cover" });
+  const count = game.saves.length;
+  const savesText = count === 0 ? t("No saves") : count === 1 ? t("1 save") : t("{0} saves", count);
+  // Downloads are links with the file's name; buttons send to the device or delete.
+  const saves = el("div", { class: "saves" });
+  if (count > 0) {
+    saves.append(el("span", { class: "muted" }, t("Download saves:") + " "));
+    for (const save of game.saves) saves.append(el("a", { href: fileUrl(save.path), download: save.name }, "⤓ " + save.name));
+  }
+  const actions = el("div", { class: "actions" },
+    el("button", { onclick: () => chooseFile("image/*", (file) => sendCover(game, file)) },
+      "⤒ " + t(game.cover ? "Replace cover" : "Add cover")),
+    el("button", { onclick: () => chooseFile("", (file) => sendSave(game, file)) },
+      "⤒ " + t(count > 0 ? "Replace save" : "Upload save")),
+    el("button", { class: "danger", onclick: () => deleteGame(game) }, t("Delete game")),
+  );
+  const info = el("div", { class: "info" },
+    el("div", { class: "title" }, game.name),
+    el("div", { class: "muted small" }, `${game.path} · ${size(game.size)} · ${savesText}`),
+    saves, actions);
+  return el("div", { class: "game" }, cover, info);
+}
+
+function chooseFile(accept, then) {
+  const input = el("input", { type: "file", accept });
+  input.addEventListener("change", () => input.files[0] && then(input.files[0]));
+  input.click();
+}
+
+// The device's covers are PPM images of at most 200 by 300, as the launcher's own
+// downloads make them, so the browser shrinks and converts any image it can open.
+function fitSize(width, height) {
+  const [maxW, maxH] = [200, 300];
+  if (width <= maxW && height <= maxH) return [width, height];
+  if (width * maxH >= height * maxW) return [maxW, Math.max(1, Math.round(height * maxW / width))];
+  return [Math.max(1, Math.round(width * maxH / height)), maxH];
+}
+
+async function coverPpm(file) {
+  const bitmap = await createImageBitmap(file);
+  const [width, height] = fitSize(bitmap.width, bitmap.height);
+  const canvas = el("canvas", { width, height });
+  const context = canvas.getContext("2d");
+  context.imageSmoothingQuality = "high";
+  context.drawImage(bitmap, 0, 0, width, height);
+  const rgba = context.getImageData(0, 0, width, height).data;
+  const head = new TextEncoder().encode(`P6\n${width} ${height}\n255\n`);
+  const ppm = new Uint8Array(head.length + width * height * 3);
+  ppm.set(head);
+  for (let from = 0, to = head.length; from < rgba.length; from += 4) {
+    ppm[to++] = rgba[from];
+    ppm[to++] = rgba[from + 1];
+    ppm[to++] = rgba[from + 2];
+  }
+  return ppm;
+}
+
+async function sendCover(game, file) {
+  try {
+    const ppm = await coverPpm(file).catch(() => { throw "not-a-cover"; });
+    await send("PUT", "/api/cover?" + gameArgument(game), ppm);
+    coverVersion = Date.now();
+    notice(t("Cover saved for {0}", game.name));
+    refresh();
+  } catch (error) {
+    if (error !== "login") notice(reason(error));
+  }
+}
+
+async function sendSave(game, file) {
+  if (game.saves.length > 0 && !confirm(t("This replaces the save of {0}. Its resume point is removed, so the game starts from the new save. Download the old save first to keep it.", game.name))) return;
+  try {
+    await send("PUT", "/api/save?" + gameArgument(game), file);
+    notice(t("Save replaced for {0}", game.name));
+    refresh();
+  } catch (error) {
+    if (error !== "login") notice(reason(error));
+  }
+}
+
+async function deleteGame(game) {
+  if (!confirm(t("Delete {0} with its saves and cover?", game.name))) return;
+  try {
+    await send("DELETE", "/api/game?" + gameArgument(game));
+    notice(t("Deleted {0}", game.name));
+    refresh();
+  } catch (error) {
+    if (error !== "login") notice(reason(error));
+  }
+}
+
+// Games go one at a time, so each gets the whole connection.
+const waiting = [];
+let sending = false;
+
+function addGames(files) {
+  for (const file of files) {
+    const status = el("span", { class: "muted" }, t("Waiting"));
+    const fill = el("div");
+    const item = el("div", { class: "item" }, el("span", { class: "name" }, file.name), status, el("div", { class: "bar" }, fill));
+    $("queue").prepend(item);
+    waiting.push({ file, status, fill });
+  }
+  sendNext();
+}
+
+function extension(name) {
+  const dot = name.lastIndexOf(".");
+  return dot < 0 ? "" : name.slice(dot + 1).toLowerCase();
+}
+
+async function sendNext() {
+  if (sending) return;
+  const next = waiting.shift();
+  if (!next) { refresh(); return; }
+  sending = true;
+  const { file, status, fill } = next;
+  const fail = (code) => { status.textContent = t("Not sent: {0}", reason(code)); status.className = "bad"; };
+  if (listing && !listing.accepts.includes(extension(file.name))) fail("not-a-game");
+  else if (listing && listing.free != null && file.size + 16 * 1024 * 1024 > listing.free) fail("no-room");
+  else {
+    try {
+      const answer = await send("PUT", "/api/game?name=" + encodeURIComponent(file.name), file, (part) => {
+        status.textContent = t("Sending {0}%", Math.floor(part * 100));
+        fill.style.width = (part * 100) + "%";
+      });
+      fill.style.width = "100%";
+      status.textContent = answer.replaced ? t("Replaced") : t("Added");
+      status.className = "ok";
+      if (listing && listing.free != null) listing.free -= file.size;
+    } catch (error) {
+      fail(error);
+    }
+  }
+  sending = false;
+  sendNext();
+}
+
+const drop = $("drop");
+drop.addEventListener("dragover", (event) => { event.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", (event) => {
+  event.preventDefault();
+  drop.classList.remove("over");
+  addGames([...event.dataTransfer.files]);
+});
+$("pick").addEventListener("change", (event) => { addGames([...event.target.files]); event.target.value = ""; });
+$("search").addEventListener("input", () => listing && render());
+refresh();
+</script>
+</body>
+</html>

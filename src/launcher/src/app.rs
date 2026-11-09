@@ -25,6 +25,7 @@ use crate::setup::run_setup;
 use crate::sleep::{sleep_until_lid_opens, sleep_until_woken};
 use crate::system_info::{boot_time, command_output, parse_ifconfig, system_info};
 use crate::systems::{SAVE_DIR, save_path, system_for, SYSTEMS};
+use crate::transfer::wifi_transfer;
 use crate::usb_drive::usb_drive;
 use crate::wifi_screen::wifi_settings;
 use std::io;
@@ -646,6 +647,8 @@ pub(crate) fn act(
         }
         // The PC may have changed the games, covers and lists.
         Action::UsbStorage => return usb_drive(framebuffer, events),
+        // The browser may have changed the games, saves and covers.
+        Action::WifiTransfer => return wifi_transfer(framebuffer, events),
         Action::Reboot => shut_down(framebuffer, tr("REBOOTING"), "reboot")?,
         Action::PowerOff => shut_down(framebuffer, tr("POWERING OFF"), &power::poweroff_command())?,
     }

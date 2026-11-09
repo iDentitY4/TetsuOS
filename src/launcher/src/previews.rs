@@ -10,6 +10,8 @@ use crate::corner::{current_theme, screen_frame, time_note};
 use crate::input::{Button, Controls, Event};
 use crate::launcher::Launcher;
 use crate::library::build_library;
+use crate::transfer::transfer_view;
+use crate::transfer_server::{Activity, Receiving};
 use crate::usb_drive::{usb_drive_view, UsbLink};
 use crate::wifi_screen::{password_note, wifi_status_line};
 use std::io;
@@ -243,6 +245,19 @@ pub(crate) fn write_usb_drive_preview(path: &str) -> io::Result<()> {
     let view = usb_drive_view(UsbLink::Connected, false);
     let frame = screens::Frame { theme: current_theme(), battery: Some(Battery { percent: 80, charging: true }) };
     write_ppm(&screens::usb_drive_screen(width, height, &view, &frame), path)
+}
+
+/// Settings > SYSTEM > WI-FI TRANSFER, while a game arrives.
+pub(crate) fn write_transfer_preview(path: &str) -> io::Result<()> {
+    let (width, height) = PREVIEW_SIZE;
+    let activity = Activity {
+        receiving: Some(Receiving { name: "Pokemon - Emerald Version (USA, Europe).gba".into(), received: 9 << 20, size: 16 << 20 }),
+        browser: true,
+        ..Activity::default()
+    };
+    let view = transfer_view(Some("192.168.178.123"), "482913", &activity, false);
+    let frame = screens::Frame { theme: current_theme(), battery: Some(Battery { percent: 80, charging: false }) };
+    write_ppm(&screens::transfer_screen(width, height, &view, &frame), path)
 }
 
 pub(crate) fn write_button_preview(path: &str) -> io::Result<()> {

@@ -184,6 +184,7 @@ impl Group {
                     Setting::ButtonTest,
                     Setting::SystemInfo,
                     Setting::UsbStorage,
+                    Setting::WifiTransfer,
                     Setting::IdleSleep,
                     Setting::SaveLogs,
                     Setting::Reboot,
@@ -235,6 +236,7 @@ pub enum Setting {
     SystemInfo,
     IdleSleep,
     UsbStorage,
+    WifiTransfer,
     Reboot,
     PowerOff,
     Ssh,
@@ -286,6 +288,7 @@ impl Setting {
             Self::SystemInfo => "SYSTEM INFO",
             Self::IdleSleep => "SLEEP WHEN IDLE",
             Self::UsbStorage => "USB STORAGE",
+            Self::WifiTransfer => "WI-FI TRANSFER",
             Self::Reboot => "REBOOT",
             Self::PowerOff => "POWER OFF",
             Self::Ssh => "SSH",
@@ -315,6 +318,7 @@ impl Setting {
                 | Self::ButtonTest
                 | Self::SystemInfo
                 | Self::UsbStorage
+                | Self::WifiTransfer
                 | Self::RootPassword
                 | Self::RunSetup
         )
@@ -480,6 +484,8 @@ pub enum Command {
     ToggleHardcore,
     /// The card's TETSU-DATA partition as a USB drive on the PC.
     UsbStorage,
+    /// A web page for sending games over Wi-Fi, while its screen is open.
+    WifiTransfer,
     Reboot,
     PowerOff,
 }
@@ -959,6 +965,7 @@ impl Launcher {
                 Setting::ButtonTest => return Command::ButtonTest,
                 Setting::SystemInfo => self.screen = Screen::Info,
                 Setting::UsbStorage => return Command::UsbStorage,
+                Setting::WifiTransfer => return Command::WifiTransfer,
                 Setting::Reboot => return Command::Reboot,
                 Setting::PowerOff => return Command::PowerOff,
                 Setting::RootPassword => return Command::EditRootPassword,
@@ -1486,9 +1493,10 @@ mod tests {
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::A, &library), Command::UsbStorage);
         launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::A, &library), Command::WifiTransfer);
+        launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Left, &library), Command::IdleSleep(-1));
-        launcher.press(Button::Up, &library);
-        launcher.press(Button::Up, &library);
+        press_all(&mut launcher, &library, &[Button::Up, Button::Up, Button::Up]);
         launcher.press(Button::A, &library);
         launcher.press(Button::B, &library);
         assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::System));

@@ -14,6 +14,7 @@ use crate::repeat::Repeater;
 use crate::screens::{SetupRow, SetupView};
 use crate::sleep::sleep_until_lid_opens;
 use crate::system_info::boot_time;
+use crate::transfer::wifi_transfer;
 use crate::usb_drive::usb_drive;
 use crate::wifi_screen::{wifi_settings, wifi_status_line};
 use std::io;
@@ -43,6 +44,7 @@ pub enum Request {
     TimeZone(i32),
     ClockFormat(i32),
     CopyGames,
+    SendGamesOverWifi,
     Finish,
 }
 
@@ -92,19 +94,21 @@ impl Setup {
                 if self.row == 0 { Request::TimeZone(steps) } else { Request::ClockFormat(steps) }
             }
             (Step::Wifi | Step::Time | Step::Games, Button::Up | Button::Down) => {
-                self.row = 1 - self.row;
+                let rows = if step == Step::Games { 3 } else { 2 };
+                self.row = if button == Button::Down { (self.row + 1) % rows } else { (self.row + rows - 1) % rows };
                 Request::Nothing
             }
             (Step::Wifi, Button::A) if self.row == 1 => self.next(),
-            (Step::Games, Button::A) if self.row == 1 => Request::Finish,
+            (Step::Games, Button::A) if self.row == 2 => Request::Finish,
             // On coming back, the way on is selected.
             (Step::Wifi, Button::A) => {
                 self.row = 1;
                 Request::ChooseNetwork
             }
             (Step::Games, Button::A) => {
-                self.row = 1;
-                Request::CopyGames
+                let request = if self.row == 0 { Request::CopyGames } else { Request::SendGamesOverWifi };
+                self.row = 2;
+                request
             }
             _ => Request::Nothing,
         }
@@ -157,10 +161,14 @@ pub(crate) fn setup_view(setup: &Setup, current: &settings::Settings, status: St
             tr("GAMES"),
             vec![
                 tr("GAMES GO IN THE ROMS FOLDER ON THE TETSU-DATA"),
-                tr("PARTITION. COPY THEM FROM A PC OVER USB, OR"),
-                tr("PUT THE CARD IN A CARD READER."),
+                tr("PARTITION. COPY THEM OVER USB, SEND THEM FROM"),
+                tr("A BROWSER OVER WI-FI, OR USE A CARD READER."),
             ],
-            vec![plain(tr("COPY GAMES FROM A PC"), Some(">")), plain(tr("FINISH"), None)],
+            vec![
+                plain(tr("COPY GAMES FROM A PC"), Some(">")),
+                plain(tr("SEND GAMES OVER WI-FI"), Some(">")),
+                plain(tr("FINISH"), None),
+            ],
             setup.row,
             tr("A SELECTS - B BACK"),
         ),
@@ -270,6 +278,12 @@ pub(crate) fn run_setup(framebuffer: &mut fb::Framebuffer, events: &Receiver<Eve
                         games = game_count();
                     }
                 }
+                Request::SendGamesOverWifi => {
+                    repeater.stop();
+                    if wifi_transfer(framebuffer, events)? {
+                        games = game_count();
+                    }
+                }
                 Request::Finish => {
                     change_settings(|s| s.setup_pending = false);
                     println!("setup: finished {}", boot_time());
@@ -306,7 +320,12 @@ mod tests {
 
         assert_eq!(setup.step(), Step::Games);
         assert_eq!(setup.press(Button::A), Request::CopyGames);
-        assert_eq!(setup.press(Button::A), Request::Finish);
+        assert_eq!(setup.press(Button::A), Request::Finish, "coming back, FINISH is selected");
+        let mut setup = Setup::at(3);
+        assert_eq!(setup.press(Button::Down), Request::Nothing);
+        assert_eq!(setup.press(Button::A), Request::SendGamesOverWifi);
+        assert_eq!(setup.press(Button::Down), Request::Nothing, "Down from FINISH wraps");
+        assert_eq!(setup.press(Button::A), Request::CopyGames);
     }
 
     #[test]

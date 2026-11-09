@@ -13,6 +13,7 @@ use crate::launcher::{DetailRow, Group, Setting, COLUMNS, DETAIL_ROWS, MAX_GROUP
 use crate::settings::GridSize;
 use crate::boot_partition::BootMessages;
 use crate::ssh;
+use crate::transfer::Qr;
 use crate::wifi::Security;
 use crate::wifi_menu::{self, Entry};
 use std::time::Duration;
@@ -1144,6 +1145,64 @@ pub fn usb_drive_screen(width: usize, height: usize, view: &UsbDriveView, frame:
     ];
     for (row, line) in lines.iter().enumerate() {
         canvas.text_at(line, LIST_LEFT, USB_DRIVE_TOP + 50 + row * LIST_ROW, TEXT_SCALE, MUTED);
+    }
+    hint(&mut canvas, view.hint);
+    canvas
+}
+
+/// Settings > SYSTEM > WI-FI TRANSFER, while the web page is served.
+#[derive(Clone, PartialEq, Debug)]
+pub struct TransferView {
+    /// The page's address, None while not connected to Wi-Fi.
+    pub address: Option<String>,
+    pub code: String,
+    pub qr: Option<Qr>,
+    /// What is arriving or arrived last, and its name.
+    pub lines: [String; 2],
+    pub hint: &'static str,
+}
+
+const TRANSFER_TOP: usize = 84;
+const QR_MODULE: usize = 5;
+/// The light border a QR code needs around it, in modules.
+const QR_QUIET: usize = 4;
+const TRANSFER_ACTIVITY_TOP: usize = 290;
+
+pub fn transfer_screen(width: usize, height: usize, view: &TransferView, frame: &Frame) -> Canvas {
+    let mut canvas = Canvas::new(width, height, frame.theme);
+    header(&mut canvas, &icons::WIFI, tr("WI-FI TRANSFER"), frame.battery);
+    let accent = canvas.theme.accent;
+    let Some(address) = &view.address else {
+        canvas.text_at(tr("NOT CONNECTED - JOIN A NETWORK IN WI-FI"), LIST_LEFT, TRANSFER_TOP, TEXT_SCALE, accent);
+        canvas.text_at(tr("THE ADDRESS SHOWS HERE ONCE CONNECTED."), LIST_LEFT, TRANSFER_TOP + 40, TEXT_SCALE, MUTED);
+        hint(&mut canvas, view.hint);
+        return canvas;
+    };
+    let mut left_end = width.saturating_sub(LIST_LEFT);
+    if let Some(qr) = &view.qr {
+        let size = (qr.width + 2 * QR_QUIET) * QR_MODULE;
+        let x = width.saturating_sub(LIST_LEFT + size);
+        let y = TRANSFER_TOP - 8;
+        canvas.rect(x, y, size, size, Rgb(0xFF, 0xFF, 0xFF));
+        for (index, _) in qr.dark.iter().enumerate().filter(|(_, dark)| **dark) {
+            let (column, row) = (index % qr.width, index / qr.width);
+            canvas.rect(x + (QR_QUIET + column) * QR_MODULE, y + (QR_QUIET + row) * QR_MODULE, QR_MODULE, QR_MODULE, Rgb(0, 0, 0));
+        }
+        left_end = x.saturating_sub(16);
+    }
+    let room = left_end.saturating_sub(LIST_LEFT);
+    canvas.text_at(tr("OPEN IN A BROWSER:"), LIST_LEFT, TRANSFER_TOP, TEXT_SCALE, MUTED);
+    let scale = if text_width(address, 3) <= room { 3 } else { TEXT_SCALE };
+    canvas.text_cased_at(address, LIST_LEFT, TRANSFER_TOP + 30, scale, TEXT);
+    canvas.text_at(tr("CODE:"), LIST_LEFT, TRANSFER_TOP + 90, TEXT_SCALE, MUTED);
+    canvas.text_at(&view.code, LIST_LEFT, TRANSFER_TOP + 120, 4, accent);
+
+    let columns = width.saturating_sub(2 * LIST_LEFT) / ((font::WIDTH + 1) * TEXT_SCALE);
+    canvas.text_at(&view.lines[0], LIST_LEFT, TRANSFER_ACTIVITY_TOP, TEXT_SCALE, accent);
+    canvas.text_cased_at(&cut(&view.lines[1], columns), LIST_LEFT, TRANSFER_ACTIVITY_TOP + LIST_ROW, TEXT_SCALE, TEXT);
+    let notes = [tr("SEND GAMES, SAVES AND COVERS FROM THE PAGE."), tr("IT STOPS WHEN THIS SCREEN CLOSES.")];
+    for (row, line) in notes.iter().enumerate() {
+        canvas.text_at(line, LIST_LEFT, TRANSFER_ACTIVITY_TOP + 80 + row * LIST_ROW, TEXT_SCALE, MUTED);
     }
     hint(&mut canvas, view.hint);
     canvas

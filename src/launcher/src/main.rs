@@ -57,6 +57,8 @@ mod ssh;
 mod storage;
 mod system_info;
 mod systems;
+mod transfer;
+mod transfer_server;
 mod usb_drive;
 mod wifi;
 mod wifi_menu;
@@ -69,7 +71,7 @@ use previews::{
     write_achievements_preview, write_button_preview, write_cheats_preview, write_controls_preview,
     write_core_options_preview, write_keyboard_preview, write_launcher_preview,
     write_notice_preview, write_pause_preview, write_plain_ppm, write_ppm, write_setup_preview,
-    write_usb_drive_preview, write_wifi_preview,
+    write_transfer_preview, write_usb_drive_preview, write_wifi_preview,
 };
 use systems::{parse_persistence, system_for};
 
@@ -102,6 +104,7 @@ fn main() -> ExitCode {
         }
         [flag, path] if flag == "--preview-buttons" => write_button_preview(path),
         [flag, path] if flag == "--preview-usb" => write_usb_drive_preview(path),
+        [flag, path] if flag == "--preview-transfer" => write_transfer_preview(path),
         [flag, path] if flag == "--preview-wifi" => write_wifi_preview(path),
         [flag, path] if flag == "--preview-keyboard" => write_keyboard_preview(path),
         [flag, step, path] if flag == "--preview-setup" => match step.parse() {

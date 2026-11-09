@@ -37,10 +37,16 @@ impl GameFiles {
     /// Save files as a player thinks of them, without the play time's, the settings' or the
     /// achievement count's.
     pub(crate) fn save_count(&self) -> usize {
+        self.player_saves().len()
+    }
+
+    /// Those save files.
+    pub(crate) fn player_saves(&self) -> Vec<PathBuf> {
         self.saves
             .iter()
             .filter(|file| !play_time::is_play_time(file) && !is_game_setting(file) && !achievements::is_summary(file))
-            .count()
+            .cloned()
+            .collect()
     }
 
     /// The time played, with what its discs had as games of their own. None if none is known.
