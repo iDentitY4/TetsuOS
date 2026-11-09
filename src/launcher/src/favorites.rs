@@ -4,7 +4,7 @@ use crate::storage::write_atomic;
 use std::io;
 use std::path::{Path, PathBuf};
 
-pub const FAVORITES_PATH: &str = "/mnt/data/favorites.txt";
+pub const FAVORITES_PATH: &str = crate::paths::data_path!("/favorites.txt");
 
 /// Reads the starred games, one path per line. A missing file is an empty list.
 pub fn load(path: &Path) -> Vec<PathBuf> {

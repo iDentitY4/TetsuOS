@@ -25,9 +25,9 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::{Duration, Instant};
 
 /// The account's name and token. Readable only by root, as the token logs in.
-pub const ACCOUNT_PATH: &str = "/mnt/data/retroachievements.txt";
+pub const ACCOUNT_PATH: &str = crate::paths::data_path!("/retroachievements.txt");
 /// Achievement badges, downloaded once and kept by their names.
-pub const BADGE_DIR: &str = "/mnt/data/achievements";
+pub const BADGE_DIR: &str = crate::paths::data_path!("/achievements");
 /// How long a login from Settings may take.
 const LOGIN_TIMEOUT: Duration = Duration::from_secs(40);
 /// How long leaving a game waits for unlocks still being sent.
@@ -474,7 +474,7 @@ pub unsafe fn keep_memory_map(data: *const c_void) {
 /// # Safety
 /// Called by rcheevos, on the thread that runs the core, with an `info` to fill in.
 unsafe extern "C" fn core_memory_info(id: u32, info: *mut ffi::rc_libretro_core_memory_info_t) {
-    let (data, size) = match CORE_MEMORY.with(|memory| memory.get()) {
+    let (data, size) = match CORE_MEMORY.with(std::cell::Cell::get) {
         // SAFETY: the core's own functions, which stay valid while it is loaded. This is
         // the thread that runs it.
         Some(memory) => unsafe { ((memory.data)(id).cast::<u8>(), (memory.size)(id)) },

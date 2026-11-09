@@ -55,10 +55,10 @@ pub(crate) struct System {
     pub(crate) cheats: Option<&'static str>,
 }
 
-pub(crate) const MGBA: &str = "/usr/lib/libretro/mgba_libretro.so";
-pub(crate) const GENESIS_PLUS_GX: &str = "/usr/lib/libretro/genesis_plus_gx_libretro.so";
-pub(crate) const BEETLE_NGP: &str = "/usr/lib/libretro/mednafen_ngp_libretro.so";
-pub(crate) const BEETLE_WSWAN: &str = "/usr/lib/libretro/mednafen_wswan_libretro.so";
+pub(crate) const MGBA: &str = crate::paths::core_path!("mgba");
+pub(crate) const GENESIS_PLUS_GX: &str = crate::paths::core_path!("genesis_plus_gx");
+pub(crate) const BEETLE_NGP: &str = crate::paths::core_path!("mednafen_ngp");
+pub(crate) const BEETLE_WSWAN: &str = crate::paths::core_path!("mednafen_wswan");
 
 /// In the order the launcher lists them, which is by the console's release.
 pub(crate) const SYSTEMS: [System; 16] = [
@@ -68,7 +68,7 @@ pub(crate) const SYSTEMS: [System; 16] = [
         label: "NES",
         icon: &icons::NES,
         extensions: &["nes"],
-        core: "/usr/lib/libretro/fceumm_libretro.so",
+        core: crate::paths::core_path!("fceumm"),
         persistence: Persistence::BatteryRam,
         save_extension: "srm",
         rom_size: None,
@@ -98,7 +98,7 @@ pub(crate) const SYSTEMS: [System; 16] = [
         label: "PC ENGINE",
         icon: &icons::PC_ENGINE,
         extensions: &["pce"],
-        core: "/usr/lib/libretro/mednafen_pce_fast_libretro.so",
+        core: crate::paths::core_path!("mednafen_pce_fast"),
         persistence: Persistence::BatteryRam,
         save_extension: "srm",
         rom_size: None,
@@ -144,7 +144,7 @@ pub(crate) const SYSTEMS: [System; 16] = [
         label: "LYNX",
         icon: &icons::LYNX,
         extensions: &["lnx", "lyx"],
-        core: "/usr/lib/libretro/handy_libretro.so",
+        core: crate::paths::core_path!("handy"),
         persistence: Persistence::BatteryRam,
         save_extension: "srm",
         rom_size: None,
@@ -174,7 +174,7 @@ pub(crate) const SYSTEMS: [System; 16] = [
         label: "SNES",
         icon: &icons::SNES,
         extensions: &["sfc", "smc"],
-        core: "/usr/lib/libretro/snes9x_libretro.so",
+        core: crate::paths::core_path!("snes9x"),
         persistence: Persistence::BatteryRam,
         save_extension: "srm",
         rom_size: None,
@@ -191,7 +191,7 @@ pub(crate) const SYSTEMS: [System; 16] = [
         // A `.cue` names the disc's `.bin` files, which sit beside it and aren't listed. An
         // `.m3u` names the discs of one game, which `library::find_roms` then doesn't list.
         extensions: &["cue", "chd", "pbp", "m3u"],
-        core: "/usr/lib/libretro/pcsx_rearmed_libretro.so",
+        core: crate::paths::core_path!("pcsx_rearmed"),
         // The memory card, which the core keeps as its save memory.
         persistence: Persistence::BatteryRam,
         save_extension: "srm",
@@ -208,7 +208,7 @@ pub(crate) const SYSTEMS: [System; 16] = [
         label: "TAMAGOTCHI",
         icon: &icons::TAMAGOTCHI,
         extensions: &["b"],
-        core: "/usr/lib/libretro/tamalibretro_libretro.so",
+        core: crate::paths::core_path!("tamalibretro"),
         persistence: Persistence::FullState,
         save_extension: "state",
         rom_size: Some(12288),
@@ -310,9 +310,9 @@ pub(crate) const SYSTEMS: [System; 16] = [
 ];
 
 /// `S15data` mounts the card's TETSU-DATA partition here.
-pub(crate) const ROM_DIR: &str = "/mnt/data/roms";
+pub(crate) const ROM_DIR: &str = crate::paths::data_path!("/roms");
 
-pub(crate) const SAVE_DIR: &str = "/mnt/data/saves";
+pub(crate) const SAVE_DIR: &str = crate::paths::data_path!("/saves");
 
 impl System {
     /// A game that is one file. A `PlayStation` disc needs several side by side.

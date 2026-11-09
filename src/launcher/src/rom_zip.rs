@@ -63,7 +63,7 @@ pub(crate) fn game_in(path: &Path) -> Option<ZippedGame> {
 
 fn read_game(path: &Path) -> io::Result<Option<ZippedGame>> {
     let mut archive = ZipArchive::new(File::open(path)?).map_err(io::Error::other)?;
-    let names: Vec<String> = archive.file_names().flatten().map(|name| name.into_owned()).collect();
+    let names: Vec<String> = archive.file_names().flatten().map(std::borrow::Cow::into_owned).collect();
     let Some(name) = choose_game(names.iter().map(String::as_str)).map(String::from) else { return Ok(None) };
     // Opening it also finds a password or a kind of compression that can't be unpacked.
     let size = archive.by_name(&name).map_err(io::Error::other)?.size();
@@ -83,7 +83,7 @@ fn extension_of(name: &str) -> Option<&str> {
 fn choose_game<'a>(names: impl Iterator<Item = &'a str>) -> Option<&'a str> {
     names
         .filter(|name| !name.split('/').any(|part| part.starts_with('.') || part == "__MACOSX"))
-        .filter(|name| extension_of(name).and_then(system_for_extension).is_some_and(|system| system.fits_in_zip()))
+        .filter(|name| extension_of(name).and_then(system_for_extension).is_some_and(crate::systems::System::fits_in_zip))
         .min()
 }
 

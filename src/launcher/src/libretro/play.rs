@@ -34,11 +34,11 @@ pub(super) static TERMINATING: LazyLock<Arc<AtomicBool>> = LazyLock::new(|| Arc:
 
 const STATS_FRAMES: u64 = 600;
 
-const CPU_SPEED_PATH: &str = "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq";
+const CPU_SPEED_PATH: &str = crate::paths::CPU_SPEED;
 
-const CPU_MIN_SPEED_PATH: &str = "/sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq";
+const CPU_MIN_SPEED_PATH: &str = crate::paths::cpufreq_path!("/scaling_min_freq");
 
-const CPU_LOWEST_SPEED_PATH: &str = "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_min_freq";
+const CPU_LOWEST_SPEED_PATH: &str = crate::paths::cpufreq_path!("/cpuinfo_min_freq");
 
 /// The speed games normally run at, in kHz.
 const CPU_GAME_SPEED: &str = "1008000";

@@ -9,7 +9,7 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-pub const DATA_DIR: &str = "/mnt/data/ssh";
+pub const DATA_DIR: &str = crate::paths::data_path!("/ssh");
 const KEYS_FILE: &str = "authorized_keys";
 const PASSWORD_FILE: &str = "root-password";
 const SERVER: &str = "/etc/init.d/S50dropbear";

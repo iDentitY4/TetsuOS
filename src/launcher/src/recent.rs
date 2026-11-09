@@ -4,7 +4,7 @@ use crate::storage::write_atomic;
 use std::io;
 use std::path::{Path, PathBuf};
 
-pub const RECENT_PATH: &str = "/mnt/data/recent.txt";
+pub const RECENT_PATH: &str = crate::paths::data_path!("/recent.txt");
 /// How many games the list keeps.
 pub const RECENT_COUNT: usize = 8;
 

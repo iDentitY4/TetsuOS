@@ -12,7 +12,7 @@ use crate::systems::{save_path, system_for};
 use std::io;
 use std::path::{Path, PathBuf};
 
-pub const SCREENSHOT_DIR: &str = "/mnt/data/screenshots";
+pub const SCREENSHOT_DIR: &str = crate::paths::data_path!("/screenshots");
 
 /// The most a cover takes, as `scripts/boxart.py` makes them.
 const COVER_SIZE: (usize, usize) = (200, 300);

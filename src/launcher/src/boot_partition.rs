@@ -148,7 +148,7 @@ static BOOT_MESSAGES: Mutex<Cached> = Mutex::new(Cached::NotRead);
 
 /// Where the boot messages go, or None if the card's `extlinux.conf` can't be read.
 pub fn boot_messages() -> Option<BootMessages> {
-    let mut cached = BOOT_MESSAGES.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut cached = BOOT_MESSAGES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Cached::Read(messages) = *cached {
         return messages;
     }
@@ -169,7 +169,7 @@ pub fn set_boot_messages(messages: BootMessages) -> io::Result<()> {
             .ok_or_else(|| io::Error::other("extlinux.conf has no APPEND line"))?;
         replace_checked(&path, &changed)
     })?;
-    *BOOT_MESSAGES.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Cached::Read(Some(messages));
+    *BOOT_MESSAGES.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Cached::Read(Some(messages));
     println!("boot messages: {}", messages.label());
     Ok(())
 }
@@ -187,14 +187,14 @@ pub fn save_logs() -> io::Result<String> {
     let mut system = String::new();
     for (title, text) in [
         ("saved", run("date", &[])),
-        ("kernel", read("/proc/version")),
-        ("build", read("/etc/os-release")),
-        ("uptime", read("/proc/uptime")),
+        ("kernel", read(crate::paths::KERNEL_VERSION)),
+        ("build", read(crate::paths::OS_RELEASE)),
+        ("uptime", read(crate::paths::UPTIME)),
         // The settings hold no secrets: Wi-Fi passwords, keys and the root password are
         // in other files, which are left out.
-        ("settings", read("/mnt/data/settings.txt")),
+        ("settings", read(crate::paths::SETTINGS)),
         ("storage", run("df", &["-k"])),
-        ("memory", read("/proc/meminfo")),
+        ("memory", read(crate::paths::MEMORY)),
         ("processes", run("ps", &[])),
         ("network", run("ifconfig", &[])),
     ] {

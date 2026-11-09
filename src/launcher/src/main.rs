@@ -36,6 +36,7 @@ mod launcher;
 mod library;
 mod libretro;
 mod names;
+mod paths;
 mod pause;
 mod pause_screens;
 mod performance;

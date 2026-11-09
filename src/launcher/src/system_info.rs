@@ -115,12 +115,12 @@ pub(crate) fn system_info(battery: Option<Battery>, games: usize) -> Vec<(String
     let battery = battery.map_or_else(unknown, |Battery { percent, charging }| {
         format!("{percent}%{}{volts}", if charging { format!(" {}", tr("CHARGING")) } else { String::new() })
     });
-    let storage = parse_df(&command_output("df", &["-k", "/mnt/data"]))
+    let storage = parse_df(&command_output("df", &["-k", crate::paths::DATA_DIR]))
         .map_or_else(unknown, |(free, total)| trf("{} FREE OF {}", &[&gigabytes(free), &gigabytes(total)]));
-    let memory = read_text("/proc/meminfo")
+    let memory = read_text(crate::paths::MEMORY)
         .and_then(|meminfo| parse_meminfo(&meminfo))
         .map_or_else(unknown, |(free, total)| trf("{} FREE OF {}", &[&megabytes(free), &megabytes(total)]));
-    let speed = read_number("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq").map(|khz| format!("{} MHZ", khz / 1000));
+    let speed = read_number(crate::paths::CPU_SPEED).map(|khz| format!("{} MHZ", khz / 1000));
     let temperature =
         read_number("/sys/class/thermal/thermal_zone0/temp").map(|millidegrees| format!("{} C", millidegrees / 1000));
     let cpu = match (speed, temperature) {
@@ -128,15 +128,15 @@ pub(crate) fn system_info(battery: Option<Battery>, games: usize) -> Vec<(String
         (speed, temperature) => speed.or(temperature).unwrap_or_else(unknown),
     };
     let address = parse_ifconfig(&command_output("ifconfig", &["usb0"])).unwrap_or_else(unknown);
-    let uptime = read_text("/proc/uptime")
+    let uptime = read_text(crate::paths::UPTIME)
         .and_then(|text| text.split_whitespace().next()?.split('.').next()?.parse().ok())
         .map_or_else(unknown, format_uptime);
-    let version = read_text("/proc/version").unwrap_or_default();
+    let version = read_text(crate::paths::KERNEL_VERSION).unwrap_or_default();
     let kernel = match (parse_kernel_release(&version), parse_kernel_date(&version)) {
         (Some(release), Some(date)) => format!("{release} - {date}"),
         (release, _) => release.unwrap_or_else(unknown),
     };
-    let build = read_text("/etc/os-release").and_then(|text| parse_os_build(&text)).unwrap_or_else(unknown);
+    let build = read_text(crate::paths::OS_RELEASE).and_then(|text| parse_os_build(&text)).unwrap_or_else(unknown);
     vec![
         (tr("BATTERY").to_string(), battery),
         (tr("GAME STORAGE").to_string(), storage),
@@ -154,7 +154,7 @@ pub(crate) fn system_info(battery: Option<Battery>, games: usize) -> Vec<(String
 
 /// Seconds since the kernel started, for timing the boot in the log.
 pub(crate) fn uptime() -> String {
-    std::fs::read_to_string("/proc/uptime")
+    std::fs::read_to_string(crate::paths::UPTIME)
         .ok()
         .and_then(|text| text.split_whitespace().next().map(String::from))
         .unwrap_or_default()

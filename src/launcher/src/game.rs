@@ -22,7 +22,7 @@ pub(crate) const BATTERY_EMPTY_EXIT: u8 = 3;
 
 /// Names the game that is running. Quitting removes it, but powering off during a game
 /// doesn't, so the next start knows to resume that game.
-pub(crate) const PLAYING_PATH: &str = "/mnt/data/playing.txt";
+pub(crate) const PLAYING_PATH: &str = crate::paths::data_path!("/playing.txt");
 
 /// How long the launcher shows the game it is about to resume, for B to cancel.
 pub(crate) const RESUME_WAIT: Duration = Duration::from_millis(1500);

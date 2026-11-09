@@ -75,10 +75,12 @@ impl DiskControl {
     /// any disc, so this is checked first. A core that can't tell gets to try.
     pub(super) fn is_present(&self, index: usize) -> bool {
         let Some(get_image_path) = self.get_image_path else { return true };
+        // More discs than the core can count aren't there.
+        let Ok(index) = c_uint::try_from(index) else { return false };
         let mut path = [0 as c_char; 4096];
         debug_assert!(host_is_free());
         // SAFETY: see the note on this impl. The core is given the buffer's real length.
-        let known = unsafe { get_image_path(index as c_uint, path.as_mut_ptr(), path.len()) };
+        let known = unsafe { get_image_path(index, path.as_mut_ptr(), path.len()) };
         // SAFETY: the buffer starts zeroed and ends in a zero the core was told not to touch.
         known && Path::new(OsStr::from_bytes(unsafe { CStr::from_ptr(path.as_ptr()) }.to_bytes())).exists()
     }
@@ -87,13 +89,13 @@ impl DiskControl {
     /// two more seconds, which is how a game notices the change. If the new disc fails, the
     /// one that was in goes back.
     pub(super) fn change(&self, index: usize) -> bool {
-        let previous = self.current();
+        let (Ok(index), Ok(previous)) = (c_uint::try_from(index), c_uint::try_from(self.current())) else { return false };
         // SAFETY: see the note on this impl.
         unsafe {
             (self.set_eject_state)(true);
-            let changed = (self.set_image_index)(index as c_uint);
+            let changed = (self.set_image_index)(index);
             if !changed {
-                (self.set_image_index)(previous as c_uint);
+                (self.set_image_index)(previous);
             }
             (self.set_eject_state)(false);
             changed

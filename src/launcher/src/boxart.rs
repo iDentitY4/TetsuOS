@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-pub const ART_DIR: &str = "/mnt/data/boxart";
+pub const ART_DIR: &str = crate::paths::data_path!("/boxart");
 
 /// Reads a binary PPM (P6) image with 8-bit channels.
 pub fn parse_ppm(bytes: &[u8]) -> Option<Image> {

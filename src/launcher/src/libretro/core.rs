@@ -45,7 +45,7 @@ fn open_core(core_path: &Path) -> io::Result<&'static libloading::os::unix::Libr
 /// Prints the options a core declares, for `core_options::declarations_for`. Every core
 /// here declares them when it is given the environment, before any game is loaded.
 pub fn print_core_options(core_path: &Path) -> io::Result<()> {
-    set_host(Path::new("/tmp"), (640, 480), CoreSetup::default(), None, Layout::default())?;
+    set_host(&std::env::temp_dir(), (640, 480), CoreSetup::default(), None, Layout::default())?;
     let library = open_core(core_path)?;
     // SAFETY: the symbol has the signature in libretro.h.
     unsafe {
@@ -163,9 +163,9 @@ impl Core {
         // SAFETY: the game is loaded. Each core copies the code before returning.
         unsafe {
             reset();
-            for (index, code) in codes.iter().enumerate() {
+            for (index, code) in (0..).zip(codes) {
                 let Ok(code) = CString::new(*code) else { continue };
-                set(index as c_uint, true, code.as_ptr());
+                set(index, true, code.as_ptr());
             }
         }
     }

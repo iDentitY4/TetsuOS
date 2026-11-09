@@ -16,7 +16,7 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::Mutex;
 
-const SETTINGS_PATH: &str = "/mnt/data/settings.txt";
+const SETTINGS_PATH: &str = crate::paths::SETTINGS;
 const VOLUME_CONTROL: &str = "name=Line Out Playback Volume";
 /// The control's raw range. 0 and 1 both mute.
 const VOLUME_MAX: u32 = 31;
@@ -628,7 +628,7 @@ fn from_file(read: io::Result<String>) -> Settings {
 }
 
 fn with_current<T>(action: impl FnOnce(&mut Settings) -> T) -> T {
-    let mut current = CURRENT.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut current = CURRENT.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     action(current.get_or_insert_with(read_file))
 }
 

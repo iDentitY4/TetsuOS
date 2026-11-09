@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 /// Where each console's choices are kept, one file per console.
-pub const CONSOLE_DIR: &str = "/mnt/data/core-options";
+pub const CONSOLE_DIR: &str = crate::paths::data_path!("/core-options");
 
 /// Options whose default here differs from the core's. Any other option keeps its default.
 pub const FRONTEND_DEFAULTS: [(&str, &str); 4] = [
@@ -305,7 +305,7 @@ pub fn remove_all(saves: &Path, consoles: &Path) {
 /// affect the launcher. Kept for as long as the launcher runs, as cores don't change.
 pub fn declarations_for(core: &str) -> Declarations {
     static KNOWN: Mutex<Option<HashMap<String, Declarations>>> = Mutex::new(None);
-    let mut known = KNOWN.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut known = KNOWN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let known = known.get_or_insert_with(HashMap::new);
     if let Some(declarations) = known.get(core) {
         return declarations.clone();

@@ -6,7 +6,7 @@
 use crate::settings::CpuLevel;
 use std::path::Path;
 
-const CPUFREQ: &str = "/sys/devices/system/cpu/cpu0/cpufreq";
+const CPUFREQ: &str = crate::paths::cpufreq_path!("");
 /// BATTERY's top speed, in kHz: one of the speeds the CPU offers.
 const BATTERY_MAX_KHZ: u32 = 1_104_000;
 

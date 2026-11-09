@@ -81,7 +81,9 @@ ADVANCED > RUN SETUP AGAIN repeats.
   `app.rs` has the menus' loop and actions, `systems.rs` the consoles, `library.rs` the
   games and tiles, `game.rs` running and resuming games, `libretro/` the frontend (`ffi`, `host`, `core`, `scale`, `save`, `audio`, `menu`, `play`),
   `rom_zip.rs` games in ZIPs, `controls.rs` button layouts and turbo, `core_options.rs` cores' own options, `cheats.rs` cheat files and the CHEATS page, `achievements.rs` RetroAchievements through rcheevos, `game_files.rs` which files are a game's, `screenshot.rs` the in-game menu's pictures, `sleep.rs`, `corner.rs` (clock and battery), `launcher.rs` the button logic,
-  `screens.rs` and `canvas.rs` the drawing. They reach each other through `use crate::*`.
+  `screens.rs` and `canvas.rs` the drawing, `pause_screens.rs` the in-game menu's, `paths.rs`
+  the device's paths and the macros a module builds its own from. Imports are by name, and
+  `[lints.clippy]` in `Cargo.toml` is the bar: `cargo clippy --all-targets` stays clean.
 - **Settings:** `settings.rs` reads `/mnt/data/settings.txt` once per process.
   `settings::get()` returns the `Settings`, and `settings::update(|s| ...)` changes and
   saves them. A game's menu can change the display and levels, so `play_game` calls

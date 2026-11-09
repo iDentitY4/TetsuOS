@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver};
 
 /// `S15data` mounts TETSU-DATA at `/mnt/data`; each console has a folder in here.
-pub const CHEAT_DIR: &str = "/mnt/data/cheats";
+pub const CHEAT_DIR: &str = crate::paths::data_path!("/cheats");
 
 const RAW_URL: &str = "https://raw.githubusercontent.com/libretro/libretro-database/master/cht";
 const TREE_URL: &str = "https://api.github.com/repos/libretro/libretro-database/git/trees/master:cht%2F";
