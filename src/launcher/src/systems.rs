@@ -2,6 +2,7 @@
 
 use crate::icons::{self, Icon};
 use crate::libretro::{CoreSetup, Persistence};
+use crate::rom_zip;
 use std::ffi::OsString;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -274,9 +275,23 @@ pub(crate) const ROM_DIR: &str = "/mnt/data/roms";
 
 pub(crate) const SAVE_DIR: &str = "/mnt/data/saves";
 
-pub(crate) fn system_for(rom: &Path) -> Option<&'static System> {
-    let extension = rom.extension()?;
+impl System {
+    /// A game that is one file. A PlayStation disc needs several side by side.
+    pub(crate) fn fits_in_zip(&self) -> bool {
+        !self.extensions.contains(&"m3u")
+    }
+}
+
+pub(crate) fn system_for_extension(extension: &str) -> Option<&'static System> {
     SYSTEMS.iter().find(|system| system.extensions.iter().any(|known| extension.eq_ignore_ascii_case(known)))
+}
+
+/// The system that runs a game, by its extension or, for a ZIP, that of the game inside.
+pub(crate) fn system_for(rom: &Path) -> Option<&'static System> {
+    match rom_zip::game_in(rom) {
+        Some(game) => system_for_extension(&game.extension),
+        None => system_for_extension(rom.extension()?.to_str()?),
+    }
 }
 
 /// The index in `SYSTEMS` of the system that runs a game.
@@ -285,10 +300,18 @@ pub(crate) fn system_index(rom: &Path) -> Option<usize> {
     SYSTEMS.iter().position(|other| std::ptr::eq(other, system))
 }
 
-/// The save file next to the others, named after the game.
+/// The save file next to the others, named after the game. A game in a ZIP is named as if it
+/// weren't in one, so zipping a game keeps its saves.
 pub(crate) fn save_path(rom: &Path, system: &System) -> PathBuf {
     let base = if system.short_save_names { rom.file_stem() } else { rom.file_name() };
     let mut name = OsString::from(base.unwrap_or_default());
+    if let Some(game) = rom_zip::game_in(rom) {
+        name = OsString::from(rom.file_stem().unwrap_or_default());
+        if !system.short_save_names {
+            name.push(".");
+            name.push(&game.extension);
+        }
+    }
     name.push(".");
     name.push(system.save_extension);
     Path::new(SAVE_DIR).join(name)
@@ -364,6 +387,28 @@ mod tests {
         assert_eq!(save("/roms/Tetris.gb"), Path::new(SAVE_DIR).join("Tetris.gb.srm"));
         assert_eq!(save("/roms/Tetris.nes"), Path::new(SAVE_DIR).join("Tetris.nes.srm"));
         assert_eq!(save("/roms/Tetris.gba"), Path::new(SAVE_DIR).join("Tetris.srm"));
+    }
+
+    #[test]
+    fn a_zipped_game_has_its_consoles_system_and_the_same_saves() {
+        let dir = std::env::temp_dir().join(format!("launcher-zip-saves-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for (inner, zip, core, plain) in [
+            ("x.nes", "Tetris.zip", "fceumm", "/roms/Tetris.nes"),
+            ("x.GBA", "Emerald.ZIP", "mgba", "/roms/Emerald.gba"),
+        ] {
+            let path = dir.join(zip);
+            let file = std::fs::File::create(&path).unwrap();
+            let mut writer = zip::ZipWriter::new(file);
+            writer.start_file(inner, zip::write::SimpleFileOptions::default()).unwrap();
+            writer.finish().unwrap();
+            let system = system_for(&path).unwrap();
+            assert!(system.core.contains(core), "{zip}");
+            let plain = Path::new(plain);
+            let (zipped, plain) = (save_path(&path, system), save_path(plain, system_for(plain).unwrap()));
+            assert_eq!(zipped.to_string_lossy().to_lowercase(), plain.to_string_lossy().to_lowercase());
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

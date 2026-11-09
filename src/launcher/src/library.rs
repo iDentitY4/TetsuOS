@@ -15,6 +15,7 @@ use std::path::{Component, Path, PathBuf};
 /// So are the discs an `.m3u` names, and discs told apart only by a number in their names,
 /// so that a game with several shows once.
 pub(crate) fn find_roms(directory: &Path) -> Vec<PathBuf> {
+    rom_zip::forget_all();
     let mut roms = Vec::new();
     add_roms(directory, &mut roms);
     let discs: HashSet<String> = roms
@@ -440,6 +441,27 @@ mod tests {
         // A file where the folder should go.
         std::fs::write(dir.join(DISC_LISTS), []).unwrap();
         assert_eq!(labels(&find_roms(&dir)), ["G (Disc 1)", "G (Disc 2)"]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_zip_lists_as_a_game_of_the_console_inside_it() {
+        let dir = temporary_roms("zips", &["Plain.gb", "notes.txt"]);
+        for (zip, inner) in [("Zipped (USA).zip", "any name.gba"), ("Disc.zip", "Disc.cue"), ("Notes.zip", "notes.txt")] {
+            let mut writer = zip::ZipWriter::new(std::fs::File::create(dir.join(zip)).unwrap());
+            writer.start_file(inner, zip::write::SimpleFileOptions::default()).unwrap();
+            writer.finish().unwrap();
+        }
+        std::fs::write(dir.join("Broken.zip"), "not a zip").unwrap();
+        let roms = find_roms(&dir);
+        assert_eq!(labels(&roms), ["Plain", "Zipped (USA)"]);
+        let library = build_library(&roms, &[], &[], settings::GameNames::Short);
+        let games: Vec<(&str, &str)> = library
+            .shelves
+            .iter()
+            .flat_map(|shelf| shelf.games.iter().map(|game| (SYSTEMS[shelf.system].console, game.name.as_str())))
+            .collect();
+        assert_eq!(games, [("GAME BOY", "Plain"), ("GAME BOY ADVANCE", "Zipped")]);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

@@ -29,6 +29,7 @@ mod power;
 mod previews;
 mod recent;
 mod repeat;
+mod rom_zip;
 mod screens;
 mod settings;
 mod setup;

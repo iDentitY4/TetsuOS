@@ -145,6 +145,30 @@ Working on the test unit, confirmed by the user:
   the lowest 480 MHz and 44 C with no underruns, FF7 sees a formatted card, and save
   states (4.4 MB) save and load. 50 Hz games can't match the 59.94 Hz panel, so some
   frames show twice. The user hasn't tried it yet, so sound and feel are unchecked
+- ZIP games (`rom_zip.rs`, with the `zip` crate, deflate only). A `.zip` in `roms` lists as
+  a game of the console its file inside belongs to, named after the ZIP, and an unknown,
+  damaged or password-protected ZIP is left out with a line in the log. With several games
+  in one, the first by name is used; other files and macOS's `__MACOSX` and `._` files are
+  ignored, as are names with `..`. What a ZIP holds is read once per scan and cached, since
+  `system_for` runs often. PlayStation games don't count, as a disc is several files, and
+  a game over 128 MiB unpacked is refused, as `/tmp` is in memory.
+
+  The game process unpacks to `/tmp/unpacked-game/<zip's name>.<game's extension>` before
+  it opens the screen, gives that file to the core and removes it on leaving, so cores
+  need nothing special. A power-off empties `/tmp`, and the next game replaces what a crash
+  leaves. `save_path` names saves as for the unzipped game with the ZIP's name, so
+  `Tetris.gb` zipped as `Tetris.zip` keeps its saves, states and cover, while RECENT and
+  favorites keep paths and don't carry over. `scripts/boxart.py` doesn't know ZIPs; the
+  on-device download does.
+
+  Claude tested on the device on 2026-11-09 with ZIPs of 10 games, each also holding a
+  `readme.txt` and a `__MACOSX` file. NES, Master System, PC Engine, Mega Drive, Game Boy,
+  Color, Game Gear, SNES, Advance and Tamagotchi all started on their cores; a 16 MiB GBA
+  game unpacked in 0.21 s. A PC Engine ZIP started from its list, saved a slot and quit,
+  which removed the unpacked file, then resumed. 500 more ZIPs added about 0.06 s to the
+  launcher's start, with the files already in the cache. Neo Geo Pocket, WonderSwan and
+  Lynx use the same code but had no games to try, and the user hasn't played from a ZIP
+
 - Multi-disc PlayStation games. An `.m3u` is a text file with one disc per line, such as
   `Final Fantasy VII (Europe) (Disc 1).cue`; names start from the `.m3u`'s folder, and
   lines starting with `#` are comments. `library::find_roms` reads every `.m3u` and leaves

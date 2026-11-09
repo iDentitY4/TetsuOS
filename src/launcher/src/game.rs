@@ -29,7 +29,10 @@ pub(crate) const SAVE_BEFORE_SLEEP: Duration = Duration::from_millis(500);
 pub(crate) fn play_game(rom: &Path, events: &Receiver<Event>) -> io::Result<Ending> {
     let system = system_for(rom).ok_or_else(|| io::Error::other("no core for this game"))?;
     if let Some(size) = system.rom_size {
-        let actual = std::fs::metadata(rom)?.len();
+        let actual = match rom_zip::game_in(rom) {
+            Some(game) => game.size,
+            None => std::fs::metadata(rom)?.len(),
+        };
         if actual != size {
             return Err(io::Error::other(format!("expected {size} bytes, found {actual}")));
         }
@@ -148,7 +151,18 @@ pub(crate) fn confirm_resume(framebuffer: &mut fb::Framebuffer, events: &Receive
 /// The separate process that `play_game` starts.
 pub(crate) fn run_game(core: &Path, rom: &Path, save: &Path, persistence: Persistence) -> io::Result<Ending> {
     let setup = system_for(rom).map(|system| system.setup).unwrap_or_default();
-    libretro::play(core, rom, save, persistence, setup, &mut open_framebuffer()?)
+    if !rom_zip::is_zip(rom) {
+        return libretro::play(core, rom, save, persistence, setup, &mut open_framebuffer()?);
+    }
+    let folder = Path::new(rom_zip::UNPACK_DIR);
+    let started = Instant::now();
+    let unpacked = rom_zip::unpack(rom, folder)?;
+    println!("unpacked {} in {:.2} s", rom.display(), started.elapsed().as_secs_f32());
+    let ending = libretro::play(core, &unpacked, save, persistence, setup, &mut open_framebuffer()?);
+    if let Err(error) = std::fs::remove_dir_all(folder) {
+        eprintln!("warning: could not remove the unpacked game: {error}");
+    }
+    ending
 }
 
 #[cfg(test)]

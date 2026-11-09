@@ -21,7 +21,7 @@ a drive.
 Games: NES (FCEUmm), SNES (Snes9x), Game Boy, Color and Advance (mGBA), PlayStation (PCSX
 ReARMed, with discs grouped by name or an `.m3u`, and CHANGE DISC), Mega Drive, Master System and Game Gear (Genesis Plus GX), PC Engine (Beetle PCE
 Fast), Neo Geo Pocket and Color (Beetle NeoPop), WonderSwan and Color (Beetle Cygne), Lynx
-(Handy) and Tamagotchi (tamalib), with an in-game menu (8 save slots, levels, display
+(Handy) and Tamagotchi (tamalib), cartridge games also in ZIP files, with an in-game menu (8 save slots, levels, display
 options), resume on leaving and after power-off, fast-forward on R2, sharp-bilinear
 scaling with CRT and LCD effects, and a volume sign on the volume buttons, also in the menus.
 
@@ -56,16 +56,15 @@ ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Next steps
 
-1. ZIP ROMs: load zipped cartridge games directly
-2. Jump and search in game lists: L/R jumps by letter, search reuses the title keyboard
-3. A game details screen: cover, console, file size, last played, star, and delete the
+1. Jump and search in game lists: L/R jumps by letter, search reuses the title keyboard
+2. A game details screen: cover, console, file size, last played, star, and delete the
    game and its saves
-4. Per-game or per-console display settings (scaling, effect, ghosting)
-5. Play time per game, shown in the details screen
-6. Sort options for lists: name, last played, play time
-7. Proposed, not confirmed: before a release, decide whether USB ONLY should keep root's
+3. Per-game or per-console display settings (scaling, effect, ghosting)
+4. Play time per game, shown in the details screen
+5. Sort options for lists: name, last played, play time
+6. Proposed, not confirmed: before a release, decide whether USB ONLY should keep root's
    empty password, as the serial console does
-8. Rewind, moved to the end by the user
+7. Rewind, moved to the end by the user
 
 ## How the launcher is built
 
@@ -73,7 +72,7 @@ ADVANCED > RUN SETUP AGAIN repeats.
   the menus; `--play`: one game in its own process; `--preview*`: PC screenshots).
   `app.rs` has the menus' loop and actions, `systems.rs` the consoles, `library.rs` the
   games and tiles, `game.rs` running and resuming games, `libretro.rs` the frontend,
-  `sleep.rs`, `corner.rs` (clock and battery), `launcher.rs` the button logic,
+  `rom_zip.rs` games in ZIPs, `sleep.rs`, `corner.rs` (clock and battery), `launcher.rs` the button logic,
   `screens.rs` and `canvas.rs` the drawing. They reach each other through `use crate::*`.
 - **Settings:** `settings.rs` reads `/mnt/data/settings.txt` once per process.
   `settings::get()` returns the `Settings`, and `settings::update(|s| ...)` changes and
