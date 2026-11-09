@@ -145,6 +145,28 @@ Working on the test unit, confirmed by the user:
   the lowest 480 MHz and 44 C with no underruns, FF7 sees a formatted card, and save
   states (4.4 MB) save and load. 50 Hz games can't match the 59.94 Hz panel, so some
   frames show twice. The user hasn't tried it yet, so sound and feel are unchecked
+- Jumping by letter. L1 and R1 in a game list go to the first game of the previous or next
+  letter, and L1 inside a letter goes to that letter's start first. They wrap at the ends
+  and repeat while held (`repeat.rs`). The letter is the first character of the name as
+  shown, ignoring ASCII case, as lists sort; so a name with `The` in front counts as T.
+  RECENT doesn't jump, being in the order played. Left and Right still page, though the
+  hint no longer has room to say so, nor for B BACK.
+
+- Search. X on the home screen or in a list opens the keyboard (`app::search_games`), showing
+  how many games match while typing. OK shows them as a list like FAVORITES, with each
+  console's icon, and does nothing at 0 matches. A game matches when all the typed words
+  are in its shown name or file name, in any order, ignoring case and common accents
+  (`library::find_games`). It looks through all consoles, also those with their tile hidden.
+  `List::Search` reads `Library::search`, and `reload_library` runs the search again after
+  a game or a star, so results stay. B leaves to where the search began, and X in the
+  results edits the same text. They last until the launcher stops.
+
+  Claude tested on the device on 2026-11-09 with injected presses and screenshots, without
+  starting a game: "mario" counted and listed 7 games from four consoles, adding a letter
+  counted 0 and OK stayed, B left, and starring in the results kept them. In the Game Boy
+  list, R1 and L1 moved as described and holding R1 for a second kept jumping and wrapped.
+  German was checked in previews. The buttons' feel on the device is the user's to judge
+
 - ZIP games (`rom_zip.rs`, with the `zip` crate, deflate only). A `.zip` in `roms` lists as
   a game of the console its file inside belongs to, named after the ZIP, and an unknown,
   damaged or password-protected ZIP is left out with a line in the log. With several games

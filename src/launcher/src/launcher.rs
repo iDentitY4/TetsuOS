@@ -12,6 +12,7 @@ pub const COLUMNS: usize = 4;
 /// Games per screen in a list, which Left and Right move by.
 pub const PAGE: usize = 12;
 
+#[derive(Clone)]
 pub struct Game {
     pub path: PathBuf,
     pub name: String,
@@ -31,6 +32,9 @@ pub struct Library {
     pub recent: Vec<Game>,
     /// Starred games, sorted by name.
     pub favorites: Vec<Game>,
+    /// The last search's results, by name, and what was typed for them.
+    pub search: Vec<Game>,
+    pub search_text: String,
     pub shelves: Vec<Shelf>,
     /// How many systems there are, with games or not, for the list of tiles to hide.
     pub systems: usize,
@@ -46,6 +50,7 @@ pub enum List {
     Favorites,
     /// A system's games, by system index, so it survives games being added.
     System(usize),
+    Search,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -323,6 +328,34 @@ pub fn grid_move(selected: usize, count: usize, columns: usize, button: Button) 
     }
 }
 
+/// What a list sorted by name is grouped by, the same way as it is sorted.
+fn first_letter(game: &Game) -> Option<char> {
+    game.name.chars().next().map(|c| c.to_ascii_lowercase())
+}
+
+/// The first game of the next letter, or the list's first after its last letter.
+fn next_letter(games: &[Game], selected: usize) -> usize {
+    let letter = first_letter(&games[selected]);
+    (selected + 1..games.len()).find(|&index| first_letter(&games[index]) != letter).unwrap_or(0)
+}
+
+/// The first game of `index`'s letter.
+fn letter_start(games: &[Game], index: usize) -> usize {
+    let letter = first_letter(&games[index]);
+    (0..index).rev().take_while(|&earlier| first_letter(&games[earlier]) == letter).last().unwrap_or(index)
+}
+
+/// The first game of this letter, or of the previous letter from there, or of the list's last
+/// letter from the first.
+fn previous_letter(games: &[Game], selected: usize) -> usize {
+    let start = letter_start(games, selected);
+    if start < selected {
+        start
+    } else {
+        letter_start(games, start.checked_sub(1).unwrap_or(games.len() - 1))
+    }
+}
+
 /// What the launcher should do after a press.
 #[derive(Clone, PartialEq, Debug)]
 pub enum Command {
@@ -330,6 +363,8 @@ pub enum Command {
     Play(PathBuf),
     /// Star the game, or unstar it if it is starred.
     ToggleFavorite(PathBuf),
+    /// Types what to look for among all the games.
+    Search,
     ButtonTest,
     Wifi,
     /// Shows covers in game lists if they are hidden, or hides them.
@@ -393,6 +428,8 @@ pub struct Launcher {
     home_tiles_row: usize,
     /// Where settings go back to.
     before_settings: Screen,
+    /// Where search results go back to.
+    before_search: Screen,
     /// A setting that can't be undone, waiting for a second press of A.
     confirming: Option<Setting>,
 }
@@ -435,6 +472,7 @@ impl Library {
         match list {
             List::Recent => &self.recent,
             List::Favorites => &self.favorites,
+            List::Search => &self.search,
             List::System(system) => self
                 .shelves
                 .iter()
@@ -455,6 +493,7 @@ impl Launcher {
             group_rows: HashMap::new(),
             home_tiles_row: 0,
             before_settings: Screen::Home,
+            before_search: Screen::Home,
             confirming: None,
         }
     }
@@ -497,12 +536,23 @@ impl Launcher {
         }
         let index = game.and_then(|path| games.iter().position(|other| other.path == path)).unwrap_or(0);
         self.lists.insert(list, index);
-        self.home = Some(match list {
-            List::Recent => Tile::Recent,
-            List::Favorites => Tile::Favorites,
-            List::System(system) => Tile::System(system),
-        });
+        self.home = match list {
+            List::Recent => Some(Tile::Recent),
+            List::Favorites => Some(Tile::Favorites),
+            List::System(system) => Some(Tile::System(system)),
+            List::Search => self.home,
+        };
         self.screen = Screen::Games(list);
+    }
+
+    /// Shows new search results from their first game. B goes back to where the search began,
+    /// which is still the same place when a search starts from the last one's results.
+    pub fn open_search(&mut self) {
+        if self.screen != Screen::Games(List::Search) {
+            self.before_search = self.screen;
+        }
+        self.lists.remove(&List::Search);
+        self.screen = Screen::Games(List::Search);
     }
 
     /// The selected tile on the settings grid.
@@ -587,6 +637,9 @@ impl Launcher {
     }
 
     fn press_home(&mut self, button: Button, library: &Library) -> Command {
+        if button == Button::X {
+            return Command::Search;
+        }
         let tiles = library.tiles();
         let selected = self.home_selected(library);
         self.home_index = grid_move(selected, tiles.len(), library.grid.columns(), button);
@@ -605,7 +658,7 @@ impl Launcher {
     fn press_list(&mut self, button: Button, library: &Library, list: List) -> Command {
         let games = library.games(list);
         if games.is_empty() || button == Button::B {
-            self.screen = Screen::Home;
+            self.screen = if list == List::Search { self.before_search } else { Screen::Home };
             return Command::Nothing;
         }
         let last = games.len() - 1;
@@ -615,6 +668,10 @@ impl Launcher {
             Button::Down => if selected == last { 0 } else { selected + 1 },
             Button::Left => selected.saturating_sub(PAGE),
             Button::Right => (selected + PAGE).min(last),
+            // Recent games are in the order they were played, so their letters mean nothing.
+            Button::L1 if list != List::Recent => previous_letter(games, selected),
+            Button::R1 if list != List::Recent => next_letter(games, selected),
+            Button::X => return Command::Search,
             Button::A => return Command::Play(games[selected].path.clone()),
             Button::Select => return Command::ToggleFavorite(games[selected].path.clone()),
             _ => selected,
@@ -883,6 +940,74 @@ mod tests {
         launcher.press(Button::B, &library);
         assert_eq!(launcher.screen(), Screen::Home);
         assert_eq!(launcher.home_selected(&library), 2, "the tile stays selected");
+    }
+
+    fn games_named(names: &[&str]) -> Vec<Game> {
+        names.iter().map(|name| Game { path: PathBuf::from(name), name: name.to_string(), system: 0 }).collect()
+    }
+
+    #[test]
+    fn letters_jump_forward_and_wrap() {
+        let games = games_named(&["apple", "Avocado", "banana", "Cherry", "coconut"]);
+        assert_eq!(next_letter(&games, 0), 2, "upper and lower case are one letter");
+        assert_eq!(next_letter(&games, 1), 2);
+        assert_eq!(next_letter(&games, 2), 3);
+        assert_eq!(next_letter(&games, 4), 0);
+        assert_eq!(next_letter(&games_named(&["a", "a2"]), 0), 0);
+    }
+
+    #[test]
+    fn letters_jump_back_to_the_start_then_the_letter_before() {
+        let games = games_named(&["apple", "avocado", "banana", "cherry", "coconut"]);
+        assert_eq!(previous_letter(&games, 4), 3, "the start of this letter first");
+        assert_eq!(previous_letter(&games, 3), 2);
+        assert_eq!(previous_letter(&games, 2), 0);
+        assert_eq!(previous_letter(&games, 0), 3, "the first wraps to the start of the last");
+        assert_eq!(previous_letter(&games_named(&["a"]), 0), 0);
+    }
+
+    #[test]
+    fn shoulder_buttons_jump_in_lists_but_not_recent_games() {
+        let library = Library {
+            shelves: vec![Shelf { system: 0, games: games_named(&["apple", "avocado", "banana"]) }],
+            recent: games_named(&["banana", "apple"]),
+            ..Library::default()
+        };
+        let mut launcher = Launcher::new();
+        let list = Screen::Games(List::System(library.shelves[0].system));
+        launcher.screen = list;
+        launcher.press(Button::R1, &library);
+        let Screen::Games(games) = list else { unreachable!() };
+        assert_eq!(launcher.list_selected(&library, games), 2);
+        launcher.press(Button::L1, &library);
+        assert_eq!(launcher.list_selected(&library, games), 0);
+        launcher.screen = Screen::Games(List::Recent);
+        launcher.press(Button::R1, &library);
+        assert_eq!(launcher.list_selected(&library, List::Recent), 0);
+    }
+
+    #[test]
+    fn x_searches_and_b_goes_back_to_where_it_began() {
+        let library = Library {
+            shelves: vec![Shelf { system: 0, games: games_named(&["apple", "banana"]) }],
+            search: games_named(&["apple", "avocado"]),
+            ..Library::default()
+        };
+        let mut launcher = Launcher::new();
+        assert_eq!(launcher.press(Button::X, &library), Command::Search);
+        let list = Screen::Games(List::System(library.shelves[0].system));
+        launcher.screen = list;
+        assert_eq!(launcher.press(Button::X, &library), Command::Search);
+        launcher.open_search();
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.list_selected(&library, List::Search), 1);
+        // Searching again from the results starts them over and keeps the way back.
+        assert_eq!(launcher.press(Button::X, &library), Command::Search);
+        launcher.open_search();
+        assert_eq!(launcher.list_selected(&library, List::Search), 0);
+        assert_eq!(launcher.press(Button::A, &library), Command::Play(PathBuf::from("apple")));
+        launcher.press(Button::B, &library);
+        assert_eq!(launcher.screen(), list);
     }
 
     #[test]

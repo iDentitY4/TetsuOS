@@ -204,7 +204,60 @@ pub(crate) fn build_library(roms: &[PathBuf], recent: &[PathBuf], favorites: &[P
     let recent = pick(recent);
     let mut favorites = pick(favorites);
     favorites.sort_by_key(|game| game.name.to_ascii_lowercase());
-    Library { recent, favorites, shelves, systems: SYSTEMS.len(), hidden: hidden_tiles(), grid: settings::get().grid }
+    Library { recent, favorites, shelves, systems: SYSTEMS.len(), hidden: hidden_tiles(), grid: settings::get().grid, ..Library::default() }
+}
+
+/// For comparing names: lower case and without accents, as the keyboard has none.
+fn plain_text(text: &str) -> String {
+    text.to_lowercase()
+        .chars()
+        .map(|c| match c {
+            'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' => 'a',
+            'ç' => 'c',
+            'è' | 'é' | 'ê' | 'ë' => 'e',
+            'ì' | 'í' | 'î' | 'ï' => 'i',
+            'ñ' => 'n',
+            'ò' | 'ó' | 'ô' | 'õ' | 'ö' | 'ø' => 'o',
+            'ù' | 'ú' | 'û' | 'ü' => 'u',
+            'ý' | 'ÿ' => 'y',
+            c => c,
+        })
+        .collect()
+}
+
+/// The games of every console with all of the words in `text` in their names, by name. The
+/// file's name counts too, so tags that a short name leaves out can be found, like a region.
+pub(crate) fn find_games(library: &Library, text: &str) -> Vec<Game> {
+    let text = plain_text(text);
+    let words: Vec<&str> = text.split_whitespace().collect();
+    if words.is_empty() {
+        return Vec::new();
+    }
+    let mut found: Vec<Game> = library
+        .shelves
+        .iter()
+        .flat_map(|shelf| &shelf.games)
+        .filter(|game| {
+            let names = plain_text(&format!("{} {}", game.name, rom_label(&game.path)));
+            words.iter().all(|word| names.contains(word))
+        })
+        .cloned()
+        .collect();
+    found.sort_by_key(|game| game.name.to_ascii_lowercase());
+    found
+}
+
+/// Makes `text`'s games the search results.
+pub(crate) fn set_search(library: &mut Library, text: &str) {
+    library.search = find_games(library, text);
+    library.search_text = text.to_string();
+}
+
+/// Reads the games again, keeping what the last search was for.
+pub(crate) fn reload_library(library: &Library) -> Library {
+    let mut new = load_library();
+    set_search(&mut new, &library.search_text);
+    new
 }
 
 /// Opens the screen chosen in Settings > GENERAL > START SCREEN. A game resumed at boot
@@ -270,6 +323,21 @@ mod tests {
         let roms: Vec<PathBuf> = names.iter().map(PathBuf::from).collect();
         let recent: Vec<PathBuf> = recent.iter().map(PathBuf::from).collect();
         build_library(&roms, &recent, &[], settings::GameNames::Short)
+    }
+
+    #[test]
+    fn a_search_needs_every_word_in_any_order_from_every_console() {
+        let library = library_for(
+            &["/r/Super Mario Land (World).gb", "/r/Super Mario Bros. (Europe).nes", "/r/Tetris (World).gb", "/r/Pokémon Gold (USA).gbc"],
+            &[],
+        );
+        let find = |text: &str| -> Vec<String> { find_games(&library, text).into_iter().map(|game| game.name).collect() };
+        assert_eq!(find("mario"), ["Super Mario Bros.", "Super Mario Land"]);
+        assert_eq!(find("LAND  mario"), ["Super Mario Land"]);
+        assert_eq!(find("pokemon"), ["Pokémon Gold"], "accents don't count");
+        assert_eq!(find("world"), ["Super Mario Land", "Tetris"], "tags in the file name count");
+        assert!(find("zelda").is_empty());
+        assert!(find("  ").is_empty());
     }
 
     #[test]

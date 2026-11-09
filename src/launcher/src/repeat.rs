@@ -1,4 +1,4 @@
-//! Repeats a held direction button, so holding Up or Down keeps moving through a list.
+//! Repeats a held direction or shoulder button, so holding one keeps moving through a list.
 //! The buttons don't repeat by themselves.
 
 use crate::input::Button;
@@ -22,7 +22,7 @@ struct Held {
 }
 
 fn repeats(button: Button) -> bool {
-    matches!(button, Button::Up | Button::Down | Button::Left | Button::Right)
+    matches!(button, Button::Up | Button::Down | Button::Left | Button::Right | Button::L1 | Button::R1)
 }
 
 impl Repeater {

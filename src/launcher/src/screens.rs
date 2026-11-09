@@ -157,7 +157,7 @@ pub fn home_screen(
     // Without a title, the grid takes its space too.
     let top = if title.is_some() { GRID_TOP } else { GRID_TOP_UNTITLED };
     tile_grid(&mut canvas, tiles, selected, top, grid.columns(), Some(grid.rows_shown()));
-    hint(&mut canvas, tr("A OPENS - START SETTINGS"));
+    hint(&mut canvas, tr("A OPENS - X SEARCH - START SETTINGS"));
     canvas
 }
 
@@ -366,7 +366,7 @@ pub fn list_screen(width: usize, height: usize, view: &ListView, frame: &Frame) 
         }
         None => {}
     }
-    hint(&mut canvas, tr("A STARTS - B BACK - SELECT STARS - LEFT RIGHT PAGE"));
+    hint(&mut canvas, tr("A STARTS - X SEARCH - SELECT STARS - L R LETTER"));
     canvas
 }
 

@@ -170,6 +170,7 @@ pub(crate) fn launcher_canvas(
             let (icon, title) = match list {
                 List::Recent => (&icons::RECENT, tr("RECENT")),
                 List::Favorites => (&icons::FAVORITES, tr("FAVORITES")),
+                List::Search => (&icons::SEARCH, tr("SEARCH")),
                 List::System(system) => (SYSTEMS[system].icon, SYSTEMS[system].console),
             };
             let rows: Vec<screens::RowView> = library
@@ -178,7 +179,7 @@ pub(crate) fn launcher_canvas(
                 .map(|game| screens::RowView {
                     name: &game.name,
                     // Lists of games from several consoles show each one's console.
-                    icon: matches!(list, List::Recent | List::Favorites).then_some(SYSTEMS[game.system].icon),
+                    icon: matches!(list, List::Recent | List::Favorites | List::Search).then_some(SYSTEMS[game.system].icon),
                     starred: library.is_favorite(game),
                 })
                 .collect();
@@ -292,6 +293,9 @@ pub(crate) fn clock_minute(launcher: &Launcher) -> Option<String> {
     }
 }
 
+/// As long as a game's name is likely to be typed.
+const MAX_SEARCH_LENGTH: usize = 40;
+
 /// What woke the launcher up.
 pub(crate) enum Wake {
     Event(Event),
@@ -337,6 +341,8 @@ pub(crate) fn act(
             }
             return Ok(true);
         }
+        // It changes the library and the screen, so `run_launcher` carries it out.
+        Action::Search => {}
         Action::ButtonTest => button_test(framebuffer, events)?,
         Action::Wifi => wifi_settings(framebuffer, events)?,
         Action::DownloadBoxArt(mode) => {
@@ -491,6 +497,57 @@ pub(crate) fn edit_title(framebuffer: &mut fb::Framebuffer, events: &Receiver<Ev
                     keyboard::Outcome::Typing => {}
                     keyboard::Outcome::Done(text) => {
                         change_settings(|s| s.title = settings::clean_title(&text));
+                        break;
+                    }
+                    keyboard::Outcome::Cancel => break,
+                }
+            }
+            None => {}
+        }
+    }
+    events.try_iter().for_each(drop);
+    Ok(())
+}
+
+/// Looks for games while typing. OK shows them, unless there are none. B on an empty field
+/// goes back. Searching from the results starts with the same text, to change it.
+pub(crate) fn search_games(
+    framebuffer: &mut fb::Framebuffer,
+    events: &Receiver<Event>,
+    launcher: &mut Launcher,
+    library: &mut Library,
+) -> io::Result<()> {
+    let (width, height) = framebuffer.size();
+    let mut keyboard = keyboard::Keyboard::new(MAX_SEARCH_LENGTH, |text| !text.trim().is_empty());
+    if launcher.screen() == Screen::Games(List::Search) {
+        keyboard.text = library.search_text.clone();
+    }
+    let battery = read_battery(&power::battery_dir());
+    loop {
+        let found = find_games(library, &keyboard.text).len();
+        let subtitle = if keyboard.can_finish() { trf("GAMES FOUND: {}", &[&found]) } else { tr("TYPE PART OF A GAME NAME").to_string() };
+        let view = screens::KeyboardView { icon: &icons::SEARCH, title: tr("SEARCH"), subtitle: &subtitle, valid_note: "" };
+        let mut canvas = screens::keyboard_screen(width, height, &view, &keyboard, &screen_frame(battery));
+        add_clock(&mut canvas, battery);
+        framebuffer.draw(&canvas)?;
+        let event = match events.recv_timeout(framebuffer.sign_wait()) {
+            Ok(event) => event,
+            // The volume sign's time is up, and drawing again removes it.
+            Err(RecvTimeoutError::Timeout) => continue,
+            Err(RecvTimeoutError::Disconnected) => return Ok(()),
+        };
+        match event.pressed() {
+            Some(Button::Lid) => sleep_until_lid_opens(events),
+            Some(button @ (Button::VolumeUp | Button::VolumeDown)) => press_volume(framebuffer, button)?,
+            Some(button) => {
+                keyboard_sound(button);
+                match keyboard.press(button) {
+                    keyboard::Outcome::Typing => {}
+                    // The count above says why nothing happens.
+                    keyboard::Outcome::Done(_) if found == 0 => {}
+                    keyboard::Outcome::Done(text) => {
+                        set_search(library, text.trim());
+                        launcher.open_search();
                         break;
                     }
                     keyboard::Outcome::Cancel => break,
@@ -758,9 +815,12 @@ pub(crate) fn run_launcher() -> io::Result<()> {
             // A game or the button test takes over the buttons until it ends.
             repeater.stop();
         }
+        if action == Action::Search {
+            search_games(&mut framebuffer, &events, &mut launcher, &mut library)?;
+        }
         if act(action, &mut framebuffer, &events)? {
             art.clear();
-            library = load_library();
+            library = reload_library(&library);
             launcher.leave_empty_list(&library);
         }
     }
