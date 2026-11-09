@@ -87,6 +87,18 @@ pub(crate) fn write_pause_preview(path: &str) -> io::Result<()> {
     write_ppm(&canvas::pause_screen(width, height, &frame, frame_size, &view, current_theme()), path)
 }
 
+/// Renders the in-game menu's CONTROLS page, with A swapped, X on turbo and R2 selected.
+pub(crate) fn write_controls_preview(path: &str) -> io::Result<()> {
+    let (width, height) = PREVIEW_SIZE;
+    let layout = controls::Layout::from_text("normal,a:b,b:a,x:a*,l2:none").unwrap_or_default();
+    let mut menu = controls::ControlsMenu::new(controls::Layout::default(), Some(layout));
+    while menu.note().is_none() {
+        menu.press(Button::Down);
+    }
+    let frame = vec![0x0040_6080u32; width * height];
+    write_ppm(&canvas::controls_screen(width, height, &frame, PREVIEW_SIZE, &menu, current_theme()), path)
+}
+
 /// Renders the Wi-Fi screen with sample networks, connected to one of them.
 pub(crate) fn write_wifi_preview(path: &str) -> io::Result<()> {
     use wifi::{Network, Saved, Security, Status};

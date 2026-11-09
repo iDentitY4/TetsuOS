@@ -18,11 +18,12 @@ pub enum Item {
     Scaling,
     Effect,
     Ghosting,
+    Controls,
     Quit,
 }
 
 /// Every choice, as a game with several discs shows them. Others go without `Item::Disc`.
-pub const ITEMS: [Item; 11] = [
+pub const ITEMS: [Item; 12] = [
     Item::Resume,
     Item::SaveState,
     Item::LoadState,
@@ -33,6 +34,7 @@ pub const ITEMS: [Item; 11] = [
     Item::Scaling,
     Item::Effect,
     Item::Ghosting,
+    Item::Controls,
     Item::Quit,
 ];
 
@@ -49,6 +51,7 @@ impl Item {
             Self::Scaling => "SCALING",
             Self::Effect => "SCREEN EFFECT",
             Self::Ghosting => "LCD GHOSTING",
+            Self::Controls => "CONTROLS",
             Self::Quit => "QUIT",
         })
     }
@@ -70,6 +73,8 @@ pub enum Action {
     Scaling(i32),
     Effect(i32),
     Ghosting(i32),
+    /// Opens the CONTROLS page.
+    Controls,
 }
 
 pub struct PauseMenu {
@@ -144,7 +149,7 @@ impl PauseMenu {
                     Item::Scaling => return Action::Scaling(step),
                     Item::Effect => return Action::Effect(step),
                     Item::Ghosting => return Action::Ghosting(step),
-                    Item::Resume | Item::Screenshot | Item::Quit => {}
+                    Item::Resume | Item::Screenshot | Item::Controls | Item::Quit => {}
                 }
             }
             Button::A => {
@@ -154,6 +159,7 @@ impl PauseMenu {
                     Item::LoadState => Action::Load(self.slot),
                     Item::Disc => Action::Disc(self.disc),
                     Item::Screenshot => Action::Screenshot,
+                    Item::Controls => Action::Controls,
                     Item::Quit => Action::Quit,
                     Item::Volume | Item::Brightness | Item::Scaling | Item::Effect | Item::Ghosting => {
                         Action::Nothing
@@ -246,6 +252,13 @@ mod tests {
         assert_eq!(menu.press(Button::Left), Action::Nothing);
         assert_eq!(menu.press(Button::Right), Action::Nothing);
         assert_eq!(menu.selected(), Item::Screenshot);
+    }
+
+    #[test]
+    fn a_opens_the_controls_and_left_and_right_do_nothing() {
+        let mut menu = menu_at(Item::Controls);
+        assert_eq!(menu.press(Button::Left), Action::Nothing);
+        assert_eq!(menu.press(Button::A), Action::Controls);
     }
 
     #[test]

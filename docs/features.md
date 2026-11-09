@@ -838,6 +838,48 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   screenshot, each after going through the home screen. The other consoles, including PlayStation's
   wide modes, a ZIP and a full card, are covered by unit tests at most, or not at all
 
+- Button remapping and turbo. CONTROLS in the in-game menu (`controls.rs`,
+  `canvas::controls_screen`) opens a page with a row for each of A, B, X, Y, L1, R1, L2, R2,
+  SELECT and START. Left and Right choose what the button presses in the game: any of those,
+  a d-pad direction or NONE. A turns turbo on or off for that button, so any number of buttons can
+  have it. TURBO SPEED is FAST, NORMAL or SLOW, for the whole layout: 2, 3 or 5 frames pressed
+  and as many released, so about 15, 10 or 6 presses a second at 60 fps. One frame each way
+  isn't offered, as a game that reads the buttons every other frame could see no change. The
+  d-pad itself and Menu can't be changed, so no layout leaves a game unplayable or the menu
+  out of reach. The button names are the device's, whatever a console calls them, and a target
+  the console doesn't have does nothing.
+
+  SET FOR says whom changes are for. THIS CONSOLE keeps a line like
+  `controls.gb=normal,x:right*,r2:none` in `settings.txt`, holding the speed and what differs
+  from the default (`*` is turbo), and the default has no line. THIS GAME copies what the game
+  had been using into `Tetris.gb.srm.controls` beside its saves, which then wins over the
+  console's. It follows the save's name through zipping, and DELETE GAME AND SAVES removes it,
+  while it counts neither as a save nor as last played. Going back to THIS CONSOLE removes the
+  file, though the page remembers it until it closes, in case that was a slip. RESET THESE
+  CONTROLS empties the layout shown. RESET SETTINGS removes console lines and all games'
+  files. A line or file with anything unknown is ignored as a whole. Changes are saved and
+  in use as they're made.
+
+  `Pad::update` works out what the game sees once per frame, in `Core::run_frame`, and
+  `input_state` only reads that, so all a core's reads in a frame agree and fast-forward's
+  extra frames count as frames. A turbo button's cycle starts over with each press, so a quick tap
+  always reaches the game. `Host::controls` stays the real buttons, for Menu + Start and the
+  menu. R2 fast-forwards only while its row is unchanged; a changed R2, including R2 with
+  turbo, is for the game alone, which the page notes on that row. A PlayStation game with R2
+  unchanged still sees it and fast-forwards, as before. There is no global default, and
+  nothing in the launcher's Settings: controls are set from inside a game.
+
+  The menu gained a row, so `PAUSE_ROW` went from 30 to 27 lines to stay on its panel.
+  `--preview-controls` renders the page. Claude tested on the device on 2026-11-09 with Tetris and a
+  save in `/tmp`, by injected presses and the framebuffer: X set to START passed the title
+  screen, and Start still worked. On the level grid, holding X as RIGHT for about 0.6 s moved one cell, and
+  with turbo at NORMAL six. Held R2 showed the fast-forward sign, and set to SELECT didn't.
+  THIS GAME wrote its file and left the console's line alone, a restart opened on it, THIS
+  CONSOLE removed the file, and RESET removed the line, bringing fast-forward back. German was
+  checked in the previews. `settings.txt` was put back afterwards. How turbo feels in a real
+  game, other consoles' cores and Menu + Start with a layout (`press.py` can't hold both) are
+  not checked
+
 ## Hardware facts in full
 
 - **Don't trust the model name for hardware details.** This unit has LPDDR3 at

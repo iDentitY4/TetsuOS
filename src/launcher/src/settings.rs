@@ -9,6 +9,7 @@
 
 use crate::canvas::Rgb;
 use crate::clock::{self, Zone};
+use crate::controls::Layout;
 use crate::storage::write_atomic;
 use std::io;
 use std::path::Path;
@@ -322,6 +323,15 @@ choices! {
     }
 }
 
+choices! {
+    /// How quickly a button with turbo repeats, about 15, 10 or 6 times a second at 60 fps.
+    pub enum TurboSpeed (default Normal) {
+        Fast => "fast", "FAST";
+        Normal => "normal", "NORMAL";
+        Slow => "slow", "SLOW";
+    }
+}
+
 /// The home screen's title, until another is typed.
 pub const DEFAULT_TITLE: &str = "TETSU OS";
 /// What fits across the home screen at its title size.
@@ -345,6 +355,8 @@ pub struct Settings {
     pub display: GameDisplay,
     /// What a game's menu chose for its console, by the console's key, such as `gba`.
     pub console_displays: Vec<(String, GameDisplay)>,
+    /// What each console's buttons do, for those a game's menu changed, by the console's key.
+    pub console_controls: Vec<(String, Layout)>,
     /// The time zone's IANA name, one of `clock::ZONES`. UTC until chosen.
     pub zone: Option<&'static str>,
     pub clock: ClockFormat,
@@ -398,6 +410,19 @@ impl Settings {
         self.console_displays.push((console.to_string(), display));
     }
 
+    /// What a console's buttons do, for games without a layout of their own.
+    pub fn controls_for(&self, console: &str) -> Layout {
+        self.console_controls.iter().find(|(key, _)| key == console).map_or(Layout::default(), |&(_, layout)| layout)
+    }
+
+    /// Keeps a console's layout, replacing any it had. The default needs no line.
+    pub fn set_console_controls(&mut self, console: &str, layout: Layout) {
+        self.console_controls.retain(|(key, _)| key != console);
+        if layout != Layout::default() {
+            self.console_controls.push((console.to_string(), layout));
+        }
+    }
+
     pub fn time_zone(&self) -> &'static Zone {
         self.zone.and_then(clock::zone_named).unwrap_or(clock::UTC)
     }
@@ -436,6 +461,9 @@ fn choose<T>(slot: &mut T, choice: Option<T>) {
 /// Starts the line for a console's own display, as in `display.gba=fit,lcd,smart`.
 const CONSOLE_DISPLAY_PREFIX: &str = "display.";
 
+/// Starts the line for a console's layout, as in `controls.gba=normal,a:b,x:a*`.
+const CONSOLE_CONTROLS_PREFIX: &str = "controls.";
+
 /// A console's scaling, effect and ghosting. With any of them unknown, the whole line is
 /// ignored, as a console with its own choice uses all three.
 fn parse_display(value: &str) -> Option<GameDisplay> {
@@ -456,6 +484,12 @@ fn parse(text: &str) -> Settings {
         if let Some(console) = key.trim().strip_prefix(CONSOLE_DISPLAY_PREFIX) {
             if let Some(display) = parse_display(value) {
                 settings.set_console_display(console, display);
+            }
+            continue;
+        }
+        if let Some(console) = key.trim().strip_prefix(CONSOLE_CONTROLS_PREFIX) {
+            if let Some(layout) = Layout::from_text(value) {
+                settings.set_console_controls(console, layout);
             }
             continue;
         }
@@ -523,6 +557,9 @@ fn format(settings: &Settings) -> String {
             display.effect.key(),
             display.ghosting.key(),
         ));
+    }
+    for (console, layout) in &settings.console_controls {
+        lines.push(format!("{CONSOLE_CONTROLS_PREFIX}{console}={}", layout.to_text()));
     }
     if let Some(zone) = settings.zone {
         lines.push(format!("timezone={zone}"));
@@ -737,6 +774,24 @@ mod tests {
     }
 
     #[test]
+    fn a_consoles_controls_are_its_own_and_the_default_needs_no_line() {
+        let mut settings = Settings::default();
+        let slow = Layout { speed: TurboSpeed::Slow, ..Layout::default() };
+        settings.set_console_controls("gb", slow);
+        settings.set_console_controls("gb", slow);
+        assert_eq!(settings.console_controls.len(), 1);
+        assert_eq!(settings.controls_for("gb"), slow);
+        assert_eq!(settings.controls_for("nes"), Layout::default());
+        assert!(format(&settings).contains("controls.gb=slow\n"));
+        assert_eq!(parse(&format(&settings)).console_controls, settings.console_controls);
+        assert!(parse("controls.gb=warp\n").console_controls.is_empty(), "a bad line is ignored");
+        settings.set_console_controls("gb", Layout::default());
+        assert!(settings.console_controls.is_empty());
+        settings.set_console_controls("gb", slow);
+        assert!(settings.reset().console_controls.is_empty());
+    }
+
+    #[test]
     fn console_displays_survive_the_file_and_bad_lines_are_ignored() {
         let lcd = GameDisplay { effect: Effect::Lcd, ..GameDisplay::default() };
         let mut settings = Settings::default();
@@ -770,6 +825,7 @@ mod tests {
             brightness: Some(1250),
             display,
             console_displays: vec![("gba".to_string(), GameDisplay::default())],
+            console_controls: vec![("gba".to_string(), Layout { speed: TurboSpeed::Slow, ..Layout::default() })],
             zone: Some("Europe/Berlin"),
             clock: ClockFormat::Hours12,
             accent: Accent::Pink,

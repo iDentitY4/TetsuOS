@@ -2,6 +2,7 @@
 
 use crate::i18n::{tr, trf};
 use crate::canvas::{self, PauseView};
+use crate::controls::{self, ControlsMenu, Layout, PageAction, Pad, Scope};
 use crate::fb::Framebuffer;
 use crate::input::{self, Button, Controls, Event};
 use crate::pause::{Action, MenuTrigger, PauseMenu};
@@ -265,7 +266,12 @@ struct Host {
     frame_ready: bool,
     audio: Option<Child>,
     audio_bytes: u64,
+    /// The buttons as they are, for the menus and leaving the game.
     controls: Controls,
+    /// What those buttons do in this game.
+    layout: Layout,
+    /// The buttons as the game sees them this frame.
+    pad: Pad,
     scale_time: Duration,
     audio_time: Duration,
     /// Set for the extra frames that fast-forward runs, whose picture and sound are dropped.
@@ -436,7 +442,7 @@ unsafe extern "C" fn input_state(port: c_uint, device: c_uint, _: c_uint, id: c_
     let Some(button) = joypad_button(id) else {
         return 0;
     };
-    with_host(|host| i16::from(host.controls.is_held(button)))
+    with_host(|host| i16::from(host.pad.is_pressed(button)))
 }
 
 /// Maps a `RETRO_DEVICE_ID_JOYPAD_*` id to the button with that label.
@@ -744,6 +750,13 @@ fn c_path(path: &Path) -> io::Result<CString> {
 }
 
 impl Core {
+    /// Runs one frame of the game, with the buttons as they are now.
+    fn run_frame(&self) {
+        with_host(|host| host.pad.update(&host.layout, &host.controls));
+        // SAFETY: the game is loaded, and the callbacks run on this thread.
+        unsafe { (self.run)() };
+    }
+
     fn load(core_path: &Path, rom_path: &Path) -> io::Result<Self> {
         use libloading::os::unix::{Library, RTLD_LOCAL, RTLD_NOW};
         // SAFETY: loading a core runs its initialisers, which only set up the core.
@@ -926,7 +939,7 @@ fn load_resume(core: &mut Core, path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn set_host(directory: &Path, target: (usize, usize), setup: CoreSetup, console: Option<&'static str>) -> io::Result<()> {
+fn set_host(directory: &Path, target: (usize, usize), setup: CoreSetup, console: Option<&'static str>, layout: Layout) -> io::Result<()> {
     let host = Host {
         format: PixelFormat::Rgb1555,
         directory: c_path(directory)?,
@@ -941,6 +954,8 @@ fn set_host(directory: &Path, target: (usize, usize), setup: CoreSetup, console:
         audio: None,
         audio_bytes: 0,
         controls: Controls::new(),
+        layout,
+        pad: Pad::default(),
         scale_time: Duration::ZERO,
         audio_time: Duration::ZERO,
         skip_output: false,
@@ -1164,6 +1179,35 @@ fn change_display(change: impl FnOnce(&mut GameDisplay)) {
     }
 }
 
+/// Uses what the CONTROLS page shows, from the next frame, and saves it: a game's own layout
+/// in its file, or the console's in the settings, which ends any layout the game had.
+fn apply_controls(page: &ControlsMenu, save: &Path) {
+    let layout = page.layout();
+    let console = with_host(|host| {
+        host.layout = layout;
+        host.console
+    });
+    let saved = match (page.scope(), console) {
+        (Scope::Game, _) => controls::write_game_layout(save, &layout),
+        (Scope::Console, Some(console)) => controls::remove_game_layout(save).and_then(|()| {
+            // Saving writes every setting, and the launcher saves the volume buttons' level.
+            settings::reload();
+            settings::update(|settings| settings.set_console_controls(console, layout))
+        }),
+        (Scope::Console, None) => controls::remove_game_layout(save),
+    };
+    if let Err(error) = saved {
+        eprintln!("warning: could not save the controls: {error}");
+    }
+}
+
+/// The layout a game starts with: its own, or its console's.
+fn layout_for(save: &Path, console: Option<&str>) -> Layout {
+    controls::read_game_layout(save)
+        .or_else(|| console.map(|console| settings::get().controls_for(console)))
+        .unwrap_or_default()
+}
+
 fn save_play_time(clock: &mut PlayClock) {
     if let Err(error) = clock.save(Instant::now()) {
         eprintln!("warning: could not save the play time: {error}");
@@ -1192,6 +1236,8 @@ fn pause(
     let disk_control = with_host(|host| host.disk_control);
     menu.open(disk_control.map_or(0, |control| control.current()));
     let mut settings_changed = false;
+    // The CONTROLS page, while it is open.
+    let mut controls_page: Option<ControlsMenu> = None;
     let mut redraw = true;
     let after = loop {
         if let Some(percent) = volume_levels.try_iter().last() {
@@ -1201,14 +1247,21 @@ fn pause(
         // Drawing again removes the volume sign.
         redraw |= framebuffer.sign_wait().is_zero();
         if redraw {
-            let view = PauseView {
-                menu,
-                slot_used: slot_path(save, menu.slot()).exists(),
-                volume_percent: settings::volume_percent(),
-                brightness_percent: settings::brightness_percent(),
-                display: with_host(|host| host.display),
+            let theme = crate::current_theme();
+            let screen = match &controls_page {
+                Some(page) => canvas::controls_screen(width, height, &frame, frame_size, page, theme),
+                None => {
+                    let view = PauseView {
+                        menu,
+                        slot_used: slot_path(save, menu.slot()).exists(),
+                        volume_percent: settings::volume_percent(),
+                        brightness_percent: settings::brightness_percent(),
+                        display: with_host(|host| host.display),
+                    };
+                    canvas::pause_screen(width, height, &frame, frame_size, &view, theme)
+                }
             };
-            framebuffer.draw(&canvas::pause_screen(width, height, &frame, frame_size, &view, crate::current_theme()))?;
+            framebuffer.draw(&screen)?;
             redraw = false;
         }
         let event = match events.recv_timeout(Duration::from_millis(100)) {
@@ -1220,6 +1273,14 @@ fn pause(
         with_host(|host| host.controls.apply(&event));
         let Some(button) = event.pressed() else { continue };
         redraw = true;
+        if let Some(page) = controls_page.as_mut() {
+            match page.press(button) {
+                PageAction::Nothing => {}
+                PageAction::Changed => apply_controls(page, save),
+                PageAction::Back => controls_page = None,
+            }
+            continue;
+        }
         match menu.press(button) {
             Action::Nothing => {}
             Action::Resume => break AfterMenu::Resume,
@@ -1291,6 +1352,11 @@ fn pause(
             Action::Scaling(steps) => change_display(|display| display.scaling = display.scaling.cycle(steps)),
             Action::Effect(steps) => change_display(|display| display.effect = display.effect.cycle(steps)),
             Action::Ghosting(steps) => change_display(|display| display.ghosting = display.ghosting.cycle(steps)),
+            Action::Controls => {
+                let console = with_host(|host| host.console);
+                let console = console.map_or(Layout::default(), |console| settings::get().controls_for(console));
+                controls_page = Some(ControlsMenu::new(console, controls::read_game_layout(save)));
+            }
         }
     };
     if settings_changed {
@@ -1331,7 +1397,7 @@ pub fn play(
         eprintln!("warning: a power-off may not save the game: {error}");
     }
     let directory = save.parent().unwrap_or(Path::new("."));
-    set_host(directory, framebuffer.size(), setup, console)?;
+    set_host(directory, framebuffer.size(), setup, console, layout_for(save, console))?;
     let mut core = Core::load(core_path, rom)?;
     let mut save_file = core.open_save(save, persistence)?;
     let resume = resume_path(save, persistence);
@@ -1414,7 +1480,8 @@ pub fn play(
                 host.audio_time = Duration::ZERO;
             });
         }
-        let fast = with_host(|host| host.controls.is_held(FAST_FORWARD_BUTTON));
+        // A button changed in the layout is for the game alone.
+        let fast = with_host(|host| host.controls.is_held(FAST_FORWARD_BUTTON) && host.layout.is_unchanged(FAST_FORWARD_BUTTON));
         if fast != fast_forwarding {
             draw_fast_forward(framebuffer, fast)?;
             fast_forwarding = fast;
@@ -1425,20 +1492,19 @@ pub fn play(
                 release_cpu_speed();
             }
         }
-        // SAFETY: the game is loaded, and the callbacks run on this thread.
         let run_start = Instant::now();
         if fast {
             // Extra frames, with only the last one's picture and sound kept.
             with_host(|host| host.skip_output = true);
             let mut extra = 0;
             while extra + 1 < FAST_FORWARD_MAX && run_start.elapsed() < FAST_FORWARD_BUDGET {
-                unsafe { (core.run)() };
+                core.run_frame();
                 extra += 1;
             }
             with_host(|host| host.skip_output = false);
             fast_frames += u64::from(extra);
         }
-        unsafe { (core.run)() };
+        core.run_frame();
         run_time += run_start.elapsed();
         with_host(|host| -> io::Result<()> {
             if host.frame_ready {
@@ -1556,13 +1622,12 @@ pub fn render(
     frames: u64,
     output: &Path,
 ) -> io::Result<()> {
-    set_host(save.parent().unwrap_or(Path::new(".")), (640, 480), setup, None)?;
+    set_host(save.parent().unwrap_or(Path::new(".")), (640, 480), setup, None, Layout::default())?;
     let mut core = Core::load(core_path, rom)?;
     let mut save_file = core.open_save(save, persistence)?;
     let start = Instant::now();
     for _ in 0..frames {
-        // SAFETY: the game is loaded, and the callbacks run on this thread.
-        unsafe { (core.run)() };
+        core.run_frame();
     }
     let elapsed = start.elapsed().as_secs_f64();
     save_file.update(&core.snapshot(persistence)?)?;

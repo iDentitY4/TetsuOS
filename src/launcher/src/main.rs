@@ -9,6 +9,7 @@ mod boxart_fetch;
 mod boxart_screen;
 mod canvas;
 mod clock;
+mod controls;
 mod corner;
 mod favorites;
 mod fb;
@@ -96,6 +97,7 @@ fn main() -> ExitCode {
             _ => Err(io::Error::other("the setup's steps are numbered from 0 to 3")),
         },
         [flag, path] if flag == "--preview-pause" => write_pause_preview(path),
+        [flag, path] if flag == "--preview-controls" => write_controls_preview(path),
         [flag, path] if flag == "--preview-splash" => write_plain_ppm(&screens::splash(), path),
         [flag, path] if flag == "--preview-volume" => write_ppm(&screens::volume_sign(80, current_theme()), path),
         [flag, core, rom, save, persistence] if flag == "--play" => {
@@ -126,7 +128,7 @@ fn main() -> ExitCode {
             eprintln!(
                 "usage: launcher [--preview | --preview-list | --preview-recent | --preview-settings FILE.ppm\n\
                  \x20              | --preview-buttons | --preview-wifi | --preview-keyboard FILE.ppm\n\
-                 \x20              | --preview-pause FILE.ppm | --preview-splash FILE.ppm\n\
+                 \x20              | --preview-pause | --preview-controls | --preview-splash FILE.ppm\n\
                  \x20              | --preview-volume FILE.ppm | --preview-setup STEP FILE.ppm\n\
                  \x20              | --play CORE ROM SAVE battery|state\n\
                  \x20              | --render CORE ROM SAVE battery|state FRAMES FILE.ppm]"

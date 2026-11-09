@@ -5,6 +5,7 @@ use crate::i18n::{tr, trf};
 use crate::boxart::Image;
 use crate::icons::{self, Icon};
 use crate::input::{Button, Controls};
+use crate::controls::{self, ControlsMenu, Row};
 use crate::pause::{Item, PauseMenu, ITEMS};
 use crate::settings::{BatteryDisplay, GameDisplay, Settings};
 
@@ -311,7 +312,7 @@ pub struct PauseView<'a> {
 
 const PAUSE_PANEL: (usize, usize, usize, usize) = (110, 15, 420, 450);
 const PAUSE_TOP: usize = 65;
-const PAUSE_ROW: usize = 30;
+const PAUSE_ROW: usize = 27;
 const PAUSE_TEXT_SCALE: usize = 2;
 const PAUSE_BAR_WIDTH: usize = 120;
 
@@ -323,15 +324,8 @@ fn dim(pixel: u32) -> Rgb {
     Rgb((pixel >> 16) as u8 / 3, (pixel >> 8) as u8 / 3, pixel as u8 / 3)
 }
 
-/// Lays out the in-game menu over the paused game's last frame.
-pub fn pause_screen(
-    width: usize,
-    height: usize,
-    frame: &[u32],
-    (frame_w, frame_h): (usize, usize),
-    view: &PauseView,
-    theme: Theme,
-) -> Canvas {
+/// The paused game's last frame, dimmed, with the panel the in-game menu's pages go on.
+fn pause_backdrop(width: usize, height: usize, frame: &[u32], (frame_w, frame_h): (usize, usize), theme: Theme) -> Canvas {
     let mut canvas = Canvas::new(width, height, theme);
     canvas.pixels.fill(Rgb(0, 0, 0));
     let left = width.saturating_sub(frame_w) / 2;
@@ -346,6 +340,20 @@ pub fn pause_screen(
 
     let (panel_x, panel_y, panel_w, panel_h) = PAUSE_PANEL;
     canvas.rect(panel_x, panel_y, panel_w, panel_h, canvas.theme.background);
+    canvas
+}
+
+/// Lays out the in-game menu over the paused game's last frame.
+pub fn pause_screen(
+    width: usize,
+    height: usize,
+    frame: &[u32],
+    frame_size: (usize, usize),
+    view: &PauseView,
+    theme: Theme,
+) -> Canvas {
+    let mut canvas = pause_backdrop(width, height, frame, frame_size, theme);
+    let (panel_x, panel_y, panel_w, _) = PAUSE_PANEL;
     canvas.text(tr("PAUSED"), panel_y + 20, 3, TEXT);
 
     let label_x = panel_x + 20;
@@ -397,6 +405,59 @@ pub fn pause_screen(
         canvas.text(message, message_y, PAUSE_TEXT_SCALE, canvas.theme.accent);
     }
     canvas.text(tr("A SELECTS - B RESUMES"), message_y + 30, PAUSE_TEXT_SCALE, MUTED);
+    canvas
+}
+
+const CONTROLS_TOP: usize = 60;
+/// Tighter than the menu's, for a row each of the buttons and a heading over them.
+const CONTROLS_ROW: usize = 24;
+
+// The rows, the heading, the note and the hint, whose text ends 56 lines below the rows.
+const _: () = assert!(CONTROLS_TOP + (controls::ROW_COUNT + 1) * CONTROLS_ROW + 56 <= PAUSE_PANEL.1 + PAUSE_PANEL.3);
+
+/// The in-game menu's CONTROLS page: over the same panel, a row for each button.
+pub fn controls_screen(
+    width: usize,
+    height: usize,
+    frame: &[u32],
+    frame_size: (usize, usize),
+    menu: &ControlsMenu,
+    theme: Theme,
+) -> Canvas {
+    let mut canvas = pause_backdrop(width, height, frame, frame_size, theme);
+    let (panel_x, panel_y, panel_w, _) = PAUSE_PANEL;
+    canvas.text(tr("CONTROLS"), panel_y + 20, 3, TEXT);
+
+    let label_x = panel_x + 20;
+    let value_right = panel_x + panel_w - 20;
+    let text_y = |y: usize| y + (CONTROLS_ROW - 2 - font::HEIGHT * PAUSE_TEXT_SCALE) / 2;
+    let mut y = CONTROLS_TOP;
+    for row in controls::rows() {
+        if matches!(row, Row::Button(0)) {
+            // Which side of a row is which isn't obvious from two button names.
+            canvas.text_at(tr("BUTTON"), label_x, text_y(y), PAUSE_TEXT_SCALE, MUTED);
+            let heading = tr("IN THE GAME");
+            canvas.text_at(heading, value_right - text_width(heading, PAUSE_TEXT_SCALE), text_y(y), PAUSE_TEXT_SCALE, MUTED);
+            y += CONTROLS_ROW;
+        }
+        let selected = row == menu.selected();
+        let color = if selected {
+            canvas.rect(panel_x, y, panel_w, CONTROLS_ROW - 2, canvas.theme.accent);
+            canvas.theme.background
+        } else {
+            TEXT
+        };
+        canvas.text_at(ControlsMenu::label(row), label_x, text_y(y), PAUSE_TEXT_SCALE, color);
+        if let Some(value) = menu.value(row) {
+            let value = if selected { format!("< {value} >") } else { value };
+            canvas.text_at(&value, value_right - text_width(&value, PAUSE_TEXT_SCALE), text_y(y), PAUSE_TEXT_SCALE, color);
+        }
+        y += CONTROLS_ROW;
+    }
+    if let Some(note) = menu.note() {
+        canvas.text(note, y + 12, PAUSE_TEXT_SCALE, canvas.theme.accent);
+    }
+    canvas.text(tr("< > CHANGES - A TURBO - B BACK"), y + 42, PAUSE_TEXT_SCALE, MUTED);
     canvas
 }
 
@@ -540,6 +601,25 @@ mod tests {
         // Resume is selected first.
         assert_eq!(pixel(&canvas, PAUSE_PANEL.0 + 2, PAUSE_TOP + 2), Theme::default().accent);
         assert_eq!(pixel(&canvas, PAUSE_PANEL.0 + 2, PAUSE_TOP + PAUSE_ROW + 2), Theme::default().background);
+    }
+
+    #[test]
+    fn the_controls_page_highlights_its_selection_and_keeps_every_row_on_the_panel() {
+        let mut menu = ControlsMenu::new(crate::controls::Layout::default(), None);
+        let canvas = controls_screen(640, 480, &[], (0, 0), &menu, Theme::default());
+        assert_eq!(pixel(&canvas, PAUSE_PANEL.0 + 2, CONTROLS_TOP + 2), Theme::default().accent);
+        // The heading stands between the first row and the second, which isn't selected.
+        assert_eq!(pixel(&canvas, PAUSE_PANEL.0 + 2, CONTROLS_TOP + 2 * CONTROLS_ROW + 2), Theme::default().background);
+        menu.press(Button::Down);
+        let canvas = controls_screen(640, 480, &[], (0, 0), &menu, Theme::default());
+        assert_eq!(pixel(&canvas, PAUSE_PANEL.0 + 2, CONTROLS_TOP + 2 * CONTROLS_ROW + 2), Theme::default().accent);
+    }
+
+    #[test]
+    fn the_longest_control_fits_beside_its_label() {
+        let value = text_width("< RECHTS TURBO >", PAUSE_TEXT_SCALE);
+        let label = text_width("SELECT", PAUSE_TEXT_SCALE);
+        assert!(20 + label + 12 + value + 20 <= PAUSE_PANEL.2);
     }
 
     #[test]

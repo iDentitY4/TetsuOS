@@ -37,7 +37,7 @@ const BTN_DPAD_RIGHT: u16 = KeyCode::BTN_DPAD_RIGHT.0;
 const VALUE_RELEASED: i32 = 0;
 const VALUE_REPEAT: i32 = 2;
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Button {
     Up,
     Down,

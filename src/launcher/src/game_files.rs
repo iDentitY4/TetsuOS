@@ -34,7 +34,7 @@ impl GameFiles {
 
     /// Save files as a player thinks of them, without the play time's.
     pub(crate) fn save_count(&self) -> usize {
-        self.saves.iter().filter(|file| !play_time::is_play_time(file)).count()
+        self.saves.iter().filter(|file| !play_time::is_play_time(file) && !controls::is_game_layout(file)).count()
     }
 
     /// The time played, with what its discs had as games of their own. None if none is known.
@@ -70,7 +70,13 @@ fn total_play_time(saves: &[PathBuf]) -> Option<Duration> {
 }
 
 fn newest_save(saves: &[PathBuf]) -> Option<SystemTime> {
-    saves.iter().filter_map(|file| std::fs::metadata(file).ok()?.modified().ok()).max()
+    // Changing a game's controls is not what "last played" means, and leaving the game writes
+    // its other files anyway.
+    saves
+        .iter()
+        .filter(|file| !controls::is_game_layout(file))
+        .filter_map(|file| std::fs::metadata(file).ok()?.modified().ok())
+        .max()
 }
 
 /// When a game was last played, for sorting.
@@ -124,6 +130,7 @@ fn saves_beside(save: &Path) -> Vec<PathBuf> {
     let mut files = vec![save.to_path_buf(), save.with_extension("resume"), save.with_extension("unreadable")];
     files.extend((1..=SLOTS).map(|slot| save.with_extension(format!("state{slot}"))));
     files.push(play_time::path_for(save));
+    files.push(controls::game_layout_path(save));
     files.retain(|file| file.exists());
     files
 }
@@ -285,12 +292,27 @@ mod tests {
     #[test]
     fn every_save_of_a_game_is_found() {
         let dir = folder("saves");
-        for name in ["G.gb.srm", "G.gb.resume", "G.gb.state1", "G.gb.state8", "G.gb.unreadable", "G.gb.srm.playtime", "H.gb.srm", "G.gba.srm"] {
+        for name in ["G.gb.srm", "G.gb.resume", "G.gb.state1", "G.gb.state8", "G.gb.unreadable", "G.gb.srm.playtime", "G.gb.srm.controls", "H.gb.srm", "G.gba.srm"] {
             write(&dir.join(name), "x");
         }
         let mut found = names(&saves_beside(&dir.join("G.gb.srm")), &dir);
         found.sort();
-        assert_eq!(found, ["G.gb.resume", "G.gb.srm", "G.gb.srm.playtime", "G.gb.state1", "G.gb.state8", "G.gb.unreadable"]);
+        assert_eq!(found, ["G.gb.resume", "G.gb.srm", "G.gb.srm.controls", "G.gb.srm.playtime", "G.gb.state1", "G.gb.state8", "G.gb.unreadable"]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_games_controls_are_neither_a_save_nor_a_sign_of_play() {
+        let dir = folder("controls");
+        write(&dir.join("G.gb.srm"), "x");
+        let (save, layout) = (dir.join("G.gb.srm"), dir.join("G.gb.srm.controls"));
+        write(&layout, "normal");
+        let hour_ago = SystemTime::now() - Duration::from_secs(3600);
+        std::fs::File::options().write(true).open(&save).unwrap().set_modified(hour_ago).unwrap();
+        let saves = vec![save, layout];
+        assert_eq!(newest_save(&saves), Some(std::fs::metadata(&saves[0]).unwrap().modified().unwrap()));
+        let files = GameFiles { game: Vec::new(), saves, cover: Vec::new() };
+        assert_eq!(files.save_count(), 1);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

@@ -519,6 +519,7 @@ pub(crate) fn act(
         Action::UseDisplayForAllConsoles => change_settings(|s| s.console_displays.clear()),
         Action::ResetSettings => {
             change_settings(|s| *s = s.reset());
+            controls::remove_all_game_layouts(Path::new(SAVE_DIR));
             let current = settings::get();
             performance::apply(current.performance);
             power::apply_charge_limit(current.charge);

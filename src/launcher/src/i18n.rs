@@ -98,6 +98,7 @@ mod tests {
         keys.extend(labels(s::Scaling::ALL, s::Scaling::label));
         keys.extend(labels(s::Effect::ALL, s::Effect::label));
         keys.extend(labels(s::Ghosting::ALL, s::Ghosting::label));
+        keys.extend(labels(s::TurboSpeed::ALL, s::TurboSpeed::label));
         keys.extend(labels(s::Accent::ALL, s::Accent::label));
         keys.extend(labels(s::Background::ALL, s::Background::label));
         keys.extend(labels(s::GridSize::ALL, s::GridSize::label));
