@@ -42,7 +42,6 @@ ADVANCED > RUN SETUP AGAIN repeats.
 - A game's own clock (Pokemon's RTC) showing local time
 - A real empty battery, a wrong Wi-Fi password, a failing certificate check
 - USB STORAGE on Windows and macOS (Linux is checked)
-- The German wording, written by Claude; USB STORAGE, the box art download and messages in German
 - The lid during the setup
 - Settings > ADVANCED: SSH from another machine over Wi-Fi, games at BATTERY or
   PERFORMANCE, and the battery gauge over a whole charge with CHARGE TO below FULL

@@ -593,7 +593,8 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   settings group, the settings grid, Wi-Fi, system info, the home tiles list, a game list
   and a confirmation, then a launcher restart; `launcher --preview-pause` on the device
   showed the in-game menu reading the language from the file. The translation was written
-  by Claude and hasn't been read by a German speaker. Not seen on the device: USB
+  by Claude, and the user checked the wording and approved all of it on 2026-11-09. Not
+  seen on the device by Claude: USB
   STORAGE's screens, the box art download, the keyboard, full-screen messages such as
   powering off, and the in-game menu inside a running game.
   A full-screen message drops from the large text to a smaller size when it wouldn't
