@@ -34,6 +34,7 @@ mod library;
 mod libretro;
 mod names;
 mod pause;
+mod pause_screens;
 mod performance;
 mod play_time;
 mod png;

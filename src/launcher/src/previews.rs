@@ -77,14 +77,14 @@ pub(crate) fn write_pause_preview(path: &str) -> io::Result<()> {
     menu.press(Button::Down);
     menu.press(Button::Right);
     menu.set_message(i18n::trf("SAVED TO SLOT {}", &[&2]));
-    let view = canvas::PauseView {
+    let view = pause_screens::PauseView {
         menu: &menu,
         slot_used: false,
         volume_percent: Some(80),
         brightness_percent: Some(50),
         display: settings::GameDisplay::default(),
     };
-    write_ppm(&canvas::pause_screen(width, height, &frame, frame_size, &view, current_theme()), path)
+    write_ppm(&pause_screens::pause_screen(width, height, &frame, frame_size, &view, current_theme()), path)
 }
 
 /// Renders the in-game menu's CORE OPTIONS page with a few options like mGBA's, as the PC
@@ -118,7 +118,7 @@ pub(crate) fn write_core_options_preview(path: &str) -> io::Result<()> {
         page.press(Button::Down);
     }
     let frame = vec![0x0040_6080u32; width * height];
-    write_ppm(&canvas::core_options_screen(width, height, &frame, PREVIEW_SIZE, &page, current_theme()), path)
+    write_ppm(&pause_screens::core_options_screen(width, height, &frame, PREVIEW_SIZE, &page, current_theme()), path)
 }
 
 /// Renders the in-game menu's CHEATS page with codes like those for Super Mario Bros., one
@@ -143,7 +143,7 @@ pub(crate) fn write_cheats_preview(path: &str) -> io::Result<()> {
         page.press(Button::Down);
     }
     let frame = vec![0x0040_6080u32; width * height];
-    write_ppm(&canvas::cheats_screen(width, height, &frame, PREVIEW_SIZE, &page, current_theme()), path)
+    write_ppm(&pause_screens::cheats_screen(width, height, &frame, PREVIEW_SIZE, &page, current_theme()), path)
 }
 
 /// Renders the in-game menu's CONTROLS page, with A swapped, X on turbo and R2 selected.
@@ -155,7 +155,7 @@ pub(crate) fn write_controls_preview(path: &str) -> io::Result<()> {
         menu.press(Button::Down);
     }
     let frame = vec![0x0040_6080u32; width * height];
-    write_ppm(&canvas::controls_screen(width, height, &frame, PREVIEW_SIZE, &menu, current_theme()), path)
+    write_ppm(&pause_screens::controls_screen(width, height, &frame, PREVIEW_SIZE, &menu, current_theme()), path)
 }
 
 /// Renders the Wi-Fi screen with sample networks, connected to one of them.
@@ -294,14 +294,14 @@ pub(crate) fn write_achievements_preview(path: &str) -> io::Result<()> {
         entry("Explorer", "Find a secret exit", 5, true, "", "6"),
     ];
     let mut page = Page::new(lines);
-    page.press(Button::Down, canvas::ACHIEVEMENT_ROWS);
-    page.press(Button::Down, canvas::ACHIEVEMENT_ROWS);
-    page.press(Button::Up, canvas::ACHIEVEMENT_ROWS);
+    page.press(Button::Down, pause_screens::ACHIEVEMENT_ROWS);
+    page.press(Button::Down, pause_screens::ACHIEVEMENT_ROWS);
+    page.press(Button::Up, pause_screens::ACHIEVEMENT_ROWS);
     let summary = Summary { unlocked: 2, total: 6, points: 6, points_total: 101, hardcore: true };
-    let view = canvas::AchievementsView { page: &page, status: &Status::Ready, summary };
+    let view = pause_screens::AchievementsView { page: &page, status: &Status::Ready, summary };
     let frame = vec![0x0040_6080u32; width * height];
     let mut badges = preview_badges()?;
-    write_ppm(&canvas::achievements_screen(width, height, &frame, PREVIEW_SIZE, &view, &mut badges, current_theme()), path)
+    write_ppm(&pause_screens::achievements_screen(width, height, &frame, PREVIEW_SIZE, &view, &mut badges, current_theme()), path)
 }
 
 /// Renders an unlock notice at the bottom of a test pattern, where a game shows it.

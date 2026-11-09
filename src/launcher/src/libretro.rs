@@ -1,7 +1,7 @@
 //! A minimal libretro frontend: loads a core, and runs one game on the framebuffer.
 
 use crate::i18n::{tr, trf};
-use crate::canvas::{self, PauseView};
+use crate::pause_screens::{self, PauseView};
 use crate::achievements::{self, Notice, Session};
 use crate::cheats::{self, CheatAction, CheatSource, CheatsPage, Downloaded};
 use crate::controls::{self, ControlsMenu, Layout, PageAction, Pad, Scope};
@@ -1729,17 +1729,17 @@ fn pause(
                     let summary = session.as_ref().map(|session| session.summary()).unwrap_or_default();
                     let status = session.as_ref().map_or(achievements::Status::Loading, |session| session.status().clone());
                     let mut empty = achievements::Badges::new(Path::new(achievements::BADGE_DIR));
-                    let view = canvas::AchievementsView {
+                    let view = pause_screens::AchievementsView {
                         page: achievements_page,
                         status: &status,
                         summary,
                     };
                     let badges = session.map_or(&mut empty, |session| session.badges());
-                    canvas::achievements_screen(width, height, &frame, frame_size, &view, badges, theme)
+                    pause_screens::achievements_screen(width, height, &frame, frame_size, &view, badges, theme)
                 }
-                (None, Some(page), _, _) => canvas::controls_screen(width, height, &frame, frame_size, page, theme),
-                (None, None, Some(page), _) => canvas::core_options_screen(width, height, &frame, frame_size, page, theme),
-                (None, None, None, Some(page)) => canvas::cheats_screen(width, height, &frame, frame_size, page, theme),
+                (None, Some(page), _, _) => pause_screens::controls_screen(width, height, &frame, frame_size, page, theme),
+                (None, None, Some(page), _) => pause_screens::core_options_screen(width, height, &frame, frame_size, page, theme),
+                (None, None, None, Some(page)) => pause_screens::cheats_screen(width, height, &frame, frame_size, page, theme),
                 (None, None, None, None) => {
                     let view = PauseView {
                         menu,
@@ -1748,7 +1748,7 @@ fn pause(
                         brightness_percent: settings::brightness_percent(),
                         display: with_host(|host| host.display),
                     };
-                    canvas::pause_screen(width, height, &frame, frame_size, &view, theme)
+                    pause_screens::pause_screen(width, height, &frame, frame_size, &view, theme)
                 }
             };
             framebuffer.draw(&screen)?;
@@ -1764,7 +1764,7 @@ fn pause(
         let Some(button) = event.pressed() else { continue };
         redraw = true;
         if let Some(page) = achievements_page.as_mut() {
-            if page.press(button, canvas::ACHIEVEMENT_ROWS) {
+            if page.press(button, pause_screens::ACHIEVEMENT_ROWS) {
                 achievements_page = None;
             }
             continue;
