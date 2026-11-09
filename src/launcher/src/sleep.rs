@@ -46,21 +46,28 @@ pub(crate) fn sleep_until_woken(events: &Receiver<Event>) {
         eprintln!("warning: could not turn the screen off: {error}");
     }
     without_wifi(|| {
-        if let Err(error) = std::fs::write(SLEEP_CONTROL, "freeze") {
-            eprintln!("warning: could not sleep: {error}");
-            return;
-        }
-        let deadline = Instant::now() + LID_WAKE_WAIT;
-        while let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
-            match events.recv_timeout(remaining) {
-                Ok(event) if event.pressed() == Some(Button::Lid) => {
-                    sleep_until_lid_opens_inner(events);
-                    break;
-                }
-                Ok(_) => {}
-                Err(_) => break,
+        let mut timer = PowerOffTimer::start();
+        loop {
+            if timer.due() {
+                // Any press ends the wait, if a test's power-off command left this running.
+                power_off(events, |event| event.pressed().is_some());
+                return;
+            }
+            timer.arm();
+            if let Err(error) = std::fs::write(SLEEP_CONTROL, "freeze") {
+                eprintln!("warning: could not sleep: {error}");
+                break;
+            }
+            if wait_for_lid_closing(events) {
+                sleep_with_lid_closed(events, timer);
+                return;
+            }
+            // Only the alarm wakes the device at the power-off time; anything else is a press.
+            if !timer.expired() {
+                break;
             }
         }
+        set_alarm(None);
     });
     if let Err(error) = std::fs::write(BACKLIGHT_POWER, "0") {
         eprintln!("warning: could not turn the screen on: {error}");
@@ -68,21 +75,18 @@ pub(crate) fn sleep_until_woken(events: &Receiver<Event>) {
     events.try_iter().for_each(drop);
 }
 
-pub(crate) fn sleep_until_lid_opens_inner(events: &Receiver<Event>) {
-    let mut power_off_at = boot_time() + long_sleep();
+fn sleep_until_lid_opens_inner(events: &Receiver<Event>) {
+    sleep_with_lid_closed(events, PowerOffTimer::start());
+}
+
+/// Lid sleep, powering off when `timer` is due.
+fn sleep_with_lid_closed(events: &Receiver<Event>, mut timer: PowerOffTimer) {
     loop {
-        let now = boot_time();
-        if now >= power_off_at {
-            if discharging() {
-                set_alarm(None);
-                println!("sleep: powering off after {} s with the lid closed", long_sleep().as_secs());
-                power_off(events);
-                return;
-            }
-            // On power the battery doesn't drain, and powering off could start the device again.
-            power_off_at = now + long_sleep();
+        if timer.due() {
+            power_off(events, Event::is_lid_opening);
+            return;
         }
-        set_alarm(Some(power_off_at - now));
+        timer.arm();
         if let Err(error) = std::fs::write(SLEEP_CONTROL, "freeze") {
             eprintln!("warning: could not sleep: {error}");
             set_alarm(None);
@@ -97,19 +101,30 @@ pub(crate) fn sleep_until_lid_opens_inner(events: &Receiver<Event>) {
 
 /// After a wake, waits briefly for the lid to open: true if it did, or the input is gone.
 fn wait_for_lid_opening(events: &Receiver<Event>) -> bool {
+    wait_after_wake(events, Event::is_lid_opening) != Some(false)
+}
+
+/// After a wake with the lid open, waits briefly for it to close: true if it did.
+fn wait_for_lid_closing(events: &Receiver<Event>) -> bool {
+    wait_after_wake(events, |event| event.pressed() == Some(Button::Lid)) == Some(true)
+}
+
+/// Waits `LID_WAKE_WAIT` for an event that `wanted` picks: whether one came, or `None` if
+/// the input is gone.
+fn wait_after_wake(events: &Receiver<Event>, wanted: impl Fn(&Event) -> bool) -> Option<bool> {
     let deadline = Instant::now() + LID_WAKE_WAIT;
     while let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
         match events.recv_timeout(remaining) {
-            Ok(event) if event.is_lid_opening() => return true,
+            Ok(event) if wanted(&event) => return Some(true),
             Ok(_) => {}
-            Err(RecvTimeoutError::Timeout) => return false,
-            Err(RecvTimeoutError::Disconnected) => return true,
+            Err(RecvTimeoutError::Timeout) => return Some(false),
+            Err(RecvTimeoutError::Disconnected) => return None,
         }
     }
-    false
+    Some(false)
 }
 
-/// How long lid sleep lasts before the device powers off. A game's resume state, saved when
+/// How long sleep lasts before the device powers off. A game's resume state, saved when
 /// the lid closed, brings it back at the next start.
 const LONG_SLEEP: Duration = Duration::from_hours(2);
 /// Overrides `LONG_SLEEP` in seconds, to test it without waiting two hours.
@@ -122,6 +137,40 @@ fn long_sleep() -> Duration {
         .ok()
         .and_then(|seconds| seconds.trim().parse().ok())
         .map_or(LONG_SLEEP, Duration::from_secs)
+}
+
+/// When a sleep powers off, on the boot clock.
+#[derive(Clone, Copy)]
+struct PowerOffTimer {
+    at: Duration,
+}
+
+impl PowerOffTimer {
+    fn start() -> Self {
+        PowerOffTimer { at: boot_time() + long_sleep() }
+    }
+
+    fn expired(self) -> bool {
+        boot_time() >= self.at
+    }
+
+    /// Whether it is time to power off. On USB power the battery doesn't drain, and powering
+    /// off could start the device again, so the time moves on by another `long_sleep()`.
+    fn due(&mut self) -> bool {
+        if !self.expired() {
+            return false;
+        }
+        if discharging() {
+            return true;
+        }
+        self.at = boot_time() + long_sleep();
+        false
+    }
+
+    /// Sets the RTC alarm to wake the device at the power-off time.
+    fn arm(self) {
+        set_alarm(Some(self.at.saturating_sub(boot_time())));
+    }
 }
 
 /// Time since boot, counting sleep, which `Instant` doesn't.
@@ -155,15 +204,18 @@ fn discharging() -> bool {
 }
 
 /// Powers off, then waits without sleeping: the shutdown stops this process and saves a
-/// running game. Only a test's power-off command lets the lid opening end the wait.
-fn power_off(events: &Receiver<Event>) {
+/// running game. Only a test's power-off command lets an event that `ends` picks end the
+/// wait.
+fn power_off(events: &Receiver<Event>, ends: impl Fn(&Event) -> bool) {
+    set_alarm(None);
+    println!("sleep: powering off after {} s asleep", long_sleep().as_secs());
     let command = crate::power::poweroff_command();
     if let Err(error) = std::process::Command::new(&command).status() {
         eprintln!("warning: could not run {command}: {error}");
         return;
     }
     while let Ok(event) = events.recv() {
-        if event.is_lid_opening() {
+        if ends(&event) {
             return;
         }
     }

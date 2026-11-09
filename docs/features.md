@@ -530,7 +530,13 @@ Built but not yet tested on the device:
   Claude checked it on the device at 2 minutes with an RTC alarm as the waker: it slept
   2 minutes after the last press (`PM: suspend entry (s2idle)`), woke 50 s later, turned
   the backlight back on and rejoined Wi-Fi. Not yet checked by the user: that the screen
-  is dark while asleep, and waking with the power button. The test unit is back on OFF
+  is dark while asleep, and waking with the power button. The test unit is back on OFF.
+  It also powers off after 2 hours asleep on battery, like lid sleep (2026-11-10), with
+  the same RTC alarm and timer; a power button press before then wakes it as before, and
+  if the lid closes, the lid sleep keeps counting the same 2 hours. Claude checked it on
+  the device with `LAUNCHER_LONG_SLEEP=60`, a fake `Discharging` battery and a fake
+  `LAUNCHER_POWEROFF`: it slept at 2 idle minutes, the alarm woke it 61 s later and the
+  power-off command ran. A real power-off from idle sleep hasn't been tried
 - Battery display: Settings > GENERAL > BATTERY: PERCENT, WHEN LOW (only at 15% or below
   while not charging, in red) or HIDDEN, for the menus' top-right corner; the clock takes
   its place. Games' low-battery warning and shutdown don't change. Like the accent, it is
