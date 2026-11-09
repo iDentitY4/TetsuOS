@@ -557,6 +557,7 @@ pub(crate) fn act(
         Action::IdleSleep(steps) => {
             change_settings(|s| s.idle_minutes = settings::cycle(&settings::IDLE_SLEEP_MINUTES, s.idle_minutes, steps));
         }
+        Action::SleepPowerOff(steps) => change_settings(|s| s.sleep_power_off = s.sleep_power_off.cycle(steps)),
         Action::BatteryDisplay(steps) => {
             change_settings(|s| s.battery = s.battery.cycle(steps));
         }

@@ -123,8 +123,9 @@ pub const GROUPS: [Group; 10] = [
     Group::Achievements,
 ];
 
-/// The most settings a group has, which the settings screen makes room for.
-pub const MAX_GROUP_SETTINGS: usize = 8;
+/// The most settings a group has, which the settings screen makes room for. Only SYSTEM
+/// has this many, which leaves room for a single note line.
+pub const MAX_GROUP_SETTINGS: usize = 9;
 
 impl Group {
     pub fn label(self) -> &'static str {
@@ -186,6 +187,7 @@ impl Group {
                     Setting::UsbStorage,
                     Setting::WifiTransfer,
                     Setting::IdleSleep,
+                    Setting::SleepPowerOff,
                     Setting::SaveLogs,
                     Setting::Reboot,
                     Setting::PowerOff,
@@ -235,6 +237,7 @@ pub enum Setting {
     ButtonTest,
     SystemInfo,
     IdleSleep,
+    SleepPowerOff,
     UsbStorage,
     WifiTransfer,
     Reboot,
@@ -287,6 +290,7 @@ impl Setting {
             Self::ButtonTest => "BUTTON TEST",
             Self::SystemInfo => "SYSTEM INFO",
             Self::IdleSleep => "SLEEP WHEN IDLE",
+            Self::SleepPowerOff => "POWER OFF AFTER SLEEP",
             Self::UsbStorage => "USB STORAGE",
             Self::WifiTransfer => "WI-FI TRANSFER",
             Self::Reboot => "REBOOT",
@@ -338,6 +342,7 @@ impl Setting {
                 | Self::BootJingle
                 | Self::Language
                 | Self::IdleSleep
+                | Self::SleepPowerOff
                 | Self::ShowCovers
                 | Self::ScreenshotCovers
                 | Self::Scaling
@@ -452,6 +457,7 @@ pub enum Command {
     ToggleJingle,
     Language(i32),
     IdleSleep(i32),
+    SleepPowerOff(i32),
     Scaling(i32),
     Effect(i32),
     Ghosting(i32),
@@ -897,6 +903,7 @@ impl Launcher {
             Setting::BootJingle => Command::ToggleJingle,
             Setting::Language => Command::Language(step),
             Setting::IdleSleep => Command::IdleSleep(step),
+            Setting::SleepPowerOff => Command::SleepPowerOff(step),
             Setting::ShowCovers => Command::ToggleCovers,
             Setting::ScreenshotCovers => Command::ToggleScreenshotCovers,
             Setting::Scaling => Command::Scaling(step),
@@ -988,6 +995,7 @@ impl Launcher {
                 | Setting::BootJingle
                 | Setting::Language
                 | Setting::IdleSleep
+                | Setting::SleepPowerOff
                 | Setting::ShowCovers
                 | Setting::ScreenshotCovers
                 | Setting::Scaling
@@ -1496,7 +1504,9 @@ mod tests {
         assert_eq!(launcher.press(Button::A, &library), Command::WifiTransfer);
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Left, &library), Command::IdleSleep(-1));
-        press_all(&mut launcher, &library, &[Button::Up, Button::Up, Button::Up]);
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::Right, &library), Command::SleepPowerOff(1));
+        press_all(&mut launcher, &library, &[Button::Up, Button::Up, Button::Up, Button::Up]);
         launcher.press(Button::A, &library);
         launcher.press(Button::B, &library);
         assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::System));

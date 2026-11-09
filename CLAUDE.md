@@ -13,7 +13,7 @@ Boot to the launcher in 3.8 s with a logo, or 5.8 s with the boot jingle (on by 
 power button on and off; USB console, SSH and
 updates over USB networking (`10.35.35.1`); audio with headphone switching; Panfrost GPU;
 CPU scaling to 1512 MHz; lid sleep (`s2idle`), with Wi-Fi and USB kept through it, and
-power-off after 2 hours of it or of sleep when idle on battery; Wi-Fi
+power-off after 2 hours (or as set) of it or of sleep when idle on battery; Wi-Fi
 set up on the device; network time (`ntpd`) and a time zone setting; battery level,
 low-battery save and power-off; SSH over USB only by default, over Wi-Fi with a key or
 root password; a CPU performance setting; USB STORAGE, which shows TETSU-DATA to a PC as
@@ -31,7 +31,8 @@ Launcher: a tile grid with RECENT and FAVORITES, lists with covers and scrolling
 sorting by name or how recently or long a game was played, jumping by letter on L1 and R1, search on X, a game's details, play time and deleting it on Y,
 box art downloaded on the device, and a settings grid (GENERAL, GAME SCREEN, WI-FI,
 BOX ART, THEME, TIME, SYSTEM, ADVANCED, CORES) with colours, background, title, grid size,
-hidden tiles, start screen, game names, battery display, menu sounds, the boot jingle and sleep when idle.
+hidden tiles, start screen, game names, battery display, menu sounds, the boot jingle, sleep when idle
+and power-off after sleep.
 The launcher and in-game menu are in English or German (Settings > GENERAL > LANGUAGE).
 A new install starts with a setup (language, Wi-Fi, time, adding games), which Settings >
 ADVANCED > RUN SETUP AGAIN repeats.
@@ -53,7 +54,8 @@ ADVANCED > RUN SETUP AGAIN repeats.
 - Screenshots on other consoles: a PlayStation wide mode, a ZIP, the German wording on the device
 - Neo Geo Pocket, WonderSwan and Lynx sound and controls; a Neo Geo Pocket game that saves
 - Sleep when idle: the screen dark while asleep, waking with the power button, and a
-  real power-off after 2 hours of it on battery
+  real power-off after 2 hours of it on battery; POWER OFF AFTER SLEEP's German wording
+  on the device
 - The lid since input moved to the `evdev` crate; the lid during a box art download
 - A game's own clock (Pokemon's RTC) showing local time
 - A real empty battery, a wrong Wi-Fi password, a failing certificate check

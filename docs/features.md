@@ -41,19 +41,26 @@ Working on the test unit, confirmed by the user:
   Sound stops in sleep (patch 0011) and resumes on opening. A power button press with the
   lid closed doesn't shut down (patch 0010), and the device goes back to sleep. The
   Tamagotchi carries on correctly after sleep
-- Power-off after a long lid sleep (2026-11-10): after 2 hours of lid sleep on battery,
+- Power-off after a long lid sleep (2026-11-10): after 2 hours of lid sleep on battery
+  (Settings > SYSTEM > POWER OFF AFTER SLEEP: 1, 2 (default), 4 or 8 HOURS or NEVER,
+  saved as `sleep_power_off=`),
   an RTC alarm (`/sys/class/rtc/rtc0/wakealarm`, set to the time left before each
   `freeze`) wakes the device, and it powers off, so s2idle doesn't drain the battery.
   A game in progress saved its resume state when the lid closed, and saves again on the
   shutdown's SIGTERM; `playing.txt` stays, so it resumes at the next start. On USB power
-  (status other than `Discharging`) it keeps sleeping for another 2 hours instead, as the
+  (status other than `Discharging`) it keeps sleeping for that long again instead, as the
   battery doesn't drain and USB power may start the device again. The time counts with
   `CLOCK_BOOTTIME`, as `Instant` stops in s2idle. Waking for a power button press doesn't
-  reset it. `LAUNCHER_LONG_SLEEP` sets it in seconds, for testing. Claude checked on the
+  reset it. NEVER sets no alarm. `LAUNCHER_LONG_SLEEP` overrides the setting in seconds,
+  for testing. Claude checked on the
   device that a `+40` alarm wakes s2idle, that the boot clock advanced 41.7 s across it and
   that the alarm clears once it fires. The user confirmed on 2026-11-10, with
   `LAUNCHER_LONG_SLEEP=120` and the cable unplugged, that the device powered off with the
-  lid closed during a game and that the game resumed at the next start
+  lid closed during a game and that the game resumed at the next start. The setting is
+  the ninth row of SYSTEM, the only group with that many (`MAX_GROUP_SETTINGS`), which
+  leaves room for one note line: its note about the power button. Claude checked on the
+  device that the row shows 2 HOURS, Right saves `4h`, and the note fits under the rows
+  with SLEEP WHEN IDLE on; a sleep with a setting other than 2 hours hasn't been tried
 - The battery level in the menu
 - Updating over USB. The gadget is serial plus CDC Ethernet, set up through configfs by
   `/usr/sbin/usb-gadget start` from `S41usbnet`, with the fixed MACs and the USB ID
@@ -531,7 +538,7 @@ Built but not yet tested on the device:
   2 minutes after the last press (`PM: suspend entry (s2idle)`), woke 50 s later, turned
   the backlight back on and rejoined Wi-Fi. Not yet checked by the user: that the screen
   is dark while asleep, and waking with the power button. The test unit is back on OFF.
-  It also powers off after 2 hours asleep on battery, like lid sleep (2026-11-10), with
+  It also powers off after POWER OFF AFTER SLEEP's time asleep on battery, like lid sleep (2026-11-10), with
   the same RTC alarm and timer; a power button press before then wakes it as before, and
   if the lid closes, the lid sleep keeps counting the same 2 hours. Claude checked it on
   the device with `LAUNCHER_LONG_SLEEP=60`, a fake `Discharging` battery and a fake

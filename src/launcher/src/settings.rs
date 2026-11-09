@@ -303,6 +303,31 @@ impl ChargeLimit {
     }
 }
 
+choices! {
+    /// How long the device sleeps on battery, with the lid closed or after the menus were
+    /// idle, before it powers off. A running game resumes at the next start.
+    pub enum SleepPowerOff (default Hours2) {
+        Hour1 => "1h", "1 HOUR";
+        Hours2 => "2h", "2 HOURS";
+        Hours4 => "4h", "4 HOURS";
+        Hours8 => "8h", "8 HOURS";
+        Never => "never", "NEVER";
+    }
+}
+
+impl SleepPowerOff {
+    pub fn duration(self) -> Option<std::time::Duration> {
+        let hours = match self {
+            Self::Hour1 => 1,
+            Self::Hours2 => 2,
+            Self::Hours4 => 4,
+            Self::Hours8 => 8,
+            Self::Never => return None,
+        };
+        Some(std::time::Duration::from_hours(hours))
+    }
+}
+
 /// The choices for sleeping when idle, in minutes without a press. 0 is off.
 pub const IDLE_SLEEP_MINUTES: [u32; 5] = [0, 2, 5, 10, 30];
 
@@ -379,6 +404,7 @@ pub struct Settings {
     pub battery: BatteryDisplay,
     /// Minutes without a press in the menus before sleeping, one of `IDLE_SLEEP_MINUTES`.
     pub idle_minutes: u32,
+    pub sleep_power_off: SleepPowerOff,
     pub menu_sounds: bool,
     /// The boot jingle is off. It plays by default, also for a settings file from before it.
     pub jingle_off: bool,
@@ -530,6 +556,7 @@ fn parse(text: &str) -> Settings {
             "screenshot_covers" => settings.screenshot_covers_off = value == "off",
             "battery" => choose(&mut settings.battery, BatteryDisplay::from_key(value)),
             "idle" => choose(&mut settings.idle_minutes, IDLE_SLEEP_MINUTES.into_iter().find(|&m| value.parse() == Ok(m))),
+            "sleep_power_off" => choose(&mut settings.sleep_power_off, SleepPowerOff::from_key(value)),
             "sounds" => settings.menu_sounds = value == "on",
             "jingle" => settings.jingle_off = value == "off",
             "ssh" => choose(&mut settings.ssh, SshAccess::from_key(value)),
@@ -589,6 +616,7 @@ fn format(settings: &Settings) -> String {
     lines.push(format!("screenshot_covers={}", on_off(!settings.screenshot_covers_off)));
     lines.push(format!("battery={}", settings.battery.key()));
     lines.push(format!("idle={}", settings.idle_minutes));
+    lines.push(format!("sleep_power_off={}", settings.sleep_power_off.key()));
     lines.push(format!("sounds={}", on_off(settings.menu_sounds)));
     lines.push(format!("jingle={}", on_off(!settings.jingle_off)));
     lines.push(format!("ssh={}", settings.ssh.key()));
@@ -850,6 +878,7 @@ mod tests {
             screenshot_covers_off: true,
             battery: BatteryDisplay::WhenLow,
             idle_minutes: 10,
+            sleep_power_off: SleepPowerOff::Hours8,
             menu_sounds: true,
             jingle_off: true,
             ssh: SshAccess::Wifi,
@@ -940,6 +969,9 @@ mod tests {
         assert_eq!(StartScreen::LastGame.label(), "LAST GAME");
         assert_eq!(idle_sleep_label(0), "OFF");
         assert_eq!(idle_sleep_label(5), "5 MIN");
+        assert_eq!(SleepPowerOff::default().duration(), Some(std::time::Duration::from_hours(2)));
+        assert_eq!(SleepPowerOff::Hours8.cycle(1), SleepPowerOff::Never);
+        assert_eq!(SleepPowerOff::Never.duration(), None);
     }
 
     #[test]

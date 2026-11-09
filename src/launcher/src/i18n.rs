@@ -117,6 +117,7 @@ mod tests {
         keys.extend(labels(s::SshAccess::ALL, s::SshAccess::label));
         keys.extend(labels(s::CpuLevel::ALL, s::CpuLevel::label));
         keys.extend(labels(s::ChargeLimit::ALL, s::ChargeLimit::label));
+        keys.extend(labels(s::SleepPowerOff::ALL, s::SleepPowerOff::label));
         keys
     }
 

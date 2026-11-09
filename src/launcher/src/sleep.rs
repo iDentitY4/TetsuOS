@@ -124,34 +124,34 @@ fn wait_after_wake(events: &Receiver<Event>, wanted: impl Fn(&Event) -> bool) ->
     Some(false)
 }
 
-/// How long sleep lasts before the device powers off. A game's resume state, saved when
-/// the lid closed, brings it back at the next start.
-const LONG_SLEEP: Duration = Duration::from_hours(2);
-/// Overrides `LONG_SLEEP` in seconds, to test it without waiting two hours.
+/// Overrides Settings > SYSTEM > POWER OFF AFTER SLEEP in seconds, to test it without
+/// waiting hours.
 const LONG_SLEEP_VARIABLE: &str = "LAUNCHER_LONG_SLEEP";
 
 const RTC_ALARM: &str = "/sys/class/rtc/rtc0/wakealarm";
 
-fn long_sleep() -> Duration {
-    std::env::var(LONG_SLEEP_VARIABLE)
-        .ok()
-        .and_then(|seconds| seconds.trim().parse().ok())
-        .map_or(LONG_SLEEP, Duration::from_secs)
+/// How long sleep lasts before the device powers off, or `None` for never. A game's resume
+/// state, saved when the lid closed, brings it back at the next start.
+fn long_sleep() -> Option<Duration> {
+    match std::env::var(LONG_SLEEP_VARIABLE).ok().and_then(|seconds| seconds.trim().parse().ok()) {
+        Some(seconds) => Some(Duration::from_secs(seconds)),
+        None => crate::settings::get().sleep_power_off.duration(),
+    }
 }
 
-/// When a sleep powers off, on the boot clock.
+/// When a sleep powers off, on the boot clock, if it does.
 #[derive(Clone, Copy)]
 struct PowerOffTimer {
-    at: Duration,
+    at: Option<Duration>,
 }
 
 impl PowerOffTimer {
     fn start() -> Self {
-        PowerOffTimer { at: boot_time() + long_sleep() }
+        PowerOffTimer { at: long_sleep().map(|length| boot_time() + length) }
     }
 
     fn expired(self) -> bool {
-        boot_time() >= self.at
+        self.at.is_some_and(|at| boot_time() >= at)
     }
 
     /// Whether it is time to power off. On USB power the battery doesn't drain, and powering
@@ -163,13 +163,13 @@ impl PowerOffTimer {
         if discharging() {
             return true;
         }
-        self.at = boot_time() + long_sleep();
+        *self = Self::start();
         false
     }
 
-    /// Sets the RTC alarm to wake the device at the power-off time.
+    /// Sets the RTC alarm to wake the device at the power-off time, or clears it for never.
     fn arm(self) {
-        set_alarm(Some(self.at.saturating_sub(boot_time())));
+        set_alarm(self.at.map(|at| at.saturating_sub(boot_time())));
     }
 }
 
@@ -208,7 +208,7 @@ fn discharging() -> bool {
 /// wait.
 fn power_off(events: &Receiver<Event>, ends: impl Fn(&Event) -> bool) {
     set_alarm(None);
-    println!("sleep: powering off after {} s asleep", long_sleep().as_secs());
+    println!("sleep: powering off after {} s asleep", long_sleep().unwrap_or_default().as_secs());
     let command = crate::power::poweroff_command();
     if let Err(error) = std::process::Command::new(&command).status() {
         eprintln!("warning: could not run {command}: {error}");

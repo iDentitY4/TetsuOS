@@ -492,6 +492,7 @@ pub(crate) fn setting_value(setting: Setting, settings: &Settings) -> Option<Str
         Setting::MenuSounds => on_off(settings.menu_sounds),
         Setting::BootJingle => on_off(!settings.jingle_off),
         Setting::IdleSleep => return Some(idle_sleep_label(settings.idle_minutes)),
+        Setting::SleepPowerOff => settings.sleep_power_off.label(),
         Setting::Language => settings.language.label(),
         Setting::Scaling => settings.display.scaling.label(),
         Setting::Effect => settings.display.effect.label(),
@@ -1719,6 +1720,7 @@ mod tests {
             zone: Some("America/Argentina/Buenos_Aires"),
             title: Some("X".repeat(crate::settings::MAX_TITLE_LENGTH)),
             idle_minutes: 30,
+            sleep_power_off: crate::settings::SleepPowerOff::Hours8,
             start_screen: crate::settings::StartScreen::LastGame,
             battery: crate::settings::BatteryDisplay::WhenLow,
             ..Settings::default()
@@ -1733,8 +1735,10 @@ mod tests {
                 let value = format!("< {} >", zone.label);
                 assert!(SETTINGS_LEFT + text_width("TIME ZONE", TEXT_SCALE) + 16 + text_width(&value, TEXT_SCALE) <= 640 - SETTINGS_RIGHT);
             }
-            // Two note lines and a message fit above the hint.
-            assert!(SETTINGS_TOP + group.settings().len() * SETTINGS_ROW + 12 + 3 * SETTINGS_ROW <= HINT_Y);
+            // Two note lines and a message fit above the hint, or one note line for SYSTEM,
+            // whose note is the single line about waking from sleep.
+            let note_lines = if group == crate::launcher::Group::System { 1 } else { 2 };
+            assert!(SETTINGS_TOP + group.settings().len() * SETTINGS_ROW + 12 + (note_lines + 1) * SETTINGS_ROW <= HINT_Y, "{group:?}");
             let view = SettingsView {
                 group,
                 selected: group.settings().first().copied().unwrap_or(Setting::Volume),
