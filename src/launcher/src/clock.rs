@@ -133,6 +133,11 @@ pub fn date_text(time: &Zoned, format: ClockFormat) -> String {
     trf("{} {} {} {}, {}", &[&tr(weekday), &time.day(), &tr(month), &time.year(), &time_text(time, clock)])
 }
 
+/// The date alone, such as "8 NOVEMBER 2026".
+pub fn short_date_text(time: &Zoned) -> String {
+    format!("{} {} {}", time.day(), tr(MONTHS[time.month() as usize - 1]), time.year())
+}
+
 /// When ntpd last set the clock, from the last line of its log, which
 /// `/usr/libexec/ntp-synced` writes as "2026-11-08 15:14:25 step, offset ...", in UTC.
 pub fn last_sync(log: &str) -> Option<Timestamp> {

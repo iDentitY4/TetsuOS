@@ -202,6 +202,45 @@ pub(crate) fn launcher_canvas(
             let view = screens::ListView { icon, title, rows: &rows, selected, art, scroll };
             screens::list_screen(width, height, &view, &frame)
         }
+        Screen::Details(_) => {
+            let game = launcher.details_game(library);
+            let (icon, name, facts, starred) = match game {
+                Some(game) => {
+                    let files = game_files::GameFiles::of(&game.path);
+                    let settings = settings::get();
+                    let played = files.last_played().and_then(|time| jiff::Timestamp::try_from(time).ok());
+                    let played = played.map_or(tr("NOT YET").to_string(), |time| {
+                        clock::short_date_text(&clock::local(time, settings.time_zone()))
+                    });
+                    let facts = vec![
+                        (tr("CONSOLE"), SYSTEMS[game.system].console.to_string()),
+                        (tr("SIZE"), game_files::size_text(files.size())),
+                        (tr("LAST PLAYED"), played),
+                        (tr("SAVE FILES"), files.saves.len().to_string()),
+                    ];
+                    (SYSTEMS[game.system].icon, rom_label(&game.path), facts, library.is_favorite(game))
+                }
+                // Only for the moment before the launcher goes back to the list.
+                None => (&icons::RECENT, String::new(), Vec::new(), false),
+            };
+            let shown = !settings::get().covers_hidden;
+            let cover = game.filter(|_| shown).and_then(|game| art.get(&game.path));
+            let art = match &cover {
+                _ if !shown => None,
+                Some(image) => Some(screens::Art::Cover(image)),
+                None => Some(screens::Art::Placeholder(icon)),
+            };
+            let view = screens::DetailsView {
+                icon,
+                name: &name,
+                facts: &facts,
+                selected: launcher.details_row(),
+                starred,
+                art,
+                message: launcher.details_confirmation(),
+            };
+            screens::details_screen(width, height, &view, &frame)
+        }
         Screen::Settings => {
             let selected = GROUPS.iter().position(|&group| group == launcher.group_selected()).unwrap_or(0);
             screens::settings_grid(width, height, &GROUPS, selected, &frame)
@@ -343,6 +382,8 @@ pub(crate) fn act(
         }
         // It changes the library and the screen, so `run_launcher` carries it out.
         Action::Search => {}
+        // Deleting needs the library, so `run_launcher` does that. The games have changed.
+        Action::DeleteGame(_) => return Ok(true),
         Action::ButtonTest => button_test(framebuffer, events)?,
         Action::Wifi => wifi_settings(framebuffer, events)?,
         Action::DownloadBoxArt(mode) => {
@@ -557,6 +598,19 @@ pub(crate) fn search_games(
         }
     }
     events.try_iter().for_each(drop);
+    Ok(())
+}
+
+/// Deletes a game. Only a failure takes up the screen, as the list shows it has gone.
+pub(crate) fn delete_game_showing_failure(framebuffer: &mut fb::Framebuffer, rom: &Path, library: &Library) -> io::Result<()> {
+    if let Err(error) = game_files::delete_game(rom, library) {
+        eprintln!("warning: could not delete {}: {error}", rom.display());
+        let (width, height) = framebuffer.size();
+        framebuffer.draw(&screens::message_screen(width, height, tr("COULD NOT DELETE THE GAME"), current_theme()))?;
+        sleep(Duration::from_secs(2));
+    } else {
+        println!("deleted {}", rom.display());
+    }
     Ok(())
 }
 
@@ -817,6 +871,9 @@ pub(crate) fn run_launcher() -> io::Result<()> {
         }
         if action == Action::Search {
             search_games(&mut framebuffer, &events, &mut launcher, &mut library)?;
+        }
+        if let Action::DeleteGame(rom) = &action {
+            delete_game_showing_failure(&mut framebuffer, rom, &library)?;
         }
         if act(action, &mut framebuffer, &events)? {
             art.clear();

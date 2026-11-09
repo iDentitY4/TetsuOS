@@ -28,8 +28,22 @@ fn toggled(mut games: Vec<PathBuf>, game: &Path) -> Vec<PathBuf> {
 
 /// Stars or unstars `game` in the file.
 pub fn toggle(path: &Path, game: &Path) -> io::Result<()> {
+    save(path, toggled(load(path), game))
+}
+
+/// Takes the star off a game that has gone. Without one, the file stays as it is.
+pub fn forget(path: &Path, game: &Path) -> io::Result<()> {
+    let mut games = load(path);
+    if !games.iter().any(|other| other == game) {
+        return Ok(());
+    }
+    games.retain(|other| other != game);
+    save(path, games)
+}
+
+fn save(path: &Path, games: Vec<PathBuf>) -> io::Result<()> {
     let mut text = String::new();
-    for game in toggled(load(path), game) {
+    for game in games {
         text += &game.to_string_lossy();
         text.push('\n');
     }

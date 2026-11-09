@@ -14,6 +14,7 @@ mod favorites;
 mod fb;
 mod font;
 mod game;
+mod game_files;
 mod i18n;
 mod icons;
 mod input;
@@ -76,6 +77,9 @@ fn main() -> ExitCode {
         [flag, path] if flag == "--preview" => write_launcher_preview(path, &[Button::Right]),
         [flag, path] if flag == "--preview-list" => {
             write_launcher_preview(path, &[Button::Right, Button::Right, Button::A, Button::Down])
+        }
+        [flag, path] if flag == "--preview-details" => {
+            write_launcher_preview(path, &[Button::Right, Button::Right, Button::A, Button::Down, Button::Y])
         }
         [flag, path] if flag == "--preview-recent" => write_launcher_preview(path, &[Button::A]),
         [flag, path] if flag == "--preview-settings" => {

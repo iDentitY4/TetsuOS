@@ -6,7 +6,7 @@ use crate::font;
 use crate::i18n::{tr, trf};
 use crate::icons::{self, Icon};
 use crate::keyboard::{self, Key, Keyboard};
-use crate::launcher::{Group, Setting, COLUMNS, MAX_GROUP_SETTINGS, PAGE};
+use crate::launcher::{DetailRow, Group, Setting, COLUMNS, DETAIL_ROWS, MAX_GROUP_SETTINGS, PAGE};
 use crate::settings::GridSize;
 use crate::boot_partition::BootMessages;
 use crate::ssh;
@@ -314,6 +314,104 @@ pub fn selected_row_area(width: usize, rows: &[RowView], selected: usize, with_a
     (0, y, list_right, LIST_ROW - 2)
 }
 
+/// The cover in its panel, or the console's pictogram for a game without one.
+fn draw_art(canvas: &mut Canvas, art: &Option<Art>) {
+    let (panel_x, panel_y, panel_w, panel_h) = ART_PANEL;
+    match *art {
+        Some(Art::Cover(image)) => {
+            let x = panel_x + panel_w.saturating_sub(image.width) / 2;
+            let y = panel_y + panel_h.saturating_sub(image.height) / 2;
+            canvas.image(image, x, y);
+        }
+        Some(Art::Placeholder(icon)) => {
+            canvas.rect(panel_x, panel_y, panel_w, panel_h, BODY);
+            let scale = 4;
+            let x = panel_x + panel_w.saturating_sub(icons::WIDTH * scale) / 2;
+            let y = panel_y + panel_h.saturating_sub(icons::HEIGHT * scale) / 2;
+            canvas.icon(icon, x, y, scale);
+        }
+        None => {}
+    }
+}
+
+/// What a game's details screen shows.
+pub struct DetailsView<'a> {
+    pub icon: &'a Icon,
+    pub name: &'a str,
+    /// Each row's label and value.
+    pub facts: &'a [(&'a str, String)],
+    pub selected: DetailRow,
+    pub starred: bool,
+    pub art: Option<Art<'a>>,
+    pub message: Option<&'a str>,
+}
+
+const DETAILS_NAME_LINES: usize = 3;
+const DETAILS_FACTS_TOP: usize = 150;
+const DETAILS_FACT_ROW: usize = 26;
+const DETAILS_ROWS_TOP: usize = 266;
+const DETAILS_MESSAGE_Y: usize = DETAILS_ROWS_TOP + DETAIL_ROWS.len() * LIST_ROW + 12;
+/// The rows end before the cover's panel.
+const DETAILS_RIGHT: usize = ART_PANEL.0 - 8;
+
+const _: () = assert!(DETAILS_MESSAGE_Y + 20 <= HINT_Y);
+
+/// Breaks a name at spaces into at most `lines` lines of `columns` characters. What doesn't
+/// fit is left out, and a word longer than a line is cut.
+pub fn wrapped_lines(text: &str, columns: usize, lines: usize) -> Vec<String> {
+    let mut wrapped: Vec<String> = Vec::new();
+    for word in text.split_whitespace() {
+        let word: String = word.chars().take(columns).collect();
+        match wrapped.last_mut() {
+            Some(line) if line.chars().count() + 1 + word.chars().count() <= columns => {
+                line.push(' ');
+                line.push_str(&word);
+            }
+            _ => wrapped.push(word),
+        }
+    }
+    wrapped.truncate(lines);
+    wrapped
+}
+
+pub fn details_screen(width: usize, height: usize, view: &DetailsView, frame: &Frame) -> Canvas {
+    let mut canvas = Canvas::new(width, height, frame.theme);
+    header(&mut canvas, view.icon, tr("DETAILS"), frame.battery);
+    let advance = (font::WIDTH + 1) * TEXT_SCALE;
+    let columns = DETAILS_RIGHT.saturating_sub(LIST_LEFT + 8) / advance;
+    for (line, text) in wrapped_lines(view.name, columns, DETAILS_NAME_LINES).iter().enumerate() {
+        canvas.text_at(text, LIST_LEFT, LIST_TOP + line * 22, TEXT_SCALE, TEXT);
+    }
+    for (row, (label, value)) in view.facts.iter().enumerate() {
+        let y = DETAILS_FACTS_TOP + row * DETAILS_FACT_ROW;
+        canvas.text_at(label, LIST_LEFT, y, TEXT_SCALE, MUTED);
+        let x = (DETAILS_RIGHT - 8).saturating_sub(text_width(value, TEXT_SCALE));
+        canvas.text_at(value, x, y, TEXT_SCALE, TEXT);
+    }
+    for (row, &item) in DETAIL_ROWS.iter().enumerate() {
+        let y = DETAILS_ROWS_TOP + row * LIST_ROW;
+        let color = if item == view.selected {
+            canvas.rect(0, y, DETAILS_RIGHT, LIST_ROW - 2, canvas.theme.accent);
+            canvas.theme.background
+        } else {
+            TEXT
+        };
+        let label = match item {
+            DetailRow::Play => tr("PLAY"),
+            DetailRow::Star if view.starred => tr("REMOVE STAR"),
+            DetailRow::Star => tr("STAR"),
+            DetailRow::Delete => tr("DELETE GAME AND SAVES"),
+        };
+        canvas.text_at(label, LIST_LEFT, row_text_y(y, LIST_ROW - 2), TEXT_SCALE, color);
+    }
+    if let Some(message) = view.message {
+        canvas.text_at(message, LIST_LEFT, DETAILS_MESSAGE_Y, TEXT_SCALE, canvas.theme.accent);
+    }
+    draw_art(&mut canvas, &view.art);
+    hint(&mut canvas, tr("A SELECTS - B BACK"));
+    canvas
+}
+
 pub fn list_screen(width: usize, height: usize, view: &ListView, frame: &Frame) -> Canvas {
     let ListView { icon, title, rows, selected, ref art, scroll } = *view;
     let mut canvas = Canvas::new(width, height, frame.theme);
@@ -350,23 +448,8 @@ pub fn list_screen(width: usize, height: usize, view: &ListView, frame: &Frame) 
             canvas.text_at(&visible, text_left, text_y, TEXT_SCALE, color);
         }
     }
-    let (panel_x, panel_y, panel_w, panel_h) = ART_PANEL;
-    match *art {
-        Some(Art::Cover(image)) => {
-            let x = panel_x + panel_w.saturating_sub(image.width) / 2;
-            let y = panel_y + panel_h.saturating_sub(image.height) / 2;
-            canvas.image(image, x, y);
-        }
-        Some(Art::Placeholder(icon)) => {
-            canvas.rect(panel_x, panel_y, panel_w, panel_h, BODY);
-            let scale = 4;
-            let x = panel_x + panel_w.saturating_sub(icons::WIDTH * scale) / 2;
-            let y = panel_y + panel_h.saturating_sub(icons::HEIGHT * scale) / 2;
-            canvas.icon(icon, x, y, scale);
-        }
-        None => {}
-    }
-    hint(&mut canvas, tr("A STARTS - X SEARCH - SELECT STARS - L R LETTER"));
+    draw_art(&mut canvas, art);
+    hint(&mut canvas, tr("A START - X SEARCH - Y INFO - SELECT STAR - L R ABC"));
     canvas
 }
 
@@ -1169,6 +1252,35 @@ mod tests {
         let label_x = 640 - WIFI_RIGHT - 24 - 18 - 12 - text_width("CONNECTED", TEXT_SCALE);
         let row = WIFI_TOP..WIFI_TOP + WIFI_ROW - 2;
         assert!((label_x - 12..label_x - 1).all(|x| row.clone().all(|y| pixel(&canvas, x, y) != TEXT)));
+    }
+
+    #[test]
+    fn names_wrap_at_spaces_and_stop_at_their_lines() {
+        assert_eq!(wrapped_lines("a bb ccc", 4, 3), ["a bb", "ccc"]);
+        assert_eq!(wrapped_lines("a bb ccc dddd", 4, 2), ["a bb", "ccc"]);
+        assert_eq!(wrapped_lines("longword x", 4, 3), ["long", "x"]);
+        assert!(wrapped_lines("", 4, 3).is_empty());
+    }
+
+    #[test]
+    fn the_details_screen_survives_long_names_and_small_screens() {
+        let long = "Pokemon - Yellow Version - Special Pikachu Edition (USA, Europe) (CGB+SGB Enhanced) ".repeat(3);
+        let facts = [("CONSOLE", "GAME BOY ADVANCE".to_string()), ("LAST PLAYED", "23 SEPTEMBER 2026".to_string())];
+        let view = DetailsView {
+            icon: &icons::NES,
+            name: &long,
+            facts: &facts,
+            selected: DetailRow::Delete,
+            starred: true,
+            art: Some(Art::Placeholder(&icons::NES)),
+            message: Some("PRESS A AGAIN TO DELETE FOREVER"),
+        };
+        assert_eq!(details_screen(640, 480, &view, &frame()).pixels.len(), 640 * 480);
+        assert_eq!(details_screen(64, 48, &view, &frame()).pixels.len(), 64 * 48);
+        // The longest fact and message fit beside the cover.
+        let space = DETAILS_RIGHT - LIST_LEFT - 8;
+        assert!(text_width("LAST PLAYED", TEXT_SCALE) + 12 + text_width("23 SEPTEMBER 2026", TEXT_SCALE) <= space);
+        assert!(text_width("PRESS A AGAIN TO DELETE FOREVER", TEXT_SCALE) <= space);
     }
 
     #[test]

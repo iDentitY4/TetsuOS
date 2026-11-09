@@ -29,9 +29,22 @@ fn with_first(mut games: Vec<PathBuf>, game: &Path) -> Vec<PathBuf> {
 
 /// Puts `game` at the front of the list in the file.
 pub fn record(path: &Path, game: &Path) -> io::Result<()> {
-    let games = with_first(load(path), game);
+    save(path, &with_first(load(path), game))
+}
+
+/// Takes a game that has gone off the list. If it isn't on it, the file stays as it is.
+pub fn forget(path: &Path, game: &Path) -> io::Result<()> {
+    let mut games = load(path);
+    if !games.iter().any(|other| other == game) {
+        return Ok(());
+    }
+    games.retain(|other| other != game);
+    save(path, &games)
+}
+
+fn save(path: &Path, games: &[PathBuf]) -> io::Result<()> {
     let mut text = String::new();
-    for game in &games {
+    for game in games {
         text += &game.to_string_lossy();
         text.push('\n');
     }

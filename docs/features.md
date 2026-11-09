@@ -145,12 +145,40 @@ Working on the test unit, confirmed by the user:
   the lowest 480 MHz and 44 C with no underruns, FF7 sees a formatted card, and save
   states (4.4 MB) save and load. 50 Hz games can't match the 59.94 Hz panel, so some
   frames show twice. The user hasn't tried it yet, so sound and feel are unchecked
+- A game's details. Y in a game list opens them (`Screen::Details`, `screens::details_screen`):
+  the file's full name, console, size, last played, how many save files, and the cover, with
+  PLAY, STAR or REMOVE STAR, and DELETE GAME AND SAVES. The screen holds the game's path, not
+  its place in the list, as playing or starring can move it. `--preview-details` renders it.
+  The size is what the game takes on the card, so a ZIP counts as zipped, and a `.cue` or
+  `.m3u` counts all its tracks and discs (`game_files::GameFiles`). Last played is the date of
+  its newest save file, since leaving a game writes one, so it needs no file of its own and
+  knows games played before this screen; a game that never saved says NOT YET. It trusts the
+  clock at the time, so a device that had no network time can show an odd date.
+
+  Delete needs A twice in a row, and any other press calls it off; the screen always opens
+  on PLAY. It removes the game first, so a failure there leaves the saves, then its saves
+  (the memory card, resume point, 8 slots and any `.unreadable`), its cover, its star and
+  its RECENT entry, and any folder that left empty, up to but not including `roms`. For a
+  grouped or `.m3u` game that includes each disc, its tracks and the saves those discs had
+  by themselves. Only what is under `roms` counts as the game's: a line in a `.cue` or `.m3u`
+  that leads elsewhere is left alone. Anything another game on the card also uses stays,
+  such as the save a cartridge shares with its ZIP or a cover of the same name, until the
+  last game using it goes. There is no undo.
+
+  Claude tested on the device on 2026-11-09 on dummy games, first listing the card's files:
+  a cartridge with all its kinds of save and a cover; a cartridge and a ZIP sharing a save and
+  cover, which stayed after the first and went with the second; a starred `.cue` with two
+  tracks in its own folder; and a game grouped from two discs in a folder each, with its list
+  and a card from before grouping. A first press followed by another button deleted nothing.
+  Afterwards the card's files, `recent.txt` and `settings.txt` were as before. Failing to
+  delete hasn't been seen on the device, and neither has a real game been deleted
+
 - Jumping by letter. L1 and R1 in a game list go to the first game of the previous or next
   letter, and L1 inside a letter goes to that letter's start first. They wrap at the ends
   and repeat while held (`repeat.rs`). The letter is the first character of the name as
   shown, ignoring ASCII case, as lists sort; so a name with `The` in front counts as T.
   RECENT doesn't jump, being in the order played. Left and Right still page, though the
-  hint no longer has room to say so, nor for B BACK.
+  hint no longer has room to say so, nor for B BACK. The hint calls this L R ABC.
 
 - Search. X on the home screen or in a list opens the keyboard (`app::search_games`), showing
   how many games match while typing. OK shows them as a list like FAVORITES, with each

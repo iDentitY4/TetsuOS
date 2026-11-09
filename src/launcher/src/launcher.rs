@@ -65,6 +65,8 @@ pub enum Tile {
 pub enum Screen {
     Home,
     Games(List),
+    /// One game's details, opened from a list, which is where it goes back to.
+    Details(List),
     /// The grid of settings groups.
     Settings,
     /// One group's settings.
@@ -73,6 +75,16 @@ pub enum Screen {
     /// The list of home screen tiles to show or hide.
     HomeTiles,
 }
+
+/// What can be done from a game's details.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum DetailRow {
+    Play,
+    Star,
+    Delete,
+}
+
+pub const DETAIL_ROWS: [DetailRow; 3] = [DetailRow::Play, DetailRow::Star, DetailRow::Delete];
 
 /// A tile on the settings grid. Each opens a list of its settings, except Wi-Fi, which
 /// opens the Wi-Fi screen.
@@ -365,6 +377,8 @@ pub enum Command {
     ToggleFavorite(PathBuf),
     /// Types what to look for among all the games.
     Search,
+    /// Deletes the game and its saves, after a second press.
+    DeleteGame(PathBuf),
     ButtonTest,
     Wifi,
     /// Shows covers in game lists if they are hidden, or hides them.
@@ -430,6 +444,12 @@ pub struct Launcher {
     before_settings: Screen,
     /// Where search results go back to.
     before_search: Screen,
+    /// The game on the details screen. Its path, as playing or starring it can move it or
+    /// remove it from the list it was opened from.
+    details_game: Option<PathBuf>,
+    details_row: usize,
+    /// Set by the first press of A on delete, until the next press.
+    delete_armed: bool,
     /// A setting that can't be undone, waiting for a second press of A.
     confirming: Option<Setting>,
 }
@@ -464,6 +484,10 @@ impl Library {
         tiles
     }
 
+    fn game_at(&self, path: &std::path::Path) -> Option<&Game> {
+        self.shelves.iter().flat_map(|shelf| &shelf.games).find(|game| game.path == path)
+    }
+
     pub fn is_favorite(&self, game: &Game) -> bool {
         self.favorites.iter().any(|favorite| favorite.path == game.path)
     }
@@ -494,6 +518,9 @@ impl Launcher {
             home_tiles_row: 0,
             before_settings: Screen::Home,
             before_search: Screen::Home,
+            details_game: None,
+            details_row: 0,
+            delete_armed: false,
             confirming: None,
         }
     }
@@ -505,6 +532,11 @@ impl Launcher {
     /// Goes home from a list that has no games any more, such as favorites after the last
     /// one is unstarred.
     pub fn leave_empty_list(&mut self, library: &Library) {
+        if let Screen::Details(list) = self.screen {
+            if self.details_game(library).is_none() {
+                self.screen = Screen::Games(list);
+            }
+        }
         if let Screen::Games(list) = self.screen {
             if library.games(list).is_empty() {
                 self.screen = Screen::Home;
@@ -555,6 +587,20 @@ impl Launcher {
         self.screen = Screen::Games(List::Search);
     }
 
+    /// The game on the details screen, while it is on the card.
+    pub fn details_game<'a>(&self, library: &'a Library) -> Option<&'a Game> {
+        library.game_at(self.details_game.as_deref()?)
+    }
+
+    pub fn details_row(&self) -> DetailRow {
+        DETAIL_ROWS[self.details_row]
+    }
+
+    /// The question to show while deleting a game waits for its second press.
+    pub fn details_confirmation(&self) -> Option<&'static str> {
+        self.delete_armed.then(|| tr("PRESS A AGAIN TO DELETE FOREVER"))
+    }
+
     /// The selected tile on the settings grid.
     pub fn group_selected(&self) -> Group {
         GROUPS[self.group]
@@ -599,6 +645,7 @@ impl Launcher {
 
     pub fn press(&mut self, button: Button, library: &Library) -> Command {
         let confirming = self.confirming.take();
+        let delete_armed = std::mem::take(&mut self.delete_armed);
         // Start opens settings from anywhere, and closes them from anywhere in them.
         if button == Button::Start {
             if self.in_settings() {
@@ -611,6 +658,7 @@ impl Launcher {
         match self.screen {
             Screen::Home => self.press_home(button, library),
             Screen::Games(list) => self.press_list(button, library, list),
+            Screen::Details(list) => self.press_details(button, library, list, delete_armed),
             Screen::Settings => self.press_settings_grid(button),
             Screen::SettingsGroup(group) => self.press_group(button, group, confirming),
             Screen::Info => {
@@ -672,11 +720,43 @@ impl Launcher {
             Button::L1 if list != List::Recent => previous_letter(games, selected),
             Button::R1 if list != List::Recent => next_letter(games, selected),
             Button::X => return Command::Search,
+            Button::Y => {
+                self.details_game = Some(games[selected].path.clone());
+                self.details_row = 0;
+                self.screen = Screen::Details(list);
+                return Command::Nothing;
+            }
             Button::A => return Command::Play(games[selected].path.clone()),
             Button::Select => return Command::ToggleFavorite(games[selected].path.clone()),
             _ => selected,
         };
         self.lists.insert(list, moved);
+        Command::Nothing
+    }
+
+    fn press_details(&mut self, button: Button, library: &Library, list: List, delete_armed: bool) -> Command {
+        let Some(game) = self.details_game(library) else {
+            self.screen = Screen::Games(list);
+            return Command::Nothing;
+        };
+        let path = game.path.clone();
+        let count = DETAIL_ROWS.len();
+        match button {
+            Button::Up => self.details_row = (self.details_row + count - 1) % count,
+            Button::Down => self.details_row = (self.details_row + 1) % count,
+            Button::B => self.screen = Screen::Games(list),
+            Button::Select => return Command::ToggleFavorite(path),
+            Button::A => match self.details_row() {
+                DetailRow::Play => return Command::Play(path),
+                DetailRow::Star => return Command::ToggleFavorite(path),
+                DetailRow::Delete if delete_armed => {
+                    self.screen = Screen::Games(list);
+                    return Command::DeleteGame(path);
+                }
+                DetailRow::Delete => self.delete_armed = true,
+            },
+            _ => {}
+        }
         Command::Nothing
     }
 
@@ -984,6 +1064,79 @@ mod tests {
         launcher.screen = Screen::Games(List::Recent);
         launcher.press(Button::R1, &library);
         assert_eq!(launcher.list_selected(&library, List::Recent), 0);
+    }
+
+    fn details_library() -> Library {
+        Library {
+            shelves: vec![Shelf { system: 0, games: games_named(&["apple", "banana"]) }],
+            ..Library::default()
+        }
+    }
+
+    fn open_details(launcher: &mut Launcher, library: &Library) -> List {
+        let list = List::System(0);
+        launcher.screen = Screen::Games(list);
+        launcher.press(Button::Down, library);
+        launcher.press(Button::Y, library);
+        assert_eq!(launcher.screen(), Screen::Details(list));
+        list
+    }
+
+    #[test]
+    fn y_opens_details_of_the_selected_game_and_b_goes_back() {
+        let library = details_library();
+        let mut launcher = Launcher::new();
+        let list = open_details(&mut launcher, &library);
+        assert_eq!(launcher.details_game(&library).unwrap().name, "banana");
+        assert_eq!(launcher.details_row(), DetailRow::Play);
+        assert_eq!(launcher.press(Button::A, &library), Command::Play(PathBuf::from("banana")));
+        assert_eq!(launcher.press(Button::Select, &library), Command::ToggleFavorite(PathBuf::from("banana")));
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::A, &library), Command::ToggleFavorite(PathBuf::from("banana")));
+        launcher.press(Button::B, &library);
+        assert_eq!(launcher.screen(), Screen::Games(list));
+        assert_eq!(launcher.list_selected(&library, list), 1);
+    }
+
+    #[test]
+    fn deleting_needs_two_presses_in_a_row() {
+        let library = details_library();
+        let mut launcher = Launcher::new();
+        let list = open_details(&mut launcher, &library);
+        launcher.press(Button::Up, &library);
+        assert_eq!(launcher.details_row(), DetailRow::Delete);
+        assert_eq!(launcher.press(Button::A, &library), Command::Nothing);
+        assert!(launcher.details_confirmation().is_some());
+        // Any other press calls it off.
+        launcher.press(Button::Down, &library);
+        assert!(launcher.details_confirmation().is_none());
+        launcher.press(Button::Up, &library);
+        assert_eq!(launcher.press(Button::A, &library), Command::Nothing, "it starts over");
+        assert_eq!(launcher.press(Button::A, &library), Command::DeleteGame(PathBuf::from("banana")));
+        assert_eq!(launcher.screen(), Screen::Games(list));
+    }
+
+    #[test]
+    fn opening_details_again_starts_away_from_delete() {
+        let library = details_library();
+        let mut launcher = Launcher::new();
+        open_details(&mut launcher, &library);
+        launcher.press(Button::Up, &library);
+        launcher.press(Button::A, &library);
+        launcher.press(Button::B, &library);
+        launcher.press(Button::Y, &library);
+        assert_eq!(launcher.details_row(), DetailRow::Play);
+        assert!(launcher.details_confirmation().is_none());
+    }
+
+    #[test]
+    fn details_of_a_game_that_has_gone_go_back_to_the_list() {
+        let mut library = details_library();
+        let mut launcher = Launcher::new();
+        let list = open_details(&mut launcher, &library);
+        library.shelves[0].games.remove(1);
+        launcher.leave_empty_list(&library);
+        assert_eq!(launcher.screen(), Screen::Games(list));
     }
 
     #[test]

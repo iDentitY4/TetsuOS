@@ -132,8 +132,8 @@ fn m3u_discs(m3u: &Path, contents: &[u8]) -> Vec<PathBuf> {
         .collect()
 }
 
-/// For telling whether two paths name one file on TETSU-DATA, which ignores case.
-fn path_key(path: &Path) -> String {
+/// The path without `.` and `..`, worked out from its text alone.
+pub(crate) fn clean_path(path: &Path) -> PathBuf {
     let mut clean = PathBuf::new();
     for part in path.components() {
         match part {
@@ -144,7 +144,12 @@ fn path_key(path: &Path) -> String {
             _ => clean.push(part),
         }
     }
-    clean.to_string_lossy().to_lowercase()
+    clean
+}
+
+/// For telling whether two paths name one file on TETSU-DATA, which ignores case.
+pub(crate) fn path_key(path: &Path) -> String {
+    clean_path(path).to_string_lossy().to_lowercase()
 }
 
 fn add_roms(directory: &Path, roms: &mut Vec<PathBuf>) {

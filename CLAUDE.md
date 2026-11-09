@@ -26,7 +26,7 @@ options), resume on leaving and after power-off, fast-forward on R2, sharp-bilin
 scaling with CRT and LCD effects, and a volume sign on the volume buttons, also in the menus.
 
 Launcher: a tile grid with RECENT and FAVORITES, lists with covers and scrolling names,
-jumping by letter on L1 and R1, search on X,
+jumping by letter on L1 and R1, search on X, a game's details and deleting it on Y,
 box art downloaded on the device, and a settings grid (GENERAL, GAME SCREEN, WI-FI,
 BOX ART, THEME, TIME, SYSTEM, ADVANCED) with colours, background, title, grid size,
 hidden tiles, start screen, game names, battery display, menu sounds, the boot jingle and sleep when idle.
@@ -57,14 +57,12 @@ ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Next steps
 
-1. A game details screen: cover, console, file size, last played, star, and delete the
-   game and its saves
-2. Per-game or per-console display settings (scaling, effect, ghosting)
-3. Play time per game, shown in the details screen
-4. Sort options for lists: name, last played, play time
-5. Proposed, not confirmed: before a release, decide whether USB ONLY should keep root's
+1. Per-game or per-console display settings (scaling, effect, ghosting)
+2. Play time per game, shown in the details screen
+3. Sort options for lists: name, last played, play time
+4. Proposed, not confirmed: before a release, decide whether USB ONLY should keep root's
    empty password, as the serial console does
-6. Rewind, moved to the end by the user
+5. Rewind, moved to the end by the user
 
 ## How the launcher is built
 
@@ -72,7 +70,7 @@ ADVANCED > RUN SETUP AGAIN repeats.
   the menus; `--play`: one game in its own process; `--preview*`: PC screenshots).
   `app.rs` has the menus' loop and actions, `systems.rs` the consoles, `library.rs` the
   games and tiles, `game.rs` running and resuming games, `libretro.rs` the frontend,
-  `rom_zip.rs` games in ZIPs, `sleep.rs`, `corner.rs` (clock and battery), `launcher.rs` the button logic,
+  `rom_zip.rs` games in ZIPs, `game_files.rs` which files are a game's, `sleep.rs`, `corner.rs` (clock and battery), `launcher.rs` the button logic,
   `screens.rs` and `canvas.rs` the drawing. They reach each other through `use crate::*`.
 - **Settings:** `settings.rs` reads `/mnt/data/settings.txt` once per process.
   `settings::get()` returns the `Settings`, and `settings::update(|s| ...)` changes and
