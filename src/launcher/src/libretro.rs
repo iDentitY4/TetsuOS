@@ -284,12 +284,12 @@ struct AvInfo {
 /// frontend uses has its type.
 #[repr(C)]
 #[derive(Clone, Copy)]
-struct DiskControl {
-    set_eject_state: unsafe extern "C" fn(bool) -> bool,
+struct RawDiskControl {
+    set_eject_state: Option<unsafe extern "C" fn(bool) -> bool>,
     get_eject_state: *const c_void,
-    get_image_index: unsafe extern "C" fn() -> c_uint,
-    set_image_index: unsafe extern "C" fn(c_uint) -> bool,
-    get_num_images: unsafe extern "C" fn() -> c_uint,
+    get_image_index: Option<unsafe extern "C" fn() -> c_uint>,
+    set_image_index: Option<unsafe extern "C" fn(c_uint) -> bool>,
+    get_num_images: Option<unsafe extern "C" fn() -> c_uint>,
     replace_image_index: *const c_void,
     add_image_index: *const c_void,
     set_initial_image: *const c_void,
@@ -298,9 +298,30 @@ struct DiskControl {
     get_image_label: *const c_void,
 }
 
+/// The functions of a `RawDiskControl` that the frontend calls, checked to be there.
+#[derive(Clone, Copy)]
+struct DiskControl {
+    set_eject_state: unsafe extern "C" fn(bool) -> bool,
+    get_image_index: unsafe extern "C" fn() -> c_uint,
+    set_image_index: unsafe extern "C" fn(c_uint) -> bool,
+    get_num_images: unsafe extern "C" fn() -> c_uint,
+    get_image_path: Option<unsafe extern "C" fn(c_uint, *mut c_char, usize) -> bool>,
+}
+
 // SAFETY for each call below: the core set these, and they stay valid while it is loaded,
 // which is as long as the process lasts. They are called on the thread that runs the core.
 impl DiskControl {
+    /// None if the core left out a function that changing discs needs.
+    fn from_raw(raw: &RawDiskControl) -> Option<Self> {
+        Some(Self {
+            set_eject_state: raw.set_eject_state?,
+            get_image_index: raw.get_image_index?,
+            set_image_index: raw.set_image_index?,
+            get_num_images: raw.get_num_images?,
+            get_image_path: raw.get_image_path,
+        })
+    }
+
     fn count(&self) -> usize {
         unsafe { (self.get_num_images)() as usize }
     }
@@ -434,7 +455,33 @@ impl Host {
     }
 }
 
+/// Whether an environment command reads or writes through its `data` pointer here without
+/// checking it for null itself.
+fn needs_data(command: c_uint) -> bool {
+    matches!(
+        command,
+        ENVIRONMENT_GET_CAN_DUPE
+            | ENVIRONMENT_GET_SYSTEM_DIRECTORY
+            | ENVIRONMENT_GET_SAVE_DIRECTORY
+            | ENVIRONMENT_SET_PIXEL_FORMAT
+            | ENVIRONMENT_GET_VARIABLE
+            | ENVIRONMENT_GET_CORE_OPTIONS_VERSION
+            | ENVIRONMENT_GET_VARIABLE_UPDATE
+            | ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION
+            | ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE
+            | ENVIRONMENT_SET_MEMORY_MAPS
+    )
+}
+
+/// `retro_environment_t`.
+///
+/// # Safety
+/// Called by the core, on the thread that runs it. A `data` that isn't null points to what
+/// libretro.h gives for `command`.
 unsafe extern "C" fn environment(command: c_uint, data: *mut c_void) -> bool {
+    if data.is_null() && needs_data(command & !ENVIRONMENT_EXPERIMENTAL) {
+        return false;
+    }
     match command & !ENVIRONMENT_EXPERIMENTAL {
         ENVIRONMENT_GET_CAN_DUPE => {
             *(data as *mut bool) = true;
@@ -526,7 +573,9 @@ unsafe extern "C" fn environment(command: c_uint, data: *mut c_void) -> bool {
             true
         }
         ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE => {
-            let control = *(data as *const DiskControl);
+            let Some(control) = DiskControl::from_raw(&*(data as *const RawDiskControl)) else {
+                return false;
+            };
             with_host(|host| host.disk_control = Some(control));
             true
         }
@@ -546,7 +595,7 @@ unsafe extern "C" fn video_refresh(
     pitch: usize,
 ) {
     // A null frame means the previous one is repeated.
-    if data.is_null() {
+    if data.is_null() || width == 0 || height == 0 {
         return;
     }
     let (width, height) = (width as usize, height as usize);
@@ -595,6 +644,9 @@ unsafe extern "C" fn audio_sample(left: i16, right: i16) {
 }
 
 unsafe extern "C" fn audio_batch(data: *const i16, frames: usize) -> usize {
+    if data.is_null() || frames == 0 {
+        return frames;
+    }
     // SAFETY: the core provides `frames` stereo pairs of 16-bit samples.
     let bytes = std::slice::from_raw_parts(data as *const u8, frames * 4);
     with_host(|host| write_audio(host, bytes));
@@ -1649,24 +1701,24 @@ fn pause(
         redraw |= framebuffer.sign_wait().is_zero();
         if redraw {
             let theme = crate::current_theme();
-            let screen = match (&controls_page, &options_page, &cheats_page) {
-                _ if achievements_page.is_some() => {
+            let screen = match (&achievements_page, &controls_page, &options_page, &cheats_page) {
+                (Some(achievements_page), ..) => {
                     let session = achievements.session.as_mut();
                     let summary = session.as_ref().map(|session| session.summary()).unwrap_or_default();
                     let status = session.as_ref().map_or(achievements::Status::Loading, |session| session.status().clone());
                     let mut empty = achievements::Badges::new(Path::new(achievements::BADGE_DIR));
                     let view = canvas::AchievementsView {
-                        page: achievements_page.as_ref().expect("checked above"),
+                        page: achievements_page,
                         status: &status,
                         summary,
                     };
                     let badges = session.map_or(&mut empty, |session| session.badges());
                     canvas::achievements_screen(width, height, &frame, frame_size, &view, badges, theme)
                 }
-                (Some(page), _, _) => canvas::controls_screen(width, height, &frame, frame_size, page, theme),
-                (None, Some(page), _) => canvas::core_options_screen(width, height, &frame, frame_size, page, theme),
-                (None, None, Some(page)) => canvas::cheats_screen(width, height, &frame, frame_size, page, theme),
-                (None, None, None) => {
+                (None, Some(page), _, _) => canvas::controls_screen(width, height, &frame, frame_size, page, theme),
+                (None, None, Some(page), _) => canvas::core_options_screen(width, height, &frame, frame_size, page, theme),
+                (None, None, None, Some(page)) => canvas::cheats_screen(width, height, &frame, frame_size, page, theme),
+                (None, None, None, None) => {
                     let view = PauseView {
                         menu,
                         slot_used: slot_path(save, menu.slot()).exists(),

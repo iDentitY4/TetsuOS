@@ -227,9 +227,12 @@ impl Framebuffer {
     fn write_row(&self, row: &[u32], x: usize, y: usize) -> io::Result<()> {
         let bytes_per_pixel = self.var.bits_per_pixel as usize / 8;
         let offset = self.screen_offset() + (y * self.line_length + x * bytes_per_pixel) as u64;
-        if bytes_per_pixel == 4 && (self.var.red.offset, self.var.green.offset, self.var.blue.offset) == (16, 8, 0) {
-            // SAFETY: the bytes of a u32 are always valid. The device's arm64 and this
-            // format are both little-endian.
+        let same_layout = cfg!(target_endian = "little")
+            && bytes_per_pixel == 4
+            && (self.var.red.offset, self.var.green.offset, self.var.blue.offset) == (16, 8, 0);
+        if same_layout {
+            // SAFETY: the bytes of a u32 are always valid. The check above makes sure this
+            // machine's byte order is the format's.
             let bytes = unsafe { std::slice::from_raw_parts(row.as_ptr() as *const u8, row.len() * 4) };
             return self.file.write_all_at(bytes, offset);
         }

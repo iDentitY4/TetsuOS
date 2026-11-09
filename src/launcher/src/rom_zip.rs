@@ -7,7 +7,7 @@ use std::ffi::OsString;
 use std::fs::File;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::{LazyLock, Mutex};
+use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
 use zip::ZipArchive;
 
 /// Where a game is unpacked while it runs. It is in memory, so a power-off empties it.
@@ -31,12 +31,17 @@ pub(crate) struct ZippedGame {
 /// it whenever the games are looked for again.
 static KNOWN: LazyLock<Mutex<HashMap<PathBuf, Option<ZippedGame>>>> = LazyLock::new(Mutex::default);
 
+/// The cache stays usable after a panic elsewhere: an entry is whole or not there.
+fn known() -> MutexGuard<'static, HashMap<PathBuf, Option<ZippedGame>>> {
+    KNOWN.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
 pub(crate) fn is_zip(path: &Path) -> bool {
     path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("zip"))
 }
 
 pub(crate) fn forget_all() {
-    KNOWN.lock().unwrap().clear();
+    known().clear();
 }
 
 /// The game in a ZIP. None for another kind of file, or a ZIP with no game that can be played.
@@ -44,7 +49,7 @@ pub(crate) fn game_in(path: &Path) -> Option<ZippedGame> {
     if !is_zip(path) {
         return None;
     }
-    let mut known = KNOWN.lock().unwrap();
+    let mut known = known();
     known
         .entry(path.to_path_buf())
         .or_insert_with(|| {
