@@ -1,11 +1,15 @@
 //! Settings > CORES: the consoles, each opening its core's options, which it changes for
 //! the console. A game's own choices are only changed in its menu.
 
-use crate::core_options::{self, OptionsPage};
+use crate::{core_options, fb, power, screens, settings, sounds};
+use crate::app::{button_sound, press_volume};
 use crate::controls::PageAction;
+use crate::core_options::OptionsPage;
+use crate::corner::{add_clock, read_battery, screen_frame};
 use crate::input::{Button, Event};
 use crate::repeat::Repeater;
-use crate::*;
+use crate::sleep::sleep_until_lid_opens;
+use crate::systems::SYSTEMS;
 use std::io;
 use std::path::Path;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};

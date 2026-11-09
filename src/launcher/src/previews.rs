@@ -1,11 +1,19 @@
 //! Images of the screens, rendered on the PC without the device.
 
-use crate::*;
-use crate::canvas::{self, Battery};
-use crate::icons;
+use crate::{
+    achievements, boxart, canvas, cheats, color, controls, core_options, i18n, icons, keyboard,
+    pause, pause_screens, png, screens, settings, setup, wifi, wifi_menu,
+};
+use crate::app::launcher_canvas;
+use crate::canvas::Battery;
+use crate::corner::{current_theme, screen_frame, time_note};
 use crate::input::{Button, Controls, Event};
 use crate::launcher::Launcher;
-use std::io::{self, Write};
+use crate::library::build_library;
+use crate::usb_drive::{usb_drive_view, UsbLink};
+use crate::wifi_screen::{password_note, wifi_status_line};
+use std::io;
+use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
 

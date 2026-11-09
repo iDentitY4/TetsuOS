@@ -4,10 +4,11 @@
 //! They are named after the game's save file, as that already tells apart `Tetris.gb` and
 //! `Tetris.nes` and stays the same when a game is zipped: `Tetris.gb 001.png`.
 
-use crate::image::Image;
+use crate::png;
 use crate::boxart_fetch::{fit_size, resize};
+use crate::image::Image;
 use crate::storage::write_atomic;
-use crate::{png, save_path, system_for};
+use crate::systems::{save_path, system_for};
 use std::io;
 use std::path::{Path, PathBuf};
 

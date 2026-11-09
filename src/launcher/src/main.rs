@@ -4,6 +4,9 @@
 
 #![deny(unsafe_op_in_unsafe_fn, clippy::undocumented_unsafe_blocks)]
 
+#[cfg(not(target_os = "linux"))]
+compile_error!("the launcher needs Linux: it uses evdev, the framebuffer, /sys and /proc");
+
 mod achievements;
 mod app;
 mod boot_partition;
@@ -58,19 +61,16 @@ mod wifi;
 mod wifi_menu;
 mod wifi_screen;
 
-pub(crate) use app::*;
-pub(crate) use boxart_screen::*;
-pub(crate) use core_options_screen::*;
-pub(crate) use corner::*;
-pub(crate) use game::*;
-pub(crate) use library::*;
-pub(crate) use previews::*;
-pub(crate) use setup::run_setup;
-pub(crate) use sleep::*;
-pub(crate) use system_info::*;
-pub(crate) use systems::*;
-pub(crate) use usb_drive::*;
-pub(crate) use wifi_screen::*;
+use app::run_launcher;
+use corner::current_theme;
+use game::{BATTERY_EMPTY_EXIT, run_game};
+use previews::{
+    write_achievements_preview, write_button_preview, write_cheats_preview, write_controls_preview,
+    write_core_options_preview, write_keyboard_preview, write_launcher_preview,
+    write_notice_preview, write_pause_preview, write_plain_ppm, write_ppm, write_setup_preview,
+    write_usb_drive_preview, write_wifi_preview,
+};
+use systems::{parse_persistence, system_for};
 
 use input::Button;
 use libretro::Ending;

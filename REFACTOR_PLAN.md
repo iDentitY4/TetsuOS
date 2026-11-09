@@ -127,7 +127,7 @@ batches 1, 5 and 7.
 - [x] **3. Clippy mechanical** — C6, C7, I4, B4. No moves. Left: `play`'s 8 arguments and its by-value `cheat_source` (batch 8), P3 (with the paths, batch 9), `controls.rs:74` (the inner `Option` is the target "none"), `&self` on `in_flight`/`memory_found`, and the lints whose fixes read worse here (`single_match_else`, `manual_let_else`, `format_push_string`).
 - [x] **4. Layering, small moves** — A2 (`image.rs`), A4 (`CoreSetup`, `Persistence` → `systems.rs`), A8 (`http.rs`), and `Rgb` → `color.rs` from A3. Not done, on a closer look: C4 (the `#[cfg(test)]` fake server and the one `cfg!(test)` are short and clear as they are) and `systems` ⇄ `rom_zip` (breaking it means a predicate through 11 call sites, for a relation that is mutual by nature).
 - [x] **5. `canvas` split** — A1: in-game menu drawing out of `canvas.rs`, into `pause_screens.rs`.
-- [ ] **6. Explicit imports and visibility** — A6, I1, rest of A3, P1.
+- [x] **6. Explicit imports and visibility** — A6, P1. The crate has no glob imports left, which shows the real graph: the cycle of 24 is now one of 14 (the screens and flows, `libretro`, `achievements`) and one of 5 (`settings`, `i18n`, `input`, `controls`, `clock`). Not done: I1, whose premise was wrong (in a binary crate the compiler already reports unused `pub` items, so `pub(crate)` would be 650 changed lines for style only), and the rest of A3 (`i18n` reads the language from `settings` on every call; giving it a copy of its own could change when a language switch shows).
 - [ ] **7. `libretro` split** — A5 as file moves first (one commit), function extraction second (another).
 - [ ] **8. Long functions** — A7.
 - [ ] **9. Paths and casts** — A9, P2, then I6 to record the lint bar.

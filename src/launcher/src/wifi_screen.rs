@@ -1,10 +1,12 @@
 //! The Wi-Fi screen, from Settings: networks in range, joining and forgetting them.
 
+use crate::{fb, icons, power, screens, wifi, wifi_menu};
+use crate::app::{keyboard_sound, press_volume};
+use crate::corner::{add_clock, read_battery, screen_frame};
 use crate::i18n::{tr, trf};
-use crate::*;
-use crate::icons;
 use crate::input::{Button, Event};
 use crate::repeat::Repeater;
+use crate::sleep::sleep_until_lid_opens;
 use std::io;
 use std::path::Path;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};

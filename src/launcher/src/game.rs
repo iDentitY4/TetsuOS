@@ -1,13 +1,17 @@
 //! Running a game in its own process, and resuming one at boot.
 
-use crate::*;
+use crate::{cheats, fb, libretro, recent, rom_zip, screens, settings, sounds, storage};
+use crate::app::{change_volume, open_framebuffer};
+use crate::corner::current_theme;
 use crate::input::{Button, Event};
 use crate::launcher::{Game, Library};
-use crate::libretro::{self, Ending};
-use crate::systems::Persistence;
+use crate::library::{is_m3u, read_m3u};
+use crate::libretro::Ending;
+use crate::sleep::sleep_until_lid_opens;
+use crate::systems::{Persistence, persistence_arg, SAVE_DIR, save_path, system_for, SYSTEMS};
 use std::io;
-use std::path::{Path, PathBuf};
 use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::thread::sleep;
@@ -178,6 +182,7 @@ pub(crate) fn run_game(core: &Path, rom: &Path, save: &Path, persistence: Persis
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::library::build_library;
 
     #[test]
     fn a_grouped_game_copies_the_newest_disc_card_once() {

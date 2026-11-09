@@ -1,8 +1,8 @@
 //! The top-right corner: the battery level and the clock, and the time settings' note.
 
+use crate::{canvas, clock, screens, settings};
+use crate::canvas::Battery;
 use crate::i18n::{tr, trf};
-use crate::*;
-use crate::canvas::{self, Battery};
 use std::path::Path;
 use std::time::Duration;
 

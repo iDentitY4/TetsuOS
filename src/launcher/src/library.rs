@@ -1,9 +1,9 @@
 //! The games on the card, sorted onto shelves by console, and the home screen's tiles.
 
+use crate::{achievements, favorites, game_files, icons, names, recent, rom_zip, settings, storage};
 use crate::i18n::tr;
-use crate::*;
-use crate::icons;
 use crate::launcher::{Game, Launcher, Library, List, Shelf, Tile};
+use crate::systems::{ROM_DIR, system_for, system_index, SYSTEMS};
 use std::collections::{BTreeMap, HashSet};
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt;

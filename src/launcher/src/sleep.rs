@@ -1,6 +1,6 @@
 //! Sleep: with the lid closed, and when the menus are idle.
 
-use crate::*;
+use crate::wifi;
 use crate::input::{Button, Event};
 use std::path::Path;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};

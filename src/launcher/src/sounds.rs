@@ -7,12 +7,13 @@
 //! starts it in its own process just after the sound card is set up, and the launcher keeps
 //! the boot logo on screen until it ends.
 
-use std::io::{self, Write};
+use crate::settings;
+use std::io;
+use std::io::Write;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use crate::settings;
 
 const RATE: u32 = 48000;
 /// The loudest a sound gets, out of 32767. The system volume scales it further.
@@ -184,19 +185,19 @@ pub fn boot_jingle() -> io::Result<()> {
     if settings::get().jingle_off {
         return Ok(());
     }
-    println!("jingle process started {}", crate::boot_time());
+    println!("jingle process started {}", crate::system_info::boot_time());
     settings::restore_levels();
     // aplay first: the driver takes 700 ms to bring up the speaker amp, and making the
     // samples can happen during that wait.
     let mut child = open_for_jingle()?;
-    println!("jingle's aplay started {}", crate::boot_time());
+    println!("jingle's aplay started {}", crate::system_info::boot_time());
     let bytes = jingle_bytes();
-    println!("jingle's samples made {}", crate::boot_time());
+    println!("jingle's samples made {}", crate::system_info::boot_time());
     if let Some(mut stdin) = child.stdin.take() {
         stdin.write_all(&bytes)?;
     }
     child.wait()?;
-    println!("jingle ended {}", crate::boot_time());
+    println!("jingle ended {}", crate::system_info::boot_time());
     Ok(())
 }
 

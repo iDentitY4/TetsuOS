@@ -1,34 +1,38 @@
 //! A minimal libretro frontend: loads a core, and runs one game on the framebuffer.
 
-use crate::i18n::{tr, trf};
-use crate::pause_screens::{self, PauseView};
-use crate::achievements::{self, Notice, Session};
-use crate::cheats::{self, CheatAction, CheatSource, CheatsPage, Downloaded};
-use crate::controls::{self, ControlsMenu, Layout, PageAction, Pad, Scope};
-use crate::core_options::{self, current, default_value, Category, Choice, Choices, Declarations, Declared, OptionsPage};
+use crate::{
+    achievements, cheats, controls, core_options, input, pause_screens, png, power, screens,
+    screenshot, settings,
+};
+use crate::achievements::{Notice, Session};
+use crate::cheats::{CheatAction, CheatSource, CheatsPage, Downloaded};
+use crate::controls::{ControlsMenu, Layout, Pad, PageAction, Scope};
+use crate::core_options::{
+    Category, Choice, Choices, current, Declarations, Declared, default_value, OptionsPage,
+};
 use crate::fb::Framebuffer;
-use crate::input::{self, Button, Controls, Event};
+use crate::i18n::{tr, trf};
+use crate::input::{Button, Controls, Event};
 use crate::pause::{Action, MenuTrigger, PauseMenu};
+use crate::pause_screens::PauseView;
 use crate::play_time::PlayClock;
-use crate::power::{self, Level};
-use crate::png;
-use crate::screens;
-use crate::screenshot;
-use crate::settings::{self, Effect, GameDisplay, Ghosting, Scaling};
+use crate::power::Level;
+use crate::settings::{Effect, GameDisplay, Ghosting, Scaling};
 use crate::storage::write_atomic;
 use crate::systems::{CoreSetup, Persistence};
+use std::io;
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::ffi::{c_char, c_int, c_uint, c_void, CStr, CString, OsStr};
-use std::io::{self, Read, Write};
+use std::io::{Read, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, TryRecvError};
-use std::thread::{sleep, spawn, JoinHandle};
+use std::thread::{JoinHandle, sleep, spawn};
 use std::time::{Duration, Instant};
 
 /// Set when the system asks the game to stop with SIGTERM, as it does at power-off.
@@ -1365,7 +1369,7 @@ const FAST_FORWARD_MAX: u32 = 8;
 /// Shows or clears the fast-forward sign in the top right corner, which is border for
 /// every system's picture, like the battery warning's corner.
 fn draw_fast_forward(framebuffer: &mut Framebuffer, on: bool) -> io::Result<()> {
-    let canvas = screens::fast_forward_sign(on, crate::current_theme());
+    let canvas = screens::fast_forward_sign(on, crate::corner::current_theme());
     let (width, _) = framebuffer.size();
     let x = width.saturating_sub(canvas.width + WARNING_POSITION.0);
     framebuffer.blit_canvas(&canvas, x, WARNING_POSITION.1)
@@ -1415,7 +1419,7 @@ fn picture_in_area(
 /// Shows a new volume level during play, and takes the sign away when its time is up.
 fn update_volume_sign(framebuffer: &mut Framebuffer, levels: &Receiver<u32>) -> io::Result<()> {
     if let Some(percent) = levels.try_iter().last() {
-        crate::show_volume(framebuffer, percent)?;
+        crate::app::show_volume(framebuffer, percent)?;
     }
     if let Some(area) = framebuffer.take_due_sign() {
         let size = framebuffer.size();
@@ -1658,7 +1662,7 @@ fn show_next_notice(framebuffer: &mut Framebuffer, notices: &mut VecDeque<Notice
         (Some(session), Some(name)) => session.badges().get(name, achievements::NOTICE_BADGE, false),
         _ => None,
     };
-    let canvas = screens::achievement_notice(&notice, badge.as_ref(), crate::current_theme());
+    let canvas = screens::achievement_notice(&notice, badge.as_ref(), crate::corner::current_theme());
     let top = framebuffer.size().1.saturating_sub(canvas.height + NOTICE_BOTTOM);
     framebuffer.show_sign(&canvas, top, notice.time)
 }
@@ -1716,13 +1720,13 @@ fn pause(
             }
         }
         if let Some(percent) = volume_levels.try_iter().last() {
-            crate::show_volume(framebuffer, percent)?;
+            crate::app::show_volume(framebuffer, percent)?;
             redraw = true;
         }
         // Drawing again removes the volume sign.
         redraw |= framebuffer.sign_wait().is_zero();
         if redraw {
-            let theme = crate::current_theme();
+            let theme = crate::corner::current_theme();
             let screen = match (&achievements_page, &controls_page, &options_page, &cheats_page) {
                 (Some(achievements_page), ..) => {
                     let session = achievements.session.as_mut();
@@ -1852,7 +1856,7 @@ fn pause(
                     menu.set_message(trf("DISC {} IS MISSING", &[&number]));
                 } else if control.change(disc) {
                     println!("changed to disc {number}");
-                    let disc_path = crate::is_m3u(rom).then(|| crate::read_m3u(rom).get(disc).cloned()).flatten();
+                    let disc_path = crate::library::is_m3u(rom).then(|| crate::library::read_m3u(rom).get(disc).cloned()).flatten();
                     if let (Some(session), Some(path)) = (achievements.session.as_mut(), disc_path) {
                         session.change_disc(&path);
                     }
@@ -2025,7 +2029,7 @@ pub fn play(
             Some(Level::Critical) => {
                 eprintln!("the battery is empty: saving and powering off");
                 let (width, height) = framebuffer.size();
-                framebuffer.draw(&screens::message_screen(width, height, tr("BATTERY EMPTY"), crate::current_theme()))?;
+                framebuffer.draw(&screens::message_screen(width, height, tr("BATTERY EMPTY"), crate::corner::current_theme()))?;
                 ending = Ending::BatteryEmpty;
                 break;
             }
@@ -2212,7 +2216,7 @@ pub fn render(
 ) -> io::Result<()> {
     set_host(save.parent().unwrap_or(Path::new(".")), (640, 480), setup, None, Layout::default())?;
     let mut core = Core::load(core_path, rom)?;
-    let console = crate::system_for(rom).and_then(|system| achievements::console_id(system.key));
+    let console = crate::systems::system_for(rom).and_then(|system| achievements::console_id(system.key));
     // At load, where a session first looks, and after the frames, as some cores, such as
     // mGBA, give their memory map only in their first frame.
     if let Some(console) = console {

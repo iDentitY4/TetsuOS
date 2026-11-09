@@ -4,9 +4,15 @@
 //! ejecting the drive on the PC or pressing B, checks the partition, mounts it and reads
 //! the settings and games again.
 
+use crate::{fb, power, screens, settings, sounds};
+use crate::app::{button_sound, shut_down};
+use crate::corner::{
+    add_clock, BATTERY_REFRESH, corner_clock, current_theme, read_battery, screen_frame,
+};
 use crate::i18n::tr;
-use crate::*;
 use crate::input::{Button, Event};
+use crate::sleep::BACKLIGHT_POWER;
+use crate::system_info::boot_time;
 use std::io;
 use std::process::Command;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};

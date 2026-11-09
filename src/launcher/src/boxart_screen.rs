@@ -1,9 +1,14 @@
 //! Settings > BOX ART's download screen.
 
+use crate::{boxart, boxart_fetch, fb, names, power, screens, wifi};
+use crate::app::press_volume;
+use crate::corner::{add_clock, BATTERY_REFRESH, corner_clock, read_battery, screen_frame};
 use crate::i18n::{tr, trf};
-use crate::*;
 use crate::input::{Button, Event};
 use crate::launcher::ArtDownload;
+use crate::library::find_roms;
+use crate::sleep::sleep_until_lid_opens;
+use crate::systems::{ROM_DIR, system_for};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};

@@ -1,13 +1,15 @@
 //! Which files on the card belong to a game, for its details screen and for deleting it.
 
+use crate::{achievements, cheats, controls, core_options, favorites, play_time, recent};
 use crate::boxart::ART_DIR;
-use crate::i18n::{tr, trf};
 use crate::boxart_fetch::art_path;
+use crate::i18n::{tr, trf};
 use crate::launcher::Library;
+use crate::library::{clean_path, is_m3u, path_key, read_m3u};
 use crate::pause::SLOTS;
-use crate::*;
-use std::collections::HashSet;
+use crate::systems::{ROM_DIR, save_path, system_for};
 use std::io;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 

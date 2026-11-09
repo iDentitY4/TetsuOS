@@ -12,14 +12,14 @@
 //! callbacks only ever run on that thread. The callbacks' state lives in `STATE`, one per
 //! thread, which is never held while calling into rcheevos.
 
-use crate::image::Image;
 use crate::color::Rgb;
 use crate::i18n::{tr, trf};
+use crate::image::Image;
 use crate::storage::write_atomic;
+use std::io;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::{c_char, c_int, c_void, CStr, CString};
-use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::{Duration, Instant};
@@ -1563,7 +1563,7 @@ mod tests {
 
     #[test]
     fn every_console_with_achievements_has_an_id() {
-        for system in &crate::SYSTEMS {
+        for system in &crate::systems::SYSTEMS {
             assert_eq!(console_id(system.key).is_none(), system.key == "tamagotchi", "{}", system.key);
         }
         assert_eq!(console_id("gba"), Some(5));
