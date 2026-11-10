@@ -510,23 +510,39 @@ Built but not yet tested on the device:
   errors, and the user confirmed on 2026-11-08 that they work and are satisfying, in the
   menus and on the keyboard
 - Boot jingle: Settings > GENERAL > BOOT JINGLE, ON (default, also for a settings file
-  from before it) or OFF, chosen by the user on 2026-11-09 from 16 candidates heard as WAV
-  files and 3 on the device. It is original and 1.3 s long: a spoon tapping an iron kettle,
-  G6 G6 A6 B6, up to a bright chord on G7 (`sounds::jingle_samples`, tones with an iron
-  bar's inharmonic partials, peak 11000 of 32767). `S21jingle` runs `launcher --jingle` in the
-  background just after `S20audio`, logging to `/var/log/jingle.log`, and writes its process
-  to `/run/jingle.pid`. The launcher loads as usual, then waits for that process before it
-  draws anything (`sounds::wait_for_boot_jingle`, at most 3 s), so the logo stays up until
-  the jingle ends and a resumed game finds the card free. aplay starts before the samples
-  are made (0.16 s), as that fits inside the amp's wait. Turning the setting on plays it
-  once. Measured on the device: the launcher drew 5.84 s after power on with the jingle,
-  3.83 s without. Of the 2.0 s, 1.3 s is the jingle and 0.7 s the amp's wait, below; the
-  user chose to keep that over a kernel patch shortening the wait or drawing the launcher
-  during the last chord. It doesn't play when waking from sleep. Claude checked the samples
-  matched the chosen WAV exactly, and on the device the setting's screen, the file line and
-  a silent boot with it off. The user confirmed on 2026-11-09 that it sounds right, the
-  logo stays up until it ends, headphones work and an interrupted game resumes after it,
-  and that it may also play when USB power starts the device
+  from before it) or OFF. Since 2026-11-10 it is matsukaze, the rush of a tetsubin before
+  it boils, answered by two strikes of an iron wind chime (a Nambu furin, from the same
+  ironware tradition), 1.7 s long, with a boot animation. The user chose it from 32
+  candidates heard as WAV files (chip tunes, slower chip tunes, iron, furin), made by
+  `scripts/jingles/make_jingles*.py` (numpy): chip tones with band-limited pulses, struck
+  metal as decaying inharmonic modes with beating pairs, filtered noise and a small
+  Schroeder reverb. The launcher keeps the chosen one as samples,
+  `src/launcher/sounds/boot-jingle.s16` (48 kHz mono, 160 KB, peak 11000 of 32767),
+  because its noise and reverb would not come out the same made again in Rust;
+  `scripts/jingles/boot_jingle.py` writes it, and Claude checked it matched the chosen WAV
+  to the sample. The first jingle, from 2026-11-09, was a spoon tapping an iron kettle,
+  1.3 s, made as tones in `sounds.rs`.
+  `S21jingle` runs `launcher --jingle` in the background just after `S20audio`, logging to
+  `/var/log/jingle.log`, and writes its process to `/run/jingle.pid`. The launcher loads
+  as usual, then waits for that process before it draws anything
+  (`sounds::wait_for_boot_jingle`, at most 4 s), so a resumed game finds the card free.
+  Turning the setting on plays the sound once, without the animation. It doesn't play
+  when waking from sleep.
+  The animation (`boot_animation.rs`) is drawn by the jingle's process over the kernel's
+  logo, starting and ending on it exactly and drawing only where it is black (and the
+  title): steam puffs from the kettle's spout as loud as the rush, a ring of teal blocks
+  leaves the kettle at each strike (0.50 and 0.64 s), the title flashes, and a shine
+  sweeps across it. It is in the logo's 5-pixel blocks, fading in steps of its colours,
+  with a fixed random sequence so each boot looks alike. Its time comes from the samples
+  the card has played (`hw_ptr` in `/proc/asound/card0/pcm0p/sub0/status`, read each
+  frame while the state is RUNNING), so it waits out the amp's 700 ms and keeps to the
+  speaker; with no sound by 1.5 s it runs on the clock. It draws every other refresh,
+  about 30 frames a second, with `blit_canvas`: `Framebuffer::draw` took 31 ms a frame
+  there, `blit_canvas` 7 ms, plus 4 ms to make the frame. `launcher
+  --preview-boot-animation FILE.ppm` renders eight moments of it on the PC. Measured on the
+  device on 2026-11-10: 50 frames during boot, the jingle's process ending 6.29 s after
+  power on and the launcher drawn at 6.35 s (5.84 s with the first jingle, 3.83 s with it
+  off). Claude saw steam, rings and the logo at the end in captures of the framebuffer
 - Sleep when idle: Settings > SYSTEM > SLEEP WHEN IDLE: OFF (default), 2, 5, 10 or 30
   minutes without a press in the launcher's own screens (home, lists, settings), not in
   games, the Wi-Fi screen, the keyboard or a download (`Wake::Idle`, `sleep_until_woken`).

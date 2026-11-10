@@ -100,72 +100,26 @@ pub fn play(sound: Sound) {
     *slot = Some(child);
 }
 
-/// The loudest the jingle gets, out of 32767, about twice the menu sounds.
-const JINGLE_PEAK: f64 = 11000.0;
-/// Seconds of sound, with the last note's ring fading out at the end.
-const JINGLE_SECONDS: f64 = 1.3;
-const JINGLE_FADE_SECONDS: f64 = 0.03;
+/// The boot jingle: the rush of a tetsubin before it boils (matsukaze), answered by an
+/// iron wind chime. 48 kHz, 16-bit little-endian mono, made by
+/// `scripts/jingles/boot_jingle.py` and kept as it is, since its noise and room echo
+/// would come out differently made again here.
+static JINGLE: &[u8] = include_bytes!("../sounds/boot-jingle.s16");
 /// S21jingle writes the jingle's process here.
 const JINGLE_PID_PATH: &str = "/run/jingle.pid";
-/// Long enough for the jingle, in case it never ends.
-const JINGLE_WAIT: Duration = Duration::from_secs(3);
+/// Long enough for the amp's wait and the jingle, in case it never ends.
+const JINGLE_WAIT: Duration = Duration::from_secs(4);
 /// aplay's buffer in microseconds: the CPU is busy during boot, and nothing here needs a
 /// quick response.
 const JINGLE_BUFFER: &str = "--buffer-time=200000";
+/// What the sound card reports while it plays, with the samples played so far.
+const PLAYBACK_STATUS: &str = "/proc/asound/card0/pcm0p/sub0/status";
+/// The animation starts without the sound if the card hasn't started by then.
+const SOUND_START_WAIT: Duration = Duration::from_millis(1500);
 
-const NOTE_G6: f64 = 1567.98;
-const NOTE_A6: f64 = 1760.0;
-const NOTE_B6: f64 = 1975.53;
-const NOTE_D7: f64 = 2349.32;
-const NOTE_G7: f64 = 3135.96;
-
-/// Adds an iron bar's ring to `out`: `partials` are a frequency multiple, a loudness and how
-/// long it lasts against the rest, so the upper ones die first. A slightly detuned copy of
-/// the lowest note beats against it, which makes it sound like metal.
-fn ring(out: &mut [f64], start: f64, frequency: f64, length: f64, attack: f64, partials: &[(f64, f64, f64)]) {
-    let rate = f64::from(RATE);
-    let first = (start * rate) as usize;
-    let count = (length * rate) as usize;
-    for &(multiple, loudness, lasting) in partials {
-        let step = std::f64::consts::TAU * frequency * multiple / rate;
-        let decay = length / 4.0 * lasting * rate;
-        for (index, slot) in out[first..].iter_mut().take(count).enumerate() {
-            let index = index as f64;
-            *slot += (step * index).sin() * loudness * (index / (attack * rate)).min(1.0) * (-index / decay).exp();
-        }
-    }
-}
-
-/// A soft tap, for the jingle's opening notes.
-fn tap(out: &mut [f64], start: f64, frequency: f64, loudness: f64) {
-    let partials = [(1.0, loudness, 1.0), (1.004, 0.45 * loudness, 1.0), (2.756, 0.42 * loudness, 0.45), (5.404, 0.16 * loudness, 0.2)];
-    ring(out, start, frequency, 0.26, 0.001, &partials);
-}
-
-/// A hard, bright hit, for the jingle's final chord.
-fn strike(out: &mut [f64], start: f64, frequency: f64, length: f64, loudness: f64) {
-    let partials = [(1.0, loudness, 1.0), (1.004, 0.4 * loudness, 1.0), (2.756, 0.6 * loudness, 0.5), (5.404, 0.25 * loudness, 0.2)];
-    ring(out, start, frequency, length, 0.0006, &partials);
-}
-
-/// Stereo 16-bit samples of the jingle: a spoon on an iron kettle, tapping up to a bright
-/// chord that says it's ready to play.
+/// Stereo 16-bit samples of the jingle.
 pub fn jingle_samples() -> Vec<i16> {
-    let rate = f64::from(RATE);
-    let mut out = vec![0.0; (JINGLE_SECONDS * rate) as usize];
-    tap(&mut out, 0.0, NOTE_G6, 0.6);
-    tap(&mut out, 0.15, NOTE_G6, 0.45);
-    tap(&mut out, 0.3, NOTE_A6, 0.52);
-    tap(&mut out, 0.38, NOTE_B6, 0.55);
-    strike(&mut out, 0.52, NOTE_G7, 0.75, 1.0);
-    strike(&mut out, 0.52, NOTE_D7, 0.65, 0.55);
-    strike(&mut out, 0.52, NOTE_G6, 0.55, 0.4);
-    let fade = (JINGLE_FADE_SECONDS * rate) as usize;
-    for (index, slot) in out.iter_mut().rev().take(fade).enumerate() {
-        *slot *= index as f64 / fade as f64;
-    }
-    let loudest = out.iter().fold(0.0_f64, |most, slot| most.max(slot.abs()));
-    out.iter().flat_map(|slot| [(slot * JINGLE_PEAK / loudest) as i16; 2]).collect()
+    JINGLE.as_chunks::<2>().0.iter().flat_map(|bytes| [i16::from_le_bytes(*bytes); 2]).collect()
 }
 
 fn jingle_bytes() -> Vec<u8> {
@@ -180,6 +134,70 @@ fn open_for_jingle() -> io::Result<Child> {
         .spawn()
 }
 
+/// The samples the card has played, from its status, while it plays.
+fn played_samples(status: &str) -> Option<u64> {
+    if !status.lines().any(|line| line.trim() == "state: RUNNING") {
+        return None;
+    }
+    let line = status.lines().find(|line| line.starts_with("hw_ptr"))?;
+    line.split(':').nth(1)?.trim().parse().ok()
+}
+
+/// Where the jingle is, in seconds of sound heard, so the animation keeps time with
+/// the speaker rather than with aplay, which waits 700 ms for the amp first.
+struct JingleClock {
+    /// When the jingle's first sample played, once it has.
+    start: Option<Instant>,
+    opened: Instant,
+}
+
+impl JingleClock {
+    fn now(&mut self) -> f64 {
+        let status = std::fs::read_to_string(PLAYBACK_STATUS).unwrap_or_default();
+        if let Some(samples) = played_samples(&status) {
+            // Taken again on each reading while it plays, so it never drifts.
+            let played = Duration::from_secs_f64(samples as f64 / f64::from(RATE));
+            self.start = Instant::now().checked_sub(played);
+        } else if self.start.is_none() && self.opened.elapsed() > SOUND_START_WAIT {
+            // No sound: the animation still runs and ends.
+            self.start = Some(Instant::now());
+        }
+        self.start.map_or(0.0, |start| start.elapsed().as_secs_f64())
+    }
+}
+
+/// Draws the boot animation until the jingle has played, in step with it. Every other
+/// refresh is enough for its blocky steps, and leaves the CPU to the boot.
+fn animate(clock: &mut JingleClock) -> io::Result<()> {
+    let mut framebuffer = crate::fb::Framebuffer::open(crate::app::FB_PATH)?;
+    let _console = crate::fb::claim_console();
+    let (width, height) = framebuffer.size();
+    let mut animation = crate::boot_animation::Animation::new(width, height);
+    let (mut frames, mut making, mut drawing) = (0, Duration::ZERO, Duration::ZERO);
+    loop {
+        let t = clock.now();
+        framebuffer.wait_for_vsync().unwrap_or_else(|_| std::thread::sleep(Duration::from_millis(16)));
+        framebuffer.wait_for_vsync().unwrap_or_else(|_| std::thread::sleep(Duration::from_millis(16)));
+        let started = Instant::now();
+        let frame = animation.frame(t);
+        making += started.elapsed();
+        // Row by row in the screen's own format, far quicker than `draw` here.
+        framebuffer.blit_canvas(&frame, 0, 0)?;
+        drawing += started.elapsed();
+        if t > 0.0 {
+            frames += 1;
+        }
+        if t >= crate::boot_animation::SECONDS {
+            println!(
+                "jingle's animation drew {frames} frames while it played, {} ms each to make and {} ms to draw",
+                making.as_millis() / frames.max(1),
+                (drawing - making).as_millis() / frames.max(1)
+            );
+            return Ok(());
+        }
+    }
+}
+
 /// `launcher --jingle`: plays the jingle during boot, if it is on, and returns when it ends.
 pub fn boot_jingle() -> io::Result<()> {
     if settings::get().jingle_off {
@@ -187,14 +205,19 @@ pub fn boot_jingle() -> io::Result<()> {
     }
     println!("jingle process started {}", crate::system_info::boot_time());
     settings::restore_levels();
-    // aplay first: the driver takes 700 ms to bring up the speaker amp, and making the
-    // samples can happen during that wait.
+    // aplay first: the driver takes 700 ms to bring up the speaker amp, and the animation
+    // waits for the sound.
     let mut child = open_for_jingle()?;
+    let mut clock = JingleClock { start: None, opened: Instant::now() };
     println!("jingle's aplay started {}", crate::system_info::boot_time());
-    let bytes = jingle_bytes();
-    println!("jingle's samples made {}", crate::system_info::boot_time());
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(&bytes)?;
+    // It is larger than the pipe, so writing it takes as long as playing it.
+    let writer = child.stdin.take().map(|mut stdin| std::thread::spawn(move || stdin.write_all(&jingle_bytes())));
+    if let Err(error) = animate(&mut clock) {
+        eprintln!("warning: no boot animation: {error}");
+    }
+    println!("jingle's animation ended {}", crate::system_info::boot_time());
+    if let Some(writer) = writer {
+        writer.join().map_err(|_| io::Error::other("the jingle's writer stopped"))??;
     }
     child.wait()?;
     println!("jingle ended {}", crate::system_info::boot_time());
@@ -271,11 +294,20 @@ mod tests {
     #[test]
     fn the_jingle_has_its_length_and_level_and_starts_and_ends_silent() {
         let samples = jingle_samples();
-        assert_eq!(samples.len() / 2, (JINGLE_SECONDS * f64::from(RATE)) as usize);
+        let seconds = (samples.len() / 2) as f64 / f64::from(RATE);
+        assert!((seconds - crate::boot_animation::SECONDS).abs() < 0.001, "{seconds} s, as long as the animation");
         let loudest = samples.iter().map(|sample| sample.unsigned_abs()).max().unwrap();
         assert!((10900..=11000).contains(&loudest), "{loudest}");
         assert!(samples.as_chunks::<2>().0.iter().all(|pair| pair[0] == pair[1]));
         assert_eq!(samples[0], 0);
         assert_eq!(samples[samples.len() - 1], 0);
+    }
+
+    #[test]
+    fn reads_the_samples_played_only_while_the_card_plays() {
+        let running = "state: RUNNING\nowner_pid   : 412\ndelay       : 18048\navail       : 5952\nhw_ptr      : 5952\nappl_ptr    : 24000\n";
+        assert_eq!(played_samples(running), Some(5952));
+        assert_eq!(played_samples("state: SETUP\ndelay       : 0\nhw_ptr      : 0\n"), None);
+        assert_eq!(played_samples("closed\n"), None);
     }
 }

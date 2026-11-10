@@ -4,3 +4,4 @@
 /launcher-preview.ppm
 /src/launcher/target/
 /muos-boot0.bin
+__pycache__/

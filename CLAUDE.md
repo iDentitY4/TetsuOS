@@ -9,7 +9,8 @@ measured and how it was tested. Read the part you work on.
 
 ## What works (2026-11-08)
 
-Boot to the launcher in 3.8 s with a logo, or 5.8 s with the boot jingle (on by default);
+Boot to the launcher in 3.8 s with a logo, or 6.4 s with the boot jingle and its animation
+(on by default);
 power button on and off; USB console, SSH and
 updates over USB networking (`10.35.35.1`); audio with headphone switching; Panfrost GPU;
 CPU scaling to 1512 MHz; lid sleep (`s2idle`), with Wi-Fi and USB kept through it, and
@@ -40,6 +41,8 @@ ADVANCED > RUN SETUP AGAIN repeats.
 ## Not yet checked by the user
 
 - Game Boy SGB games without their border; PlayStation sound and feel
+- The boot jingle and animation from 2026-11-10: the look on the screen, keeping time with
+  the sound, tearing
 - Core options: the German wording on the device, PCSX ReARMed and Genesis Plus GX in a
   game, options that only apply after a restart
 - Cheats: cores other than mGBA, a PlayStation code, a ZIP, the German wording on the device
@@ -88,7 +91,7 @@ ADVANCED > RUN SETUP AGAIN repeats.
   `app.rs` has the menus' loop and actions, `systems.rs` the consoles, `library.rs` the
   games and tiles, `game.rs` running and resuming games, `libretro/` the frontend (`ffi`, `host`, `core`, `scale`, `save`, `audio`, `menu`, `play`),
   `rom_zip.rs` games in ZIPs, `transfer.rs` and `transfer_server.rs` the Wi-Fi transfer
-  screen and web page (`transfer_page.html`), `controls.rs` button layouts and turbo, `core_options.rs` cores' own options, `cheats.rs` cheat files and the CHEATS page, `achievements.rs` RetroAchievements through rcheevos, `game_files.rs` which files are a game's, `screenshot.rs` the in-game menu's pictures, `sleep.rs`, `corner.rs` (clock and battery), `launcher.rs` the button logic,
+  screen and web page (`transfer_page.html`), `controls.rs` button layouts and turbo, `core_options.rs` cores' own options, `cheats.rs` cheat files and the CHEATS page, `achievements.rs` RetroAchievements through rcheevos, `game_files.rs` which files are a game's, `screenshot.rs` the in-game menu's pictures, `sleep.rs`, `corner.rs` (clock and battery), `sounds.rs` the menu sounds and boot jingle, `boot_animation.rs` the animation drawn with it, `launcher.rs` the button logic,
   `screens.rs` and `canvas.rs` the drawing, `pause_screens.rs` the in-game menu's, `paths.rs`
   the device's paths and the macros a module builds its own from. Imports are by name, and
   `[lints.clippy]` in `Cargo.toml` is the bar: `cargo clippy --all-targets` stays clean.
@@ -182,7 +185,8 @@ In short here; `docs/features.md` has them in full.
   translations, `rcheevos/` the RetroAchievements library that `build.rs` compiles in
 - `src/launcher/src/setup.rs`: the setup on a new install
 - `scripts/`: `flash.sh`, `push.sh`, `press.py`, `screenshot.py`, `boxart.py`,
-  `data-partition.sh`
+  `data-partition.sh`, and `jingles/`, which makes the boot jingle candidates and
+  `src/launcher/sounds/boot-jingle.s16`
 - `docs/features.md`: every feature in detail
 - Git-ignored: `buildroot-2026.08.1/`, `dl/`, `output/`
 

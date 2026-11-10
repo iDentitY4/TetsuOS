@@ -347,3 +347,22 @@ pub(crate) fn write_notice_preview(path: &str) -> io::Result<()> {
     }
     write_ppm(&canvas, path)
 }
+
+/// Renders the boot animation at eight moments, as a 4 by 2 sheet at half size, to check
+/// it without the device.
+pub(crate) fn write_boot_animation_preview(path: &str) -> io::Result<()> {
+    let (width, height) = PREVIEW_SIZE;
+    let mut animation = crate::boot_animation::Animation::new(width, height);
+    let moments = [0.25, 0.45, 0.52, 0.66, 0.78, 0.9, 1.1, crate::boot_animation::SECONDS];
+    let mut sheet = canvas::Canvas::new(width * 2, height, current_theme());
+    for (index, t) in moments.into_iter().enumerate() {
+        let frame = animation.frame(t);
+        let (left, top) = (index % 4 * width / 2, index / 4 * height / 2);
+        for y in 0..height / 2 {
+            for x in 0..width / 2 {
+                sheet.pixels[(top + y) * sheet.width + left + x] = frame.pixels[y * 2 * width + x * 2];
+            }
+        }
+    }
+    write_ppm(&sheet, path)
+}

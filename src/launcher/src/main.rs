@@ -9,6 +9,7 @@ compile_error!("the launcher needs Linux: it uses evdev, the framebuffer, /sys a
 
 mod achievements;
 mod app;
+mod boot_animation;
 mod boot_partition;
 mod boxart;
 mod boxart_fetch;
@@ -68,7 +69,7 @@ use app::run_launcher;
 use corner::current_theme;
 use game::{BATTERY_EMPTY_EXIT, run_game};
 use previews::{
-    write_achievements_preview, write_button_preview, write_cheats_preview, write_controls_preview,
+    write_achievements_preview, write_boot_animation_preview, write_button_preview, write_cheats_preview, write_controls_preview,
     write_core_options_preview, write_keyboard_preview, write_launcher_preview,
     write_notice_preview, write_pause_preview, write_plain_ppm, write_ppm, write_setup_preview,
     write_transfer_preview, write_usb_drive_preview, write_wifi_preview,
@@ -119,6 +120,7 @@ fn main() -> ExitCode {
         [flag, path] if flag == "--preview-notice" => write_notice_preview(path),
         [flag, core] if flag == "--core-options" => libretro::print_core_options(Path::new(core)),
         [flag, path] if flag == "--preview-splash" => write_plain_ppm(&screens::splash(), path),
+        [flag, path] if flag == "--preview-boot-animation" => write_boot_animation_preview(path),
         [flag, path] if flag == "--preview-volume" => write_ppm(&screens::volume_sign(80, current_theme()), path),
         [flag, core, rom, save, persistence] if flag == "--play" => {
             let ending = parse_persistence(persistence).and_then(|persistence| {
@@ -151,6 +153,7 @@ fn main() -> ExitCode {
                  \x20              | --preview-pause | --preview-controls | --preview-core-options FILE.ppm\n\
                  \x20              | --preview-cheats | --preview-achievements | --preview-notice FILE.ppm\n\
                  \x20              | --preview-splash FILE.ppm | --core-options CORE\n\
+                 \x20              | --preview-boot-animation FILE.ppm\n\
                  \x20              | --preview-volume FILE.ppm | --preview-setup STEP FILE.ppm\n\
                  \x20              | --play CORE ROM SAVE battery|state\n\
                  \x20              | --render CORE ROM SAVE battery|state FRAMES FILE.ppm]"
