@@ -48,6 +48,7 @@ mod previews;
 mod recent;
 mod repeat;
 mod rom_zip;
+mod rumble;
 mod screens;
 mod screenshot;
 mod settings;

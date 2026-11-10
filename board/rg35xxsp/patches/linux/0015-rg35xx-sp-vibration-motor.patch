@@ -1,0 +1,23 @@
+Subject: [PATCH] arm64: dts: allwinner: rg35xx-sp: add the vibration motor
+
+The motor is driven by PWM channel 2 on PH2, as in ROCKNIX's 0150-add-forcefeedback,
+which gives it to their own joypad driver. Here it is a pwm-vibrator, an input device
+with FF_RUMBLE that games reach through evdev.
+---
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
+@@ -24,6 +24,14 @@
+ 			wakeup-source;
+ 		};
+ 	};
++
++	vibrator {
++		compatible = "pwm-vibrator";
++		pwms = <&pwm 2 1000000 0>;
++		pwm-names = "enable";
++		pinctrl-0 = <&pwm2_pin>;
++		pinctrl-names = "default";
++	};
+ };
+ 
+ &r_i2c {

@@ -1,0 +1,29 @@
+Subject: [PATCH] Input: ff-memless - stop an effect that was updated while playing
+
+Uploading new parameters for a playing effect clears FF_EFFECT_PLAYING and leaves the
+change to the timer. A stop that comes before the timer runs then finds the effect not
+playing, clears FF_EFFECT_STARTED and never tells the driver, so the device keeps the
+last level it was given. With pwm-vibrator, a game that changed its rumble every frame
+left the motor running for good, also after it closed the device.
+
+Abort every started effect instead, so the next combination reaches the driver; for one
+that never played it is a harmless update without it.
+---
+--- a/drivers/input/ff-memless.c
++++ b/drivers/input/ff-memless.c
+@@ -447,10 +447,12 @@
+ 	} else {
+ 		pr_debug("initiated stop\n");
+ 
+-		if (test_bit(FF_EFFECT_PLAYING, &state->flags))
++		/*
++		 * An upload clears FF_EFFECT_PLAYING of a playing effect until the timer
++		 * runs, so a started effect may be playing on the device without it.
++		 */
++		if (test_bit(FF_EFFECT_STARTED, &state->flags))
+ 			__set_bit(FF_EFFECT_ABORTING, &state->flags);
+-		else
+-			__clear_bit(FF_EFFECT_STARTED, &state->flags);
+ 	}
+ 
+ 	ml_play_effects(ml);

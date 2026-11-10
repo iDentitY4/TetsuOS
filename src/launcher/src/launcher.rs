@@ -99,7 +99,7 @@ pub const DETAIL_ROWS: [DetailRow; 4] = [DetailRow::Play, DetailRow::Star, Detai
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Group {
     General,
-    GameScreen,
+    InGame,
     Wifi,
     BoxArt,
     Theme,
@@ -112,7 +112,7 @@ pub enum Group {
 
 pub const GROUPS: [Group; 10] = [
     Group::General,
-    Group::GameScreen,
+    Group::InGame,
     Group::Wifi,
     Group::BoxArt,
     Group::Theme,
@@ -131,7 +131,7 @@ impl Group {
     pub fn label(self) -> &'static str {
         tr(match self {
             Self::General => "GENERAL",
-            Self::GameScreen => "GAME SCREEN",
+            Self::InGame => "IN GAME",
             Self::Wifi => "WI-FI",
             Self::BoxArt => "BOX ART",
             Self::Theme => "THEME",
@@ -164,7 +164,7 @@ impl Group {
                     Setting::BootJingle,
                     Setting::Language,
                 ],
-            Self::GameScreen => &[Setting::Scaling, Setting::Effect, Setting::Ghosting, Setting::UseForAllConsoles],
+            Self::InGame => &[Setting::Scaling, Setting::Effect, Setting::Ghosting, Setting::UseForAllConsoles, Setting::Vibration],
             Self::Wifi | Self::Cores => &[],
             Self::BoxArt => &[Setting::ShowCovers, Setting::ScreenshotCovers, Setting::DownloadMissingArt, Setting::DownloadAllArt, Setting::DeleteArt],
             Self::Theme => {
@@ -211,6 +211,7 @@ impl Group {
 pub enum Setting {
     Volume,
     Brightness,
+    Vibration,
     StartScreen,
     GameNames,
     Battery,
@@ -264,6 +265,7 @@ impl Setting {
         tr(match self {
             Self::Volume => "VOLUME",
             Self::Brightness => "BRIGHTNESS",
+            Self::Vibration => "VIBRATION",
             Self::StartScreen => "START SCREEN",
             Self::GameNames => "GAME NAMES",
             Self::SortGames => "SORT GAMES BY",
@@ -334,6 +336,7 @@ impl Setting {
             self,
             Self::Volume
                 | Self::Brightness
+                | Self::Vibration
                 | Self::StartScreen
                 | Self::GameNames
                 | Self::SortGames
@@ -476,6 +479,7 @@ pub enum Command {
     RemoveSshKeys,
     Performance(i32),
     ChargeLimit(i32),
+    Vibration(i32),
     /// Switches the boot between the logo alone and the kernel's messages.
     ToggleBootMessages,
     RunSetup,
@@ -895,6 +899,7 @@ impl Launcher {
         Some(match setting {
             Setting::Volume => Command::Volume(step),
             Setting::Brightness => Command::Brightness(step),
+            Setting::Vibration => Command::Vibration(step),
             Setting::StartScreen => Command::StartScreen(step),
             Setting::GameNames => Command::GameNames(step),
             Setting::SortGames => Command::SortGames(step),
@@ -987,6 +992,7 @@ impl Launcher {
                 Setting::AchievementsAccount => {}
                 Setting::Volume
                 | Setting::Brightness
+                | Setting::Vibration
                 | Setting::StartScreen
                 | Setting::GameNames
                 | Setting::SortGames
@@ -1563,11 +1569,11 @@ mod tests {
         let library = library();
         let mut launcher = Launcher::new();
         launcher.press(Button::A, &library);
-        open_group(&mut launcher, &library, Group::GameScreen);
+        open_group(&mut launcher, &library, Group::InGame);
         press_all(&mut launcher, &library, &[Button::Down, Button::B]);
-        assert_eq!(launcher.group_selected(), Group::GameScreen);
+        assert_eq!(launcher.group_selected(), Group::InGame);
         launcher.press(Button::A, &library);
-        assert_eq!(launcher.setting_selected(Group::GameScreen), Some(Setting::Effect));
+        assert_eq!(launcher.setting_selected(Group::InGame), Some(Setting::Effect));
         launcher.press(Button::Start, &library);
         assert_eq!(launcher.screen(), Screen::Games(List::Recent));
         // Opening settings again starts from the first tile.

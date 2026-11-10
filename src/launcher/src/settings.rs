@@ -269,6 +269,17 @@ choices! {
 }
 
 choices! {
+    /// How strongly the vibration motor runs when a game rumbles.
+    pub enum Vibration (default High) {
+        Off => "off", "OFF";
+        Low => "low", "LOW";
+        Medium => "medium", "MEDIUM";
+        /// As strongly as the game asks.
+        High => "high", "HIGH";
+    }
+}
+
+choices! {
     /// How fast the CPU may run, traded against battery life and heat.
     pub enum CpuLevel (default Balanced) {
         /// The governor chooses, up to 1104 MHz.
@@ -408,6 +419,7 @@ pub struct Settings {
     pub menu_sounds: bool,
     /// The boot jingle is off. It plays by default, also for a settings file from before it.
     pub jingle_off: bool,
+    pub vibration: Vibration,
     pub ssh: SshAccess,
     pub performance: CpuLevel,
     pub charge: ChargeLimit,
@@ -559,6 +571,7 @@ fn parse(text: &str) -> Settings {
             "sleep_power_off" => choose(&mut settings.sleep_power_off, SleepPowerOff::from_key(value)),
             "sounds" => settings.menu_sounds = value == "on",
             "jingle" => settings.jingle_off = value == "off",
+            "vibration" => choose(&mut settings.vibration, Vibration::from_key(value)),
             "ssh" => choose(&mut settings.ssh, SshAccess::from_key(value)),
             "performance" => choose(&mut settings.performance, CpuLevel::from_key(value)),
             "charge" => choose(&mut settings.charge, ChargeLimit::from_key(value)),
@@ -619,6 +632,7 @@ fn format(settings: &Settings) -> String {
     lines.push(format!("sleep_power_off={}", settings.sleep_power_off.key()));
     lines.push(format!("sounds={}", on_off(settings.menu_sounds)));
     lines.push(format!("jingle={}", on_off(!settings.jingle_off)));
+    lines.push(format!("vibration={}", settings.vibration.key()));
     lines.push(format!("ssh={}", settings.ssh.key()));
     lines.push(format!("performance={}", settings.performance.key()));
     lines.push(format!("charge={}", settings.charge.key()));
@@ -881,6 +895,7 @@ mod tests {
             sleep_power_off: SleepPowerOff::Hours8,
             menu_sounds: true,
             jingle_off: true,
+            vibration: Vibration::Low,
             ssh: SshAccess::Wifi,
             performance: CpuLevel::Battery,
             charge: ChargeLimit::Less,

@@ -8,7 +8,8 @@ use crate::core_options::{
     Choices, current, Declarations, default_value,
 };
 use crate::input::{Button, Controls};
-use crate::settings::{GameDisplay, Ghosting};
+use crate::rumble::Rumble;
+use crate::settings::{GameDisplay, Ghosting, Vibration};
 use crate::systems::CoreSetup;
 use std::io;
 use std::cell::RefCell;
@@ -21,13 +22,13 @@ use std::time::{Duration, Instant};
 use super::ffi::{
     CoreOptionsV2, CoreOptionsV2Intl, DEVICE_JOYPAD, ENVIRONMENT_EXPERIMENTAL,
     ENVIRONMENT_GET_CAN_DUPE, ENVIRONMENT_GET_CORE_OPTIONS_VERSION,
-    ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION, ENVIRONMENT_GET_SAVE_DIRECTORY,
+    ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION, ENVIRONMENT_GET_RUMBLE_INTERFACE, ENVIRONMENT_GET_SAVE_DIRECTORY,
     ENVIRONMENT_GET_SYSTEM_DIRECTORY, ENVIRONMENT_GET_VARIABLE, ENVIRONMENT_GET_VARIABLE_UPDATE,
     ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK,
     ENVIRONMENT_SET_CORE_OPTIONS_V2, ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL,
     ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE, ENVIRONMENT_SET_MEMORY_MAPS,
     ENVIRONMENT_SET_PIXEL_FORMAT, ENVIRONMENT_SET_VARIABLES, OptionDisplay, RawDiskControl,
-    UpdateDisplay, Variable, c_text, read_options_v2,
+    RumbleInterface, UpdateDisplay, Variable, c_text, read_options_v2,
 };
 use super::scale::{PixelFormat, picture_size, scale_frame};
 use super::core::c_path;
@@ -149,6 +150,8 @@ pub(super) struct Host {
     pub(super) options_changed: bool,
     /// Copied out before calling it, as the core may call back into the host meanwhile.
     pub(super) disk_control: Option<DiskControl>,
+    /// The vibration motor, and what the game asked of it.
+    pub(super) rumble: Rumble,
 }
 
 thread_local! {
@@ -222,6 +225,7 @@ fn needs_data(command: c_uint) -> bool {
             | ENVIRONMENT_GET_CORE_OPTIONS_VERSION
             | ENVIRONMENT_GET_VARIABLE_UPDATE
             | ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION
+            | ENVIRONMENT_GET_RUMBLE_INTERFACE
             | ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE
             | ENVIRONMENT_SET_MEMORY_MAPS
     )
@@ -341,6 +345,14 @@ pub(super) unsafe extern "C" fn environment(command: c_uint, data: *mut c_void) 
                 achievements::keep_memory_map(data);
                 true
             }
+            ENVIRONMENT_GET_RUMBLE_INTERFACE => {
+                if !with_host(|host| host.rumble.is_available()) {
+                    return false;
+                }
+                println!("vibration: the core asked for rumble");
+                *data.cast::<RumbleInterface>() = RumbleInterface { set_rumble_state };
+                true
+            }
             // Everything else is optional for a core.
             _ => false,
         }
@@ -435,6 +447,15 @@ pub(super) unsafe extern "C" fn input_state(port: c_uint, device: c_uint, _: c_u
     with_host(|host| i16::from(host.pad.is_pressed(button)))
 }
 
+/// `retro_set_rumble_state_t`: `effect` 0 is the strong motor, 1 the weak one. Unsafe only to
+/// have the type the core takes.
+unsafe extern "C" fn set_rumble_state(port: c_uint, effect: c_uint, strength: u16) -> bool {
+    if port != 0 {
+        return false;
+    }
+    with_host(|host| host.rumble.set(effect as usize, strength))
+}
+
 /// Maps a `RETRO_DEVICE_ID_JOYPAD_*` id to the button with that label.
 fn joypad_button(id: c_uint) -> Option<Button> {
     Some(match id {
@@ -485,6 +506,8 @@ pub(super) fn set_host(directory: &Path, target: (usize, usize), setup: CoreSetu
         console,
         options_changed: false,
         disk_control: None,
+        // Only a game on the device opens the motor.
+        rumble: Rumble::new(Vibration::Off),
     };
     HOST.with(|slot| *slot.borrow_mut() = Some(host));
     Ok(())

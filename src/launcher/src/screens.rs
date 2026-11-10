@@ -171,7 +171,7 @@ pub fn home_screen(
 pub fn group_icon(group: Group) -> &'static Icon {
     match group {
         Group::General => &icons::GENERAL,
-        Group::GameScreen => &icons::GAME_SCREEN,
+        Group::InGame => &icons::GAME_SCREEN,
         Group::Wifi => &icons::WIFI,
         Group::BoxArt => &icons::BOX_ART,
         Group::Theme => &icons::THEME,
@@ -485,6 +485,7 @@ pub fn list_screen(width: usize, height: usize, view: &ListView, frame: &Frame) 
 pub(crate) fn setting_value(setting: Setting, settings: &Settings) -> Option<String> {
     let on_off = |on: bool| if on { tr("ON") } else { tr("OFF") };
     let label = match setting {
+        Setting::Vibration => settings.vibration.label(),
         Setting::StartScreen => settings.start_screen.label(),
         Setting::GameNames => settings.game_names.label(),
         Setting::SortGames => settings.sort.label(),

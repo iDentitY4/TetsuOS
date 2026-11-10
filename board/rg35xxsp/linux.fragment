@@ -21,6 +21,10 @@ CONFIG_PWM_SUN8I=y
 CONFIG_BACKLIGHT_CLASS_DEVICE=y
 CONFIG_BACKLIGHT_PWM=y
 
+# Vibration motor on PWM channel 2, a force-feedback input device
+CONFIG_INPUT_MISC=y
+CONFIG_INPUT_PWM_VIBRA=y
+
 # /dev/fb0 and on-screen boot messages
 CONFIG_DRM_FBDEV_EMULATION=y
 CONFIG_FB=y

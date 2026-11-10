@@ -19,7 +19,8 @@ set up on the device; network time (`ntpd`) and a time zone setting; battery lev
 low-battery save and power-off; SSH over USB only by default, over Wi-Fi with a key or
 root password; a CPU performance setting; USB STORAGE, which shows TETSU-DATA to a PC as
 a drive; WI-FI TRANSFER, a web page for sending games, saves and covers from a browser,
-served only while its screen is open, with a code on screen.
+served only while its screen is open, with a code on screen; the vibration motor, for
+games that rumble (not PlayStation, see `docs/features.md`), with a strength setting.
 
 Games: NES (FCEUmm), SNES (Snes9x), Game Boy, Color and Advance (mGBA), PlayStation (PCSX
 ReARMed, with discs grouped by name or an `.m3u`, and CHANGE DISC), Mega Drive, Master System and Game Gear (Genesis Plus GX), PC Engine (Beetle PCE
@@ -30,7 +31,7 @@ scaling with CRT and LCD effects, kept per console, and a volume sign on the vol
 
 Launcher: a tile grid with RECENT and FAVORITES, lists with covers and scrolling names,
 sorting by name or how recently or long a game was played, jumping by letter on L1 and R1, search on X, a game's details, play time and deleting it on Y,
-box art downloaded on the device, and a settings grid (GENERAL, GAME SCREEN, WI-FI,
+box art downloaded on the device, and a settings grid (GENERAL, IN GAME, WI-FI,
 BOX ART, THEME, TIME, SYSTEM, ADVANCED, CORES) with colours, background, title, grid size,
 hidden tiles, start screen, game names, battery display, menu sounds, the boot jingle, sleep when idle
 and power-off after sleep.
@@ -41,6 +42,7 @@ ADVANCED > RUN SETUP AGAIN repeats.
 ## Not yet checked by the user
 
 - Game Boy SGB games without their border; PlayStation sound and feel
+- Vibration: the German wording of VIBRATION on the device, and through a lid close
 - The boot jingle and animation from 2026-11-10: the look on the screen, keeping time with
   the sound, tearing
 - Core options: the German wording on the device, PCSX ReARMed and Genesis Plus GX in a
@@ -150,6 +152,8 @@ In short here; `docs/features.md` has them in full.
 - **USB power may start the device** (AXP717). Test shutdown with the cable unplugged.
 - **Kernel power-off** writes the wrong AXP717 register, but falls through to PSCI, and
   TF-A turns it off.
+- **The vibration motor is on PH2, PWM channel 2** (patch 0015); it adds an input device,
+  so `/dev/input/event*` numbers move: find devices by name.
 - **X and Y are swapped on this unit** against the shared device tree; patch 0008 swaps them.
 - **Modules are off and nothing could load them.** Add drivers to `linux.fragment` as `=y`.
   Don't turn `CONFIG_MODULES` off over a config with `=m` entries: they all become built in.

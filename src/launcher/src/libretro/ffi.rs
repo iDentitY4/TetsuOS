@@ -15,6 +15,8 @@ pub(super) const ENVIRONMENT_SET_PIXEL_FORMAT: c_uint = 10;
 
 pub(super) const ENVIRONMENT_GET_VARIABLE: c_uint = 15;
 
+pub(super) const ENVIRONMENT_GET_RUMBLE_INTERFACE: c_uint = 23;
+
 pub(super) const ENVIRONMENT_SET_VARIABLES: c_uint = 16;
 
 pub(super) const ENVIRONMENT_GET_VARIABLE_UPDATE: c_uint = 17;
@@ -41,6 +43,12 @@ pub(super) const ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK: c_uint = 
 pub(super) const DEVICE_JOYPAD: c_uint = 1;
 
 pub(super) const MEMORY_SAVE_RAM: c_uint = 0;
+
+/// `struct retro_rumble_interface`.
+#[repr(C)]
+pub(super) struct RumbleInterface {
+    pub(super) set_rumble_state: unsafe extern "C" fn(c_uint, c_uint, u16) -> bool,
+}
 
 /// `struct retro_variable`: a core option the core asks for by name.
 #[repr(C)]

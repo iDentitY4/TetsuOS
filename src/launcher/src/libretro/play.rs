@@ -12,6 +12,7 @@ use crate::input::{Button, Controls};
 use crate::pause::{MenuTrigger, PauseMenu};
 use crate::play_time::PlayClock;
 use crate::power::Level;
+use crate::rumble::Rumble;
 use crate::systems::{CoreSetup, Persistence};
 use std::io;
 use std::collections::VecDeque;
@@ -329,7 +330,10 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
     }
     let directory = save.parent().unwrap_or(Path::new("."));
     set_host(directory, framebuffer.size(), setup, console, layout_for(save, console))?;
-    with_host(|host| host.choices = core_options::choices_for(save, console));
+    with_host(|host| {
+        host.choices = core_options::choices_for(save, console);
+        host.rumble = Rumble::new(settings::get().vibration);
+    });
     let mut core = Core::load(core_path, rom)?;
     let mut notices = VecDeque::new();
     let mut session = start_achievements(&core, rom, save, console, &mut notices);
@@ -371,7 +375,14 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
             for event in events.try_iter() {
                 host.controls.apply(&event);
                 open_menu |= trigger.update(&event);
-                lid_closed |= event.pressed() == Some(Button::Lid);
+                let closing = event.pressed() == Some(Button::Lid);
+                lid_closed |= closing;
+                // The game runs on while the lid is closed, until the device sleeps.
+                if closing {
+                    host.rumble.hold();
+                } else if event.is_lid_opening() {
+                    host.rumble.release();
+                }
             }
             (wants_to_leave(&host.controls), open_menu, lid_closed)
         });
@@ -379,6 +390,7 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
             break;
         }
         if crate::app::powering_off() {
+            with_host(|host| host.rumble.hold());
             // The shutdown screen shows, and the shutdown stops the game in a moment, saving
             // where it is. Until then, it stays where it is.
             sleep(Duration::from_millis(10));
@@ -413,9 +425,11 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
             hold_cpu_speed();
             let game = Game { rom, save, cheat_source };
             let mut achievements = Achievements { session: &mut session, notices: &mut notices };
+            with_host(|host| host.rumble.hold());
             if pause(&mut core, &game, &mut achievements, &mut menu, framebuffer, &events, &levels)? == AfterMenu::Quit {
                 break;
             }
+            with_host(|host| host.rumble.release());
             release_at = Some(frames - frames % STATS_FRAMES + CPU_HOLD_FRAMES);
             // The pause shouldn't count as slow frames, or make the game catch up.
             stats.restart();
@@ -486,6 +500,7 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
         }
     }
 
+    with_host(|host| host.rumble.hold());
     if release_at.is_some() || fast_forwarding {
         release_cpu_speed();
     }

@@ -2,7 +2,7 @@
 
 use crate::{
     achievements, boot_partition, boxart, canvas, cheats, clock, controls, core_options, favorites,
-    fb, game_files, icons, input, keyboard, launcher, performance, power, screens, settings, sounds,
+    fb, game_files, icons, input, keyboard, launcher, performance, power, rumble, screens, settings, sounds,
     ssh,
 };
 use crate::boxart_screen::{art_counts, delete_box_art, download_box_art};
@@ -342,7 +342,11 @@ fn settings_group_canvas((width, height): (usize, usize), group: Group, launcher
             Some(trf("{} OF {} GAMES HAVE A COVER", &[&covered, &total]))
         }
         Group::Time => Some(time_note()),
-        Group::GameScreen => Some(game_screen_note(&current)),
+        // The display is per console, but vibration is one setting for every game.
+        Group::InGame if launcher.setting_selected(group) == Some(launcher::Setting::Vibration) => {
+            Some(tr("THE SAME FOR EVERY CONSOLE AND GAME").into())
+        }
+        Group::InGame => Some(game_screen_note(&current)),
         Group::System if current.idle_minutes > 0 => Some(tr("THE POWER BUTTON WAKES IT FROM SLEEP").into()),
         Group::Advanced => advanced_note(current.ssh, login),
         Group::Achievements => Some(achievements_note(&current, account.is_some())),
@@ -411,7 +415,7 @@ pub(crate) fn launcher_canvas(
     (canvas, scrolling)
 }
 
-/// Under the GAME SCREEN settings: that they are a default, and how many consoles differ.
+/// Under the IN GAME display settings: that they are a default, and how many consoles differ.
 pub(crate) fn game_screen_note(settings: &settings::Settings) -> String {
     let mut note = tr("THE DEFAULT, UNTIL A GAME'S MENU CHANGES ITS CONSOLE").to_string();
     let own = settings.console_displays.len();
@@ -653,6 +657,10 @@ pub(crate) fn act(
         Action::ChargeLimit(steps) => {
             change_settings(|s| s.charge = s.charge.cycle(steps));
             power::apply_charge_limit(settings::get().charge);
+        }
+        Action::Vibration(steps) => {
+            change_settings(|s| s.vibration = s.vibration.cycle(steps));
+            rumble::test_buzz(settings::get().vibration);
         }
         Action::ToggleBootMessages => {
             // Unknown when the card's extlinux.conf couldn't be read: nothing to change.

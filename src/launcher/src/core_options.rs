@@ -37,7 +37,7 @@ pub const FRONTEND_DEFAULTS: [(&str, &str); 4] = [
 
 /// Options the frontend sets from its own menus, which the page leaves out.
 pub const FRONTEND_OWNED: [&str; 1] = [
-    // GAME SCREEN > LCD GHOSTING.
+    // IN GAME > LCD GHOSTING.
     "mgba_interframe_blending",
 ];
 

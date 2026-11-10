@@ -19,7 +19,7 @@ squashes multi-commit files, so the original commit boundaries are in ROCKNIX.
 | `linux/0005-sun4i-rgb-connector-type.patch` | `0155-sun4i-set-rgb-connector-as-DSI.patch` |
 | `linux/0010-axp20x-pek-ignore-wake-press.patch` | `0157-input-axp20x-pek-do-not-report-the-key-press-that-woke-the-system.patch` |
 
-Eight patches are specific to this project:
+Ten patches are specific to this project:
 
 - `linux/0006-rg35xx-sp-lpddr3-ram-voltage.patch` runs the RAM rail at 1.2V for
   LPDDR3 units.
@@ -44,3 +44,9 @@ Eight patches are specific to this project:
   arrives before the gadget queues its request, which mainline's MUSB driver flushes
   since commit 3fc137386c46. USB STORAGE lost commands that way, and the PC reset the
   device every 30 seconds.
+- `linux/0015-rg35xx-sp-vibration-motor.patch` adds the vibration motor on PWM channel 2
+  (PH2) as a `pwm-vibrator`. The pin is ROCKNIX's, from `0150-add-forcefeedback.patch`,
+  which gives it to their joypad driver instead.
+- `linux/0016-input-ff-memless-stop-an-effect-updated-while-playing.patch` makes a stop
+  reach the driver for an effect whose new values the timer hasn't played yet. Without
+  it, a game that changed its rumble every frame left the motor running for good.

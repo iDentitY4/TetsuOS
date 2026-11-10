@@ -266,7 +266,7 @@ Working on the test unit, confirmed by the user:
 - Display settings per console. Changing scaling, effect or ghosting in the in-game menu
   saves all three for that console, as `display.gb=fit,crt,smart` in `settings.txt`
   (`Settings::console_displays`, read with `display_for`). A console's key comes from
-  `SYSTEMS`, so Game Boy and Color are separate. Settings > GAME SCREEN is the default for
+  `SYSTEMS`, so Game Boy and Color are separate. Settings > IN GAME is the default for
   consoles with no such line, with a note saying so and how many have their own, and USE FOR
   ALL CONSOLES, which takes A twice, removes those lines. RESET SETTINGS does too. A line
   with an unknown value is ignored as a whole. The game process finds its console from the
@@ -626,8 +626,36 @@ Built but not yet tested on the device:
   the PC for all 58, in winter and summer. Claude checked the screens, the corner clock
   in both formats and off, and `TZ` in a game's environment. The zone is set to Berlin
   on the test unit. A game's clock was not checked inside a game
+- Vibration (2026-11-10). The motor is on PWM channel 2, pin PH2, as in ROCKNIX's
+  `0150-add-forcefeedback`; patch 0015 makes it a mainline `pwm-vibrator` at 1 kHz
+  (`CONFIG_INPUT_PWM_VIBRA`), an input device with `FF_RUMBLE`. Before the patch, Claude
+  set PH2 to `pwm2` with `devmem 0x0300B0FC 32 0x77777422` (PH config register, PH2 in
+  bits 11:8) and ran the channel from `/sys/class/pwm`: the user felt pulses at 20, 35,
+  50, 70 and 100 % duty. `rumble.rs` uploads one rumble effect through the `evdev` crate
+  and changes its magnitude when a game asks (`RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE`,
+  offered only when the motor opened). One motor stands for both: the weak one counts
+  half, as `pwm-vibrator` does it, and any rumble runs at 20 % or more, up to the
+  strongest for Settings > IN GAME > VIBRATION (OFF, LOW 40 %, MEDIUM 70 %, HIGH 100 %,
+  `vibration=` in `settings.txt`; the note below it says it is one setting for every
+  game). Changing it buzzes for 0.3 s at the new level. The motor is held still while
+  the in-game menu is open, from a lid close until it opens, at power-off and when the
+  game ends; closing the device file, also in a crash, makes the kernel stop it. mGBA
+  rumbles for Game Boy rumble cartridges and the Game Boy Player, and changes the level
+  almost every frame. In Pokemon Pinball (Rumble Version) that left the motor running
+  for good, also after leaving the game: ff-memless clears an effect's PLAYING flag when
+  new values are uploaded until its timer runs, and a stop in that window cleared the
+  effect without telling the driver. The kernel still showed the channel enabled at
+  26.6 % in `/sys/kernel/debug/pwm` with no game running. Patch 0016 aborts every
+  started effect instead, and the user checked Pinball's strong rumble and leaving the
+  game with it. PCSX ReARMed rumbles only
+  with a DualShock, which `retro_set_controller_port_device` would select. Tried
+  (2026-11-10): the core then switches the pad to analog by itself after a game's 16th
+  configuration read (`pad.c`, "Auto-enabling dualshock analog mode", no option), and
+  Metal Slug X took no input at all, while the plain pad works. So PlayStation games keep
+  the plain pad and don't rumble. The user felt the setting's buzzes and told the levels
+  apart. Adding the motor renumbered `/dev/input`, so `press.py` finds devices by name
 - Settings is a grid of group tiles, like the home screen (`settings_grid`): GENERAL
-  (volume, brightness), GAME SCREEN (scaling, effect, ghosting), WI-FI (opens the Wi-Fi
+  (volume, brightness), IN GAME (scaling, effect, ghosting, vibration), WI-FI (opens the Wi-Fi
   screen directly), BOX ART, THEME, TIME, SYSTEM (button test, system info, sleep when
   idle, save logs, reboot, power off) and ADVANCED (SSH, root password, SSH keys,
   performance, charge limit, boot messages, reset). A opens a group's
@@ -1001,7 +1029,7 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   don't fall back if it is refused. `SET_VARIABLES` is read too, for Tamalib, which
   declares nothing. `SET_CORE_OPTIONS_DISPLAY` hides options the core says don't apply, and
   the `UPDATE_DISPLAY_CALLBACK` is called after each change, so the page follows. Options
-  with one choice, and mGBA's `mgba_interframe_blending`, which GAME SCREEN > LCD GHOSTING
+  with one choice, and mGBA's `mgba_interframe_blending`, which IN GAME > LCD GHOSTING
   sets, are left out. `FRONTEND_DEFAULTS` (SGB borders off, colour correction Auto, FCEUmm's
   Smooth FBX palette, no second PlayStation memory card) are the defaults the page shows
   and RESET goes back to.
@@ -1235,6 +1263,9 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   previews were), and anything over a real connection to the server
 
 ## Hardware facts in full
+
+- **The vibration motor is on PH2, PWM channel 2,** patch 0015. It spins from 20 % duty.
+  Its input device comes before the others, so `/dev/input/event*` numbers aren't fixed.
 
 - **Don't trust the model name for hardware details.** This unit has LPDDR3 at
   1.2V, while mainline U-Boot's config and the kernel device tree assume LPDDR4
