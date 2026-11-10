@@ -1138,6 +1138,7 @@ pub(crate) fn run_launcher() -> io::Result<()> {
     let _console = fb::claim_console()
         .inspect_err(|error| eprintln!("warning: could not claim console: {error}"));
     let events = input::spawn_readers();
+    crate::audio_out::watch();
     let mut launcher = Launcher::new();
     let mut repeater = Repeater::new();
     let mut library = load_library();

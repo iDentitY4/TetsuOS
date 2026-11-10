@@ -9,6 +9,7 @@ compile_error!("the launcher needs Linux: it uses evdev, the framebuffer, /sys a
 
 mod achievements;
 mod app;
+mod audio_out;
 mod bluetooth;
 mod bluetooth_menu;
 mod bluetooth_screen;

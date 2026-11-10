@@ -28,10 +28,12 @@ pub(super) fn playback_rate(sample_rate: f64, samples_per_frame: f64) -> f64 {
 }
 
 /// Plays through aplay. A small pipe keeps latency low, and paces the game to the
-/// audio hardware, because writes wait while the pipe is full.
+/// audio hardware, because writes wait while the pipe is full. It plays on Bluetooth
+/// headphones while they are connected (`audio_out`).
 pub(super) fn start_audio(sample_rate: f64) -> io::Result<Child> {
     let child = Command::new("aplay")
-        .args(["-q", "-t", "raw", "-f", "S16_LE", "-c", "2"])
+        .args(["-q", "-D", crate::audio_out::device()])
+        .args(["-t", "raw", "-f", "S16_LE", "-c", "2"])
         .args(["-r", &format!("{}", sample_rate.round() as u32)])
         .args(["--buffer-time=100000", "--period-time=25000"])
         .stdin(Stdio::piped())

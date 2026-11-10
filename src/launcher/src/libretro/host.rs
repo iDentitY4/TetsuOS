@@ -132,6 +132,9 @@ pub(super) struct Host {
     pub(super) update_display: Option<UpdateDisplay>,
     pub(super) frame_ready: bool,
     pub(super) audio: Option<Child>,
+    /// The ALSA device and rate `audio` plays at, to start it again elsewhere.
+    pub(super) audio_device: &'static str,
+    pub(super) audio_rate: f64,
     pub(super) audio_bytes: u64,
     /// The buttons as they are, for the menus and leaving the game.
     pub(super) controls: Controls,
@@ -495,6 +498,8 @@ pub(super) fn set_host(directory: &Path, target: (usize, usize), setup: CoreSetu
         update_display: None,
         frame_ready: false,
         audio: None,
+        audio_device: "",
+        audio_rate: 0.0,
         audio_bytes: 0,
         controls: Controls::new(),
         layout,

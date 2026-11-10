@@ -745,15 +745,35 @@ fn percent_level(percent: u32) -> u32 {
 }
 
 /// The volume as a percentage, on one of its steps.
+/// The volume of whatever plays the sound: Bluetooth headphones while connected, which
+/// keep their own level, or the sound card.
 pub fn volume_percent() -> Option<u32> {
+    if crate::audio_out::headphones() {
+        return Some(headphone_percent(crate::audio_out::headphone_volume()?));
+    }
     Some(level_percent(volume()?))
 }
 
 /// Moves the volume by `change` percent, and returns the new percentage, if it could be read.
 pub fn change_volume(change: i32) -> Option<u32> {
     let percent = step(volume_percent()?, change, 1, 0, 100);
-    set_volume(percent_level(percent));
+    if crate::audio_out::headphones() {
+        crate::audio_out::set_headphone_volume(headphone_level(percent));
+    } else {
+        set_volume(percent_level(percent));
+    }
     Some(percent)
+}
+
+/// The step of `VOLUME_STEP` percent nearest a headphone level.
+fn headphone_percent(level: u32) -> u32 {
+    let max = crate::audio_out::VOLUME_MAX;
+    let step = VOLUME_STEP as u32;
+    (level.min(max) * 100 + max * step / 2) / (max * step) * step
+}
+
+fn headphone_level(percent: u32) -> u32 {
+    (percent.min(100) * crate::audio_out::VOLUME_MAX + 50) / 100
 }
 
 fn read_number(path: &Path) -> Option<u32> {
@@ -862,6 +882,14 @@ mod tests {
         let mut settings = Settings::default();
         settings.set_console_display("gb", GameDisplay { effect: Effect::Lcd, ..GameDisplay::default() });
         assert!(settings.reset().console_displays.is_empty());
+    }
+
+    #[test]
+    fn headphone_levels_round_trip_in_steps() {
+        for percent in (0..=100).step_by(VOLUME_STEP as usize) {
+            assert_eq!(headphone_percent(headphone_level(percent)), percent);
+        }
+        assert_eq!((headphone_level(100), headphone_percent(127), headphone_percent(64)), (127, 100, 50));
     }
 
     #[test]

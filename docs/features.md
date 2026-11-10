@@ -447,7 +447,36 @@ Working on the test unit, confirmed by the user:
 
 Built but not yet tested on the device:
 
-- Bluetooth, stage 1 of 2 (controllers; headphones through bluez-alsa are stage 2),
+- Bluetooth headphones (stage 2), through bluez-alsa 4.3.1 with SBC, which every headset
+  has (AAC, aptX and the others need libraries that aren't in the image).
+  `/usr/sbin/bluetooth` starts `bluealsa -p a2dp-source` after bluetoothd. bluealsa's
+  `20-bluealsa.conf` makes the ALSA device `bluealsa`, a `plug` that converts the
+  sample rate. `audio_out.rs` follows whether a headset is connected, from a thread
+  that asks bluealsa (its ObjectManager at `/org/bluealsa`, an `A2DP-source` PCM in
+  `sink` mode) once a second, and only while the system bus runs. Menu sounds and game
+  audio then play with `aplay -D bluealsa`, the volume buttons set the PCM's `Volume`
+  (0 to 127 per channel, which bluealsa sends to headphones that take it or applies
+  itself), and the codec's level is kept for the speaker. A game checks every 60
+  frames and starts aplay again on the other device when a headset connects or goes,
+  or when aplay ended, as it does with `No such device` when the headset is turned
+  off. The boot jingle stays on the speaker, since Bluetooth starts after it.
+
+  BlueZ only had its audio plugins after a clean rebuild: turning
+  `BR2_PACKAGE_BLUEZ5_UTILS_PLUGINS_AUDIO` on with `bluez5_utils-reconfigure` kept the
+  old `src/builtin.h`, so a2dp and avrcp were compiled but never loaded, there was no
+  `org.bluez.Media1`, and a headset's connection failed with
+  `BREDR.ProfileUnavailable`. A BlueZ option change needs `bluez5_utils-dirclean`.
+
+  Tested by the user on 2026-11-11 with a Bose QC35 II: pairing, playing a game's
+  sound, and the sound moving to the speaker and back as the headphones went off and
+  on. BlueZ names it "LE-Bose QC35 II", from its Low Energy advertising; the same
+  device also shows as "Bose QC35 II" before pairing. Each move to the headphones
+  starts with underruns of 0.5 to 1.1 s while the A2DP stream starts, and the game
+  ran at 55 fps for those seconds, then 59.7. One reconnect failed once with
+  `Couldn't change BlueALSA PCM configuration: Input/output error`, and the next check
+  a second later started it. Not yet tried: the volume buttons, how the delay feels.
+
+- Bluetooth, stage 1 of 2 (controllers; headphones are stage 2, above),
   from Settings > BLUETOOTH, off by default. The RTL8821CS's Bluetooth half is on UART1
   with the Realtek 3-wire (H5) protocol, already in the shared device tree
   (`realtek,rtl8821cs-bt`, enable PG19, device wake PG17, host wake PG16). The kernel

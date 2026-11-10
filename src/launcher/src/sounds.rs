@@ -79,7 +79,8 @@ pub fn play(sound: Sound) {
         return;
     }
     let child = Command::new("aplay")
-        .args(["-q", "-t", "raw", "-f", "S16_LE", "-c", "2", "-r", &RATE.to_string()])
+        .args(["-q", "-D", crate::audio_out::device()])
+        .args(["-t", "raw", "-f", "S16_LE", "-c", "2", "-r", &RATE.to_string()])
         .args(["--buffer-time=40000", "--period-time=10000"])
         .stdin(Stdio::piped())
         .stderr(Stdio::null())

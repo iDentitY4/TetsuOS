@@ -302,8 +302,41 @@ fn start_probed_audio(sample_rate: f64, fps: f64) {
     let samples_per_frame = measured.max(sample_rate / fps);
     let rate = playback_rate(sample_rate, samples_per_frame);
     println!("{samples_per_frame:.1} samples per frame: playing sound at {rate:.0} Hz");
+    let device = crate::audio_out::device();
     match start_audio(rate) {
-        Ok(audio) => with_host(|host| host.audio = Some(audio)),
+        Ok(audio) => with_host(|host| {
+            host.audio = Some(audio);
+            host.audio_device = device;
+            host.audio_rate = rate;
+        }),
+        Err(error) => eprintln!("warning: no audio: {error}"),
+    }
+}
+
+/// How often a game checks where its sound should go.
+const AUDIO_CHECK_FRAMES: u64 = 60;
+
+/// Starts the sound again on the device it should play on now: when Bluetooth
+/// headphones connect or go, or when aplay has ended, as it does when they drop.
+fn follow_audio_device() {
+    let old = with_host(|host| {
+        let audio = host.audio.as_mut()?;
+        // Not while the game's menu writes silence into it.
+        audio.stdin.as_ref()?;
+        let ended = matches!(audio.try_wait(), Ok(Some(_)));
+        (ended || host.audio_device != crate::audio_out::device()).then(|| host.audio.take()).flatten()
+    });
+    let Some(mut old) = old else { return };
+    drop(old.stdin.take());
+    let _ = old.kill();
+    let _ = old.wait();
+    let (rate, device) = (with_host(|host| host.audio_rate), crate::audio_out::device());
+    println!("audio: playing on {device}");
+    match start_audio(rate) {
+        Ok(audio) => with_host(|host| {
+            host.audio = Some(audio);
+            host.audio_device = device;
+        }),
         Err(error) => eprintln!("warning: no audio: {error}"),
     }
 }
@@ -328,6 +361,7 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
     if let Err(error) = signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&TERMINATING)) {
         eprintln!("warning: a power-off may not save the game: {error}");
     }
+    crate::audio_out::watch();
     let directory = save.parent().unwrap_or(Path::new("."));
     set_host(directory, framebuffer.size(), setup, console, layout_for(save, console))?;
     with_host(|host| {
@@ -470,6 +504,8 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
         }
         if frames == AUDIO_PROBE_FRAMES && with_host(|host| host.audio.is_none()) {
             start_probed_audio(sample_rate, fps);
+        } else if frames.is_multiple_of(AUDIO_CHECK_FRAMES) {
+            follow_audio_device();
         }
         if release_at == Some(frames) {
             // Fast-forward keeps holding it until the button is let go.

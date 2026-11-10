@@ -21,8 +21,9 @@ root password; a CPU performance setting; USB STORAGE, which shows TETSU-DATA to
 a drive; WI-FI TRANSFER, a web page for sending games, saves and covers from a browser,
 served only while its screen is open, with a code on screen; the vibration motor, for
 games that rumble (not PlayStation, see `docs/features.md`), with a strength setting;
-Bluetooth controllers (Settings > BLUETOOTH, off by default), checked with a Backbone Pro
-pairing, playing and reconnecting; headphones are the next stage.
+Bluetooth (Settings > BLUETOOTH, off by default): controllers, checked with a Backbone Pro,
+and headphones through bluez-alsa, checked with a Bose QC35 II, the sound moving to the
+speaker and back as they go and come.
 
 Games: NES (FCEUmm), SNES (Snes9x), Game Boy, Color and Advance (mGBA), PlayStation (PCSX
 ReARMed, with discs grouped by name or an `.m3u`, and CHANGE DISC), Mega Drive, Master System and Game Gear (Genesis Plus GX), PC Engine (Beetle PCE
@@ -44,7 +45,8 @@ ADVANCED > RUN SETUP AGAIN repeats.
 ## Not yet checked by the user
 
 - Bluetooth: controllers other than the Backbone Pro (classic ones such as a DualShock 4),
-  a D-pad hat and stick, vibration, a lid close, the German wording on the device
+  a D-pad hat and stick, vibration, a lid close, the German wording on the device;
+  headphones' volume buttons and how their delay feels in a game
 
 - Game Boy SGB games without their border; PlayStation sound and feel
 - Vibration: the German wording of VIBRATION on the device, and through a lid close
@@ -100,7 +102,7 @@ ADVANCED > RUN SETUP AGAIN repeats.
   `app.rs` has the menus' loop and actions, `systems.rs` the consoles, `library.rs` the
   games and tiles, `game.rs` running and resuming games, `libretro/` the frontend (`ffi`, `host`, `core`, `scale`, `save`, `audio`, `menu`, `play`),
   `rom_zip.rs` games in ZIPs, `bluetooth.rs` (BlueZ over `zbus`), `bluetooth_menu.rs` and `bluetooth_screen.rs`
-  the Bluetooth screen, `transfer.rs` and `transfer_server.rs` the Wi-Fi transfer
+  the Bluetooth screen, `audio_out.rs` where sound goes (Bluetooth headphones or the speaker), `transfer.rs` and `transfer_server.rs` the Wi-Fi transfer
   screen and web page (`transfer_page.html`), `controls.rs` button layouts and turbo, `core_options.rs` cores' own options, `cheats.rs` cheat files and the CHEATS page, `achievements.rs` RetroAchievements through rcheevos, `game_files.rs` which files are a game's, `screenshot.rs` the in-game menu's pictures, `sleep.rs`, `corner.rs` (clock and battery), `sounds.rs` the menu sounds and boot jingle, `boot_animation.rs` the animation drawn with it, `launcher.rs` the button logic,
   `screens.rs` and `canvas.rs` the drawing, `pause_screens.rs` the in-game menu's, `paths.rs`
   the device's paths and the macros a module builds its own from. Imports are by name, and
