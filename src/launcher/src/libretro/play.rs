@@ -378,6 +378,12 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
         if leave {
             break;
         }
+        if crate::app::powering_off() {
+            // The shutdown screen shows, and the shutdown stops the game in a moment, saving
+            // where it is. Until then, it stays where it is.
+            sleep(Duration::from_millis(10));
+            continue;
+        }
         if lid_closed {
             // The launcher puts the device to sleep shortly. The battery can run out while
             // it sleeps, so save where the game is first.

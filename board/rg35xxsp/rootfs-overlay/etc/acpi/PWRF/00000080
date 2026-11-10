@@ -1,3 +1,5 @@
 #!/bin/sh
-# Power button pressed: shut down cleanly
+# Power button pressed: the launcher shows the shutdown screen, then shut down cleanly.
+# The menus and a running game both draw it on SIGUSR1; a moment lets them finish.
+killall -q -USR1 launcher && sleep 0.2
 exec /sbin/poweroff

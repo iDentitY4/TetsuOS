@@ -11,7 +11,7 @@ measured and how it was tested. Read the part you work on.
 
 Boot to the launcher in 3.8 s with a logo, or 6.4 s with the boot jingle and its animation
 (on by default);
-power button on and off; USB console, SSH and
+power button on and off, with a shutdown screen; USB console, SSH and
 updates over USB networking (`10.35.35.1`); audio with headphone switching; Panfrost GPU;
 CPU scaling to 1512 MHz; lid sleep (`s2idle`), with Wi-Fi and USB kept through it, and
 power-off after 2 hours (or as set) of it or of sleep when idle on battery; Wi-Fi
@@ -66,6 +66,8 @@ ADVANCED > RUN SETUP AGAIN repeats.
 - WI-FI TRANSFER from a real phone, the German page, a PlayStation `.cue` with its `.bin`,
   the lid during an upload
 - The lid during the setup
+- The shutdown screen: a real power button press, one during a game (it should resume
+  at the next start), and the menu's POWER OFF and REBOOT
 - Settings > ADVANCED: SSH from another machine over Wi-Fi, games at BATTERY or
   PERFORMANCE, and the battery gauge over a whole charge with CHARGE TO below FULL
 

@@ -1273,6 +1273,36 @@ pub fn message_screen(width: usize, height: usize, message: &str, theme: Theme) 
     canvas
 }
 
+/// The power symbol's outer and inner radius, and its bar's width.
+const POWER_RING: (usize, usize) = (44, 33);
+const POWER_BAR_W: usize = 11;
+
+/// The screen left showing while the device powers off or reboots: the power symbol in
+/// the accent colour above the message.
+pub fn shutdown_screen(width: usize, height: usize, message: &str, theme: Theme) -> Canvas {
+    let mut canvas = message_screen(width, height, "", theme);
+    let (outer, inner) = POWER_RING;
+    let (cx, cy) = (width / 2, (height / 2).saturating_sub(36));
+    // From above the ring down to near its middle.
+    let bar = cy.saturating_sub(outer + 4)..=cy.saturating_sub(8);
+    for y in cy.saturating_sub(outer + 8)..=cy + outer {
+        for x in cx.saturating_sub(outer)..=cx + outer {
+            let (dx, dy) = (x as f32 - cx as f32 + 0.5, y as f32 - cy as f32 + 0.5);
+            let distance = dx.hypot(dy);
+            // The ring opens at the top, about 40 degrees to each side, for the bar.
+            let in_gap = dy < 0.0 && dx.abs() < -dy * 0.84;
+            let on_ring = distance <= outer as f32 && distance >= inner as f32 && !in_gap;
+            let on_bar = dx.abs() <= POWER_BAR_W as f32 / 2.0 && bar.contains(&y);
+            if (on_ring || on_bar) && x < width && y < height {
+                canvas.pixels[y * width + x] = theme.accent;
+            }
+        }
+    }
+    let scale = [4, 3].into_iter().find(|&scale| text_width(message, scale) + 32 <= width).unwrap_or(TEXT_SCALE);
+    canvas.text(message, cy + outer + 32, scale, TEXT);
+    canvas
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -1313,6 +1343,21 @@ mod tests {
         // A short one stays large: its letters are 4 pixels to a dot.
         let (left, right) = lit_columns("REBOOTING");
         assert_eq!(right - left + 1, text_width("REBOOTING", 4));
+    }
+
+    #[test]
+    fn the_shutdown_screen_has_the_power_symbol_above_the_message() {
+        let theme = Theme::default();
+        let canvas = shutdown_screen(640, 480, "POWERING OFF", theme);
+        let rows = |color: Rgb| -> Vec<usize> { (0..480).filter(|&y| (0..640).any(|x| pixel(&canvas, x, y) == color)).collect() };
+        let (symbol, text) = (rows(theme.accent), rows(TEXT));
+        assert!(symbol.last() < text.first(), "the symbol ends at {:?}, the text starts at {:?}", symbol.last(), text.first());
+        // The bar stands in the ring's opening, and the ring is closed at the bottom.
+        let (cx, cy) = (320, 240 - 36);
+        assert_eq!(pixel(&canvas, cx, cy - 40), theme.accent);
+        assert_eq!(pixel(&canvas, cx - 18, cy - 40), theme.background);
+        assert_eq!(pixel(&canvas, cx, cy + 40), theme.accent);
+        assert_eq!(pixel(&canvas, cx, cy), theme.background);
     }
 
     #[test]

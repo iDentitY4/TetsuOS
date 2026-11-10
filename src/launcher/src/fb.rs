@@ -3,12 +3,18 @@
 use crate::canvas::Canvas;
 use crate::color::Rgb;
 use std::fs::{File, OpenOptions};
-use std::io::{self, Seek, SeekFrom, Write};
+use std::io;
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::FileExt;
+use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use libc::{c_ulong, ioctl, Ioctl};
+
+/// Set once the screen shows the last thing before a power-off or reboot, so nothing this
+/// process draws afterwards, like a game's next frame, replaces it. Held during each write,
+/// so a write that started before it was set finishes first.
+static LAST_SCREEN_SHOWN: Mutex<bool> = Mutex::new(false);
 
 // From linux/fb.h and linux/kd.h, which the libc crate doesn't have.
 const FBIOGET_VSCREENINFO: Ioctl = 0x4600;
@@ -150,7 +156,7 @@ impl Framebuffer {
 
     pub fn clear(&mut self) -> io::Result<()> {
         let buffer = vec![0u8; self.line_length * self.var.yres as usize];
-        self.file.write_all_at(&buffer, self.screen_offset())?;
+        self.write_at(&buffer, self.screen_offset())?;
         self.write_sign()
     }
 
@@ -235,7 +241,7 @@ impl Framebuffer {
             // SAFETY: the bytes of a u32 are always valid. The check above makes sure this
             // machine's byte order is the format's.
             let bytes = unsafe { std::slice::from_raw_parts(row.as_ptr().cast::<u8>(), row.len() * 4) };
-            return self.file.write_all_at(bytes, offset);
+            return self.write_at(bytes, offset);
         }
         let mut buffer = vec![0u8; row.len() * bytes_per_pixel];
         for (bytes, pixel) in buffer.chunks_exact_mut(bytes_per_pixel).zip(row) {
@@ -243,7 +249,7 @@ impl Framebuffer {
             let value = pack(color, self.var.red, self.var.green, self.var.blue);
             bytes.copy_from_slice(&value.to_le_bytes()[..bytes_per_pixel]);
         }
-        self.file.write_all_at(&buffer, offset)
+        self.write_at(&buffer, offset)
     }
 
     /// Waits for the panel to finish a refresh. A full-screen write that starts right
@@ -258,6 +264,15 @@ impl Framebuffer {
     }
 
     pub fn draw(&mut self, canvas: &Canvas) -> io::Result<()> {
+        if self.sign_wait().is_zero() {
+            self.sign = None;
+        }
+        let buffer = self.screen_bytes(canvas);
+        self.write_at(&buffer, self.screen_offset())
+    }
+
+    /// A full-screen canvas in the framebuffer's format, with the sign on top.
+    fn screen_bytes(&self, canvas: &Canvas) -> Vec<u8> {
         let bytes_per_pixel = self.var.bits_per_pixel as usize / 8;
         let mut buffer = vec![0u8; self.line_length * canvas.height];
         for (y, row) in canvas.pixels.chunks_exact(canvas.width).enumerate() {
@@ -267,9 +282,6 @@ impl Framebuffer {
                 buffer[start..start + bytes_per_pixel]
                     .copy_from_slice(&value.to_le_bytes()[..bytes_per_pixel]);
             }
-        }
-        if self.sign_wait().is_zero() {
-            self.sign = None;
         }
         if let Some(Sign { pixels, area: (left, top, width, _), .. }) = &self.sign {
             for (y, row) in pixels.chunks_exact(*width).enumerate() {
@@ -282,9 +294,28 @@ impl Framebuffer {
                 }
             }
         }
-        let offset = u64::from(self.var.yoffset) * self.line_length as u64;
-        self.file.seek(SeekFrom::Start(offset))?;
-        self.file.write_all(&buffer)
+        buffer
+    }
+
+    /// Draws the last screen before a power-off or reboot, which stays until the device is
+    /// off: anything drawn after it is left out. Only the first one shows.
+    pub fn draw_last(&mut self, canvas: &Canvas) -> io::Result<()> {
+        self.sign = None;
+        let buffer = self.screen_bytes(canvas);
+        let mut shown = LAST_SCREEN_SHOWN.lock().unwrap_or_else(PoisonError::into_inner);
+        if *shown {
+            return Ok(());
+        }
+        *shown = true;
+        self.file.write_all_at(&buffer, self.screen_offset())
+    }
+
+    fn write_at(&self, bytes: &[u8], offset: u64) -> io::Result<()> {
+        let shown = LAST_SCREEN_SHOWN.lock().unwrap_or_else(PoisonError::into_inner);
+        if *shown {
+            return Ok(());
+        }
+        self.file.write_all_at(bytes, offset)
     }
 
     /// Draws only part of a full-screen canvas, for small changes like a scrolling name,
@@ -300,7 +331,7 @@ impl Framebuffer {
                 bytes.copy_from_slice(&value.to_le_bytes()[..bytes_per_pixel]);
             }
             let offset = self.screen_offset() + (row * self.line_length + x * bytes_per_pixel) as u64;
-            self.file.write_all_at(&buffer, offset)?;
+            self.write_at(&buffer, offset)?;
         }
         Ok(())
     }

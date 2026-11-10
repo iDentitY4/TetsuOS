@@ -121,8 +121,12 @@ fn main() -> ExitCode {
         [flag, core] if flag == "--core-options" => libretro::print_core_options(Path::new(core)),
         [flag, path] if flag == "--preview-splash" => write_plain_ppm(&screens::splash(), path),
         [flag, path] if flag == "--preview-boot-animation" => write_boot_animation_preview(path),
+        [flag, path] if flag == "--preview-shutdown" => {
+            write_ppm(&screens::shutdown_screen(640, 480, i18n::tr("POWERING OFF"), current_theme()), path)
+        }
         [flag, path] if flag == "--preview-volume" => write_ppm(&screens::volume_sign(80, current_theme()), path),
         [flag, core, rom, save, persistence] if flag == "--play" => {
+            app::show_shutdown_on_signal();
             let ending = parse_persistence(persistence).and_then(|persistence| {
                 run_game(Path::new(core), Path::new(rom), Path::new(save), persistence)
             });

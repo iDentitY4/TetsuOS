@@ -61,6 +61,20 @@ Working on the test unit, confirmed by the user:
   leaves room for one note line: its note about the power button. Claude checked on the
   device that the row shows 2 HOURS, Right saves `4h`, and the note fits under the rows
   with SLEEP WHEN IDLE on; a sleep with a setting other than 2 hours hasn't been tried
+- Shutdown screen (2026-11-10): a power symbol in the accent colour above POWERING OFF
+  (SCHALTET AUS), or REBOOTING or BATTERY EMPTY, stays on the screen until the device is
+  off (`screens::shutdown_screen`, preview with `--preview-shutdown`). The power button's
+  acpid script (`/etc/acpi/PWRF/00000080`) sends SIGUSR1 to every `launcher` process,
+  waits 0.2 s and runs `poweroff` as before. The menus' process and a game's both listen
+  (`app::show_shutdown_on_signal`, a `signal_hook` thread), as either may be drawing; each
+  draws the screen with `Framebuffer::draw_last`, after which `fb.rs` leaves out every
+  write of that process, so a game's next frame or a menu redraw can't replace it. A
+  game stops running frames until the shutdown's SIGTERM, which saves its resume state as
+  before, so it resumes at the next start. The framebuffer keeps its picture after the
+  launcher stops: Claude checked on the device that the menu still showed 2 s after
+  `S90launcher stop`, that `killall -USR1 launcher` showed the screen, and that a press
+  afterwards left it as it was. Not yet tried: a real power button press, one during a
+  game, and the menu's POWER OFF and REBOOT with the new screen
 - The battery level in the menu
 - Updating over USB. The gadget is serial plus CDC Ethernet, set up through configfs by
   `/usr/sbin/usb-gadget start` from `S41usbnet`, with the fixed MACs and the USB ID

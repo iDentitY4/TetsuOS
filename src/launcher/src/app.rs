@@ -31,8 +31,11 @@ use crate::wifi_screen::wifi_settings;
 use std::io;
 use std::path::Path;
 use std::process::Command;
+use signal_hook::consts::SIGUSR1;
+use signal_hook::iterator::Signals;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
-use std::thread::sleep;
+use std::thread::{sleep, spawn};
 use std::time::{Duration, Instant};
 
 pub(crate) const FB_PATH: &str = "/dev/fb0";
@@ -113,13 +116,48 @@ pub(crate) fn press_volume(framebuffer: &mut fb::Framebuffer, button: Button) ->
     }
 }
 
-/// Shows a message, then runs the command that reboots or powers off. Init stops this app
-/// as part of shutting down.
+/// Shows the shutdown screen, then runs the command that reboots or powers off. Init stops
+/// this app as part of shutting down; until then, the screen stays.
 pub(crate) fn shut_down(framebuffer: &mut fb::Framebuffer, message: &str, program: &str) -> io::Result<()> {
     let (width, height) = framebuffer.size();
-    framebuffer.draw(&screens::message_screen(width, height, message, current_theme()))?;
+    framebuffer.draw_last(&screens::shutdown_screen(width, height, message, current_theme()))?;
     Command::new(program).status()?;
     Ok(())
+}
+
+/// Set when the power button's script says the device is powering off.
+static POWERING_OFF: AtomicBool = AtomicBool::new(false);
+
+/// Whether the device is powering off from the power button, so a game should stop
+/// running until the shutdown stops it, which saves where it is.
+pub(crate) fn powering_off() -> bool {
+    POWERING_OFF.load(Ordering::Relaxed)
+}
+
+/// Shows the shutdown screen when the power button's script sends SIGUSR1, just before it
+/// runs `poweroff`, which takes a moment to stop this app. Both the menus and a game's
+/// process listen, as either may be drawing.
+pub(crate) fn show_shutdown_on_signal() {
+    let mut signals = match Signals::new([SIGUSR1]) {
+        Ok(signals) => signals,
+        Err(error) => return eprintln!("warning: the power button won't show the shutdown screen: {error}"),
+    };
+    spawn(move || {
+        if signals.forever().next().is_none() {
+            return;
+        }
+        POWERING_OFF.store(true, Ordering::Relaxed);
+        println!("powering off from the power button");
+        let shown = fb::Framebuffer::open(FB_PATH).and_then(|mut framebuffer| {
+            let (width, height) = framebuffer.size();
+            framebuffer.draw_last(&screens::shutdown_screen(width, height, tr("POWERING OFF"), current_theme()))
+        });
+        if let Err(error) = shown {
+            eprintln!("warning: could not show the shutdown screen: {error}");
+        }
+        // Later signals are ignored while the shutdown goes on.
+        signals.forever().for_each(drop);
+    });
 }
 
 pub(crate) fn button_test(
@@ -1081,6 +1119,7 @@ fn action_for(
 }
 
 pub(crate) fn run_launcher() -> io::Result<()> {
+    show_shutdown_on_signal();
     println!("launcher started {}", boot_time());
     settings::restore_levels();
     performance::apply(settings::get().performance);
