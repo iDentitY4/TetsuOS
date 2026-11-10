@@ -9,6 +9,9 @@ compile_error!("the launcher needs Linux: it uses evdev, the framebuffer, /sys a
 
 mod achievements;
 mod app;
+mod bluetooth;
+mod bluetooth_menu;
+mod bluetooth_screen;
 mod boot_animation;
 mod boot_partition;
 mod boxart;
@@ -108,6 +111,7 @@ fn main() -> ExitCode {
         [flag, path] if flag == "--preview-usb" => write_usb_drive_preview(path),
         [flag, path] if flag == "--preview-transfer" => write_transfer_preview(path),
         [flag, path] if flag == "--preview-wifi" => write_wifi_preview(path),
+        [flag, path] if flag == "--preview-bluetooth" => previews::write_bluetooth_preview(path),
         [flag, path] if flag == "--preview-keyboard" => write_keyboard_preview(path),
         [flag, step, path] if flag == "--preview-setup" => match step.parse() {
             Ok(step) if step < setup::STEPS.len() => write_setup_preview(step, path),

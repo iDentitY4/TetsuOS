@@ -50,3 +50,15 @@ Ten patches are specific to this project:
 - `linux/0016-input-ff-memless-stop-an-effect-updated-while-playing.patch` makes a stop
   reach the driver for an effect whose new values the timer hasn't played yet. Without
   it, a game that changed its rumble every frame left the motor running for good.
+- `linux/0017-bluetooth-hci_h5-btrtl-reset-without-sleeping-in-probe.patch` lets the
+  RTL8821CS's Bluetooth out of reset from a delayed work instead of sleeping 600 ms in
+  probe, which the kernel waits for before mounting the root filesystem. Without it,
+  every boot reached init 0.38 s later. It also adds `hci_uart.rtl_boot_sync_delay_ms`,
+  which `extlinux.conf` sets to 5000, so the Bluetooth firmware upload at boot doesn't
+  slow the init scripts (0.2 s). It holds back the link sync, not the reset: Wi-Fi fails
+  to load its firmware while the Bluetooth half is in reset.
+- `bluez5_utils/0001-device-raise-le-security-on-demand.patch` keeps BlueZ from starting
+  encryption as soon as a paired LE device connects, and lets the first read the device
+  refuses unencrypted start it instead. Started 26 ms in, a Backbone Pro never answered
+  it and the link timed out on every reconnect; started half a second in, after the
+  connection parameter and data length updates, it always worked.

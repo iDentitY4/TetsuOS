@@ -420,6 +420,9 @@ pub struct Settings {
     /// The boot jingle is off. It plays by default, also for a settings file from before it.
     pub jingle_off: bool,
     pub vibration: Vibration,
+    /// Bluetooth's services run and paired devices may connect. Off by default, so D-Bus
+    /// and bluetoothd don't run for those who never use it.
+    pub bluetooth: bool,
     pub ssh: SshAccess,
     pub performance: CpuLevel,
     pub charge: ChargeLimit,
@@ -572,6 +575,7 @@ fn parse(text: &str) -> Settings {
             "sounds" => settings.menu_sounds = value == "on",
             "jingle" => settings.jingle_off = value == "off",
             "vibration" => choose(&mut settings.vibration, Vibration::from_key(value)),
+            "bluetooth" => settings.bluetooth = value == "on",
             "ssh" => choose(&mut settings.ssh, SshAccess::from_key(value)),
             "performance" => choose(&mut settings.performance, CpuLevel::from_key(value)),
             "charge" => choose(&mut settings.charge, ChargeLimit::from_key(value)),
@@ -633,6 +637,7 @@ fn format(settings: &Settings) -> String {
     lines.push(format!("sounds={}", on_off(settings.menu_sounds)));
     lines.push(format!("jingle={}", on_off(!settings.jingle_off)));
     lines.push(format!("vibration={}", settings.vibration.key()));
+    lines.push(format!("bluetooth={}", on_off(settings.bluetooth)));
     lines.push(format!("ssh={}", settings.ssh.key()));
     lines.push(format!("performance={}", settings.performance.key()));
     lines.push(format!("charge={}", settings.charge.key()));
@@ -896,6 +901,7 @@ mod tests {
             menu_sounds: true,
             jingle_off: true,
             vibration: Vibration::Low,
+            bluetooth: true,
             ssh: SshAccess::Wifi,
             performance: CpuLevel::Battery,
             charge: ChargeLimit::Less,
@@ -921,6 +927,7 @@ mod tests {
         assert_eq!((old.accent, old.title_hidden, old.title()), (Accent::Teal, false, DEFAULT_TITLE));
         assert_eq!(old.display.ghosting, Ghosting::Smart);
         assert!(!old.covers_hidden && !old.screenshot_covers_off && !old.menu_sounds && !old.jingle_off && old.idle_minutes == 0);
+        assert!(!old.bluetooth, "Bluetooth is off for a settings file from before it");
         assert_eq!((old.grid, old.background, old.battery), (GridSize::Normal, Background::Dark, BatteryDisplay::Percent));
         assert_eq!((old.start_screen, old.game_names), (StartScreen::Home, GameNames::Short));
     }

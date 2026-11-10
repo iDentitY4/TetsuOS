@@ -20,7 +20,9 @@ low-battery save and power-off; SSH over USB only by default, over Wi-Fi with a 
 root password; a CPU performance setting; USB STORAGE, which shows TETSU-DATA to a PC as
 a drive; WI-FI TRANSFER, a web page for sending games, saves and covers from a browser,
 served only while its screen is open, with a code on screen; the vibration motor, for
-games that rumble (not PlayStation, see `docs/features.md`), with a strength setting.
+games that rumble (not PlayStation, see `docs/features.md`), with a strength setting;
+Bluetooth controllers (Settings > BLUETOOTH, off by default), checked with a Backbone Pro
+pairing, playing and reconnecting; headphones are the next stage.
 
 Games: NES (FCEUmm), SNES (Snes9x), Game Boy, Color and Advance (mGBA), PlayStation (PCSX
 ReARMed, with discs grouped by name or an `.m3u`, and CHANGE DISC), Mega Drive, Master System and Game Gear (Genesis Plus GX), PC Engine (Beetle PCE
@@ -40,6 +42,9 @@ A new install starts with a setup (language, Wi-Fi, time, adding games), which S
 ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Not yet checked by the user
+
+- Bluetooth: controllers other than the Backbone Pro (classic ones such as a DualShock 4),
+  a D-pad hat and stick, vibration, a lid close, the German wording on the device
 
 - Game Boy SGB games without their border; PlayStation sound and feel
 - Vibration: the German wording of VIBRATION on the device, and through a lid close
@@ -94,7 +99,8 @@ ADVANCED > RUN SETUP AGAIN repeats.
   the menus; `--play`: one game in its own process; `--preview*`: PC screenshots).
   `app.rs` has the menus' loop and actions, `systems.rs` the consoles, `library.rs` the
   games and tiles, `game.rs` running and resuming games, `libretro/` the frontend (`ffi`, `host`, `core`, `scale`, `save`, `audio`, `menu`, `play`),
-  `rom_zip.rs` games in ZIPs, `transfer.rs` and `transfer_server.rs` the Wi-Fi transfer
+  `rom_zip.rs` games in ZIPs, `bluetooth.rs` (BlueZ over `zbus`), `bluetooth_menu.rs` and `bluetooth_screen.rs`
+  the Bluetooth screen, `transfer.rs` and `transfer_server.rs` the Wi-Fi transfer
   screen and web page (`transfer_page.html`), `controls.rs` button layouts and turbo, `core_options.rs` cores' own options, `cheats.rs` cheat files and the CHEATS page, `achievements.rs` RetroAchievements through rcheevos, `game_files.rs` which files are a game's, `screenshot.rs` the in-game menu's pictures, `sleep.rs`, `corner.rs` (clock and battery), `sounds.rs` the menu sounds and boot jingle, `boot_animation.rs` the animation drawn with it, `launcher.rs` the button logic,
   `screens.rs` and `canvas.rs` the drawing, `pause_screens.rs` the in-game menu's, `paths.rs`
   the device's paths and the macros a module builds its own from. Imports are by name, and
@@ -170,6 +176,11 @@ In short here; `docs/features.md` has them in full.
 - **The GPU needs `CONFIG_SUN50I_H6_PRCM_PPU`,** or Panfrost fails silently.
 - **TETSU-DATA starts at a fixed 4 GiB.** Writing the image replaces the partition table, and
   `flash.sh` adds TETSU-DATA back; after a plain `dd`, run `data-partition.sh`.
+- **Bluetooth** shares the RTL8821CS with Wi-Fi: Wi-Fi fails to probe while the Bluetooth
+  half is held in reset, and while Bluetooth is on rtw88's deep power save stalls Wi-Fi
+  (`/usr/sbin/bluetooth` turns it off). Patch 0017 keeps the driver from sleeping in probe.
+  LE encryption started right after connecting never completes (BlueZ patch 0001), and
+  `btmon` shows what the radio does.
 - **Wi-Fi:** without `keep-power-in-suspend` (patch 0013) rtw88 aborts every suspend.
   Sleeping while connected hangs the device for good, so sleep sends `DISCONNECT` first
   and `RECONNECT` after. This `wpa_supplicant` has no syslog (`-s` just prints usage).

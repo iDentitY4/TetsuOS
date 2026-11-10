@@ -31,6 +31,12 @@ done
 # RTL8821CS's is kept, because the kernel build reads it from here to build it in.
 find lib/firmware/rtw88 -type f ! -name rtw8821c_fw.bin -delete 2>/dev/null || true
 
+# D-Bus and bluetoothd are only for Bluetooth, which /usr/sbin/bluetooth starts
+# when the setting is on, so their init scripts lose the S that runs them at boot.
+for script in S30dbus-daemon S40bluetoothd; do
+	[ -e "etc/init.d/$script" ] && mv "etc/init.d/$script" "etc/init.d/${script#S??}"
+done
+
 # Name the OS in os-release, which Buildroot writes as its own. VERSION, the git
 # revision that SYSTEM info shows, and VERSION_ID, the Buildroot release, are kept.
 sed -i -e 's/^NAME=.*/NAME="Tetsu OS"/' -e 's/^ID=.*/ID=tetsuos\nID_LIKE=buildroot/' \

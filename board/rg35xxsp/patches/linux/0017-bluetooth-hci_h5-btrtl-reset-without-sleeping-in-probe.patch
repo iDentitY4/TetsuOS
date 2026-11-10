@@ -1,0 +1,99 @@
+Subject: [PATCH] Bluetooth: hci_h5: let a Realtek controller out of reset without sleeping in probe
+
+h5_btrtl_open() runs from probe, through hci_uart_register_device(), and held
+the controller in reset for 100 ms and then waited 500 ms for it to wake up.
+The kernel waits for probes before it mounts the root filesystem, so on the
+RG35XX SP (RTL8821CS on UART1) every boot reached init 0.38 s later, whether
+Bluetooth was used or not.
+
+Let it out of reset from a delayed work instead. Nothing needs the 500 ms:
+the H5 link sync is resent every 100 ms until the controller answers, and the
+HCI device is only registered after that.
+
+The firmware upload that follows still slowed the first init scripts, so
+hci_uart.rtl_boot_sync_delay_ms can hold the first link sync back for a
+controller that probes during boot. The reset itself keeps its timing: the
+RTL8821CS's Wi-Fi fails to load its firmware over SDIO while the Bluetooth
+half is held in reset. After boot, as when it is probed again on resume,
+there is no delay.
+---
+--- a/drivers/bluetooth/hci_h5.c
++++ b/drivers/bluetooth/hci_h5.c
+@@ -102,6 +102,9 @@
+ 
+ 	struct gpio_desc *enable_gpio;
+ 	struct gpio_desc *device_wake_gpio;
++	struct delayed_work enable_work;
++	/* How much later than usual the first link sync goes out. */
++	unsigned long sync_delay;
+ };
+ 
+ enum h5_driver_info {
+@@ -248,7 +251,7 @@
+ 	 * Wait one jiffy because the UART layer won't set HCI_UART_PROTO_READY,
+ 	 * which allows us to send link packets, until this function returns.
+ 	 */
+-	mod_timer(&h5->timer, jiffies + 1);
++	mod_timer(&h5->timer, jiffies + 1 + h5->sync_delay);
+ 
+ 	return 0;
+ }
+@@ -987,6 +990,25 @@
+ 	return err;
+ }
+ 
++/*
++ * Setting the controller up uploads its firmware, which competes with the
++ * rest of the boot for the CPU. This puts it later, for a controller that
++ * probes during boot, by holding back the link sync that starts it.
++ */
++static unsigned int rtl_boot_sync_delay_ms;
++module_param(rtl_boot_sync_delay_ms, uint, 0444);
++MODULE_PARM_DESC(rtl_boot_sync_delay_ms,
++		 "Delay before the link to a Realtek controller probed during boot starts (ms)");
++
++static void h5_btrtl_enable_work(struct work_struct *work)
++{
++	struct h5 *h5 = container_of(to_delayed_work(work), struct h5,
++				     enable_work);
++
++	gpiod_set_value_cansleep(h5->enable_gpio, 1);
++	gpiod_set_value_cansleep(h5->device_wake_gpio, 1);
++}
++
+ static void h5_btrtl_open(struct h5 *h5)
+ {
+ 	/*
+@@ -1010,19 +1032,26 @@
+ 		pm_runtime_enable(&h5->hu->serdev->dev);
+ 	}
+ 
+-	/* The controller needs reset to startup */
++	/*
++	 * The controller needs reset to startup. It is let out of reset 100 ms
++	 * later by a work rather than here, because this runs in probe and the
++	 * kernel waits for probes before it mounts the root filesystem. The
++	 * controller then needs up to 500ms to wakeup; the link sync is resent
++	 * until it answers, so nothing has to wait for it.
++	 */
+ 	gpiod_set_value_cansleep(h5->enable_gpio, 0);
+ 	gpiod_set_value_cansleep(h5->device_wake_gpio, 0);
+-	msleep(100);
++	INIT_DELAYED_WORK(&h5->enable_work, h5_btrtl_enable_work);
++	schedule_delayed_work(&h5->enable_work, msecs_to_jiffies(100));
+ 
+-	/* The controller needs up to 500ms to wakeup */
+-	gpiod_set_value_cansleep(h5->enable_gpio, 1);
+-	gpiod_set_value_cansleep(h5->device_wake_gpio, 1);
+-	msleep(500);
++	if (system_state != SYSTEM_RUNNING)
++		h5->sync_delay = msecs_to_jiffies(rtl_boot_sync_delay_ms);
+ }
+ 
+ static void h5_btrtl_close(struct h5 *h5)
+ {
++	cancel_delayed_work_sync(&h5->enable_work);
++
+ 	if (!test_bit(H5_WAKEUP_DISABLE, &h5->flags)) {
+ 		pm_runtime_dont_use_autosuspend(&h5->hu->serdev->dev);
+ 		pm_runtime_disable(&h5->hu->serdev->dev);

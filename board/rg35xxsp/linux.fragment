@@ -98,10 +98,39 @@ CONFIG_USB_CONFIGFS_MASS_STORAGE=y
 
 # Wi-Fi: Realtek RTL8821CS on SDIO, ID 024C:C821. The firmware and the regulatory
 # database are built in, because the driver probes before the root filesystem is
-# mounted. external.mk points CONFIG_EXTRA_FIRMWARE_DIR at the target's firmware.
+# mounted (CONFIG_EXTRA_FIRMWARE is under Bluetooth below). external.mk points
+# CONFIG_EXTRA_FIRMWARE_DIR at the target's firmware.
 CONFIG_CFG80211=y
 CONFIG_MAC80211=y
 CONFIG_WLAN_VENDOR_REALTEK=y
 CONFIG_RTW88=y
 CONFIG_RTW88_8821CS=y
-CONFIG_EXTRA_FIRMWARE="rtw88/rtw8821c_fw.bin regulatory.db regulatory.db.p7s"
+
+# Bluetooth: the RTL8821CS's Bluetooth half, on UART1 with the Realtek 3-wire (H5)
+# protocol; the device tree already describes it. Its firmware is built in like
+# Wi-Fi's, because the driver loads it as soon as it probes. rtl8821cs_config.bin
+# is linux-firmware's link to rtl8761b_config.bin, as ROCKNIX uses on the H700.
+# UHID is for BlueZ, which hands HID devices to the kernel through it.
+CONFIG_BT=y
+CONFIG_BT_BREDR=y
+CONFIG_BT_LE=y
+CONFIG_BT_HIDP=y
+CONFIG_BT_HCIUART=y
+CONFIG_BT_HCIUART_SERDEV=y
+CONFIG_BT_HCIUART_3WIRE=y
+CONFIG_BT_HCIUART_RTL=y
+CONFIG_BT_RTL=y
+CONFIG_RFKILL=y
+CONFIG_UHID=y
+CONFIG_EXTRA_FIRMWARE="rtw88/rtw8821c_fw.bin regulatory.db regulatory.db.p7s rtl_bt/rtl8821cs_fw.bin rtl_bt/rtl8821cs_config.bin"
+
+# Bluetooth controllers: DualShock 4 and DualSense, DualShock 3, Switch Pro and
+# Joy-Cons, Xbox (rumble), with their vibration. 8BitDo and most others are generic.
+CONFIG_LEDS_CLASS_MULTICOLOR=y
+CONFIG_HID_PLAYSTATION=y
+CONFIG_PLAYSTATION_FF=y
+CONFIG_HID_SONY=y
+CONFIG_SONY_FF=y
+CONFIG_HID_NINTENDO=y
+CONFIG_NINTENDO_FF=y
+CONFIG_HID_MICROSOFT=y

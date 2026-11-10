@@ -46,8 +46,11 @@ push_rootfs() {
 		--exclude=/dev/ --exclude=/proc/ --exclude=/sys/ --exclude=/run/ \
 		--exclude=/tmp/ --exclude=/mnt/ --exclude=/media/ --exclude=/root/ \
 		--exclude=/var/ --exclude=/etc/dropbear \
+		--exclude=/etc/passwd --exclude=/etc/group --exclude=/etc/shadow \
 		"$TARGET/" "$DEVICE:/"
-	# The build's /etc/shadow has no root password: put back the one set on the device.
+	# The user files are the device's own: Buildroot adds its packages' users, such as
+	# dbus, only to the image, so the build tree's lack them. A package with a new user
+	# needs a flash, or the user added by hand. S50dropbear puts root's password back.
 	on_device /etc/init.d/S50dropbear restart >/dev/null
 	on_device /etc/init.d/S90launcher restart
 	echo "Changed init scripts take effect after a reboot."

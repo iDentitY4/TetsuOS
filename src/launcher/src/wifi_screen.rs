@@ -164,7 +164,7 @@ fn wifi_canvas(size: (usize, usize), menu: &wifi_menu::WifiMenu, link: &Link, ba
 
 /// Waits for a press, and gives the buttons the menu should take: a new press, a held
 /// button's repeats, or none. `None` when the input has ended.
-fn pressed_buttons(
+pub(crate) fn pressed_buttons(
     framebuffer: &mut fb::Framebuffer,
     events: &Receiver<Event>,
     repeater: &mut Repeater,

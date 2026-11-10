@@ -94,13 +94,15 @@ pub enum DetailRow {
 /// without `DetailRow::Achievements`.
 pub const DETAIL_ROWS: [DetailRow; 4] = [DetailRow::Play, DetailRow::Star, DetailRow::Achievements, DetailRow::Delete];
 
-/// A tile on the settings grid. Each opens a list of its settings, except Wi-Fi, which
-/// opens the Wi-Fi screen, and Cores, which opens the consoles' core options.
+/// A tile on the settings grid. Each opens a list of its settings, except Wi-Fi and
+/// Bluetooth, which open their own screens, and Cores, which opens the consoles' core
+/// options.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Group {
     General,
     InGame,
     Wifi,
+    Bluetooth,
     BoxArt,
     Theme,
     Time,
@@ -110,10 +112,11 @@ pub enum Group {
     Achievements,
 }
 
-pub const GROUPS: [Group; 10] = [
+pub const GROUPS: [Group; 11] = [
     Group::General,
     Group::InGame,
     Group::Wifi,
+    Group::Bluetooth,
     Group::BoxArt,
     Group::Theme,
     Group::Time,
@@ -133,6 +136,7 @@ impl Group {
             Self::General => "GENERAL",
             Self::InGame => "IN GAME",
             Self::Wifi => "WI-FI",
+            Self::Bluetooth => "BLUETOOTH",
             Self::BoxArt => "BOX ART",
             Self::Theme => "THEME",
             Self::Time => "TIME",
@@ -165,7 +169,7 @@ impl Group {
                     Setting::Language,
                 ],
             Self::InGame => &[Setting::Scaling, Setting::Effect, Setting::Ghosting, Setting::UseForAllConsoles, Setting::Vibration],
-            Self::Wifi | Self::Cores => &[],
+            Self::Wifi | Self::Bluetooth | Self::Cores => &[],
             Self::BoxArt => &[Setting::ShowCovers, Setting::ScreenshotCovers, Setting::DownloadMissingArt, Setting::DownloadAllArt, Setting::DeleteArt],
             Self::Theme => {
                 &[
@@ -440,6 +444,7 @@ pub enum Command {
     ToggleAchievements,
     ButtonTest,
     Wifi,
+    Bluetooth,
     /// The consoles' core options, from Settings > CORES.
     CoreOptions,
     /// Shows covers in game lists if they are hidden, or hides them.
@@ -886,6 +891,7 @@ impl Launcher {
             Button::B => self.screen = self.before_settings,
             Button::A => match self.group_selected() {
                 Group::Wifi => return Command::Wifi,
+                Group::Bluetooth => return Command::Bluetooth,
                 Group::Cores => return Command::CoreOptions,
                 group => self.screen = Screen::SettingsGroup(group),
             },
@@ -1487,8 +1493,11 @@ mod tests {
         assert_eq!(launcher.group_selected(), Group::Achievements);
         assert_eq!(press_all(&mut launcher, &library, &[Button::Left, Button::A]), Command::CoreOptions);
         assert_eq!((launcher.screen(), launcher.group_selected()), (Screen::Settings, Group::Cores));
-        press_all(&mut launcher, &library, &[Button::Up, Button::Up, Button::Right, Button::Right]);
+        press_all(&mut launcher, &library, &[Button::Up, Button::Up, Button::Right]);
         assert_eq!(launcher.group_selected(), Group::Wifi);
+        // Bluetooth, right of Wi-Fi, opens its own screen too.
+        assert_eq!(press_all(&mut launcher, &library, &[Button::Right, Button::A]), Command::Bluetooth);
+        assert_eq!(launcher.screen(), Screen::Settings);
         press_all(&mut launcher, &library, &[Button::Right, Button::A]);
         assert_eq!(launcher.press(Button::Right, &library), Command::ToggleCovers);
         launcher.press(Button::Down, &library);
@@ -1497,8 +1506,8 @@ mod tests {
         assert_eq!(launcher.press(Button::A, &library), Command::DownloadBoxArt(ArtDownload::Missing));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::A, &library), Command::DownloadBoxArt(ArtDownload::All));
-        // System is left of Advanced, below Box Art.
-        press_all(&mut launcher, &library, &[Button::B, Button::Down, Button::Left, Button::A]);
+        // System ends the second row, which Box Art begins.
+        press_all(&mut launcher, &library, &[Button::B, Button::Right, Button::Right, Button::Right, Button::A]);
         assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::System));
         assert_eq!(launcher.press(Button::A, &library), Command::ButtonTest);
         press_all(&mut launcher, &library, &[Button::Down, Button::A]);
@@ -1523,8 +1532,8 @@ mod tests {
     fn time_settings_change_with_left_and_right() {
         let library = library();
         let mut launcher = Launcher::new();
-        // Time is the second tile of the second row.
-        press_all(&mut launcher, &library, &[Button::Start, Button::Down, Button::Right, Button::A]);
+        // Time is the third tile of the second row.
+        press_all(&mut launcher, &library, &[Button::Start, Button::Down, Button::Right, Button::Right, Button::A]);
         assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::Time));
         assert_eq!(launcher.press(Button::Right, &library), Command::TimeZone(1));
         launcher.press(Button::Down, &library);
@@ -1536,7 +1545,7 @@ mod tests {
     fn theme_settings_change_the_colour_and_title() {
         let library = library();
         let mut launcher = Launcher::new();
-        press_all(&mut launcher, &library, &[Button::Start, Button::Down, Button::A]);
+        press_all(&mut launcher, &library, &[Button::Start, Button::Down, Button::Right, Button::A]);
         assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::Theme));
         assert_eq!(launcher.press(Button::Left, &library), Command::Accent(-1));
         launcher.press(Button::Down, &library);
@@ -1585,7 +1594,7 @@ mod tests {
     fn every_group_fits_the_settings_screen() {
         for group in GROUPS {
             assert!(group.settings().len() <= MAX_GROUP_SETTINGS, "{group:?}");
-            assert_eq!(group.settings().is_empty(), matches!(group, Group::Wifi | Group::Cores));
+            assert_eq!(group.settings().is_empty(), matches!(group, Group::Wifi | Group::Bluetooth | Group::Cores));
         }
     }
 

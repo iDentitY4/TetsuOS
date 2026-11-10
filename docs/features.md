@@ -447,6 +447,101 @@ Working on the test unit, confirmed by the user:
 
 Built but not yet tested on the device:
 
+- Bluetooth, stage 1 of 2 (controllers; headphones through bluez-alsa are stage 2),
+  from Settings > BLUETOOTH, off by default. The RTL8821CS's Bluetooth half is on UART1
+  with the Realtek 3-wire (H5) protocol, already in the shared device tree
+  (`realtek,rtl8821cs-bt`, enable PG19, device wake PG17, host wake PG16). The kernel
+  has `CONFIG_BT`, `BT_HCIUART_3WIRE` and `BT_HCIUART_RTL`, `UHID` for BlueZ's input
+  plugin, and the PlayStation, Sony, Nintendo and Microsoft HID drivers with their
+  vibration. `rtl8821cs_fw.bin` and `rtl8821cs_config.bin` are built in like Wi-Fi's;
+  linux-firmware's WHENCE makes the config a link to `rtl8761b_config.bin` (25 bytes),
+  the one ROCKNIX uses on the H700, so `external.mk` installs those two files only.
+  BlueZ 5.86 with D-Bus is in the image, but `post-build.sh` takes the S off their init
+  scripts; `/usr/sbin/bluetooth on|off|status` starts and stops both, and unblocks or
+  blocks the radio through rfkill. The launcher runs it after its first frame when the
+  setting is on, and from the screen's ON/OFF row. It costs about 5 MB of RAM
+  (bluetoothd 3.9 MB, dbus-daemon 1.7 MB).
+
+  The screen (`bluetooth.rs` talks to BlueZ through `zbus`, `bluetooth_menu.rs` has the
+  list and buttons, `bluetooth_screen.rs` runs it) searches while open and lists
+  connected devices, then paired ones, then the rest by signal, leaving out those that
+  never said their name. A pairs a new device, trusts it so it can reconnect by itself,
+  and connects it; on a paired device A connects or disconnects, and X twice forgets it.
+  BlueZ needs an agent even for Just Works pairing, and without one refused the Backbone
+  Pro with `AuthenticationFailed` (`No agent available for request type 2` in
+  `bluetoothd -d`). While the screen is open, the launcher is the default agent
+  (`bluetooth::Agent`, NoInputNoOutput): it accepts every confirmation and answers a PIN
+  request with 0000, since there is no screen for a passkey.
+
+  No BlueZ call runs on the screen's thread. Starting a search while a classic pairing
+  (a Samsung TV, chosen by mistake) kept the radio busy waited 15 s for BlueZ's answer,
+  and the screen froze that long, then carried out the presses made meanwhile. A reader
+  thread now connects, registers the agent, searches and sends the devices every second;
+  pairing, connecting, disconnecting and forgetting each run in a thread, one at a time. Pairings are
+  in `/var/lib/bluetooth` on the root filesystem: they survive reboots but not a flash,
+  because TETSU-DATA is FAT and BlueZ's folder names have colons. Most Bluetooth
+  controllers report the D-pad as a hat, so `input::Axes` turns `ABS_HAT0X/Y` and the
+  left stick (on past half way, off under a third) into D-pad presses, for gamepads only
+  (a south button and no accelerometer, as a DualShock 4's motion sensors are a device of
+  their own). A controller then acts as the device's own buttons, in menus and games.
+
+  Measured on 2026-11-10:
+  - Boot: the Realtek driver held the chip in reset for 100 ms and waited 500 ms in probe,
+    which the kernel waits for before mounting the root filesystem, so init started at
+    0.91 s instead of 0.53 s and the launcher was drawn 0.35 s later (6.70 s against
+    6.36 s with the driver kept out by `initcall_blacklist=hci_uart_init`). Patch 0017
+    moves the wait to a delayed work. The firmware upload (0.75 s over the UART) then
+    still overlapped the first init scripts, 0.2 s, so
+    `hci_uart.rtl_boot_sync_delay_ms=5000` holds back the first H5 link sync at boot: it
+    now loads 6.1 s after the kernel starts. Six boots drew the launcher at 6.33 to 6.46 s,
+    one at 6.76 s, unexplained. Delaying the reset itself instead broke Wi-Fi on every
+    boot: rtw88 timed out on SDIO (-110) loading its firmware at 0.84 s while the
+    Bluetooth half was held in reset.
+  - Wi-Fi with Bluetooth on: with rtw88's deep power save, the Wi-Fi firmware logged
+    `firmware failed to leave lps state` and once stopped sending, connected, until
+    Wi-Fi reconnected; Bluetooth off alone didn't bring it back. With
+    `rtw88_core.disable_lps_deep` set, 170 s of searching lost no ping (85 of 85), and 50
+    such errors came back when it was cleared again. `/usr/sbin/bluetooth` sets it while
+    Bluetooth is on and clears it after.
+  - Sleep: the Realtek driver puts the Bluetooth half in reset while asleep and probes it
+    again on waking. With an RTC-timed s2idle (Wi-Fi disconnected first, as the launcher
+    does), Wi-Fi reconnected and pinged after waking, with Bluetooth off and on, and the
+    adapter was powered again after it.
+  - On the device, Claude saw the BLUETOOTH tile, the screen turning on and off, its
+    search listing four named devices nearby, and D-Bus, bluetoothd and the rfkill block
+    following the setting. On 2026-11-11 the user paired a Backbone Pro (LE only, HID over
+    GATT, driven by `hid-microsoft` as `045E:0B13`) and its buttons worked in the menus,
+    until the freeze above. Its first pairing then failed every reconnect: the Backbone
+    reconnected by itself every 2 s, the kernel started encryption with the stored Secure
+    Connections key, the Backbone never answered, and the link hit its 1 s supervision
+    timeout (`btmon`). Not Wi-Fi (the same with it disconnected) and not the stored
+    connection parameters (the Backbone asks for the same, 15 ms, latency 4, 1 s).
+    Forgotten and paired again (one attempt got no SMP Pairing Response in 30 s, the next
+    worked), it failed its reconnects the same way, so the pairing wasn't the cause; nor
+    were the connection parameters (the kernel's defaults, latency 0, failed too). The
+    traces showed the difference: while pairing, encryption started about 1 s in, after
+    the Backbone's connection parameter update and the data length change; on a
+    reconnect BlueZ started it 26 ms in, and the Backbone went on sending unencrypted
+    L2CAP data as if the request never came. The BlueZ patch
+    `bluez5_utils/0001-device-raise-le-security-on-demand.patch` leaves the level low on
+    connect (`device_attach_att()`, and `device_connect_le()` for Device1.Connect) and
+    lets the first read the Backbone refuses with Insufficient Encryption raise it,
+    which happens 0.45 to 0.7 s in. With it the Backbone reconnected, encrypted and
+    worked, also after being turned off and on (user, 2026-11-11). The Backbone takes a
+    new static address with each pairing. `btmon` is in the image
+    (`BR2_PACKAGE_BLUEZ5_UTILS_MONITOR`) for traces like these.
+  - Its buttons then did nothing after a reconnect: it came back as `event6`, the name
+    it had before, and `input::spawn_readers` never opened a name twice. It now opens a
+    name again once the reader of the device that had it has ended.
+
+  The search retries until the adapter is powered: at first it failed with `NotReady`
+  and never ran, while the screen said SEARCHING.
+
+  `push.sh rootfs` no longer copies `/etc/passwd`, `/etc/group` and `/etc/shadow`:
+  Buildroot adds package users such as `dbus` only to the image, so the build tree's
+  copies lack them, and pushing them removed the user D-Bus runs as. The unit was given
+  the `dbus` user and the `/var/lib/dbus` link by hand, as in the image.
+
 - Faster boot with a logo. The launcher logs when it is drawn after the kernel started
   and after power on, from the system counter (`since_power_on` in `system_info.rs`), which
   gives the time before the kernel exactly. U-Boot's `CONFIG_BOOTDELAY` is 0 instead of

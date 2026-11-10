@@ -1,0 +1,55 @@
+Subject: [PATCH] device: raise LE security when the device asks, not on connect
+
+With an LTK, device_attach_att() raised the ATT channel's security as soon as
+it connected, and device_connect_le() connected at medium security, so
+encryption started 26 ms into the connection. On the RG35XX SP (RTL8821CS on
+UART), a Backbone Pro controller never answered that encryption request: it
+kept sending unencrypted L2CAP data and the link hit its supervision timeout,
+every time it reconnected. Encryption that started after the connection
+parameter and data length updates, about half a second in, always worked.
+
+Leave the level low and let a read the device refuses as unencrypted raise
+it, which shared/att.c already does.
+---
+--- a/src/device.c
++++ b/src/device.c
+@@ -6438,18 +6438,14 @@
+ 		return false;
+ 	}
+ 
+-	if (sec_level == BT_IO_SEC_LOW && dev->le_state.paired) {
+-		DBG("Elevating security level since LTK is available");
+-
+-		sec_level = BT_IO_SEC_MEDIUM;
+-		bt_io_set(io, &gerr, BT_IO_OPT_SEC_LEVEL, sec_level,
+-							BT_IO_OPT_INVALID);
+-		if (gerr) {
+-			error("bt_io_set: %s", gerr->message);
+-			g_error_free(gerr);
+-			return false;
+-		}
+-	}
++	/*
++	 * Not raised here even with an LTK: encryption then starts within
++	 * 30 ms of the connection, and an RTL8821CS controller with a Backbone
++	 * Pro never completes it and loses the link. A read the device refuses
++	 * unencrypted raises it instead (change_security() in shared/att.c).
++	 */
++	if (sec_level == BT_IO_SEC_LOW && dev->le_state.paired)
++		DBG("LTK available; security raised when the device asks");
+ 
+ 	dev->att_mtu = MIN(mtu, btd_opts.gatt_mtu);
+ 	attrib = g_attrib_new(io,
+@@ -6594,10 +6590,8 @@
+ 	/* Set as initiator */
+ 	dev->le_state.initiator = true;
+ 
+-	if (dev->le_state.paired)
+-		sec_level = BT_IO_SEC_MEDIUM;
+-	else
+-		sec_level = BT_IO_SEC_LOW;
++	/* Low even when paired: see device_attach_att(). */
++	sec_level = BT_IO_SEC_LOW;
+ 
+ 	/*
+ 	 * This connection will help us catch any PDUs that comes before

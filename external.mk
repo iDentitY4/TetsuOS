@@ -20,3 +20,9 @@ define TETSU_FIRMWARE_DIR
 	$(call KCONFIG_SET_OPT,CONFIG_EXTRA_FIRMWARE_DIR,"$(TARGET_DIR)/lib/firmware")
 endef
 LINUX_KCONFIG_FIXUP_CMDS += $(TETSU_FIRMWARE_DIR)
+
+# Bluetooth firmware for the RTL8821CS, also built into the kernel. Buildroot's
+# Realtek Bluetooth options install every chip's; these are the two it needs, with
+# rtl8821cs_config.bin made as a link to rtl8761b_config.bin from linux-firmware's
+# WHENCE.
+LINUX_FIRMWARE_FILES += rtl_bt/rtl8821cs_fw.bin rtl_bt/rtl8761b_config.bin

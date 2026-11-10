@@ -121,3 +121,12 @@ BR2_PACKAGE_WPA_SUPPLICANT=y
 BR2_PACKAGE_WPA_SUPPLICANT_CLI=y
 BR2_PACKAGE_WPA_SUPPLICANT_PASSPHRASE=y
 BR2_PACKAGE_IW=y
+
+# Bluetooth: BlueZ with D-Bus, for controllers and later headphones. Neither starts
+# at boot (post-build.sh renames their init scripts); /usr/sbin/bluetooth starts
+# them when the BLUETOOTH setting is on. bluetoothctl is for testing over SSH.
+BR2_PACKAGE_BLUEZ5_UTILS=y
+BR2_PACKAGE_BLUEZ5_UTILS_CLIENT=y
+BR2_PACKAGE_BLUEZ5_UTILS_MONITOR=y
+BR2_PACKAGE_BLUEZ5_UTILS_PLUGINS_HID=y
+# BR2_PACKAGE_BLUEZ5_UTILS_PLUGINS_NETWORK is not set

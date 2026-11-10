@@ -559,6 +559,7 @@ pub(crate) fn act(
         Action::DeleteGame(_) => return Ok(true),
         Action::ButtonTest => button_test(framebuffer, events)?,
         Action::Wifi => wifi_settings(framebuffer, events)?,
+        Action::Bluetooth => crate::bluetooth_screen::bluetooth_settings(framebuffer, events)?,
         Action::CoreOptions => core_options_settings(framebuffer, events)?,
         Action::DownloadBoxArt(mode) => {
             download_box_art(framebuffer, events, mode)?;
@@ -1195,6 +1196,10 @@ pub(crate) fn run_launcher() -> io::Result<()> {
         if first_draw {
             println!("launcher drawn {}", boot_time());
             first_draw = false;
+            // After the first frame, so it doesn't slow the boot down.
+            if settings::get().bluetooth {
+                std::thread::spawn(|| crate::bluetooth::set_service(true));
+            }
         }
 
         let Some(wake) = wait_for_wake(&framebuffer, &events, &mut repeater, &launcher, &mut watch, scrolling.is_some())

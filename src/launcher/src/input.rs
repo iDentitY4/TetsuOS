@@ -2,10 +2,11 @@
 
 use crate::i18n::{tr, trf};
 use evdev::raw_stream::RawDevice;
-use evdev::{EventType, KeyCode, SwitchCode};
-use std::collections::HashSet;
+use evdev::{AbsoluteAxisCode, EventType, KeyCode, PropType, SwitchCode};
+use std::collections::HashMap;
+use std::ffi::OsString;
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::thread::{sleep, spawn};
+use std::thread::{sleep, spawn, JoinHandle};
 use std::time::Duration;
 
 const INPUT_DIR: &str = "/dev/input";
@@ -14,6 +15,11 @@ const RESCAN_INTERVAL: Duration = Duration::from_secs(2);
 
 const EV_KEY: u16 = EventType::KEY.0;
 const EV_SW: u16 = EventType::SWITCH.0;
+const EV_ABS: u16 = EventType::ABSOLUTE.0;
+const ABS_X: u16 = AbsoluteAxisCode::ABS_X.0;
+const ABS_Y: u16 = AbsoluteAxisCode::ABS_Y.0;
+const ABS_HAT0X: u16 = AbsoluteAxisCode::ABS_HAT0X.0;
+const ABS_HAT0Y: u16 = AbsoluteAxisCode::ABS_HAT0Y.0;
 const SW_LID: u16 = SwitchCode::SW_LID.0;
 
 // The codes the device tree gives each control.
@@ -212,12 +218,99 @@ impl Controls {
     }
 }
 
+/// The D-pad directions, in the order `Axes` keeps them.
+const DIRECTIONS: [u16; 4] = [BTN_DPAD_UP, BTN_DPAD_DOWN, BTN_DPAD_LEFT, BTN_DPAD_RIGHT];
+
+/// Turns a controller's hat and left stick into D-pad presses, as most Bluetooth
+/// controllers report their D-pad as a hat, and the menus and most consoles have no stick.
+/// The device's own buttons are all keys, so nothing changes for them.
+#[derive(Clone, PartialEq, Debug)]
+pub struct Axes {
+    /// The left stick's range on each axis, for a gamepad that has one.
+    stick: [Option<(i32, i32)>; 2],
+    hat: [bool; 4],
+    pushed: [bool; 4],
+}
+
+impl Axes {
+    pub fn new(stick_x: Option<(i32, i32)>, stick_y: Option<(i32, i32)>) -> Self {
+        Self { stick: [stick_x, stick_y], hat: [false; 4], pushed: [false; 4] }
+    }
+
+    /// A gamepad's: one with a south button, and not a motion sensor, which a Sony
+    /// controller adds as a device of its own with the same axes.
+    fn for_device(device: &RawDevice) -> Option<Self> {
+        if device.properties().contains(PropType::ACCELEROMETER)
+            || !device.supported_keys().is_some_and(|keys| keys.contains(KeyCode::BTN_SOUTH))
+        {
+            return None;
+        }
+        let mut stick = [None, None];
+        for (axis, info) in device.get_absinfo().ok()? {
+            let range = Some((info.minimum(), info.maximum())).filter(|(min, max)| max > min);
+            match axis.0 {
+                ABS_X => stick[0] = range,
+                ABS_Y => stick[1] = range,
+                _ => {}
+            }
+        }
+        Some(Self::new(stick[0], stick[1]))
+    }
+
+    /// The D-pad events an axis event makes. Other events pass through.
+    pub fn translate(&mut self, event: Event) -> Vec<Event> {
+        if event.event_type != EV_ABS {
+            return vec![event];
+        }
+        let before = self.held();
+        match event.code {
+            ABS_HAT0X => self.hat[2..].copy_from_slice(&[event.value < 0, event.value > 0]),
+            ABS_HAT0Y => self.hat[..2].copy_from_slice(&[event.value < 0, event.value > 0]),
+            ABS_X | ABS_Y => {
+                let axis = usize::from(event.code == ABS_Y);
+                let Some((min, max)) = self.stick[axis] else { return vec![] };
+                // Past half way pushes; back under a third lets go, so it doesn't flicker.
+                let centre = i64::from(min) + (i64::from(max) - i64::from(min)) / 2;
+                let half = (i64::from(max) - i64::from(min)) / 2;
+                let offset = i64::from(event.value) - centre;
+                let first = if axis == 0 { 2 } else { 0 };
+                for (index, sign) in [(first, -1), (first + 1, 1)] {
+                    let towards = offset * sign;
+                    if towards * 2 > half {
+                        self.pushed[index] = true;
+                    } else if towards * 3 < half {
+                        self.pushed[index] = false;
+                    }
+                }
+            }
+            _ => {}
+        }
+        let after = self.held();
+        (0..4)
+            .filter(|&index| before[index] != after[index])
+            .map(|index| Event::key(DIRECTIONS[index], i32::from(after[index])))
+            .collect()
+    }
+
+    fn held(&self) -> [bool; 4] {
+        std::array::from_fn(|index| self.hat[index] || self.pushed[index])
+    }
+}
+
 fn read_events(mut device: RawDevice, events: Sender<Event>) {
+    let mut axes = Axes::for_device(&device);
     // Ends when the device goes, or nothing listens any more.
     while let Ok(batch) = device.fetch_events() {
         for event in batch {
-            if events.send(event.into()).is_err() {
-                return;
+            let event = Event::from(event);
+            let translated = match &mut axes {
+                Some(axes) => axes.translate(event),
+                None => vec![event],
+            };
+            for event in translated {
+                if events.send(event).is_err() {
+                    return;
+                }
             }
         }
     }
@@ -228,18 +321,21 @@ fn read_events(mut device: RawDevice, events: Sender<Event>) {
 pub fn spawn_readers() -> Receiver<Event> {
     let (sender, receiver) = channel();
     spawn(move || {
-        let mut opened = HashSet::new();
+        // Each open device's reader. A Bluetooth controller that disconnects and comes
+        // back often gets its old name again, so a name is opened again once the reader
+        // of the device that had it has ended.
+        let mut readers: HashMap<OsString, JoinHandle<()>> = HashMap::new();
         loop {
+            readers.retain(|_, reader| !reader.is_finished());
             for entry in std::fs::read_dir(INPUT_DIR).into_iter().flatten().flatten() {
                 let name = entry.file_name();
-                if !name.to_string_lossy().starts_with("event") || opened.contains(&name) {
+                if !name.to_string_lossy().starts_with("event") || readers.contains_key(&name) {
                     continue;
                 }
                 match RawDevice::open(entry.path()) {
                     Ok(device) => {
                         let events = sender.clone();
-                        spawn(move || read_events(device, events));
-                        opened.insert(name);
+                        readers.insert(name, spawn(move || read_events(device, events)));
                     }
                     Err(error) => eprintln!("warning: {name:?}: {error}"),
                 }
@@ -260,6 +356,39 @@ mod tests {
         assert_eq!((BTN_MODE, BTN_DPAD_UP, BTN_DPAD_RIGHT, EV_SW, SW_LID), (0x13C, 0x220, 0x223, 5, 0));
         let event = evdev::InputEvent::new(EventType::KEY.0, BTN_EAST, 1);
         assert_eq!(Event::from(event), Event::key(BTN_EAST, 1));
+    }
+
+    fn abs(code: u16, value: i32) -> Event {
+        Event { event_type: EV_ABS, code, value }
+    }
+
+    #[test]
+    fn a_controllers_hat_becomes_the_d_pad() {
+        let mut axes = Axes::new(None, None);
+        assert_eq!(axes.translate(abs(ABS_HAT0X, -1)), [Event::key(BTN_DPAD_LEFT, 1)]);
+        assert_eq!(axes.translate(abs(ABS_HAT0X, 1)), [Event::key(BTN_DPAD_LEFT, 0), Event::key(BTN_DPAD_RIGHT, 1)]);
+        assert_eq!(axes.translate(abs(ABS_HAT0Y, 1)), [Event::key(BTN_DPAD_DOWN, 1)]);
+        assert_eq!(axes.translate(abs(ABS_HAT0X, 0)), [Event::key(BTN_DPAD_RIGHT, 0)]);
+        assert_eq!(axes.translate(abs(ABS_HAT0Y, 0)), [Event::key(BTN_DPAD_DOWN, 0)]);
+        assert_eq!(axes.translate(abs(ABS_X, 0)), [], "no stick");
+        assert_eq!(axes.translate(Event::key(BTN_EAST, 1)), [Event::key(BTN_EAST, 1)]);
+        assert_eq!(Event::key(BTN_DPAD_LEFT, 1).pressed(), Some(Button::Left));
+    }
+
+    #[test]
+    fn the_left_stick_pushes_the_d_pad_past_half_way() {
+        let mut axes = Axes::new(Some((0, 255)), Some((-32768, 32767)));
+        assert_eq!(axes.translate(abs(ABS_X, 128)), []);
+        assert_eq!(axes.translate(abs(ABS_X, 180)), [], "not half way");
+        assert_eq!(axes.translate(abs(ABS_X, 200)), [Event::key(BTN_DPAD_RIGHT, 1)]);
+        assert_eq!(axes.translate(abs(ABS_X, 175)), [], "held until back under a third");
+        assert_eq!(axes.translate(abs(ABS_X, 150)), [Event::key(BTN_DPAD_RIGHT, 0)]);
+        assert_eq!(axes.translate(abs(ABS_X, 10)), [Event::key(BTN_DPAD_LEFT, 1)]);
+        assert_eq!(axes.translate(abs(ABS_Y, -30000)), [Event::key(BTN_DPAD_UP, 1)]);
+        // The hat and the stick together: letting one go keeps the direction held.
+        assert_eq!(axes.translate(abs(ABS_HAT0Y, -1)), []);
+        assert_eq!(axes.translate(abs(ABS_Y, 0)), []);
+        assert_eq!(axes.translate(abs(ABS_HAT0Y, 0)), [Event::key(BTN_DPAD_UP, 0)]);
     }
 
     #[test]

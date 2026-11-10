@@ -1,0 +1,38 @@
+#!/bin/sh
+# Turns Bluetooth on or off: D-Bus and bluetoothd, which don't start at boot (see
+# post-build.sh), and the radio through rfkill. "status" prints on or off.
+#
+# The RTL8821CS shares its radio between Wi-Fi and Bluetooth. With Bluetooth on,
+# rtw88's deep power save leaves the Wi-Fi firmware stuck ("failed to leave lps
+# state"): connected, but sending nothing until it reconnects. It is off meanwhile.
+LPS_DEEP=/sys/module/rtw88_core/parameters/disable_lps_deep
+
+radio() {
+	for rfkill in /sys/class/rfkill/rfkill*; do
+		[ "$(cat "$rfkill/type" 2>/dev/null)" = bluetooth ] && echo "$1" > "$rfkill/soft"
+	done
+}
+
+case "$1" in
+on)
+	# The launcher turns it on each time it starts.
+	pidof bluetoothd > /dev/null && exit 0
+	echo Y > "$LPS_DEEP"
+	radio 0
+	/etc/init.d/dbus-daemon start
+	/etc/init.d/bluetoothd start
+	;;
+off)
+	/etc/init.d/bluetoothd stop
+	/etc/init.d/dbus-daemon stop
+	radio 1
+	echo N > "$LPS_DEEP"
+	;;
+status)
+	if pidof bluetoothd > /dev/null; then echo on; else echo off; fi
+	;;
+*)
+	echo "Usage: $0 {on|off|status}"
+	exit 1
+	;;
+esac

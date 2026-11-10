@@ -205,6 +205,44 @@ pub(crate) fn write_wifi_preview(path: &str) -> io::Result<()> {
     write_ppm(&screens::wifi_screen(width, height, &view, &screen_frame(battery)), path)
 }
 
+/// Renders the Bluetooth screen with a controller connected and one being paired.
+pub(crate) fn write_bluetooth_preview(path: &str) -> io::Result<()> {
+    use crate::bluetooth::{Device, Kind};
+    use crate::bluetooth_menu::{self, BluetoothMenu};
+    let device = |name: Option<&str>, kind, paired, connected, rssi| Device {
+        path: format!("/org/bluez/hci0/dev_{}", name.unwrap_or("none").replace(' ', "_")),
+        address: "A0:5A:5D:01:02:03".into(),
+        name: name.map(str::to_owned),
+        kind,
+        paired,
+        connected,
+        rssi,
+    };
+    let devices = [
+        device(Some("Wireless Controller"), Kind::Controller, true, true, Some(-52)),
+        device(Some("Pro Controller"), Kind::Controller, false, false, Some(-58)),
+        device(Some("WH-1000XM4"), Kind::Audio, true, false, None),
+        device(Some("8BitDo SN30 Pro"), Kind::Controller, false, false, Some(-74)),
+        device(None, Kind::Other, false, false, Some(-40)),
+    ];
+    let mut menu = BluetoothMenu::new(true);
+    menu.set_entries(bluetooth_menu::entries(&devices, Some("/org/bluez/hci0/dev_Pro_Controller")));
+    menu.press(Button::Down);
+    menu.press(Button::Down);
+    let line = crate::bluetooth_screen::status_line(true, true, Some((crate::bluetooth_screen::Doing::Pairing, "Pro Controller")));
+    let view = screens::BluetoothView {
+        on: true,
+        entries: &menu.entries,
+        selected: menu.selected(),
+        status: &line,
+        busy_label: i18n::tr("PAIRING"),
+        message: None,
+    };
+    let (width, height) = PREVIEW_SIZE;
+    let battery = Some(Battery { percent: 95, charging: true });
+    write_ppm(&screens::bluetooth_screen(width, height, &view, &screen_frame(battery)), path)
+}
+
 /// Renders the password keyboard partway through typing.
 pub(crate) fn write_keyboard_preview(path: &str) -> io::Result<()> {
     let mut keyboard = keyboard::Keyboard::new(64, wifi::valid_password);

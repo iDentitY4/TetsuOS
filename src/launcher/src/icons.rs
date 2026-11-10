@@ -573,6 +573,33 @@ pub const WIFI: Icon = [
     "................................",
 ];
 
+pub const BLUETOOTH: Icon = [
+    "................................",
+    "..........BBBBBBBBBBBB..........",
+    ".........BBBBBBBBBBBBBB.........",
+    "........BBBBBBBBBBBBBBBB........",
+    "........BBBBBBBWWBBBBBBB........",
+    "........BBBBBBBWWWBBBBBB........",
+    "........BBBBBBBWWBWBBBBB........",
+    "........BBBBBBBWWBBWWBBB........",
+    "........BBBWBBBWWBBBWWBB........",
+    "........BBBWWBBWWBBWWBBB........",
+    "........BBBBWWBWWBWBBBBB........",
+    "........BBBBBWWWWWBBBBBB........",
+    "........BBBBBWWWWWBBBBBB........",
+    "........BBBBWWBWWBWBBBBB........",
+    "........BBBWWBBWWBBWWBBB........",
+    "........BBBWBBBWWBBBWWBB........",
+    "........BBBBBBBWWBBWWBBB........",
+    "........BBBBBBBWWBWBBBBB........",
+    "........BBBBBBBWWWBBBBBB........",
+    "........BBBBBBBWWBBBBBBB........",
+    "........BBBBBBBBBBBBBBBB........",
+    ".........BBBBBBBBBBBBBB.........",
+    "..........BBBBBBBBBBBB..........",
+    "................................",
+];
+
 pub const FAVORITES: Icon = [
     "................................",
     "...............K................",
@@ -885,7 +912,7 @@ pub const LOGO: Icon = [
 mod tests {
     use super::*;
 
-    const ALL: [&Icon; 30] = [
+    const ALL: [&Icon; 31] = [
         &LOGO,
         &ACHIEVEMENTS,
         &CORES,
@@ -915,6 +942,7 @@ mod tests {
         &FAVORITES,
         &SETTINGS,
         &WIFI,
+        &BLUETOOTH,
         &ADVANCED,
     ];
 
