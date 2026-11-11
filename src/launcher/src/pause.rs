@@ -19,16 +19,18 @@ pub enum Item {
     Scaling,
     Effect,
     Ghosting,
+    Border,
     Controls,
     CoreOptions,
     Cheats,
     Quit,
 }
 
-/// Every choice, as a game with several discs, cheats and achievements shows them. Others
-/// go without `Item::Disc`, games whose core ignores codes or that play in hardcore without
-/// `Item::Cheats`, and games without `RetroAchievements` without `Item::Achievements`.
-pub const ITEMS: [Item; 15] = [
+/// Every choice. Games with one disc go without `Item::Disc`, games whose core ignores codes
+/// or that play in hardcore without `Item::Cheats`, games without `RetroAchievements`
+/// without `Item::Achievements`, and games on cores other than mGBA without
+/// `Item::Ghosting`. Only `PlayStation` games have discs, so no game shows them all.
+pub const ITEMS: [Item; 16] = [
     Item::Resume,
     Item::SaveState,
     Item::LoadState,
@@ -40,6 +42,7 @@ pub const ITEMS: [Item; 15] = [
     Item::Scaling,
     Item::Effect,
     Item::Ghosting,
+    Item::Border,
     Item::Controls,
     Item::CoreOptions,
     Item::Cheats,
@@ -60,6 +63,7 @@ impl Item {
             Self::Scaling => "SCALING",
             Self::Effect => "SCREEN EFFECT",
             Self::Ghosting => "LCD GHOSTING",
+            Self::Border => "BORDER",
             Self::Controls => "CONTROLS",
             Self::CoreOptions => "CORE OPTIONS",
             Self::Cheats => "CHEATS",
@@ -84,6 +88,7 @@ pub enum Action {
     Scaling(i32),
     Effect(i32),
     Ghosting(i32),
+    Border(i32),
     /// Opens the CONTROLS page.
     Controls,
     /// Opens the CORE OPTIONS page.
@@ -124,6 +129,13 @@ impl PauseMenu {
             })
             .collect();
         Self { items, selected: 0, slot: 1, discs, disc: 0, message: None }
+    }
+
+    /// Leaves out LCD GHOSTING for a core that doesn't have it: only mGBA does.
+    #[must_use]
+    pub fn with_ghosting(mut self, ghosting: bool) -> Self {
+        self.items.retain(|&item| item != Item::Ghosting || ghosting);
+        self
     }
 
     /// Starts each visit on Resume, so pressing A twice by accident does nothing harmful,
@@ -180,6 +192,7 @@ impl PauseMenu {
                     Item::Scaling => return Action::Scaling(step),
                     Item::Effect => return Action::Effect(step),
                     Item::Ghosting => return Action::Ghosting(step),
+                    Item::Border => return Action::Border(step),
                     Item::Resume
                     | Item::Screenshot
                     | Item::Achievements
@@ -201,7 +214,7 @@ impl PauseMenu {
                     Item::Cheats => Action::Cheats,
                     Item::Achievements => Action::Achievements,
                     Item::Quit => Action::Quit,
-                    Item::Volume | Item::Brightness | Item::Scaling | Item::Effect | Item::Ghosting => {
+                    Item::Volume | Item::Brightness | Item::Scaling | Item::Effect | Item::Ghosting | Item::Border => {
                         Action::Nothing
                     }
                 }
@@ -344,6 +357,9 @@ mod tests {
 
     #[test]
     fn only_a_game_with_several_discs_offers_changing() {
+        assert!(PauseMenu::new(1, true).items().contains(&Item::Ghosting));
+        assert!(!PauseMenu::new(1, true).with_ghosting(false).items().contains(&Item::Ghosting));
+        assert!(PauseMenu::new(1, true).with_ghosting(false).items().contains(&Item::Border));
         assert!(!PauseMenu::new(0, true).items().contains(&Item::Disc));
         assert!(!PauseMenu::new(1, true).items().contains(&Item::Disc));
         assert!(PauseMenu::new(2, true).items().contains(&Item::Disc));

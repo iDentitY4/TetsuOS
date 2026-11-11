@@ -11,7 +11,7 @@ use crate::font;
 use crate::i18n::{tr, trf};
 use crate::pause::{Item, PauseMenu, ITEMS};
 use crate::screens::{self, OptionsLayout};
-use crate::settings::GameDisplay;
+use crate::settings::{Border, GameDisplay};
 
 /// What the in-game menu shows besides its choices.
 pub struct PauseView<'a> {
@@ -21,17 +21,20 @@ pub struct PauseView<'a> {
     pub volume_percent: Option<u32>,
     pub brightness_percent: Option<u32>,
     pub display: GameDisplay,
+    /// What AUTO gives this game's console.
+    pub auto_border: Border,
 }
 
 const PAUSE_PANEL: (usize, usize, usize, usize) = (110, 15, 420, 450);
 const PAUSE_TOP: usize = 65;
-/// 22 fits every item: at 23, the fifteenth pushed the hint past the panel.
+/// 22 fits every item a game can show: at 23, the fifteenth pushed the hint past the panel.
 const PAUSE_ROW: usize = 22;
 const PAUSE_TEXT_SCALE: usize = 2;
 const PAUSE_BAR_WIDTH: usize = 120;
 
-// The rows, message and hint must fit inside the panel.
-const _: () = assert!(PAUSE_TOP + ITEMS.len() * PAUSE_ROW + 70 <= PAUSE_PANEL.1 + PAUSE_PANEL.3);
+// The rows, message and hint must fit inside the panel. A game shows one item fewer than
+// there are, as CHANGE DISC is only for PlayStation games and LCD GHOSTING only for mGBA's.
+const _: () = assert!(PAUSE_TOP + (ITEMS.len() - 1) * PAUSE_ROW + 70 <= PAUSE_PANEL.1 + PAUSE_PANEL.3);
 
 /// Darkens the game frame, so the menu stands out while the game stays recognisable.
 fn dim(pixel: u32) -> Rgb {
@@ -113,6 +116,8 @@ pub fn pause_screen(
             Item::Scaling => view.display.scaling.label().to_string(),
             Item::Effect => view.display.effect.label().to_string(),
             Item::Ghosting => view.display.ghosting.label().to_string(),
+            Item::Border if view.display.border == Border::Auto => trf("AUTO ({})", &[&view.auto_border.label()]),
+            Item::Border => view.display.border.label().to_string(),
             Item::SaveState => trf("SLOT {}", &[&menu.slot()]),
             Item::LoadState if view.slot_used => trf("SLOT {}", &[&menu.slot()]),
             Item::LoadState => trf("SLOT {} EMPTY", &[&menu.slot()]),
@@ -351,7 +356,7 @@ mod tests {
     }
 
     fn pause_view(menu: &PauseMenu) -> PauseView<'_> {
-        PauseView { menu, slot_used: false, volume_percent: Some(80), brightness_percent: None, display: GameDisplay::default() }
+        PauseView { menu, slot_used: false, volume_percent: Some(80), brightness_percent: None, display: GameDisplay::default(), auto_border: Border::Bezel }
     }
 
     #[test]

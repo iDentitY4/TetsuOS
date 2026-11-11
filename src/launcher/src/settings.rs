@@ -120,6 +120,20 @@ choices! {
 }
 
 choices! {
+    /// What fills the screen around a game's picture, where it would be black.
+    pub enum Border (default Auto) {
+        /// A bezel on the handheld consoles, whose small screens leave the most around them,
+        /// and black on the others.
+        Auto => "auto", "AUTO";
+        Off => "off", "OFF";
+        /// A drawn handheld's body around the picture, in a colour for each console.
+        Bezel => "bezel", "BEZEL";
+        /// The theme's background with a line in its colour around the picture.
+        Theme => "theme", "THEME";
+    }
+}
+
+choices! {
     /// The theme colour. Each is bright enough for the dark text on a selected row.
     pub enum Accent (default Teal) {
         Teal => "teal", "TEAL";
@@ -379,6 +393,7 @@ pub struct GameDisplay {
     pub scaling: Scaling,
     pub effect: Effect,
     pub ghosting: Ghosting,
+    pub border: Border,
 }
 
 /// Everything in the settings file.
@@ -503,20 +518,25 @@ fn choose<T>(slot: &mut T, choice: Option<T>) {
     }
 }
 
-/// Starts the line for a console's own display, as in `display.gba=fit,lcd,smart`.
+/// Starts the line for a console's own display, as in `display.gba=fit,lcd,smart,bezel`.
 const CONSOLE_DISPLAY_PREFIX: &str = "display.";
 
 /// Starts the line for a console's layout, as in `controls.gba=normal,a:b,x:a*`.
 const CONSOLE_CONTROLS_PREFIX: &str = "controls.";
 
-/// A console's scaling, effect and ghosting. With any of them unknown, the whole line is
-/// ignored, as a console with its own choice uses all three.
+/// A console's scaling, effect, ghosting and border. With any of them unknown, the whole
+/// line is ignored, as a console with its own choice uses them all. Lines from before the
+/// border have three, and keep the default border.
 fn parse_display(value: &str) -> Option<GameDisplay> {
     let mut parts = value.split(',').map(str::trim);
     let display = GameDisplay {
         scaling: Scaling::from_key(parts.next()?)?,
         effect: Effect::from_key(parts.next()?)?,
         ghosting: Ghosting::from_key(parts.next()?)?,
+        border: match parts.next() {
+            Some(key) => Border::from_key(key)?,
+            None => Border::default(),
+        },
     };
     parts.next().is_none().then_some(display)
 }
@@ -552,6 +572,7 @@ fn parse(text: &str) -> Settings {
                 choose(&mut settings.display.effect, Effect::from_key(value));
             }
             "ghosting" => choose(&mut settings.display.ghosting, Ghosting::from_key(value)),
+            "border" => choose(&mut settings.display.border, Border::from_key(value)),
             "timezone" => settings.zone = clock::zone_named(value).map(|zone| zone.name),
             "clock" => choose(&mut settings.clock, ClockFormat::from_key(value)),
             "accent" => choose(&mut settings.accent, Accent::from_key(value)),
@@ -600,12 +621,14 @@ fn format(settings: &Settings) -> String {
     lines.push(format!("scaling={}", settings.display.scaling.key()));
     lines.push(format!("effect={}", settings.display.effect.key()));
     lines.push(format!("ghosting={}", settings.display.ghosting.key()));
+    lines.push(format!("border={}", settings.display.border.key()));
     for (console, display) in &settings.console_displays {
         lines.push(format!(
-            "{CONSOLE_DISPLAY_PREFIX}{console}={},{},{}",
+            "{CONSOLE_DISPLAY_PREFIX}{console}={},{},{},{}",
             display.scaling.key(),
             display.effect.key(),
             display.ghosting.key(),
+            display.border.key(),
         ));
     }
     for (console, layout) in &settings.console_controls {
@@ -873,8 +896,19 @@ mod tests {
         settings.set_console_display("gb", lcd);
         settings.set_console_display("ps1", GameDisplay { scaling: Scaling::ALL[1], ..GameDisplay::default() });
         assert_eq!(parse(&format(&settings)).console_displays, settings.console_displays);
-        let text = "display.gb=sparkles,lcd,off\ndisplay.nes=fit\ndisplay.md=fit,none,off,extra\n";
+        let text = "display.gb=sparkles,lcd,off\ndisplay.nes=fit\ndisplay.md=fit,none,off,extra\ndisplay.gg=fit,none,off,bezel,x\n";
         assert!(parse(text).console_displays.is_empty());
+    }
+
+    #[test]
+    fn a_console_display_from_before_the_border_keeps_the_default_border() {
+        let settings = parse("display.gb=integer,lcd,full\ndisplay.gg=fit,none,off,off\nborder=bezel\n");
+        assert_eq!(settings.display_for("gb").border, Border::Auto);
+        assert_eq!(settings.display_for("gb").effect, Effect::Lcd);
+        assert_eq!(settings.display_for("gg").border, Border::Off);
+        assert_eq!(settings.display.border, Border::Bezel);
+        assert_eq!(Settings::default().display.border, Border::Auto);
+        assert!(format(&settings).contains("display.gb=integer,lcd,full,auto\n"));
     }
 
     #[test]
@@ -902,7 +936,7 @@ mod tests {
 
     #[test]
     fn settings_survive_a_round_trip() {
-        let display = GameDisplay { scaling: Scaling::Integer, effect: Effect::Lcd, ghosting: Ghosting::Full };
+        let display = GameDisplay { scaling: Scaling::Integer, effect: Effect::Lcd, ghosting: Ghosting::Full, border: Border::Theme };
         let settings = Settings {
             volume: Some(25),
             brightness: Some(1250),

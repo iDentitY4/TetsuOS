@@ -176,7 +176,7 @@ impl Group {
                     Setting::BootJingle,
                     Setting::Language,
                 ],
-            Self::InGame => &[Setting::Scaling, Setting::Effect, Setting::Ghosting, Setting::UseForAllConsoles, Setting::Vibration],
+            Self::InGame => &[Setting::Scaling, Setting::Effect, Setting::Ghosting, Setting::Border, Setting::UseForAllConsoles, Setting::Vibration],
             Self::Wifi | Self::Bluetooth | Self::Cores => &[],
             Self::BoxArt => &[Setting::ShowCovers, Setting::ScreenshotCovers, Setting::DownloadMissingArt, Setting::DownloadAllArt, Setting::DeleteArt],
             Self::Theme => {
@@ -233,6 +233,7 @@ pub enum Setting {
     Scaling,
     Effect,
     Ghosting,
+    Border,
     ShowCovers,
     ScreenshotCovers,
     DownloadMissingArt,
@@ -288,6 +289,7 @@ impl Setting {
             Self::Scaling => "SCALING",
             Self::Effect => "SCREEN EFFECT",
             Self::Ghosting => "LCD GHOSTING",
+            Self::Border => "BORDER",
             Self::ShowCovers => "COVERS IN LISTS",
             Self::ScreenshotCovers => "SCREENSHOTS AS COVERS",
             Self::DownloadMissingArt => "DOWNLOAD MISSING COVERS",
@@ -363,6 +365,7 @@ impl Setting {
                 | Self::Scaling
                 | Self::Effect
                 | Self::Ghosting
+                | Self::Border
                 | Self::AccentColor
                 | Self::Background
                 | Self::ShowTitle
@@ -477,6 +480,7 @@ pub enum Command {
     Scaling(i32),
     Effect(i32),
     Ghosting(i32),
+    Border(i32),
     Accent(i32),
     Background(i32),
     /// Shows the home screen's title if it is hidden, or hides it.
@@ -928,6 +932,7 @@ impl Launcher {
             Setting::Scaling => Command::Scaling(step),
             Setting::Effect => Command::Effect(step),
             Setting::Ghosting => Command::Ghosting(step),
+            Setting::Border => Command::Border(step),
             Setting::AccentColor => Command::Accent(step),
             Setting::Background => Command::Background(step),
             Setting::ShowTitle => Command::ToggleTitle,
@@ -1021,6 +1026,7 @@ impl Launcher {
                 | Setting::Scaling
                 | Setting::Effect
                 | Setting::Ghosting
+                | Setting::Border
                 | Setting::AccentColor
                 | Setting::Background
                 | Setting::ShowTitle

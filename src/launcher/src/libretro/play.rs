@@ -93,7 +93,25 @@ fn draw_fast_forward(framebuffer: &mut Framebuffer, on: bool) -> io::Result<()> 
     let canvas = screens::fast_forward_sign(on, crate::corner::current_theme());
     let (width, _) = framebuffer.size();
     let x = width.saturating_sub(canvas.width + WARNING_POSITION.0);
-    framebuffer.blit_canvas(&canvas, x, WARNING_POSITION.1)
+    if on {
+        framebuffer.blit_canvas(&canvas, x, WARNING_POSITION.1)
+    } else {
+        restore_area(framebuffer, (x, WARNING_POSITION.1, canvas.width, canvas.height))
+    }
+}
+
+/// Draws the game's picture and border again over an area something else covered.
+fn restore_area(framebuffer: &mut Framebuffer, area: crate::fb::Area) -> io::Result<()> {
+    let size = framebuffer.size();
+    let pixels = with_host(|host| picture_in_area(&host.frame, host.frame_size, &host.border, size, area));
+    framebuffer.blit(&pixels, area.2, area.3, area.0, area.1)
+}
+
+/// Draws the border and the picture over the whole screen, as when the game starts or the
+/// menu closes.
+pub(super) fn draw_whole_screen(framebuffer: &mut Framebuffer) -> io::Result<()> {
+    let (pixels, (width, height)) = with_host(super::host::Host::whole_screen);
+    framebuffer.blit(&pixels, width, height, 0, 0)
 }
 
 /// Shows the charge level in the corner while the battery is low.
@@ -122,9 +140,7 @@ fn update_volume_sign(framebuffer: &mut Framebuffer, levels: &Receiver<u32>) -> 
         crate::app::show_volume(framebuffer, percent)?;
     }
     if let Some(area) = framebuffer.take_due_sign() {
-        let size = framebuffer.size();
-        let pixels = with_host(|host| picture_in_area(&host.frame, host.frame_size, size, area));
-        framebuffer.blit(&pixels, area.2, area.3, area.0, area.1)?;
+        restore_area(framebuffer, area)?;
     }
     Ok(())
 }
@@ -283,6 +299,11 @@ fn show_frame(framebuffer: &mut Framebuffer, stats: &mut Stats, vsync_works: &mu
                 stats.vsync_time += vsync_start.elapsed();
             }
             let screen_start = Instant::now();
+            // A new picture size, as some consoles change it, leaves part of the old one.
+            if host.update_border() {
+                let (width, height) = host.target();
+                framebuffer.blit(&host.border, width, height, 0, 0)?;
+            }
             let (width, height) = host.frame_size;
             framebuffer.blit_centred(&host.frame, width, height)?;
             host.frame_ready = false;
@@ -390,6 +411,7 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
     let events = input::spawn_readers();
     let levels = volume_levels();
     framebuffer.clear()?;
+    draw_whole_screen(framebuffer)?;
 
     let mut next_frame = Instant::now();
     let mut play_clock = PlayClock::start(save, next_frame);
@@ -397,7 +419,8 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
     let mut vsync_works = true;
     let mut frames = 0u64;
     let discs = with_host(|host| host.disk_control).map_or(0, |control| control.count());
-    let mut menu = PauseMenu::with(discs, cheat_source.is_some() && !restricted, session.is_some());
+    let ghosting = with_host(|host| host.has_ghosting());
+    let mut menu = PauseMenu::with(discs, cheat_source.is_some() && !restricted, session.is_some()).with_ghosting(ghosting);
     let mut trigger = MenuTrigger::new();
     let mut release_at = None;
     let mut battery = power::Monitor::new();

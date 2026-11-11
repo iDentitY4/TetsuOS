@@ -81,8 +81,8 @@ pub(crate) fn write_pause_preview(path: &str) -> io::Result<()> {
             (x * 255 / 640) << 16 | (y * 255 / 426) << 8 | 0x80
         })
         .collect();
-    // With several discs and achievements, the fullest the menu gets.
-    let mut menu = pause::PauseMenu::with(3, true, true);
+    // A PlayStation game with several discs and achievements, the fullest the menu gets.
+    let mut menu = pause::PauseMenu::with(3, true, true).with_ghosting(false);
     menu.press(Button::Down);
     menu.press(Button::Down);
     menu.press(Button::Right);
@@ -93,8 +93,52 @@ pub(crate) fn write_pause_preview(path: &str) -> io::Result<()> {
         volume_percent: Some(80),
         brightness_percent: Some(50),
         display: settings::GameDisplay::default(),
+        auto_border: settings::Border::Off,
     };
     write_ppm(&pause_screens::pause_screen(width, height, &frame, frame_size, &view, current_theme()), path)
+}
+
+/// Renders the borders around games' pictures, as a sheet of six screens at half size: the
+/// bezels of a Game Boy at INTEGER, a Game Gear, a GBA and a Lynx at FIT and a `WonderSwan`
+/// Color at INTEGER, and the theme's border around a Game Boy.
+pub(crate) fn write_borders_preview(path: &str) -> io::Result<()> {
+    use settings::Border;
+    let screen = PREVIEW_SIZE;
+    let shots = [
+        ("gb", (480, 432), Border::Bezel),
+        ("gg", (533, 480), Border::Bezel),
+        ("gba", (640, 426), Border::Bezel),
+        ("lynx", (640, 408), Border::Bezel),
+        ("wsc", (448, 288), Border::Bezel),
+        ("gb", (480, 432), Border::Theme),
+    ];
+    let (columns, half) = (3, (screen.0 / 2, screen.1 / 2));
+    let mut sheet = canvas::Canvas::new(half.0 * columns, half.1 * 2, current_theme());
+    for (index, &(console, picture, border)) in shots.iter().enumerate() {
+        let mut pixels = crate::libretro::draw_border(screen, picture, border, Some(console), current_theme());
+        let (left, top) = ((screen.0 - picture.0) / 2, (screen.1 - picture.1) / 2);
+        for y in 0..picture.1 {
+            for x in 0..picture.0 {
+                let checker = if (x / 24 + y / 24) % 2 == 0 { 0x40 } else { 0x70 };
+                pixels[(top + y) * screen.0 + left + x] = ((x * 255 / picture.0) as u32) << 16 | checker << 8 | 0x90;
+            }
+        }
+        let (sheet_x, sheet_y) = (index % columns * half.0, index / columns * half.1);
+        for y in 0..half.1 {
+            for x in 0..half.0 {
+                let sum = [(0, 0), (1, 0), (0, 1), (1, 1)].iter().fold([0u32; 3], |mut sum, &(dx, dy)| {
+                    let pixel = pixels[(2 * y + dy) * screen.0 + 2 * x + dx];
+                    for (channel, shift) in sum.iter_mut().zip([16, 8, 0]) {
+                        *channel += (pixel >> shift) & 0xFF;
+                    }
+                    sum
+                });
+                let average = |channel: u32| (channel / 4) as u8;
+                sheet.pixels[(sheet_y + y) * sheet.width + sheet_x + x] = color::Rgb(average(sum[0]), average(sum[1]), average(sum[2]));
+            }
+        }
+    }
+    write_ppm(&sheet, path)
 }
 
 /// Renders the in-game menu's CORE OPTIONS page with a few options like mGBA's, as the PC

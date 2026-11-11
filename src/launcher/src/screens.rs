@@ -558,6 +558,7 @@ pub(crate) fn setting_value(setting: Setting, settings: &Settings) -> Option<Str
         Setting::Scaling => settings.display.scaling.label(),
         Setting::Effect => settings.display.effect.label(),
         Setting::Ghosting => settings.display.ghosting.label(),
+        Setting::Border => settings.display.border.label(),
         Setting::AccentColor => settings.accent.label(),
         Setting::Background => settings.background.label(),
         Setting::ShowTitle => if settings.title_hidden { tr("HIDDEN") } else { tr("SHOWN") },

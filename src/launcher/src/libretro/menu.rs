@@ -240,6 +240,7 @@ fn draw_menu(
                 volume_percent: settings::volume_percent(),
                 brightness_percent: settings::brightness_percent(),
                 display: with_host(|host| host.display),
+                auto_border: with_host(|host| super::border::resolve(crate::settings::Border::Auto, host.console)),
             };
             pause_screens::pause_screen(width, height, frame, frame_size, &view, theme)
         }
@@ -414,7 +415,7 @@ pub(super) fn pause(
     volume_levels: &Receiver<u32>,
 ) -> io::Result<AfterMenu> {
     let Game { rom, save, cheat_source } = *game;
-    let backdrop: Backdrop = with_host(|host| (host.frame.clone(), host.frame_size));
+    let backdrop: Backdrop = with_host(super::host::Host::whole_screen);
     let _silence = Silence::start(core.av_info.timing.sample_rate);
     let disk_control = with_host(|host| host.disk_control);
     menu.open(disk_control.map_or(0, |control| control.current()));
@@ -494,6 +495,7 @@ pub(super) fn pause(
             Action::Scaling(steps) => change_display(|display| display.scaling = display.scaling.cycle(steps)),
             Action::Effect(steps) => change_display(|display| display.effect = display.effect.cycle(steps)),
             Action::Ghosting(steps) => change_display(|display| display.ghosting = display.ghosting.cycle(steps)),
+            Action::Border(steps) => change_display(|display| display.border = display.border.cycle(steps)),
             Action::Controls => pages.controls = Some(open_controls(save)),
             Action::CoreOptions => pages.options = Some(open_core_options(save)),
             Action::Achievements => {
@@ -515,7 +517,7 @@ pub(super) fn pause(
     if after == AfterMenu::Resume {
         wait_for_release(events);
         // The game only redraws its own area, so the menu would stay in the borders.
-        framebuffer.clear()?;
+        super::play::draw_whole_screen(framebuffer)?;
     }
     Ok(after)
 }

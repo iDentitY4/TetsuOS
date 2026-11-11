@@ -629,6 +629,7 @@ pub(crate) fn act(
         Action::Scaling(steps) => change_settings(|s| s.display.scaling = s.display.scaling.cycle(steps)),
         Action::Effect(steps) => change_settings(|s| s.display.effect = s.display.effect.cycle(steps)),
         Action::Ghosting(steps) => change_settings(|s| s.display.ghosting = s.display.ghosting.cycle(steps)),
+        Action::Border(steps) => change_settings(|s| s.display.border = s.display.border.cycle(steps)),
         Action::ToggleSounds => {
             change_settings(|s| s.menu_sounds = !s.menu_sounds);
             // Turning them on is heard straight away.

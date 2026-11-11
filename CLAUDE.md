@@ -33,7 +33,8 @@ ReARMed, with discs grouped by name or an `.m3u`, and CHANGE DISC), Mega Drive, 
 Fast), Neo Geo Pocket and Color (Beetle NeoPop), WonderSwan and Color (Beetle Cygne), Lynx
 (Handy) and Tamagotchi (tamalib), cartridge games also in ZIP files, with an in-game menu (8 save slots, levels, display
 options, screenshots to PNG, also used as the cover of a game without one, button remapping and turbo per console or game, each core's own options per console or game, cheat codes from `.cht` files, also downloaded on the device), RetroAchievements (login, unlock notices with badges, a progress page, hardcore, off for every game or one), resume on leaving and after power-off, fast-forward on R2, sharp-bilinear
-scaling with CRT and LCD effects, kept per console, and a volume sign on the volume buttons, also in the menus.
+scaling with CRT and LCD effects and a border (a drawn bezel on the handhelds by default,
+the theme's colours or black), kept per console, and a volume sign on the volume buttons, also in the menus.
 
 Launcher: a tile grid with RECENT and FAVORITES, lists with covers and scrolling names,
 sorting by name or how recently or long a game was played, jumping by letter on L1 and R1, search on X, a game's details, play time and deleting it on Y,
@@ -52,6 +53,8 @@ ADVANCED > RUN SETUP AGAIN repeats.
   first suspect if nothing shows (`docs/features.md`)
 - The home screen's header (2026-11-11): its look on the device, times from real saves,
   a typed title, the German wording
+- Borders (2026-11-11): the bezels' and THEME's look to the user, consoles other than the
+  Game Boy, INTEGER, a Mega Drive mode change with a border, the German wording
 - TF2 (2026-11-11): all of it on the device: the slot itself, FAT32 and exFAT cards,
   putting a card in and taking it out in the menus, the sign, a card swapped during lid
   sleep, USB STORAGE's second drive, WI-FI TRANSFER to TF2, the German wording
@@ -113,7 +116,7 @@ ADVANCED > RUN SETUP AGAIN repeats.
 - **Modules:** `main.rs` declares them and picks the mode from the arguments (no arguments:
   the menus; `--play`: one game in its own process; `--preview*`: PC screenshots).
   `app.rs` has the menus' loop and actions, `systems.rs` the consoles, `library.rs` the
-  games and tiles, `game.rs` running and resuming games, `libretro/` the frontend (`ffi`, `host`, `core`, `scale`, `save`, `audio`, `menu`, `play`),
+  games and tiles, `game.rs` running and resuming games, `libretro/` the frontend (`ffi`, `host`, `core`, `scale`, `border`, `save`, `audio`, `menu`, `play`),
   `rom_zip.rs` games in ZIPs, `cards.rs` the second card slot, `bluetooth.rs` (BlueZ over `zbus`), `bluetooth_menu.rs` and `bluetooth_screen.rs`
   the Bluetooth screen, `audio_out.rs` where sound goes (Bluetooth headphones or the speaker), `transfer.rs` and `transfer_server.rs` the Wi-Fi transfer
   screen and web page (`transfer_page.html`), `controls.rs` button layouts and turbo, `core_options.rs` cores' own options, `cheats.rs` cheat files and the CHEATS page, `achievements.rs` RetroAchievements through rcheevos, `game_files.rs` which files are a game's, `screenshot.rs` the in-game menu's pictures, `sleep.rs`, `corner.rs` (clock and battery), `sounds.rs` the menu sounds and boot jingle, `boot_animation.rs` the animation drawn with it, `launcher.rs` the button logic,

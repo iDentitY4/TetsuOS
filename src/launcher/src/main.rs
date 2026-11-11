@@ -126,6 +126,7 @@ fn main() -> ExitCode {
         [flag, path] if flag == "--preview-cheats" => write_cheats_preview(path),
         [flag, path] if flag == "--preview-achievements" => write_achievements_preview(path),
         [flag, path] if flag == "--preview-notice" => write_notice_preview(path),
+        [flag, path] if flag == "--preview-borders" => previews::write_borders_preview(path),
         [flag, core] if flag == "--core-options" => libretro::print_core_options(Path::new(core)),
         [flag, path] if flag == "--preview-splash" => write_plain_ppm(&screens::splash(), path),
         [flag, path] if flag == "--preview-boot-animation" => write_boot_animation_preview(path),

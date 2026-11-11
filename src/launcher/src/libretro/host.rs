@@ -9,7 +9,7 @@ use crate::core_options::{
 };
 use crate::input::{Button, Controls};
 use crate::rumble::Rumble;
-use crate::settings::{GameDisplay, Ghosting, Vibration};
+use crate::settings::{Border, GameDisplay, Ghosting, Vibration};
 use crate::systems::CoreSetup;
 use std::io;
 use std::cell::RefCell;
@@ -110,6 +110,10 @@ pub(super) struct Host {
     directory: CString,
     pub(super) frame: Vec<u32>,
     pub(super) frame_size: (usize, usize),
+    /// What the screen shows around the picture, the whole screen's worth.
+    pub(super) border: Vec<u32>,
+    /// The picture size and choice `border` was made for.
+    border_for: Option<((usize, usize), Border)>,
     /// The size of the core's last picture, before scaling.
     pub(super) source_size: (usize, usize),
     /// That picture's own pixels, row by row, for a screenshot. `frame` has the effects in it.
@@ -174,6 +178,43 @@ pub(super) fn host_is_free() -> bool {
 }
 
 impl Host {
+    /// Makes the border again when the picture's size or the choice changed since it was
+    /// made, and says whether it did, so it is drawn again.
+    pub(super) fn update_border(&mut self) -> bool {
+        let made_for = (self.frame_size, self.display.border);
+        if self.border_for == Some(made_for) {
+            return false;
+        }
+        let border = super::border::resolve(self.display.border, self.console);
+        self.border = super::border::draw(self.target, self.frame_size, border, self.console, crate::corner::current_theme());
+        self.border_for = Some(made_for);
+        true
+    }
+
+    /// The screen's size.
+    pub(super) fn target(&self) -> (usize, usize) {
+        self.target
+    }
+
+    /// Whether the core has LCD GHOSTING's option, as only mGBA does.
+    pub(super) fn has_ghosting(&self) -> bool {
+        self.declarations.option(GHOSTING_OPTION).is_some()
+    }
+
+    /// The whole screen as the game shows it: the border, and the picture centred on it.
+    pub(super) fn whole_screen(&mut self) -> (Vec<u32>, (usize, usize)) {
+        self.update_border();
+        let mut pixels = self.border.clone();
+        let ((width, height), (frame_w, frame_h)) = (self.target, self.frame_size);
+        let (left, top) = (width.saturating_sub(frame_w) / 2, height.saturating_sub(frame_h) / 2);
+        if frame_w <= width && frame_h <= height && self.frame.len() >= frame_w * frame_h {
+            for (row, line) in self.frame.chunks_exact(frame_w.max(1)).take(frame_h).enumerate() {
+                pixels[(top + row) * width + left..][..frame_w].copy_from_slice(line);
+            }
+        }
+        (pixels, self.target)
+    }
+
     /// What a core option is set to, or None to leave it to the core.
     fn option_value(&mut self, key: &str) -> Option<String> {
         if key == GHOSTING_OPTION {
@@ -486,6 +527,8 @@ pub(super) fn set_host(directory: &Path, target: (usize, usize), setup: CoreSetu
         directory: c_path(directory)?,
         frame: Vec::new(),
         frame_size: (0, 0),
+        border: Vec::new(),
+        border_for: None,
         source_size: (0, 0),
         source: Vec::new(),
         target,

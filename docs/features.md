@@ -372,6 +372,38 @@ Working on the test unit, confirmed by the user:
   FOR ALL CONSOLES changed nothing while a second removed the line. `settings.txt` was put
   back afterwards. How the effects look on each console is the user's to judge
 
+- Borders around small screens (`libretro/border.rs`). Settings > IN GAME > BORDER and the
+  in-game menu's BORDER choose what fills the screen around the picture: AUTO (default), OFF
+  (black, as before), BEZEL or THEME. It is the fourth part of a console's display line, as in
+  `display.gb=fit,none,smart,bezel`, and `border=` for the default; lines from before it have
+  three parts and keep AUTO. AUTO gives a bezel to the handhelds (Game Boy, Color and
+  Advance, Game Gear, Neo Geo Pocket and Color, WonderSwan and Color, Lynx), whose small
+  screens leave the most around them, and black to the others; the in-game menu shows what
+  it gives, as `AUTO (BEZEL)`. Tamagotchi is left out, as its picture hasn't been looked at.
+  BEZEL draws a handheld's body in a colour that console came in (a plain dark grey for the
+  others), lit from above, with rounded glass reaching 18 px past the picture, a light rim,
+  a dark edge by the picture, a shadow on the body and a red power light where there is room
+  left of the glass. Where the margin is too thin, the glass runs off the screen's edge so
+  its corners don't show. No copied artwork or logos. THEME is the theme's background,
+  darker downwards, with a 2 px line in the accent colour 4 px from the picture.
+
+  The border is made for the whole screen once per picture size and choice
+  (`Host::update_border`), so it costs nothing per frame; a size change, as the Mega Drive's
+  modes make, draws it all again, which also clears what the old picture left. It is drawn
+  at the start, after the menu (`play::draw_whole_screen`, in place of clearing to black),
+  behind a sign whose time is up and where the fast-forward sign was (`picture_in_area`
+  takes it), and the in-game menu dims it with the picture. The battery warning keeps its
+  black box. LCD GHOSTING now shows only on cores with its option (mGBA), which makes room
+  for BORDER: only PlayStation games have CHANGE DISC, so no game shows all 16 items.
+  `--preview-borders` renders six of them as a sheet.
+
+  Claude tested on the device on 2026-11-11 with a copy of Link's Awakening and its saves in
+  `/tmp`: the bezel at FIT, 59.45 fps with 2.1 ms on the screen as before, the dimmed bezel
+  behind the menu with AUTO (BEZEL), THEME chosen there showing at once on resuming and
+  saved as `display.gb=fit,none,smart,theme`, and the fast-forward corner given back to the
+  border after R2. `settings.txt` was put back. How it looks to the user, the other
+  consoles, INTEGER, the German wording and a Mega Drive mode change are unchecked
+
 - A game's details. Y in a game list opens them (`Screen::Details`, `screens::details_screen`):
   the file's full name, console, size, last played, how many save files, and the cover, with
   PLAY, STAR or REMOVE STAR, and DELETE GAME AND SAVES. The screen holds the game's path, not

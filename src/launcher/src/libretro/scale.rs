@@ -274,11 +274,13 @@ impl Band<'_> {
     }
 }
 
-/// What belongs in an area of the screen without a sign: the centred picture, and black
-/// around it, as the game only redraws its own area.
+/// What belongs in an area of the screen without a sign: the centred picture, and the
+/// border around it (a whole screen of it, or black without one), as the game only redraws
+/// its own area.
 pub(super) fn picture_in_area(
     frame: &[u32],
     (frame_w, frame_h): (usize, usize),
+    border: &[u32],
     (screen_w, screen_h): (usize, usize),
     (x, y, w, h): crate::fb::Area,
 ) -> Vec<u32> {
@@ -287,9 +289,11 @@ pub(super) fn picture_in_area(
     for row in 0..h {
         for column in 0..w {
             let (screen_x, screen_y) = (x + column, y + row);
-            if (left..left + frame_w).contains(&screen_x) && (top..top + frame_h).contains(&screen_y) {
-                pixels[row * w + column] = frame[(screen_y - top) * frame_w + screen_x - left];
-            }
+            pixels[row * w + column] = if (left..left + frame_w).contains(&screen_x) && (top..top + frame_h).contains(&screen_y) {
+                frame[(screen_y - top) * frame_w + screen_x - left]
+            } else {
+                border.get(screen_y * screen_w + screen_x).copied().unwrap_or(0)
+            };
         }
     }
     pixels
@@ -312,10 +316,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_sign_gives_way_to_the_picture_and_black_around_it() {
+    fn a_sign_gives_way_to_the_picture_and_the_border_around_it() {
         // A picture 2 wide and 1 tall, centred on a 4 by 3 screen, at (1, 1).
-        let pixels = picture_in_area(&[7, 8], (2, 1), (4, 3), (0, 1, 3, 2));
+        let pixels = picture_in_area(&[7, 8], (2, 1), &[], (4, 3), (0, 1, 3, 2));
         assert_eq!(pixels, [0, 7, 8, 0, 0, 0]);
+        // With a border, it shows around the picture.
+        let border: Vec<u32> = (0..12).collect();
+        let pixels = picture_in_area(&[7, 8], (2, 1), &border, (4, 3), (0, 1, 3, 2));
+        assert_eq!(pixels, [4, 7, 8, 8, 9, 10]);
     }
 
     #[test]
