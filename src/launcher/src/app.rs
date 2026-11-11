@@ -1159,6 +1159,11 @@ pub(crate) fn run_launcher() -> io::Result<()> {
     let _console = fb::claim_console()
         .inspect_err(|error| eprintln!("warning: could not claim console: {error}"));
     let events = input::spawn_readers();
+    // USB power started the device: the battery first, the rest once the power button is
+    // pressed. The charge limit is set by now.
+    if crate::charging::pending() {
+        crate::charging::show(&mut framebuffer, &events)?;
+    }
     crate::audio_out::watch();
     let mut launcher = Launcher::new();
     let mut repeater = Repeater::new();

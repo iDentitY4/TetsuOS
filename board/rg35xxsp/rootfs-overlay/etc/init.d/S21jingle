@@ -1,10 +1,12 @@
 #!/bin/sh
 # The boot jingle, if it's on in the settings, starts as soon as the sound card is set up.
 # It plays in the background so the other scripts carry on, and the launcher finds it
-# through the file and keeps the boot logo up until it ends.
+# through the file and keeps the boot logo up until it ends. A start from USB power, which
+# shows the charging screen (S05charging), stays quiet.
 
 case "$1" in
 start)
+	[ -e /run/charging ] && exit 0
 	/usr/bin/launcher --jingle </dev/null >/var/log/jingle.log 2>&1 &
 	echo $! > /run/jingle.pid
 	;;

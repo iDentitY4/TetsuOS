@@ -11,7 +11,7 @@ measured and how it was tested. Read the part you work on.
 
 Boot to the launcher in 3.8 s with a logo, or 6.4 s with the boot jingle and its animation
 (on by default);
-power button on and off, with a shutdown screen; USB console, SSH and
+power button on and off, with a shutdown screen; a charging screen when the USB cable starts the device; USB console, SSH and
 updates over USB networking (`10.35.35.1`); audio with headphone switching; Panfrost GPU;
 CPU scaling to 1512 MHz; lid sleep (`s2idle`), with Wi-Fi and USB kept through it, and
 power-off after 2 hours (or as set) of it or of sleep when idle on battery; Wi-Fi
@@ -71,6 +71,8 @@ ADVANCED > RUN SETUP AGAIN repeats.
 - A real multi-disc PlayStation game asking for its next disc; a multi-disc `.pbp`
 - Playing from a ZIP; search, letter jumps, sorting and the details screen on the real
   buttons; the look of per-console display settings; play time through a real lid close
+- The charging screen's German wording on the device, a charge to the limit (CHARGED),
+  and the lid with it
 - The German wording added for all of those
 - Screenshots on other consoles: a PlayStation wide mode, a ZIP, the German wording on the device
 - Neo Geo Pocket, WonderSwan and Lynx sound and controls; a Neo Geo Pocket game that saves
@@ -113,7 +115,7 @@ ADVANCED > RUN SETUP AGAIN repeats.
   `rom_zip.rs` games in ZIPs, `cards.rs` the second card slot, `bluetooth.rs` (BlueZ over `zbus`), `bluetooth_menu.rs` and `bluetooth_screen.rs`
   the Bluetooth screen, `audio_out.rs` where sound goes (Bluetooth headphones or the speaker), `transfer.rs` and `transfer_server.rs` the Wi-Fi transfer
   screen and web page (`transfer_page.html`), `controls.rs` button layouts and turbo, `core_options.rs` cores' own options, `cheats.rs` cheat files and the CHEATS page, `achievements.rs` RetroAchievements through rcheevos, `game_files.rs` which files are a game's, `screenshot.rs` the in-game menu's pictures, `sleep.rs`, `corner.rs` (clock and battery), `sounds.rs` the menu sounds and boot jingle, `boot_animation.rs` the animation drawn with it, `launcher.rs` the button logic,
-  `screens.rs` and `canvas.rs` the drawing, `pause_screens.rs` the in-game menu's, `paths.rs`
+  `charging.rs` the charging screen, `screens.rs` and `canvas.rs` the drawing, `pause_screens.rs` the in-game menu's, `paths.rs`
   the device's paths and the macros a module builds its own from. Imports are by name, and
   `[lints.clippy]` in `Cargo.toml` is the bar: `cargo clippy --all-targets` stays clean.
 - **Settings:** `settings.rs` reads `/mnt/data/settings.txt` once per process.
@@ -166,7 +168,8 @@ In short here; `docs/features.md` has them in full.
 - **MUSB flushes RX packets that arrive before a request is queued** (mainline commit
   3fc137386c46), so mass storage lost commands and the PC reset it every 30 s. Patch 0014
   reads them instead.
-- **USB power may start the device** (AXP717). Test shutdown with the cable unplugged.
+- **Plugging in USB power starts the device** (AXP717); REG 0x20 says what started it
+  (bit 0 power button, bit 2 USB). Test shutdown with the cable unplugged.
 - **Kernel power-off** writes the wrong AXP717 register, but falls through to PSCI, and
   TF-A turns it off.
 - **TF2 is `mmc2`** (patch 0018), with a 3.3 V switch on PE4 that must stay on.

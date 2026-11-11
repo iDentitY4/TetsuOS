@@ -137,6 +137,36 @@ Working on the test unit, confirmed by the user:
   lookup), clippy, the device tree compiled with `dtc`, the patch with
   `apply-patches.sh`, and previews of the USB STORAGE screen and the sign in both
   languages
+- Charging screen (2026-11-11): plugging in USB power starts the device, and when that
+  alone started it, a battery with the charge level shows instead of the menus. The
+  AXP717 keeps what turned it on in REG 0x20 (PWRON status, AXP717 datasheet V1.2,
+  6.15.2.19): bit 0 the power button, bit 2 VBUS insert, bit 1 the IRQ pin, bit 3 a
+  charged battery, bit 4 a battery insert; a software reboot clears it. REG 0x21 keeps
+  what turned it off (bit 1 software, as `poweroff` does). Measured on the device: `04`
+  after plugging in, `01` after the power button, `00` after a reboot. Whether VBUS
+  starts the PMIC is set in its efuse, so it can't be turned off. `S05charging` mounts
+  debugfs, reads the register from `/sys/kernel/debug/regmap/0-0034/registers` (it isn't
+  volatile, and nothing reads it before, so the first read reaches the chip) and writes
+  `/run/charging` when bit 2 is set without bit 0. Then `S21jingle` stays quiet, and the
+  launcher (`charging.rs`), after setting the charge limit and before anything else,
+  shows `screens::charging_screen` until the file is gone: the battery outline with an
+  accent fill to the level, the percentage, CHARGING or CHARGED (status other than
+  `Charging`, as at CHARGE TO's limit) and PRESS POWER TO START. The backlight turns off
+  after 10 s (`bl_power`); any button or opening the lid lights it for another 10 s.
+  The power button's script (`/etc/acpi/PWRF/00000080`) removes the file instead of
+  powering off, also during the boot logo before the launcher runs, and the launcher,
+  checking every 100 ms, goes on to the menus as after a power-button start (the setup,
+  resuming a game), without the jingle. If `axp20x-usb/online` reads 0 for 2 s, it shows
+  POWERING OFF and powers off. The rest of the boot (Wi-Fi, SSH, USB networking) runs as
+  usual; the launcher idles at 0% CPU on the screen. `launcher --preview-charging
+  FILE.ppm` renders it. Claude checked on the device with a hand-made `/run/charging`
+  that it draws, darkens after 10 s, lights again on B, and that the power button's
+  script starts the menus. The user confirmed on 2026-11-11 a real start from the cable
+  with no jingle, the battery screen, the screen going dark and lighting on a button,
+  the power button starting the menus, and that unplugging powered it off and it stayed
+  off. A power button press during the boot logo of a cable start went straight to the
+  menus (the log shows the screen skipped). Powering off with the cable in stays off,
+  as VBUS starts the PMIC only when it rises
 - The mini-HDMI port (2026-11-11) mirrors the screen at 640x480: a TV or monitor shows
   the same picture as the panel, menus, boot logo and games alike, and scales it itself.
   Patch 0001 already had the HDMI controller (`sun8i-dw-hdmi`, DesignWare HDMI 2.0 TX),
@@ -1489,8 +1519,9 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   game waits for the panel between frames. After a pause, games ran at 30 fps with audio
   underruns for about a second, so the menu holds `scaling_min_freq` at 1008 MHz until
   two seconds after resuming.
-- **USB power may start the device,** according to ROCKNIX's notes on the AXP717.
-  Test shutdown with the cable unplugged.
+- **Plugging in USB power starts the device** (VBUS rising, set in the AXP717's efuse;
+  powering off with the cable in stays off). REG 0x20 says what started it; the
+  charging screen uses it. Test shutdown with the cable unplugged.
 - **Kernel power-off:** `axp20x_power_off` writes register `0x32`, but the AXP717
   turns off through `0x27`. Shutdown works because it falls through to PSCI, and
   TF-A then writes the correct register.

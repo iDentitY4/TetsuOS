@@ -1,0 +1,24 @@
+#!/bin/sh
+# Plugging in USB power starts the device. The AXP717 keeps what turned it on in register
+# 0x20: bit 0 is the power button, bit 2 USB power, and a reboot clears it. When USB power
+# alone started it, /run/charging asks for the charging screen instead of the menus: the
+# jingle stays quiet, the launcher shows the battery, and the power button removes the file
+# to start fully (/etc/acpi/PWRF/00000080).
+
+PMIC_REGISTERS=/sys/kernel/debug/regmap/0-0034/registers
+
+case "$1" in
+start)
+	mount -t debugfs none /sys/kernel/debug 2>/dev/null
+	started_by="$(sed -n 's/^20: //p' "$PMIC_REGISTERS" 2>/dev/null)"
+	if [ -n "$started_by" ] && [ $((0x$started_by & 5)) -eq 4 ]; then
+		touch /run/charging
+	fi
+	;;
+stop)
+	;;
+*)
+	echo "Usage: $0 {start|stop}"
+	exit 1
+	;;
+esac

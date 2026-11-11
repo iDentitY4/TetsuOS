@@ -20,6 +20,7 @@ mod boxart_fetch;
 mod boxart_screen;
 mod canvas;
 mod cards;
+mod charging;
 mod cheats;
 mod clock;
 mod color;
@@ -131,6 +132,10 @@ fn main() -> ExitCode {
         [flag, path] if flag == "--preview-shutdown" => {
             write_ppm(&screens::shutdown_screen(640, 480, i18n::tr("POWERING OFF"), current_theme()), path)
         }
+        [flag, path] if flag == "--preview-charging" => {
+            let battery = canvas::Battery { percent: 64, charging: true };
+            write_ppm(&screens::charging_screen(640, 480, Some(battery), current_theme()), path)
+        }
         [flag, path] if flag == "--preview-volume" => write_ppm(&screens::volume_sign(80, current_theme()), path),
         [flag, path] if flag == "--preview-card" => {
             write_ppm(&screens::text_sign(&i18n::trf("TF2: {} GAMES", &[&128]), current_theme()), path)
@@ -168,7 +173,7 @@ fn main() -> ExitCode {
                  \x20              | --preview-cheats | --preview-achievements | --preview-notice FILE.ppm\n\
                  \x20              | --preview-splash FILE.ppm | --core-options CORE\n\
                  \x20              | --preview-boot-animation FILE.ppm\n\
-                 \x20              | --preview-volume FILE.ppm | --preview-setup STEP FILE.ppm\n\
+                 \x20              | --preview-volume | --preview-charging FILE.ppm | --preview-setup STEP FILE.ppm\n\
                  \x20              | --play CORE ROM SAVE battery|state\n\
                  \x20              | --render CORE ROM SAVE battery|state FRAMES FILE.ppm]"
             );

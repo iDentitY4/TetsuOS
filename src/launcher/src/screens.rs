@@ -1392,6 +1392,39 @@ pub fn shutdown_screen(width: usize, height: usize, message: &str, theme: Theme)
     canvas
 }
 
+/// The battery picture's body, its outline, the gap inside it and the tip on the right.
+const CHARGE_BODY: (usize, usize) = (220, 110);
+const CHARGE_OUTLINE: usize = 8;
+const CHARGE_GAP: usize = 6;
+const CHARGE_TIP: (usize, usize) = (14, 44);
+
+/// The charging screen, when USB power started the device: a battery filled to the charge
+/// level in the accent colour, the level, and how to start fully.
+pub fn charging_screen(width: usize, height: usize, battery: Option<Battery>, theme: Theme) -> Canvas {
+    let mut canvas = Canvas::new(width, height, theme);
+    let (body_w, body_h) = CHARGE_BODY;
+    let (tip_w, tip_h) = CHARGE_TIP;
+    let x = width.saturating_sub(body_w + tip_w) / 2;
+    let y = (height / 2).saturating_sub(body_h / 2 + 64);
+    canvas.rect(x, y, body_w, body_h, TEXT);
+    let inset = CHARGE_OUTLINE;
+    canvas.rect(x + inset, y + inset, body_w - 2 * inset, body_h - 2 * inset, theme.background);
+    canvas.rect(x + body_w, y + (body_h - tip_h) / 2, tip_w, tip_h, TEXT);
+    let inner = CHARGE_OUTLINE + CHARGE_GAP;
+    let fill_w = body_w - 2 * inner;
+    let percent = battery.map_or(0, |battery| battery.percent.min(100) as usize);
+    canvas.rect(x + inner, y + inner, fill_w * percent / 100, body_h - 2 * inner, theme.accent);
+
+    let below = y + body_h + 36;
+    if let Some(battery) = battery {
+        canvas.text(&format!("{}%", battery.percent), below, 5, TEXT);
+    }
+    let state = if battery.is_some_and(|battery| !battery.charging) { tr("CHARGED") } else { tr("CHARGING") };
+    canvas.text(state, below + font::HEIGHT * 5 + 20, 3, MUTED);
+    canvas.text(tr("PRESS POWER TO START"), height.saturating_sub(48), TEXT_SCALE, MUTED);
+    canvas
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -1447,6 +1480,24 @@ mod tests {
         assert_eq!(pixel(&canvas, cx - 18, cy - 40), theme.background);
         assert_eq!(pixel(&canvas, cx, cy + 40), theme.accent);
         assert_eq!(pixel(&canvas, cx, cy), theme.background);
+    }
+
+    #[test]
+    fn the_charging_battery_fills_to_the_charge_level() {
+        let theme = Theme::default();
+        let filled_width = |percent| {
+            let canvas = charging_screen(640, 480, Some(Battery { percent, charging: true }), theme);
+            // Along the battery's middle row, where the fill is.
+            let (x, y) = ((640 - CHARGE_BODY.0 - CHARGE_TIP.0) / 2, 240 - 64);
+            (x..x + CHARGE_BODY.0).filter(|&x| pixel(&canvas, x, y) == theme.accent).count()
+        };
+        let full = CHARGE_BODY.0 - 2 * (CHARGE_OUTLINE + CHARGE_GAP);
+        assert_eq!(filled_width(0), 0);
+        assert_eq!(filled_width(50), full / 2);
+        assert_eq!(filled_width(100), full);
+        assert_eq!(filled_width(250), full, "a reading over 100% stays inside");
+        let unknown = charging_screen(640, 480, None, theme);
+        assert!(!unknown.pixels.contains(&theme.accent), "no reading, no fill");
     }
 
     #[test]
