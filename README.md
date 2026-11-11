@@ -98,3 +98,11 @@ Once booted, the USB/OTG port also offers a root shell. On the PC, run
 `screen /dev/ttyACM0 115200`, press Enter, and log in as `root`. Quit with
 Ctrl-a, then k, then y. Root has no password, over serial or SSH, so this image
 is for development only.
+
+## License
+
+Tetsu OS's own code (the launcher, scripts, Buildroot packages and board files) is under
+the MIT license in `LICENSE`. The patches in `board/rg35xxsp/patches/` change the Linux
+kernel and BlueZ and are under GPL-2.0 like them; `src/launcher/rcheevos/` keeps its own
+MIT license. The emulator cores are downloaded at build time under their own licenses,
+some of which forbid commercial use.
