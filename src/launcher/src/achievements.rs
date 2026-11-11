@@ -623,7 +623,10 @@ unsafe extern "C" fn event_handler(event: *const ffi::rc_client_event_t, _: *mut
         _ => None,
     };
     if let Some(happening) = happening {
-        println!("achievements: {happening:?}");
+        // Progress comes with every step, such as each of 180 jumps.
+        if !matches!(happening, Happening::Progress { .. }) {
+            println!("achievements: {happening:?}");
+        }
         with_state(|state| state.happenings.push(happening));
     }
 }
