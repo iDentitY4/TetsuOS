@@ -137,6 +137,32 @@ Working on the test unit, confirmed by the user:
   lookup), clippy, the device tree compiled with `dtc`, the patch with
   `apply-patches.sh`, and previews of the USB STORAGE screen and the sign in both
   languages
+- The mini-HDMI port (2026-11-11) mirrors the screen at 640x480: a TV or monitor shows
+  the same picture as the panel, menus, boot logo and games alike, and scales it itself.
+  Patch 0001 already had the HDMI controller (`sun8i-dw-hdmi`, DesignWare HDMI 2.0 TX),
+  its H616 PHY, TCON TV0 and the connector, and the launcher draws only into `/dev/fb0`,
+  so the kernel's fbdev emulation does the mirroring: on a hotplug,
+  `drm_fb_helper_hotplug_event` probes the connector with the 640x480 buffer as the size
+  limit and drives HDMI from `crtc-1` (mixer 1, TCON TV0) with the same framebuffer the
+  panel's `crtc-0` scans. The only change is `video=HDMI-A-1:640x480@60` in
+  `extlinux.conf`: with a TV in at boot, the helper otherwise sizes the buffer for the
+  largest mode, such as 1920x1080, and the launcher would fill its top-left corner. The
+  mode is CEA 640x480p59.94 (25.175 MHz), which every HDMI sink must take; if the EDID
+  lacks it, the kernel adds it. `FBIO_WAITFORVSYNC` waits on CRTC 0, the panel, so games
+  keep the panel's timing, and the TV, at the same nominal rate but its own clock, may
+  tear. Sound stays on the speaker, headphones or Bluetooth: HDMI audio needs the H616's
+  audio hub (AHUB), which mainline doesn't have. Closing the lid still sleeps, which
+  turns HDMI off with the display driver. Turning the panel off (sleep, USB STORAGE,
+  WI-FI TRANSFER) is only its backlight, so the TV keeps showing those screens.
+  A risk to check with a real TV: the HDMI `tmds` clock comes from `pll-video2` at
+  297 MHz, so for 640x480 it is 24.75 MHz (297 / 12), 1.7% under the 25.17 MHz TCON TV0
+  gives from `pll-video1`. Modes at 74.25 and 148.5 MHz divide exactly; this one doesn't.
+  If the TV shows nothing or a broken picture, look there first.
+  Checked by Claude over SSH, without a TV: `echo on > /sys/class/drm/card1-HDMI-A-1/status`
+  forced a hotplug while the launcher ran, and the DRM state (`/sys/kernel/debug/dri/1/state`)
+  showed `crtc-1` at 640x480 with `plane-4` on the panel's framebuffer, and no kernel errors;
+  `detect` put it back. A boot with `video=HDMI-A-1:640x480@60e` (forced on) kept `fb0` at
+  640x480 with both CRTCs on it, and the launcher drew at 3.95 s, as before
 - WI-FI TRANSFER, in Settings > SYSTEM and as SEND GAMES OVER WI-FI in the setup's games
   step (2026-11-10): a web page for a phone or PC browser on the same network, for
   getting games on without a cable or card reader. Off unless its screen is open:

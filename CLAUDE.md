@@ -25,7 +25,8 @@ Bluetooth (Settings > BLUETOOTH, off by default): controllers, checked with a Ba
 and headphones through bluez-alsa, checked with a Bose QC35 II, the sound moving to the
 speaker and back as they go and come. A second card in TF2 (FAT32 or exFAT) adds the
 games in its `roms` folder, mounted at `/mnt/tf2` as it goes in and out, also through
-USB STORAGE (a second drive) and WI-FI TRANSFER (a SEND TO choice).
+USB STORAGE (a second drive) and WI-FI TRANSFER (a SEND TO choice). The mini-HDMI port
+mirrors the screen at 640x480 (`video=` in `extlinux.conf`), without sound.
 
 Games: NES (FCEUmm), SNES (Snes9x), Game Boy, Color and Advance (mGBA), PlayStation (PCSX
 ReARMed, with discs grouped by name or an `.m3u`, and CHANGE DISC), Mega Drive, Master System and Game Gear (Genesis Plus GX), PC Engine (Beetle PCE
@@ -46,6 +47,9 @@ ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Not yet checked by the user
 
+- HDMI (2026-11-11): any real TV or monitor: picture, hotplug in the menus and in a game,
+  a TV in at boot, tearing, lid sleep; the 24.75 MHz HDMI clock against 25.17 MHz is the
+  first suspect if nothing shows (`docs/features.md`)
 - TF2 (2026-11-11): all of it on the device: the slot itself, FAT32 and exFAT cards,
   putting a card in and taking it out in the menus, the sign, a card swapped during lid
   sleep, USB STORAGE's second drive, WI-FI TRANSFER to TF2, the German wording
