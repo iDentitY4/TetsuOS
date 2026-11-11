@@ -301,6 +301,16 @@ choices! {
 }
 
 choices! {
+    /// How the in-game menu's SWITCH GAME shows the other recent games.
+    pub enum SwitcherStyle (default List) {
+        /// One game per row, with its console.
+        List => "list", "LIST";
+        /// The games' covers side by side.
+        Covers => "covers", "COVERS";
+    }
+}
+
+choices! {
     /// The order of consoles' lists and favorites. Ties go by name.
     pub enum GameSort (default Name) {
         Name => "name", "NAME";
@@ -478,6 +488,7 @@ pub struct Settings {
     /// The home screen's title, if one was typed.
     pub title: Option<String>,
     pub grid: GridSize,
+    pub switcher: SwitcherStyle,
     /// Home screen tiles turned off, by key, such as `recent` or `gba`.
     pub hidden_tiles: Vec<String>,
     pub language: Language,
@@ -648,6 +659,7 @@ fn parse(text: &str) -> Settings {
             "title_hidden" => settings.title_hidden = value == "yes",
             "title" => settings.title = clean_title(value),
             "grid" => choose(&mut settings.grid, GridSize::from_key(value)),
+            "switcher" => choose(&mut settings.switcher, SwitcherStyle::from_key(value)),
             "hidden_tiles" => {
                 settings.hidden_tiles =
                     value.split(',').map(str::trim).filter(|key| !key.is_empty()).map(String::from).collect();
@@ -713,6 +725,7 @@ fn format(settings: &Settings) -> String {
         lines.push(format!("title={title}"));
     }
     lines.push(format!("grid={}", settings.grid.key()));
+    lines.push(format!("switcher={}", settings.switcher.key()));
     if !settings.hidden_tiles.is_empty() {
         lines.push(format!("hidden_tiles={}", settings.hidden_tiles.join(",")));
     }
@@ -1021,6 +1034,7 @@ mod tests {
             title_hidden: true,
             title: Some("Game = Fun & more".into()),
             grid: GridSize::Large,
+            switcher: SwitcherStyle::Covers,
             hidden_tiles: vec!["recent".into(), "gba".into()],
             language: Language::German,
             start_screen: StartScreen::LastGame,

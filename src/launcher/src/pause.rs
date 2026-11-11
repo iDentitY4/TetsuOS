@@ -34,6 +34,8 @@ pub enum Item {
     Controls,
     CoreOptions,
     Cheats,
+    /// Opens the page of the other recent games.
+    SwitchGame,
     Quit,
 }
 
@@ -52,8 +54,9 @@ pub const LISTS: [List; 4] = [List::Main, List::Display, List::Options, List::Ac
 /// Every choice, in the order of their lists. Games with one disc go without `Item::Disc`,
 /// games whose core ignores codes or that play in hardcore without `Item::Cheats`, games
 /// without `RetroAchievements` without `Item::Achievements` and its list, and games on cores other than
-/// mGBA without `Item::Ghosting`. Only `PlayStation` games have discs, so no game shows them all.
-pub const ITEMS: [Item; 21] = [
+/// mGBA without `Item::Ghosting`, and games with no other recent game without `Item::SwitchGame`.
+/// Only `PlayStation` games have discs, so no game shows them all.
+pub const ITEMS: [Item; 22] = [
     Item::Resume,
     Item::SaveState,
     Item::LoadState,
@@ -62,6 +65,7 @@ pub const ITEMS: [Item; 21] = [
     Item::Display,
     Item::Options,
     Item::Achievements,
+    Item::SwitchGame,
     Item::Quit,
     Item::Brightness,
     Item::Scaling,
@@ -78,7 +82,7 @@ pub const ITEMS: [Item; 21] = [
 ];
 
 /// The most rows a list can have, which the drawing makes room for.
-pub const MOST_ROWS: usize = 9;
+pub const MOST_ROWS: usize = 10;
 
 impl Item {
     pub fn label(self) -> &'static str {
@@ -103,6 +107,7 @@ impl Item {
             Self::Controls => "CONTROLS",
             Self::CoreOptions => "CORE OPTIONS",
             Self::Cheats => "CHEATS",
+            Self::SwitchGame => "SWITCH GAME",
             Self::Quit => "QUIT",
         })
     }
@@ -121,6 +126,7 @@ impl Item {
             | Self::Display
             | Self::Options
             | Self::Achievements
+            | Self::SwitchGame
             | Self::Quit => List::Main,
         }
     }
@@ -129,7 +135,14 @@ impl Item {
     pub fn opens(self) -> bool {
         matches!(
             self,
-            Self::Display | Self::Options | Self::Achievements | Self::AchievementList | Self::Controls | Self::CoreOptions | Self::Cheats
+            Self::Display
+                | Self::Options
+                | Self::Achievements
+                | Self::AchievementList
+                | Self::Controls
+                | Self::CoreOptions
+                | Self::Cheats
+                | Self::SwitchGame
         )
     }
 
@@ -179,6 +192,8 @@ pub enum Action {
     Cheats,
     /// Opens the ACHIEVEMENTS page.
     Achievements,
+    /// Opens the SWITCH GAME page.
+    SwitchGame,
     /// Moves where a kind of achievement notice shows in this game by a number of choices.
     Notices(NoticeKind, i32),
 }
@@ -225,6 +240,14 @@ impl PauseMenu {
     #[must_use]
     pub fn with_ghosting(mut self, ghosting: bool) -> Self {
         self.all.retain(|&item| item != Item::Ghosting || ghosting);
+        self.show(self.list, 0);
+        self
+    }
+
+    /// Leaves out SWITCH GAME when there is no other recent game to switch to.
+    #[must_use]
+    pub fn with_switching(mut self, switching: bool) -> Self {
+        self.all.retain(|&item| item != Item::SwitchGame || switching);
         self.show(self.list, 0);
         self
     }
@@ -317,6 +340,7 @@ impl PauseMenu {
                     | Item::Controls
                     | Item::CoreOptions
                     | Item::Cheats
+                    | Item::SwitchGame
                     | Item::Quit => {}
                 }
             }
@@ -343,6 +367,7 @@ impl PauseMenu {
                         Action::Nothing
                     }
                     Item::AchievementList => Action::Achievements,
+                    Item::SwitchGame => Action::SwitchGame,
                     Item::UnlockNotices | Item::ProgressNotices | Item::OtherNotices => {
                         item.notice_kind().map_or(Action::Nothing, |kind| Action::Notices(kind, 1))
                     }
@@ -360,29 +385,50 @@ impl PauseMenu {
     }
 }
 
+/// Pressed while Menu is held, this opens SWITCH GAME straight from the game.
+pub const SWITCHER_BUTTON: Button = Button::Select;
+
+/// What a press during play opens.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Opening {
+    Menu,
+    /// The SWITCH GAME page, with Menu + Select.
+    Switcher,
+}
+
 /// Opens the menu when Menu is released without another button pressed meanwhile,
-/// so holding Menu + Start still leaves the game directly.
+/// so holding Menu + Start still leaves the game directly, and the game switcher when
+/// Select is pressed while Menu is held.
 pub struct MenuTrigger {
     alone: bool,
+    menu_held: bool,
 }
 
 impl MenuTrigger {
     pub fn new() -> Self {
-        Self { alone: false }
+        Self { alone: false, menu_held: false }
     }
 
-    /// Returns whether this event should open the menu.
-    pub fn update(&mut self, event: &Event) -> bool {
+    /// Returns what this event should open, if anything.
+    pub fn update(&mut self, event: &Event) -> Option<Opening> {
         match event.pressed() {
-            Some(Button::Menu) => self.alone = true,
-            Some(_) => self.alone = false,
+            Some(Button::Menu) => (self.alone, self.menu_held) = (true, true),
+            Some(button) => {
+                self.alone = false;
+                if button == SWITCHER_BUTTON && self.menu_held {
+                    return Some(Opening::Switcher);
+                }
+            }
             None => {}
         }
-        if event.released() == Some(Button::Menu) && self.alone {
-            self.alone = false;
-            return true;
+        if event.released() == Some(Button::Menu) {
+            self.menu_held = false;
+            if self.alone {
+                self.alone = false;
+                return Some(Opening::Menu);
+            }
         }
-        false
+        None
     }
 }
 
@@ -486,6 +532,18 @@ mod tests {
     }
 
     #[test]
+    fn switch_game_opens_its_page_and_goes_only_with_other_games() {
+        let mut menu = menu_at(Item::SwitchGame);
+        assert_eq!(menu.press(Button::Left), Action::Nothing);
+        assert_eq!(menu.press(Button::A), Action::SwitchGame);
+        assert_eq!(menu.selected(), Item::SwitchGame);
+        menu.press(Button::Down);
+        assert_eq!(menu.selected(), Item::Quit, "just above QUIT");
+        let alone = PauseMenu::new(1, true).with_switching(false);
+        assert!(!alone.items().contains(&Item::SwitchGame));
+    }
+
+    #[test]
     fn a_takes_a_screenshot_and_the_menu_stays_where_it_is() {
         let mut menu = menu_at(Item::Screenshot);
         assert_eq!(menu.press(Button::A), Action::Screenshot);
@@ -578,8 +636,20 @@ mod tests {
     #[test]
     fn menu_alone_opens_on_release() {
         let mut trigger = MenuTrigger::new();
-        assert!(!trigger.update(&Event::key(BTN_MODE, 1)));
-        assert!(trigger.update(&Event::key(BTN_MODE, 0)));
+        assert_eq!(trigger.update(&Event::key(BTN_MODE, 1)), None);
+        assert_eq!(trigger.update(&Event::key(BTN_MODE, 0)), Some(Opening::Menu));
+    }
+
+    #[test]
+    fn menu_with_select_opens_the_switcher_and_not_the_menu() {
+        const BTN_SELECT: u16 = 0x13A;
+        let mut trigger = MenuTrigger::new();
+        trigger.update(&Event::key(BTN_MODE, 1));
+        assert_eq!(trigger.update(&Event::key(BTN_SELECT, 1)), Some(Opening::Switcher));
+        assert_eq!(trigger.update(&Event::key(BTN_SELECT, 0)), None);
+        assert_eq!(trigger.update(&Event::key(BTN_MODE, 0)), None);
+        // Select alone is the game's.
+        assert_eq!(trigger.update(&Event::key(BTN_SELECT, 1)), None);
     }
 
     #[test]
@@ -588,6 +658,6 @@ mod tests {
         trigger.update(&Event::key(BTN_MODE, 1));
         trigger.update(&Event::key(BTN_START, 1));
         trigger.update(&Event::key(BTN_START, 0));
-        assert!(!trigger.update(&Event::key(BTN_MODE, 0)));
+        assert_eq!(trigger.update(&Event::key(BTN_MODE, 0)), None);
     }
 }

@@ -10,7 +10,7 @@ use crate::fb::Framebuffer;
 use crate::i18n::tr;
 use crate::input::{Button, Controls};
 use crate::settings::{NoticePlace, NoticePlaces};
-use crate::pause::{MenuTrigger, PauseMenu};
+use crate::pause::{MenuTrigger, Opening, PauseMenu};
 use crate::play_time::PlayClock;
 use crate::power::Level;
 use crate::rumble::Rumble;
@@ -66,10 +66,12 @@ pub fn release_cpu_speed() {
 }
 
 /// How a game ended.
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Ending {
     /// Left from the menu, with Menu + Start, or because the system asked.
     Quit,
+    /// Left from SWITCH GAME for this game, by its path as the lists have it.
+    Switch(std::path::PathBuf),
     /// The battery ran out, so the device should power off now that the game is saved.
     BatteryEmpty,
 }
@@ -379,12 +381,14 @@ pub struct GameSpec<'a> {
     pub console: Option<&'static str>,
     /// Where the game's cheats are, for a console that has them.
     pub cheats: Option<&'a CheatSource>,
+    /// The game as the lists have it, which `rom` isn't for a game unpacked from a ZIP.
+    pub listed: &'a Path,
 }
 
 /// Runs a game on the framebuffer until it is quit from the menu, or Menu and Start are
 /// held together.
 pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending> {
-    let GameSpec { core: core_path, rom, save, persistence, setup, console, cheats: cheat_source } = *game;
+    let GameSpec { core: core_path, rom, save, persistence, setup, console, cheats: cheat_source, listed } = *game;
     if let Err(error) = signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&TERMINATING)) {
         eprintln!("warning: a power-off may not save the game: {error}");
     }
@@ -428,7 +432,10 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
     let mut frames = 0u64;
     let discs = with_host(|host| host.disk_control).map_or(0, |control| control.count());
     let ghosting = with_host(|host| host.has_ghosting());
-    let mut menu = PauseMenu::with(discs, cheat_source.is_some() && !restricted, session.is_some()).with_ghosting(ghosting);
+    let switch_to = crate::switcher::others(listed);
+    let mut menu = PauseMenu::with(discs, cheat_source.is_some() && !restricted, session.is_some())
+        .with_ghosting(ghosting)
+        .with_switching(!switch_to.is_empty());
     let mut trigger = MenuTrigger::new();
     let mut release_at = None;
     let mut battery = power::Monitor::new();
@@ -436,10 +443,10 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
     let mut ending = Ending::Quit;
     loop {
         let (leave, open_menu, lid_closed) = with_host(|host| {
-            let (mut open_menu, mut lid_closed) = (false, false);
+            let (mut open_menu, mut lid_closed) = (None, false);
             for event in events.try_iter() {
                 host.controls.apply(&event);
-                open_menu |= trigger.update(&event);
+                open_menu = trigger.update(&event).or(open_menu);
                 let closing = event.pressed() == Some(Button::Lid);
                 lid_closed |= closing;
                 // The game runs on while the lid is closed, until the device sleeps.
@@ -485,15 +492,22 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
             achievements::queue(&mut notices, session.pump());
         }
         show_next_notice(framebuffer, &mut notices, session.as_mut(), game_notices.resolve(notice_defaults))?;
-        if open_menu {
+        // Menu + Select does nothing without another game to switch to.
+        if let Some(opening) = open_menu.filter(|&opening| opening == Opening::Menu || !switch_to.is_empty()) {
             save_play_time(&mut play_clock);
             hold_cpu_speed();
-            let game = Game { rom, save, cheat_source };
+            let game = Game { rom, save, cheat_source, switch_to: &switch_to };
             let mut achievements =
                 Achievements { session: &mut session, notices: &mut notices, game_notices: &mut game_notices };
             with_host(|host| host.rumble.hold());
-            if pause(&mut core, &game, &mut achievements, &mut menu, framebuffer, &events, &levels)? == AfterMenu::Quit {
-                break;
+            match pause(&mut core, &game, &mut achievements, &mut menu, opening, framebuffer, (&events, &levels))? {
+                AfterMenu::Resume => {}
+                AfterMenu::Quit => break,
+                AfterMenu::Switch(next) => {
+                    println!("switching to {}", next.path.display());
+                    ending = Ending::Switch(next.path);
+                    break;
+                }
             }
             with_host(|host| host.rumble.release());
             release_at = Some(frames - frames % STATS_FRAMES + CPU_HOLD_FRAMES);

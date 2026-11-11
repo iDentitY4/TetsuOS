@@ -188,6 +188,7 @@ impl Group {
                     Setting::GridSize,
                     Setting::HomeTiles,
                     Setting::SortGames,
+                    Setting::Switcher,
                 ]
             }
             Self::Time => &[Setting::TimeZone, Setting::ClockFormat],
@@ -233,6 +234,8 @@ pub enum Setting {
     Vibration,
     StartScreen,
     GameNames,
+    /// How SWITCH GAME in the in-game menu shows the games.
+    Switcher,
     Battery,
     MenuSounds,
     BootJingle,
@@ -292,6 +295,7 @@ impl Setting {
             Self::Vibration => "VIBRATION",
             Self::StartScreen => "START SCREEN",
             Self::GameNames => "GAME NAMES",
+            Self::Switcher => "GAME SWITCHER",
             Self::SortGames => "SORT GAMES BY",
             Self::Battery => "BATTERY",
             Self::MenuSounds => "MENU SOUNDS",
@@ -384,6 +388,7 @@ impl Setting {
                 | Self::Background
                 | Self::ShowTitle
                 | Self::GridSize
+                | Self::Switcher
                 | Self::TimeZone
                 | Self::ClockFormat
                 | Self::Ssh
@@ -503,6 +508,7 @@ pub enum Command {
     /// Shows the home screen's title if it is hidden, or hides it.
     ToggleTitle,
     GridSize(i32),
+    Switcher(i32),
     EditTitle,
     /// Turns a home screen tile off, or on again.
     ToggleTile(Tile),
@@ -956,6 +962,7 @@ impl Launcher {
             Setting::Background => Command::Background(step),
             Setting::ShowTitle => Command::ToggleTitle,
             Setting::GridSize => Command::GridSize(step),
+            Setting::Switcher => Command::Switcher(step),
             Setting::TimeZone => Command::TimeZone(step),
             Setting::ClockFormat => Command::ClockFormat(step),
             Setting::Ssh => Command::SshAccess(step),
@@ -1053,6 +1060,7 @@ impl Launcher {
                 | Setting::Background
                 | Setting::ShowTitle
                 | Setting::GridSize
+                | Setting::Switcher
                 | Setting::TimeZone
                 | Setting::ClockFormat
                 | Setting::Ssh
@@ -1146,6 +1154,9 @@ mod tests {
         library.systems = 7;
         let mut launcher = Launcher::new();
         open_group(&mut launcher, &library, Group::Theme);
+        launcher.press(Button::Up, &library);
+        assert_eq!(launcher.setting_selected(Group::Theme), Some(Setting::Switcher));
+        assert_eq!(launcher.press(Button::Left, &library), Command::Switcher(-1));
         launcher.press(Button::Up, &library);
         assert_eq!(launcher.setting_selected(Group::Theme), Some(Setting::SortGames));
         assert_eq!(launcher.press(Button::Right, &library), Command::SortGames(1));

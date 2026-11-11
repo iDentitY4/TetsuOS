@@ -548,6 +548,7 @@ pub(crate) fn setting_value(setting: Setting, settings: &Settings) -> Option<Str
         Setting::Vibration => settings.vibration.label(),
         Setting::StartScreen => settings.start_screen.label(),
         Setting::GameNames => settings.game_names.label(),
+        Setting::Switcher => settings.switcher.label(),
         Setting::SortGames => settings.sort.label(),
         Setting::Battery => settings.battery.label(),
         Setting::MenuSounds => on_off(settings.menu_sounds),
@@ -1261,14 +1262,25 @@ pub fn splash() -> Canvas {
 
 /// The game the launcher is about to resume after starting up.
 pub fn resume_screen(width: usize, height: usize, icon: &Icon, name: &str, theme: Theme) -> Canvas {
+    let mut canvas = game_starting(width, height, icon, tr("RESUMING"), name, theme);
+    hint(&mut canvas, tr("B CANCELS"));
+    canvas
+}
+
+/// The game SWITCH GAME chose, while the one left saves and the chosen one loads.
+pub fn switching_screen(width: usize, height: usize, icon: &Icon, name: &str, theme: Theme) -> Canvas {
+    game_starting(width, height, icon, tr("SWITCHING TO"), name, theme)
+}
+
+/// A game's console pictogram, a heading and the game's name.
+fn game_starting(width: usize, height: usize, icon: &Icon, heading: &str, name: &str, theme: Theme) -> Canvas {
     let mut canvas = Canvas::new(width, height, theme);
     let scale = 4;
     canvas.icon(icon, width.saturating_sub(icons::WIDTH * scale) / 2, 90, scale);
-    canvas.text(tr("RESUMING"), 90 + icons::HEIGHT * scale + 30, 3, canvas.theme.accent);
+    canvas.text(heading, 90 + icons::HEIGHT * scale + 30, 3, canvas.theme.accent);
     let columns = width.saturating_sub(32) / ((font::WIDTH + 1) * TEXT_SCALE);
     let visible: String = name.chars().take(columns).collect();
     canvas.text(&visible, 90 + icons::HEIGHT * scale + 76, TEXT_SCALE, TEXT);
-    hint(&mut canvas, tr("B CANCELS"));
     canvas
 }
 

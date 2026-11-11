@@ -11,7 +11,10 @@ use crate::font;
 use crate::i18n::{tr, trf};
 use crate::pause::{Item, List, PauseMenu, MOST_ROWS};
 use crate::screens::{self, OptionsLayout};
-use crate::settings::{Border, GameDisplay};
+use crate::settings::{Border, GameDisplay, SwitcherStyle};
+use crate::switcher::{SwitchPage, LARGE_COVER, SMALL_COVER};
+use crate::systems::SYSTEMS;
+use crate::{icons, image::Image};
 
 /// What the in-game menu shows besides its choices.
 pub struct PauseView<'a> {
@@ -139,6 +142,107 @@ pub fn pause_screen(
     let hint = if menu.list() == List::Main { tr("A SELECTS - B RESUMES") } else { tr("A SELECTS - B BACK") };
     canvas.text(hint, message_y + 30, PAUSE_TEXT_SCALE, MUTED);
     canvas
+}
+
+/// As much of `text` as fits in `width` pixels at the menu's text size.
+fn fitting(text: &str, width: usize) -> String {
+    let columns = width / ((font::WIDTH + 1) * PAUSE_TEXT_SCALE);
+    text.chars().take(columns).collect()
+}
+
+/// The in-game menu's SWITCH GAME page, in the style Settings > THEME chose.
+pub fn switch_screen(width: usize, height: usize, frame: &[u32], frame_size: (usize, usize), page: &SwitchPage, theme: Theme) -> Canvas {
+    match page.style() {
+        SwitcherStyle::List => switch_list(width, height, frame, frame_size, page, theme),
+        SwitcherStyle::Covers => switch_covers(width, height, frame, frame_size, page, theme),
+    }
+}
+
+/// The other games as rows, like the menu's lists, each with its console on the right.
+fn switch_list(width: usize, height: usize, frame: &[u32], frame_size: (usize, usize), page: &SwitchPage, theme: Theme) -> Canvas {
+    let mut canvas = pause_backdrop(width, height, frame, frame_size, theme);
+    let (panel_x, panel_y, panel_w, _) = PAUSE_PANEL;
+    canvas.text(tr("SWITCH GAME"), panel_y + 20, 3, TEXT);
+    let label_x = panel_x + 20;
+    let value_right = panel_x + panel_w - 20;
+    for (row, game) in page.games().iter().take(MOST_ROWS).enumerate() {
+        let y = PAUSE_TOP + row * PAUSE_ROW;
+        let selected = row == page.selected_index();
+        let (text_color, console_color) = if selected {
+            canvas.rect(panel_x, y, panel_w, PAUSE_ROW - 4, canvas.theme.accent);
+            (canvas.theme.background, canvas.theme.background)
+        } else {
+            (TEXT, MUTED)
+        };
+        let text_y = y + (PAUSE_ROW - 4 - font::HEIGHT * PAUSE_TEXT_SCALE) / 2;
+        let console = SYSTEMS[game.system].label;
+        let console_x = value_right - text_width(console, PAUSE_TEXT_SCALE);
+        canvas.text_at(console, console_x, text_y, PAUSE_TEXT_SCALE, console_color);
+        let name = fitting(&game.name, console_x.saturating_sub(label_x + 12));
+        canvas.text_at(&name, label_x, text_y, PAUSE_TEXT_SCALE, text_color);
+    }
+    let message_y = PAUSE_TOP + MOST_ROWS * PAUSE_ROW + 12;
+    let hint = if page.resumes() { tr("A SWITCHES - B RESUMES") } else { tr("A SWITCHES - B BACK") };
+    canvas.text(hint, message_y + 30, PAUSE_TEXT_SCALE, MUTED);
+    canvas
+}
+
+/// Where the selected cover's area starts, and how far apart the covers' middles are.
+const SWITCH_COVER_TOP: usize = 84;
+const SWITCH_NEAR: usize = LARGE_COVER.0 / 2 + 12 + SMALL_COVER.0 / 2;
+const SWITCH_FAR: usize = SWITCH_NEAR + SMALL_COVER.0 + 10;
+const SWITCH_NAME_Y: usize = SWITCH_COVER_TOP + LARGE_COVER.1 + 20;
+const SWITCH_HINT_Y: usize = OPTIONS_PANEL.1 + OPTIONS_PANEL.3 - 34;
+// The outer covers stay inside the panel, and the console's line above the hint.
+const _: () = assert!(320 - SWITCH_FAR - SMALL_COVER.0 / 2 >= OPTIONS_PANEL.0);
+const _: () = assert!(SWITCH_NAME_Y + 30 + font::HEIGHT * PAUSE_TEXT_SCALE + 8 <= SWITCH_HINT_Y);
+
+/// The covers side by side, the selected one large in the middle, with its name below.
+fn switch_covers(width: usize, height: usize, frame: &[u32], frame_size: (usize, usize), page: &SwitchPage, theme: Theme) -> Canvas {
+    let mut canvas = backdrop_with_panel(width, height, frame, frame_size, theme, OPTIONS_PANEL);
+    canvas.text(tr("SWITCH GAME"), OPTIONS_TITLE_Y, 3, TEXT);
+    let middle = (width / 2, SWITCH_COVER_TOP + LARGE_COVER.1 / 2);
+    let selected = page.selected_index();
+    for (offset, place) in [(-2, -(SWITCH_FAR as isize)), (-1, -(SWITCH_NEAR as isize)), (1, SWITCH_NEAR as isize), (2, SWITCH_FAR as isize)] {
+        let Some(index) = selected.checked_add_signed(offset).filter(|&index| index < page.games().len()) else { continue };
+        let x = middle.0.saturating_add_signed(place);
+        draw_switch_cover(&mut canvas, page, index, (x, middle.1), false);
+    }
+    draw_switch_cover(&mut canvas, page, selected, middle, true);
+
+    let game = page.selected();
+    let name = fitting(&game.name, OPTIONS_PANEL.2 - 32);
+    canvas.text(&name, SWITCH_NAME_Y, PAUSE_TEXT_SCALE, TEXT);
+    let place = format!("{} - {} / {}", SYSTEMS[game.system].label, selected + 1, page.games().len());
+    canvas.text(&place, SWITCH_NAME_Y + 30, PAUSE_TEXT_SCALE, MUTED);
+    let hint = if page.resumes() {
+        tr("A SWITCHES - LEFT RIGHT CHOOSES - B RESUMES")
+    } else {
+        tr("A SWITCHES - LEFT RIGHT CHOOSES - B BACK")
+    };
+    canvas.text(hint, SWITCH_HINT_Y, PAUSE_TEXT_SCALE, MUTED);
+    canvas
+}
+
+/// One game's cover centred on `centre`, or its console's pictogram on a plain card. The
+/// selected one is large, in a frame of the theme's colour.
+fn draw_switch_cover(canvas: &mut Canvas, page: &SwitchPage, index: usize, (centre_x, centre_y): (usize, usize), selected: bool) {
+    let image: Option<&Image> = page.cover(index).map(|cover| if selected { &cover.large } else { &cover.small });
+    let (box_w, box_h) = if selected { LARGE_COVER } else { SMALL_COVER };
+    let (w, h) = image.map_or((box_w, box_h * 3 / 4), |image| (image.width, image.height));
+    let (x, y) = (centre_x.saturating_sub(w / 2), centre_y.saturating_sub(h / 2));
+    if selected {
+        canvas.rect(x.saturating_sub(4), y.saturating_sub(4), w + 8, h + 8, canvas.theme.accent);
+    }
+    match image {
+        Some(image) => canvas.image(image, x, y),
+        None => {
+            canvas.rect(x, y, w, h, BODY);
+            let scale = if selected { 4 } else { 2 };
+            let icon = SYSTEMS[page.games()[index].system].icon;
+            canvas.icon(icon, centre_x.saturating_sub(icons::WIDTH * scale / 2), centre_y.saturating_sub(icons::HEIGHT * scale / 2), scale);
+        }
+    }
 }
 
 const CONTROLS_TOP: usize = 60;

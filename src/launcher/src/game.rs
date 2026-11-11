@@ -8,11 +8,12 @@ use crate::launcher::{Game, Library};
 use crate::library::{is_m3u, read_m3u};
 use crate::libretro::Ending;
 use crate::sleep::sleep_until_lid_opens;
+use crate::switcher::SWITCH_EXIT;
 use crate::systems::{Persistence, persistence_arg, SAVE_DIR, save_path, system_for, SYSTEMS};
 use std::io;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, ExitCode, Stdio};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
@@ -97,6 +98,12 @@ pub(crate) fn play_game(rom: &Path, events: &Receiver<Event>) -> io::Result<Endi
     settings::reload();
     // Presses made during the game shouldn't act on the menu.
     events.try_iter().for_each(drop);
+    if status.code() == Some(i32::from(SWITCH_EXIT)) {
+        // The game named the next one where the running game is noted.
+        if let Some(next) = handed_over(rom) {
+            return Ok(Ending::Switch(next));
+        }
+    }
     if status.code() == Some(i32::from(BATTERY_EMPTY_EXIT)) {
         // Kept, so the game resumes once the battery has charged.
         return Ok(Ending::BatteryEmpty);
@@ -121,6 +128,25 @@ fn adopt_disc_save(save: &Path, disc_saves: &[PathBuf]) -> io::Result<()> {
         println!("memory card copied from {}", path.display());
     }
     Ok(())
+}
+
+/// In the game's process, after it saved: notes the game SWITCH GAME chose as the running
+/// one, for the launcher to start. Should that fail, the game has simply quit.
+pub(crate) fn hand_over(next: &Path) -> ExitCode {
+    match storage::write_atomic(Path::new(PLAYING_PATH), next.to_string_lossy().as_bytes()) {
+        Ok(()) => ExitCode::from(SWITCH_EXIT),
+        Err(error) => {
+            eprintln!("warning: could not hand over to the next game: {error}");
+            ExitCode::SUCCESS
+        }
+    }
+}
+
+/// The game the one that just ended `left` for, as `hand_over` noted it.
+fn handed_over(left: &Path) -> Option<PathBuf> {
+    let noted = std::fs::read_to_string(PLAYING_PATH).ok()?;
+    let next = PathBuf::from(noted.trim());
+    (!next.as_os_str().is_empty() && next != left).then_some(next)
 }
 
 pub(crate) fn forget_running_game() {
@@ -165,7 +191,7 @@ pub(crate) fn run_game(core: &Path, rom: &Path, save: &Path, persistence: Persis
             stem: rom.file_stem()?.to_string_lossy().into_owned(),
         })
     });
-    let game = libretro::GameSpec { core, rom, save, persistence, setup, console, cheats: cheats.as_ref() };
+    let game = libretro::GameSpec { core, rom, save, persistence, setup, console, cheats: cheats.as_ref(), listed: rom };
     if !rom_zip::is_zip(rom) {
         return libretro::play(&game, &mut open_framebuffer()?);
     }

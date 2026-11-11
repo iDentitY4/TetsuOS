@@ -113,6 +113,7 @@ mod tests {
         keys.extend(labels(s::GridSize::ALL, s::GridSize::label));
         keys.extend(labels(s::StartScreen::ALL, s::StartScreen::label));
         keys.extend(labels(s::GameNames::ALL, s::GameNames::label));
+        keys.extend(labels(s::SwitcherStyle::ALL, s::SwitcherStyle::label));
         keys.extend(labels(s::GameSort::ALL, s::GameSort::label));
         keys.extend(labels(s::BatteryDisplay::ALL, s::BatteryDisplay::label));
         keys.extend(labels(clock::ClockFormat::ALL, clock::ClockFormat::label));

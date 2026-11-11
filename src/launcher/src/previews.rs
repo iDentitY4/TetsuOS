@@ -72,15 +72,58 @@ pub(crate) fn write_launcher_preview(path: &str, buttons: &[Button]) -> io::Resu
 
 /// Renders the in-game menu over a test pattern to a PPM image, on Load State with an
 /// empty slot and a message showing.
-pub(crate) fn write_pause_preview(path: &str) -> io::Result<()> {
-    let (width, height) = PREVIEW_SIZE;
+/// A colourful stand-in for a paused game's picture, and its size.
+fn paused_frame() -> (Vec<u32>, (usize, usize)) {
     let frame_size = (640, 426);
-    let frame: Vec<u32> = (0..frame_size.0 * frame_size.1)
+    let frame = (0..frame_size.0 * frame_size.1)
         .map(|i| {
             let (x, y) = ((i % frame_size.0) as u32, (i / frame_size.0) as u32);
             (x * 255 / 640) << 16 | (y * 255 / 426) << 8 | 0x80
         })
         .collect();
+    (frame, frame_size)
+}
+
+/// Renders the in-game menu's SWITCH GAME page, as a list or as covers: seven games, of
+/// which some have covers, and the second selected.
+pub(crate) fn write_switch_preview(style: settings::SwitcherStyle, path: &str) -> io::Result<()> {
+    use crate::switcher::{Cover, SwitchGame, SwitchPage, LARGE_COVER, SMALL_COVER};
+    let (width, height) = PREVIEW_SIZE;
+    let (frame, frame_size) = paused_frame();
+    let names = [
+        ("Pokemon - FireRed Version.gba", "Pokemon - FireRed Version"),
+        ("Super Metroid.sfc", "Super Metroid"),
+        ("Sonic The Hedgehog 2.md", "Sonic The Hedgehog 2"),
+        ("Tetris.gb", "Tetris"),
+        ("Castlevania - Symphony of the Night.m3u", "Castlevania - Symphony of the Night"),
+        ("Pokemon Crystal Version.gbc", "Pokemon Crystal Version"),
+        ("The Legend of Zelda - A Link to the Past.sfc", "The Legend of Zelda - A Link to the Past"),
+    ];
+    let games: Vec<SwitchGame> = names
+        .iter()
+        .map(|(file, name)| {
+            let path = PathBuf::from("/r").join(file);
+            SwitchGame { system: crate::systems::system_index(&path).unwrap_or(0), path, name: (*name).to_string() }
+        })
+        .collect();
+    let covers = (0..games.len())
+        .map(|index| {
+            (index % 3 != 2).then(|| {
+                let shade = (index * 37 % 200) as u8;
+                let pixels = (0..200 * 280).map(|i| color::Rgb(shade + 40, (i / 200 % 256) as u8, 160 - shade / 2)).collect();
+                let image = crate::image::Image { width: 200, height: 280, pixels };
+                Cover { large: crate::boxart_fetch::shrink(&image, LARGE_COVER), small: crate::boxart_fetch::shrink(&image, SMALL_COVER) }
+            })
+        })
+        .collect();
+    let mut page = SwitchPage::new(games, style, covers);
+    page.press(Button::Down);
+    write_ppm(&pause_screens::switch_screen(width, height, &frame, frame_size, &page, current_theme()), path)
+}
+
+pub(crate) fn write_pause_preview(path: &str) -> io::Result<()> {
+    let (width, height) = PREVIEW_SIZE;
+    let (frame, frame_size) = paused_frame();
     // A PlayStation game with several discs and achievements, the fullest the menu gets.
     let mut menu = pause::PauseMenu::with(3, true, true).with_ghosting(false);
     menu.press(Button::Down);

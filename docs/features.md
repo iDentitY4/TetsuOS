@@ -266,6 +266,43 @@ Working on the test unit, confirmed by the user:
   it doesn't move from list to list. VOLUME left the menu: the volume buttons do the same
   and show their sign over it. Checked with `cargo test` and `--preview-pause` in English
   and German; not yet on the device
+- The game switcher (2026-11-11, `switcher.rs`): SWITCH GAME in the in-game menu's main
+  list, just above QUIT, opens the RECENT games other than the one running, newest first
+  (up to 7), leaving out any whose file is gone. It is left out of the menu when there is
+  none, so the main list has at most 10 rows (`pause::MOST_ROWS`). A switches: the game
+  saves as when quitting (resume state, play time, achievements), shows SWITCHING TO with
+  the next game's console and name, writes that game to `playing.txt` and exits with code
+  4 (`switcher::SWITCH_EXIT`). The launcher's `play_game` reads it back as
+  `Ending::Switch`, and `act` starts that game straight away, which resumes from its own
+  `.resume` and moves to the front of RECENT, so the game just left is first in its
+  switcher and A, A goes back. A power-off between the two resumes the chosen game at
+  boot, and a chosen game that can't start is forgotten there. After the last game quits,
+  the list selects the game played last, if it is in that list. The menu passes the game's
+  path as the lists have it (`GameSpec::listed`), which a ZIP's unpacked file isn't.
+  Settings > THEME > GAME SWITCHER (`switcher=`, `settings::SwitcherStyle`) chooses how
+  it looks: LIST (the default), rows like the menu's with the console on the right, Up
+  and Down wrapping; or COVERS, the selected cover large in a frame of the theme's colour
+  (fit to 200x230) with two smaller ones (88x116) each side, the name, console and place
+  (`2 / 7`) below, Left and Right stopping at the ends. Covers are read and shrunk in the
+  game's process when the page opens (`BoxArt`, so a screenshot stands in as in the
+  lists, and a game without either shows its console's pictogram on a card). B or Menu
+  goes back to SWITCH GAME. Menu + Select during play (`pause::SWITCHER_BUTTON`,
+  `pause::Opening`) opens the page straight from the game, where B or Menu resumes and the
+  hint says so; with no other game it does nothing. Like Menu + Start, the game doesn't
+  see the Select: the page opens before the next frame, and the game continues only once
+  every button is let go. `--preview-switcher` and `--preview-switcher-covers` render
+  both. Claude checked on the device with injected presses and screenshots on 2026-11-11:
+  both styles, Super Mario Bros. to Super Mario World and back several times, each
+  continuing exactly where it was left (1-2 with the same score and coins), `playing.txt`
+  and RECENT after each switch and quit, B on the page, and the selection after quitting.
+  Menu + Select, injected in one write: it opened the covers page over Super Mario Bros.,
+  B went straight back into the game, and it switched to Super Mario World; a Menu tap
+  still opens the menu.
+  One switched start of Super Mario World logged a single 451 ms underrun, a normal start
+  and two more switches none. Not checked: the feel, the SWITCHING TO screen by eye (the
+  switch is over before a screenshot over SSH), a PlayStation game, a ZIP, a game on TF2,
+  hardcore, a power-off mid-switch, Menu + Select on the real buttons, the German wording
+  on the device
 - The volume sign: a press of a volume button shows `VOL`, a bar and the percentage,
   centred at the top of the screen for 1.5 s, in the menus, during a game and in the
   in-game menu (`screens::volume_sign`, `app::show_volume`). It is 20 pixels tall and 6

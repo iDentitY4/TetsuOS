@@ -2,7 +2,7 @@
 
 use crate::{
     achievements, boot_partition, boxart, canvas, cards, cheats, clock, controls, core_options, favorites,
-    fb, game_files, icons, input, keyboard, launcher, performance, power, rumble, screens, settings, sounds,
+    fb, game_files, icons, input, keyboard, launcher, performance, power, recent, rumble, screens, settings, sounds,
     ssh,
 };
 use crate::boxart_screen::{art_counts, delete_box_art, download_box_art};
@@ -585,10 +585,23 @@ pub(crate) fn act(
     match action {
         Action::Nothing => {}
         Action::Play(rom) => {
-            match play_game(&rom, events) {
-                Ok(Ending::BatteryEmpty) => shut_down(framebuffer, tr("BATTERY EMPTY"), &power::poweroff_command())?,
-                Ok(Ending::Quit) => {}
-                Err(error) => eprintln!("launcher: could not start the game: {error}"),
+            let mut rom = rom;
+            // SWITCH GAME in a game's menu goes on to another, until one quits.
+            loop {
+                match play_game(&rom, events) {
+                    Ok(Ending::BatteryEmpty) => shut_down(framebuffer, tr("BATTERY EMPTY"), &power::poweroff_command())?,
+                    Ok(Ending::Switch(next)) => {
+                        rom = next;
+                        continue;
+                    }
+                    Ok(Ending::Quit) => {}
+                    Err(error) => {
+                        eprintln!("launcher: could not start the game: {error}");
+                        // A game switched to that can't start shouldn't be resumed at boot.
+                        forget_running_game();
+                    }
+                }
+                break;
             }
             return Ok(true);
         }
@@ -666,6 +679,7 @@ pub(crate) fn act(
         Action::Accent(steps) => {
             change_settings(|s| s.accent = s.accent.cycle(steps));
         }
+        Action::Switcher(steps) => change_settings(|s| s.switcher = s.switcher.cycle(steps)),
         Action::GridSize(steps) => {
             change_settings(|s| s.grid = s.grid.cycle(steps));
             // The home screen's tiles are laid out again.
@@ -1296,11 +1310,17 @@ pub(crate) fn run_launcher() -> io::Result<()> {
             delete_game_showing_failure(&mut framebuffer, rom, &library)?;
         }
         let account_changed = matches!(action, Action::LogInToAchievements | Action::LogOutOfAchievements);
+        let played = matches!(action, Action::Play(_));
         if act(action, &mut framebuffer, &events)? {
             art.clear();
             let selected = launcher.selected_path(&library);
             library = reload_library(&library);
             launcher.select_path(&library, selected.as_deref());
+            if played {
+                // SWITCH GAME may have ended on another game: it, if this list has it.
+                let last = recent::load(Path::new(recent::RECENT_PATH)).into_iter().next();
+                launcher.select_path(&library, last.as_deref());
+            }
             launcher.leave_empty_list(&library);
         }
         if account_changed {

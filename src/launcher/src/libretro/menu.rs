@@ -13,10 +13,11 @@ use crate::core_options::{
 use crate::fb::Framebuffer;
 use crate::i18n::{tr, trf};
 use crate::input::{Button, Event};
-use crate::pause::{Action, PauseMenu};
+use crate::pause::{Action, Opening, PauseMenu};
 use crate::pause_screens::PauseView;
 use crate::settings::GameDisplay;
 use crate::storage::write_atomic;
+use crate::switcher::{SwitchAction, SwitchGame, SwitchPage};
 use std::io;
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -136,6 +137,8 @@ fn finish_download(page: &mut CheatsPage, source: &CheatSource, result: Download
 pub(super) enum AfterMenu {
     Resume,
     Quit,
+    /// Leaves the game, as quitting does, for another one.
+    Switch(SwitchGame),
 }
 
 /// The game being played, as the in-game menu needs it.
@@ -143,6 +146,8 @@ pub(super) struct Game<'a> {
     pub(super) rom: &'a Path,
     pub(super) save: &'a Path,
     pub(super) cheat_source: Option<&'a CheatSource>,
+    /// The recent games SWITCH GAME offers.
+    pub(super) switch_to: &'a [SwitchGame],
 }
 
 /// The game's `RetroAchievements`, if it plays with them, the notices waiting to show, and
@@ -189,6 +194,7 @@ struct Pages {
     options: Option<OptionsPage>,
     cheats: Option<CheatsPage>,
     achievements: Option<achievements::Page>,
+    switcher: Option<SwitchPage>,
 }
 
 /// The paused game's picture and its size, which every menu screen is drawn over.
@@ -220,6 +226,9 @@ fn draw_menu(
     let (width, height) = framebuffer.size();
     let frame_size = *frame_size;
     let theme = crate::corner::current_theme();
+    if let Some(page) = &pages.switcher {
+        return framebuffer.draw(&pause_screens::switch_screen(width, height, frame, frame_size, page, theme));
+    }
     let screen = match (&pages.achievements, &pages.controls, &pages.options, &pages.cheats) {
         (Some(achievements_page), ..) => {
             let summary = session.as_ref().map(|session| session.summary()).unwrap_or_default();
@@ -407,23 +416,28 @@ fn wait_for_release(events: &Receiver<Event>) {
     }
 }
 
-/// Shows the in-game menu over the paused game until it closes.
+/// Shows the in-game menu over the paused game until it closes. Opened with Menu + Select,
+/// it starts on SWITCH GAME's page, and going back from there resumes the game.
 pub(super) fn pause(
     core: &mut Core,
     game: &Game,
     achievements: &mut Achievements,
     menu: &mut PauseMenu,
+    opening: Opening,
     framebuffer: &mut Framebuffer,
-    events: &Receiver<Event>,
-    volume_levels: &Receiver<u32>,
+    (events, volume_levels): (&Receiver<Event>, &Receiver<u32>),
 ) -> io::Result<AfterMenu> {
-    let Game { rom, save, cheat_source } = *game;
+    let Game { rom, save, cheat_source, switch_to } = *game;
     let backdrop: Backdrop = with_host(super::host::Host::whole_screen);
     let _silence = Silence::start(core.av_info.timing.sample_rate);
     let disk_control = with_host(|host| host.disk_control);
     menu.open(disk_control.map_or(0, |control| control.current()));
     let mut settings_changed = false;
     let mut pages = Pages::default();
+    let from_hotkey = opening == Opening::Switcher;
+    if from_hotkey {
+        pages.switcher = Some(SwitchPage::open(switch_to).resuming());
+    }
     // A download the CHEATS page started.
     let mut download: Option<Receiver<Downloaded>> = None;
     let mut redraw = true;
@@ -464,6 +478,15 @@ pub(super) fn pause(
         with_host(|host| host.controls.apply(&event));
         let Some(button) = event.pressed() else { continue };
         redraw = true;
+        if let Some(page) = pages.switcher.as_mut() {
+            match page.press(button) {
+                SwitchAction::Nothing => {}
+                SwitchAction::Back if from_hotkey => break AfterMenu::Resume,
+                SwitchAction::Back => pages.switcher = None,
+                SwitchAction::Switch => break AfterMenu::Switch(page.selected().clone()),
+            }
+            continue;
+        }
         if press_page(&mut pages, button, core, game, achievements, &mut download) {
             continue;
         }
@@ -508,6 +531,7 @@ pub(super) fn pause(
                 let lines = achievements.session.as_ref().map(Session::lines).unwrap_or_default();
                 pages.achievements = Some(achievements::Page::new(lines));
             }
+            Action::SwitchGame => pages.switcher = Some(SwitchPage::open(switch_to)),
             Action::Cheats => {
                 let Some(source) = cheat_source else { continue };
                 // A download from an earlier visit may still be going.
@@ -519,6 +543,12 @@ pub(super) fn pause(
         if let Err(error) = settings::save_levels() {
             eprintln!("warning: could not save the settings: {error}");
         }
+    }
+    if let AfterMenu::Switch(next) = &after {
+        // Saving and loading the next game take a moment, so the screen says what comes.
+        let (width, height) = framebuffer.size();
+        let icon = crate::systems::SYSTEMS[next.system].icon;
+        framebuffer.draw(&crate::screens::switching_screen(width, height, icon, &next.name, crate::corner::current_theme()))?;
     }
     if after == AfterMenu::Resume {
         wait_for_release(events);

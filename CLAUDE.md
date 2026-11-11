@@ -32,7 +32,7 @@ Games: NES (FCEUmm), SNES (Snes9x), Game Boy, Color and Advance (mGBA), PlayStat
 ReARMed, with discs grouped by name or an `.m3u`, and CHANGE DISC), Mega Drive, Master System and Game Gear (Genesis Plus GX), PC Engine (Beetle PCE
 Fast), Neo Geo Pocket and Color (Beetle NeoPop), WonderSwan and Color (Beetle Cygne), Lynx
 (Handy) and Tamagotchi (tamalib), cartridge games also in ZIP files, with an in-game menu (8 save slots, levels, display
-options, screenshots to PNG, also used as the cover of a game without one, button remapping and turbo per console or game, each core's own options per console or game, cheat codes from `.cht` files, also downloaded on the device), RetroAchievements (login, unlock notices with badges, a progress page, hardcore, off for every game or one), resume on leaving and after power-off, fast-forward on R2, sharp-bilinear
+options, screenshots to PNG, also used as the cover of a game without one, button remapping and turbo per console or game, each core's own options per console or game, cheat codes from `.cht` files, also downloaded on the device, and SWITCH GAME to the other recent games, each resuming, as a list or covers, also on Menu + Select), RetroAchievements (login, unlock notices with badges, a progress page, hardcore, off for every game or one), resume on leaving and after power-off, fast-forward on R2, sharp-bilinear
 scaling with CRT and LCD effects and a border (a drawn bezel on the handhelds by default,
 the theme's colours or black), kept per console, and a volume sign on the volume buttons, also in the menus.
 
@@ -40,13 +40,17 @@ Launcher: a tile grid with RECENT and FAVORITES, lists with covers and scrolling
 sorting by name or how recently or long a game was played, jumping by letter on L1 and R1, search on X, a game's details, play time and deleting it on Y,
 box art downloaded on the device, and a settings grid (GENERAL, IN GAME, WI-FI,
 BOX ART, THEME, TIME, SYSTEM, ADVANCED, CORES) with colours, background, title, grid size,
-hidden tiles, start screen, game names, battery display, menu sounds, the boot jingle, sleep when idle
+the game switcher's look, hidden tiles, start screen, game names, battery display, menu sounds, the boot jingle, sleep when idle
 and power-off after sleep.
 The launcher and in-game menu are in English or German (Settings > GENERAL > LANGUAGE).
 A new install starts with a setup (language, Wi-Fi, time, adding games), which Settings >
 ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Not yet checked by the user
+
+- The game switcher (2026-11-11): its feel and both looks on the device, SWITCHING TO,
+  Menu + Select on the real buttons, a PlayStation game, a ZIP, TF2, hardcore, the German
+  wording
 
 - The in-game menu's DISPLAY and OPTIONS lists (2026-11-11): on the device, their feel
   and the German wording
@@ -124,7 +128,7 @@ ADVANCED > RUN SETUP AGAIN repeats.
   games and tiles, `game.rs` running and resuming games, `libretro/` the frontend (`ffi`, `host`, `core`, `scale`, `border`, `save`, `audio`, `menu`, `play`),
   `rom_zip.rs` games in ZIPs, `cards.rs` the second card slot, `bluetooth.rs` (BlueZ over `zbus`), `bluetooth_menu.rs` and `bluetooth_screen.rs`
   the Bluetooth screen, `audio_out.rs` where sound goes (Bluetooth headphones or the speaker), `transfer.rs` and `transfer_server.rs` the Wi-Fi transfer
-  screen and web page (`transfer_page.html`), `controls.rs` button layouts and turbo, `core_options.rs` cores' own options, `cheats.rs` cheat files and the CHEATS page, `achievements.rs` RetroAchievements through rcheevos, `game_files.rs` which files are a game's, `screenshot.rs` the in-game menu's pictures, `sleep.rs`, `corner.rs` (clock and battery), `sounds.rs` the menu sounds and boot jingle, `boot_animation.rs` the animation drawn with it, `launcher.rs` the button logic,
+  screen and web page (`transfer_page.html`), `controls.rs` button layouts and turbo, `switcher.rs` SWITCH GAME, `core_options.rs` cores' own options, `cheats.rs` cheat files and the CHEATS page, `achievements.rs` RetroAchievements through rcheevos, `game_files.rs` which files are a game's, `screenshot.rs` the in-game menu's pictures, `sleep.rs`, `corner.rs` (clock and battery), `sounds.rs` the menu sounds and boot jingle, `boot_animation.rs` the animation drawn with it, `launcher.rs` the button logic,
   `charging.rs` the charging screen, `screens.rs` and `canvas.rs` the drawing, `pause_screens.rs` the in-game menu's, `paths.rs`
   the device's paths and the macros a module builds its own from. Imports are by name, and
   `[lints.clippy]` in `Cargo.toml` is the bar: `cargo clippy --all-targets` stays clean.
