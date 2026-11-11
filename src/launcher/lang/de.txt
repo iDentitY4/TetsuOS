@@ -571,3 +571,18 @@ TF2: 1 GAME = TF2: 1 SPIEL
 TF2: {} GAMES = TF2: {} SPIELE
 TF2: CAN'T READ THE CARD = TF2: KARTE NICHT LESBAR
 TF2: CARD TAKEN OUT = TF2: KARTE ENTNOMMEN
+
+# The home screen's line about the selected tile, beside its name, which is up to 10
+# characters: 33 more fit.
+[max 32]
+LAST: {} = ZULETZT: {}
+NOT PLAYED YET = NOCH NICHT GESPIELT
+THEME, WI-FI, BLUETOOTH AND MORE = DESIGN, WLAN, BLUETOOTH UND MEHR
+
+# When the game there was played, after it.
+[max 13]
+JUST NOW = GERADE EBEN
+{} MIN AGO = VOR {} MIN
+{} H AGO = VOR {} STD
+YESTERDAY = GESTERN
+{} DAYS AGO = VOR {} TAGEN

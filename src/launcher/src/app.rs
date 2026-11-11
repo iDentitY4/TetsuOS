@@ -16,7 +16,7 @@ use crate::i18n::{tr, trf};
 use crate::input::{Button, Controls, Event};
 use crate::launcher::{Command as Action, Group, GROUPS, Launcher, Library, List, Screen, Tile};
 use crate::library::{
-    find_games, load_library, open_start_screen, reload_library, rom_label, set_search, tile_key,
+    find_games, last_played_game, load_library, open_start_screen, reload_library, rom_label, set_search, tile_key,
     tile_look,
 };
 use crate::libretro::Ending;
@@ -221,7 +221,35 @@ fn home_canvas((width, height): (usize, usize), launcher: &Launcher, library: &L
         .collect();
     let settings = settings::get();
     let selected = launcher.home_selected(library);
-    screens::home_screen(width, height, settings.shown_title(), library.grid, &tiles, selected, frame)
+    let tile = library.tiles().get(selected).copied();
+    let name = tiles.get(selected).map_or("", |tile| tile.label);
+    let (detail, after) = tile.map(|tile| home_detail(library, tile)).unwrap_or_default();
+    let header = settings.shown_title().map(|title| screens::HomeHeader { title, name, detail: &detail, after: after.as_deref() });
+    screens::home_screen(width, height, header.as_ref(), library.grid, &tiles, selected, frame)
+}
+
+/// The home screen's line about the selected tile, and when its game was played.
+fn home_detail(library: &Library, tile: Tile) -> (String, Option<String>) {
+    let played = |system: usize| -> (Option<String>, Option<String>) {
+        let Some((game, time)) = last_played_game(library, system, &game_files::last_played) else {
+            return (None, None);
+        };
+        let time = time.and_then(|time| jiff::Timestamp::try_from(time).ok());
+        let ago = time.and_then(|time| clock::ago_text(time, jiff::Timestamp::now(), settings::get().time_zone()));
+        (Some(game.name), ago)
+    };
+    match tile {
+        Tile::Recent => match library.recent.first() {
+            Some(game) => (game.name.clone(), played(game.system).1),
+            None => (String::new(), None),
+        },
+        Tile::Favorites => (library.favorites.iter().map(|game| game.name.as_str()).collect::<Vec<_>>().join(", "), None),
+        Tile::System(system) => match played(system) {
+            (Some(name), ago) => (trf("LAST: {}", &[&name]), ago),
+            (None, _) => (tr("NOT PLAYED YET").to_string(), None),
+        },
+        Tile::Settings => (tr("THEME, WI-FI, BLUETOOTH AND MORE").to_string(), None),
+    }
 }
 
 /// A list of games, and the area of the selected row if its name scrolls.

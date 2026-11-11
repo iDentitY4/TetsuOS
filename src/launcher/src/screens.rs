@@ -140,32 +140,90 @@ fn tile_size(rows: usize, top: usize) -> (usize, usize) {
     (height, if height >= 140 { 3 } else { 2 })
 }
 
-/// The home screen's title is this large, or smaller if it wouldn't fit.
-const TITLE_SCALE: usize = 4;
-const TITLE_Y: usize = 24;
+/// What the home screen's header shows: the title beside the logo, and a line about the
+/// selected tile.
+pub struct HomeHeader<'a> {
+    /// The typed title, or the default, which shows as the logo's TETSU OS.
+    pub title: &'a str,
+    /// The selected tile's name, in white.
+    pub name: &'a str,
+    /// About it, in grey, cut to fit.
+    pub detail: &'a str,
+    /// After the detail and never cut, such as when the game was played.
+    pub after: Option<&'a str>,
+}
+
+/// The band behind the header, and the accent line under it.
+const HEADER_H: usize = 74;
+const HEADER_LINE: usize = 2;
+const LOGO_SCALE: usize = 2;
+const LOGO_LEFT: usize = 14;
+const LOGO_TOP: usize = 13;
+/// The title and the line about the selected tile, right of the logo.
+const HEADER_TEXT_LEFT: usize = LOGO_LEFT + icons::WIDTH * LOGO_SCALE + 12;
+const HEADER_TITLE_Y: usize = 14;
+const HEADER_TITLE_SCALE: usize = 3;
+const HEADER_LINE_Y: usize = 51;
+/// Room left for the clock and battery at the top right: "12:59 PM 100%+", and gaps.
+const CORNER_W: usize = 14 * (font::WIDTH + 1) * 2 + 32;
+/// Between the selected tile's name and what is said about it.
+const HEADER_NAME_GAP: usize = 16;
 
 pub fn home_screen(
     width: usize,
     height: usize,
-    title: Option<&str>,
+    header: Option<&HomeHeader>,
     grid: GridSize,
     tiles: &[TileView],
     selected: usize,
     frame: &Frame,
 ) -> Canvas {
     let mut canvas = Canvas::new(width, height, frame.theme);
-    if let Some(title) = title {
-        let scale = if text_width(title, TITLE_SCALE) + 32 <= width { TITLE_SCALE } else { TITLE_SCALE - 1 };
-        let x = width.saturating_sub(text_width(title, scale)) / 2;
-        let y = TITLE_Y + (TITLE_SCALE - scale) * font::HEIGHT / 2;
-        canvas.text_cased_at(title, x, y, scale, TEXT);
+    if let Some(header) = header {
+        home_header(&mut canvas, header);
     }
     canvas.battery(frame.battery);
-    // Without a title, the grid takes its space too.
-    let top = if title.is_some() { GRID_TOP } else { GRID_TOP_UNTITLED };
+    // Without a header, the grid takes its space too.
+    let top = if header.is_some() { GRID_TOP } else { GRID_TOP_UNTITLED };
     tile_grid(&mut canvas, tiles, selected, top, grid.columns(), Some(grid.rows_shown()));
     hint(&mut canvas, tr("A OPENS - X SEARCH - START SETTINGS"));
     canvas
+}
+
+/// The band at the top of the home screen: the kettle of the boot logo, the title, and
+/// the selected tile's name with a line about it.
+fn home_header(canvas: &mut Canvas, header: &HomeHeader) {
+    let width = canvas.width;
+    let accent = canvas.theme.accent;
+    canvas.rect(0, 0, width, HEADER_H, canvas.theme.background.toward(Rgb(0xFF, 0xFF, 0xFF), 10));
+    canvas.rect(0, HEADER_H, width, HEADER_LINE, accent);
+    canvas.icon(&icons::LOGO, LOGO_LEFT, LOGO_TOP, LOGO_SCALE);
+
+    let x = HEADER_TEXT_LEFT;
+    let title_h = font::HEIGHT * HEADER_TITLE_SCALE;
+    if header.title == crate::settings::DEFAULT_TITLE {
+        // TETSU in the accent and a smaller OS after it, as on the boot screen.
+        canvas.text_at("TETSU", x, HEADER_TITLE_Y, HEADER_TITLE_SCALE, accent);
+        let os_x = x + text_width("TETSU", HEADER_TITLE_SCALE) + 11;
+        canvas.text_at("OS", os_x, HEADER_TITLE_Y + title_h - font::HEIGHT * TEXT_SCALE, TEXT_SCALE, MUTED);
+    } else {
+        // A typed title is smaller when it would reach the clock.
+        let room = width.saturating_sub(CORNER_W + x);
+        let scale = if text_width(header.title, HEADER_TITLE_SCALE) <= room { HEADER_TITLE_SCALE } else { TEXT_SCALE };
+        let y = HEADER_TITLE_Y + (title_h - font::HEIGHT * scale) / 2;
+        canvas.text_cased_at(header.title, x, y, scale, accent);
+    }
+
+    let advance = (font::WIDTH + 1) * TEXT_SCALE;
+    let mut x = x;
+    if !header.name.is_empty() {
+        canvas.text_at(header.name, x, HEADER_LINE_Y, TEXT_SCALE, TEXT);
+        x += text_width(header.name, TEXT_SCALE) + HEADER_NAME_GAP;
+    }
+    let columns = (width.saturating_sub(x + 16) + TEXT_SCALE) / advance;
+    let after = header.after.map(|after| format!(" - {after}")).unwrap_or_default();
+    let detail = cut(header.detail, columns.saturating_sub(after.chars().count()));
+    canvas.text_at(&format!("{detail}{after}"), x, HEADER_LINE_Y, TEXT_SCALE, MUTED);
 }
 
 /// The pictogram for a settings group.
@@ -1445,6 +1503,57 @@ mod tests {
         canvas.pixels[y * canvas.width + x]
     }
 
+    fn header(title: &str) -> HomeHeader<'_> {
+        HomeHeader { title, name: "NES", detail: "LAST: SUPER MARIO BROS.", after: Some("3 DAYS AGO") }
+    }
+
+    /// The columns with any pixel of `color` in rows `top..bottom`.
+    fn columns_with(canvas: &Canvas, top: usize, bottom: usize, color: Rgb) -> Vec<usize> {
+        (0..canvas.width).filter(|&x| (top..bottom).any(|y| pixel(canvas, x, y) == color)).collect()
+    }
+
+    #[test]
+    fn the_header_has_the_logo_title_and_a_line_about_the_tile_in_a_band() {
+        let canvas = home_screen(640, 480, Some(&header("TETSU OS")), GridSize::Normal, &tiles(3), 0, &frame());
+        let theme = Theme::default();
+        let band = theme.background.toward(Rgb(0xFF, 0xFF, 0xFF), 10);
+        assert_ne!(band, BODY);
+        assert_eq!(pixel(&canvas, 320, 2), band);
+        assert!((0..640).all(|x| pixel(&canvas, x, HEADER_H) == theme.accent), "the line under it");
+        assert_eq!(pixel(&canvas, 320, HEADER_H + HEADER_LINE), theme.background);
+        // The kettle is drawn, and the grid starts below the band.
+        let logo = LOGO_LEFT..LOGO_LEFT + icons::WIDTH * LOGO_SCALE;
+        assert!(logo.clone().any(|x| (LOGO_TOP..HEADER_H).any(|y| ![band, theme.accent].contains(&pixel(&canvas, x, y)))));
+        const { assert!(HEADER_H + HEADER_LINE < GRID_TOP) };
+        // TETSU in the accent, the tile's name in white and the rest in grey, right of the logo.
+        let tetsu = columns_with(&canvas, HEADER_TITLE_Y, HEADER_LINE_Y, theme.accent);
+        assert_eq!(tetsu.first(), Some(&HEADER_TEXT_LEFT));
+        let line = HEADER_LINE_Y..HEADER_LINE_Y + font::HEIGHT * TEXT_SCALE;
+        assert_eq!(columns_with(&canvas, line.start, line.end, TEXT).first(), Some(&HEADER_TEXT_LEFT));
+        assert!(!columns_with(&canvas, line.start, line.end, MUTED).is_empty());
+    }
+
+    #[test]
+    fn a_long_title_or_line_stays_clear_of_the_corner_and_the_edge() {
+        let longest = "W".repeat(crate::settings::MAX_TITLE_LENGTH);
+        let long = "W".repeat(200);
+        let view = HomeHeader { title: &longest, name: "GB ADVANCE", detail: &long, after: Some("YESTERDAY") };
+        let canvas = home_screen(640, 480, Some(&view), GridSize::Normal, &tiles(3), 0, &frame());
+        let accent = Theme::default().accent;
+        let title = columns_with(&canvas, HEADER_TITLE_Y, HEADER_LINE_Y, accent);
+        assert!(*title.last().unwrap() < 640 - CORNER_W, "left of the clock");
+        let title_rows = |canvas: &Canvas| (0..HEADER_LINE_Y).filter(|&y| (HEADER_TEXT_LEFT..640).any(|x| pixel(canvas, x, y) == accent)).count();
+        assert_eq!(title_rows(&canvas), font::HEIGHT * TEXT_SCALE, "smaller");
+        let line = columns_with(&canvas, HEADER_LINE_Y, HEADER_LINE_Y + font::HEIGHT * TEXT_SCALE, MUTED);
+        assert!(*line.last().unwrap() < 640 - 16 + TEXT_SCALE);
+        // A title that fits is as large as TETSU.
+        let short = HomeHeader { title: "MY GAMES", ..view };
+        let canvas = home_screen(640, 480, Some(&short), GridSize::Normal, &tiles(3), 0, &frame());
+        assert_eq!(title_rows(&canvas), font::HEIGHT * HEADER_TITLE_SCALE);
+        // On a tiny screen nothing breaks.
+        home_screen(64, 48, Some(&view), GridSize::Normal, &tiles(3), 0, &frame());
+    }
+
     fn tiles(count: usize) -> Vec<TileView<'static>> {
         (0..count).map(|_| TileView { icon: &icons::NES, label: "GB ADVANCE", count: Some(14) }).collect()
     }
@@ -1511,7 +1620,7 @@ mod tests {
                 let content = 4 * scale + icons::HEIGHT * scale + 4 * scale + 2 * font::HEIGHT * TEXT_SCALE + 2 * scale + 2;
                 assert!(content + TILE_BORDER <= height, "{count}: {content} > {height}");
             }
-            let canvas = home_screen(640, 480, Some("TETSU OS"), GridSize::Normal, &tiles(count), count - 1, &frame());
+            let canvas = home_screen(640, 480, Some(&header("TETSU OS")), GridSize::Normal, &tiles(count), count - 1, &frame());
             assert_eq!(canvas.pixels.len(), 640 * 480);
             // Without the title the tiles are at least as tall, and start higher.
             assert!(tile_size(rows, GRID_TOP_UNTITLED).0 >= tile_size(rows, GRID_TOP).0);
@@ -1521,7 +1630,7 @@ mod tests {
     #[test]
     fn without_a_title_the_grid_moves_up_below_the_corner() {
         let first_lit = |canvas: &Canvas| (0..480).find(|&y| (0..640).any(|x| pixel(canvas, x, y) == BODY)).unwrap();
-        let titled = home_screen(640, 480, Some("TETSU OS"), GridSize::Normal, &tiles(10), 0, &frame());
+        let titled = home_screen(640, 480, Some(&header("TETSU OS")), GridSize::Normal, &tiles(10), 0, &frame());
         let untitled = home_screen(640, 480, None, GridSize::Normal, &tiles(10), 0, &frame());
         assert!(first_lit(&untitled) < first_lit(&titled));
         assert!(first_lit(&untitled) >= GRID_TOP_UNTITLED);
@@ -1567,7 +1676,7 @@ mod tests {
 
     #[test]
     fn the_selected_tile_has_a_border() {
-        let canvas = home_screen(640, 480, Some("TETSU OS"), GridSize::Normal, &tiles(5), 1, &frame());
+        let canvas = home_screen(640, 480, Some(&header("TETSU OS")), GridSize::Normal, &tiles(5), 1, &frame());
         let grid_left = (640 - (COLUMNS * TILE_W + (COLUMNS - 1) * TILE_GAP)) / 2;
         let (tile_h, _) = tile_size(2, GRID_TOP);
         let top = GRID_TOP + (GRID_BOTTOM - GRID_TOP - (2 * tile_h + TILE_GAP)) / 2;
@@ -1630,12 +1739,7 @@ mod tests {
         let big = Image { width: 300, height: 400, pixels: vec![TEXT; 300 * 400] };
         let canvas = list_screen(640, 480, &view(Some(Art::Cover(&big)), 5000), &frame());
         assert_eq!(canvas.pixels.len(), 640 * 480);
-        assert_eq!(home_screen(64, 48, Some("TETSU OS"), GridSize::Normal, &tiles(3), 0, &frame()).pixels.len(), 64 * 48);
-        // The longest title fits the width, a smaller size if need be, and so does none.
-        let longest = "W".repeat(crate::settings::MAX_TITLE_LENGTH);
-        assert!(text_width(&longest, TITLE_SCALE - 1) + 32 <= 640);
-        let canvas = home_screen(640, 480, Some(&longest), GridSize::Normal, &tiles(3), 0, &frame());
-        assert!((0..640).all(|x| pixel(&canvas, x, TITLE_Y - 1) == Theme::default().background || x > 400));
+        assert_eq!(home_screen(64, 48, Some(&header("TETSU OS")), GridSize::Normal, &tiles(3), 0, &frame()).pixels.len(), 64 * 48);
         home_screen(640, 480, None, GridSize::Normal, &tiles(3), 0, &frame());
     }
 

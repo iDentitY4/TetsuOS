@@ -2,7 +2,7 @@
 
 use crate::{achievements, cards, favorites, game_files, icons, names, recent, rom_zip, settings, storage};
 use crate::i18n::tr;
-use crate::launcher::{Game, Launcher, Library, List, Shelf, Tile};
+use crate::launcher::{Game, LastPlayed, Launcher, Library, List, Shelf, Tile};
 use crate::systems::{system_for, system_index, SYSTEMS};
 use std::collections::{BTreeMap, HashSet};
 use std::ffi::OsStr;
@@ -361,6 +361,31 @@ pub(crate) fn load_library() -> Library {
     library
 }
 
+/// The game of `system` played last, and when, if any was. Games in the recent list were
+/// played after any other, so only a system without one looks at every game's saves; the
+/// answer is kept in the library either way.
+pub(crate) fn last_played_game(
+    library: &Library,
+    system: usize,
+    last_played: &dyn Fn(&Path) -> Option<std::time::SystemTime>,
+) -> Option<LastPlayed> {
+    if let Some(known) = library.last_played.borrow().get(&system) {
+        return known.clone();
+    }
+    let found = match library.recent.iter().find(|game| game.system == system) {
+        Some(game) => Some((game.clone(), last_played(&game.path))),
+        None => library
+            .shelves
+            .iter()
+            .filter(|shelf| shelf.system == system)
+            .flat_map(|shelf| &shelf.games)
+            .filter_map(|game| last_played(&game.path).map(|time| (game.clone(), Some(time))))
+            .max_by_key(|(_, time)| *time),
+    };
+    library.last_played.borrow_mut().insert(system, found.clone());
+    found
+}
+
 /// Puts consoles' lists and favorites in the chosen order. They arrive by name, and sorting
 /// keeps that order among games that tie, so games never played are by name at the end.
 fn sort_library(
@@ -389,6 +414,36 @@ mod tests {
         let roms: Vec<PathBuf> = names.iter().map(PathBuf::from).collect();
         let recent: Vec<PathBuf> = recent.iter().map(PathBuf::from).collect();
         build_library(&roms, &recent, &[], settings::GameNames::Short)
+    }
+
+    #[test]
+    fn the_last_played_game_is_the_recent_one_or_the_newest_save_and_is_kept() {
+        use std::cell::Cell;
+        use std::time::{Duration, SystemTime};
+        let library = library_for(&["/r/a.gb", "/r/b.gb", "/r/c.nes", "/r/d.nes", "/r/e.sfc"], &["/r/c.nes"]);
+        let asked = Cell::new(0);
+        let last_played = |rom: &Path| -> Option<SystemTime> {
+            asked.set(asked.get() + 1);
+            let days: u64 = match rom.to_str().unwrap() {
+                "/r/a.gb" => 3,
+                "/r/b.gb" => 5,
+                "/r/d.nes" => 9,
+                _ => return None,
+            };
+            Some(SystemTime::UNIX_EPOCH + Duration::from_secs(days * 86400))
+        };
+        let system = |path: &str| system_index(Path::new(path)).unwrap();
+        let name = |system: usize| last_played_game(&library, system, &last_played).map(|(game, _)| game.name);
+        // From the recent list, even with no saves to say when.
+        assert_eq!(name(system("/r/c.nes")).as_deref(), Some("c"));
+        assert_eq!(asked.get(), 1);
+        // Otherwise the game with the newest save, and none for a system never played.
+        assert_eq!(name(system("/r/a.gb")).as_deref(), Some("b"));
+        assert_eq!(name(system("/r/e.sfc")), None);
+        let before = asked.get();
+        assert_eq!(name(system("/r/a.gb")).as_deref(), Some("b"));
+        assert_eq!(name(system("/r/e.sfc")), None);
+        assert_eq!(asked.get(), before, "kept, not looked up again");
     }
 
     #[test]

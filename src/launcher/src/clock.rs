@@ -138,6 +138,26 @@ pub fn short_date_text(time: &Zoned) -> String {
     format!("{} {} {}", time.day(), tr(MONTHS[time.month() as usize - 1]), time.year())
 }
 
+/// How long before `now` a game was played, such as "5 MIN AGO", "YESTERDAY" or a date
+/// once it is a week ago. None for a time after `now`, as before the clock was set.
+pub fn ago_text(then: Timestamp, now: Timestamp, zone: &Zone) -> Option<String> {
+    let seconds = now.as_second() - then.as_second();
+    if seconds < 0 {
+        return None;
+    }
+    let (then, today) = (local(then, zone), local(now, zone).date());
+    let days = then.date().until(today).ok()?.get_days();
+    Some(match seconds {
+        0..60 => tr("JUST NOW").to_string(),
+        60..3600 => trf("{} MIN AGO", &[&(seconds / 60)]),
+        // Late last night is still hours ago in the morning.
+        _ if days == 0 || seconds < 6 * 3600 => trf("{} H AGO", &[&(seconds / 3600)]),
+        _ if days == 1 => tr("YESTERDAY").to_string(),
+        _ if days < 7 => trf("{} DAYS AGO", &[&days]),
+        _ => short_date_text(&then),
+    })
+}
+
 /// When ntpd last set the clock, from the last line of its log, which
 /// `/usr/libexec/ntp-synced` writes as "2026-11-08 15:14:25 step, offset ...", in UTC.
 pub fn last_sync(log: &str) -> Option<Timestamp> {
@@ -181,6 +201,25 @@ mod tests {
         assert_eq!(names.len(), ZONES.len());
         assert_eq!(cycle_zone(&ZONES[0], -1).name, ZONES[ZONES.len() - 1].name);
         assert_eq!(cycle_zone(UTC, 1).label, "REYKJAVIK");
+    }
+
+    #[test]
+    fn a_time_played_shows_as_how_long_ago_in_local_days() {
+        let berlin = zone_named("Europe/Berlin").unwrap();
+        // 23:30 in Berlin.
+        let now = at("2026-11-11T22:30:00Z");
+        let ago = |then: &str| ago_text(at(then), now, berlin);
+        assert_eq!(ago("2026-11-11T22:29:30Z").as_deref(), Some("JUST NOW"));
+        assert_eq!(ago("2026-11-11T22:05:00Z").as_deref(), Some("25 MIN AGO"));
+        assert_eq!(ago("2026-11-11T05:00:00Z").as_deref(), Some("17 H AGO"));
+        assert_eq!(ago("2026-11-10T12:00:00Z").as_deref(), Some("YESTERDAY"));
+        assert_eq!(ago("2026-11-07T12:00:00Z").as_deref(), Some("4 DAYS AGO"));
+        assert_eq!(ago("2026-10-01T12:00:00Z").as_deref(), Some("1 OCTOBER 2026"));
+        assert_eq!(ago("2026-11-12T00:00:00Z"), None, "after now");
+        // Just after midnight, a game from late last night is hours ago, not yesterday.
+        let morning = at("2026-11-11T23:30:00Z");
+        assert_eq!(ago_text(at("2026-11-11T21:00:00Z"), morning, berlin).as_deref(), Some("2 H AGO"));
+        assert_eq!(ago_text(at("2026-11-11T12:00:00Z"), morning, berlin).as_deref(), Some("YESTERDAY"));
     }
 
     #[test]

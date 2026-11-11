@@ -4,8 +4,10 @@
 use crate::i18n::tr;
 use crate::input::Button;
 use crate::settings::{GameSort, GridSize};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::time::SystemTime;
 
 /// Tiles per row on the settings grid, and on the home screen at its normal size.
 pub const COLUMNS: usize = 4;
@@ -19,6 +21,9 @@ pub struct Game {
     /// The index of its system, for its icon.
     pub system: usize,
 }
+
+/// A game, and when it was played if its saves say.
+pub type LastPlayed = (Game, Option<SystemTime>);
 
 /// One console's games.
 pub struct Shelf {
@@ -46,6 +51,9 @@ pub struct Library {
     pub sort: GameSort,
     /// The systems, by index, whose games can have `RetroAchievements`.
     pub achievement_systems: Vec<usize>,
+    /// Each system's last played game and when, by index, found the first time the home
+    /// screen asks. A new library starts without them.
+    pub last_played: RefCell<HashMap<usize, Option<LastPlayed>>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]

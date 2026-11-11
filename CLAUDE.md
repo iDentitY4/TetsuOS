@@ -50,6 +50,8 @@ ADVANCED > RUN SETUP AGAIN repeats.
 - HDMI (2026-11-11): any real TV or monitor: picture, hotplug in the menus and in a game,
   a TV in at boot, tearing, lid sleep; the 24.75 MHz HDMI clock against 25.17 MHz is the
   first suspect if nothing shows (`docs/features.md`)
+- The home screen's header (2026-11-11): its look on the device, times from real saves,
+  a typed title, the German wording
 - TF2 (2026-11-11): all of it on the device: the slot itself, FAT32 and exFAT cards,
   putting a card in and taking it out in the menus, the sign, a card swapped during lid
   sleep, USB STORAGE's second drive, WI-FI TRANSFER to TF2, the German wording

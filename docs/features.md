@@ -730,6 +730,23 @@ Built but not yet tested on the device:
   the title, the home grid starts at 36 instead of 84 pixels (`GRID_TOP_UNTITLED`, just
   below the clock), so 3 rows of tiles grow from 108 to 124 pixels, and each tile's icon
   and labels are centred in it
+- The home screen's header (2026-11-11, chosen by the user from PC mock-ups): a band 74
+  pixels high, 10% lighter than the background, with a 2-pixel accent line under it
+  (`screens::home_header`). On it are the boot logo's kettle (`icons::LOGO`) at twice
+  its size, the title right of it, and the clock and battery top right. The default
+  title shows as on the boot screen, TETSU in the accent and a smaller grey OS. A typed
+  title is in the accent at the same size, or smaller when it would reach the clock.
+  TITLE HIDDEN removes the whole header, as before. Under the title, the selected tile's
+  name in white, then a grey line about it: RECENT the last game and when, FAVORITES
+  their names, a console `LAST: <game>` and when, or NOT PLAYED YET, and SETTINGS what
+  is in it. The line is cut with dots to fit, but never its time. The last played game
+  of a console is the first of its games in the recent list, which was played after any
+  other, or else the one with the newest save (`library::last_played_game`). It is
+  kept in the library, which is read again after a game, so the home screen reads no
+  files after the first look at each tile. `clock::ago_text` gives JUST NOW, minutes,
+  hours (also up to 6 hours back past midnight), YESTERDAY, days, and after a week the
+  date, by local days. Tests cover the band, the logo, the title sizes, cutting, the
+  last played game and the times. Checked only in PC previews, in English and German
 - Menu sounds: Settings > GENERAL > MENU SOUNDS, ON or OFF (default). Directions and
   volume keys tick, A, Start and Select make a rising blip, B a falling one, in the
   launcher's own screens (`menu_sound` in `app.rs`) and on the on-screen keyboard, for
