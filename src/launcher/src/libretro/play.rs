@@ -27,7 +27,7 @@ use std::time::{Duration, Instant};
 use super::host::{set_host, with_host};
 use super::scale::picture_in_area;
 use super::core::Core;
-use super::save::{autosave_frames, load_resume, resume_path, save_progress};
+use super::save::{autosave_frames, forget_place, load_resume, resume_path, save_progress};
 use super::audio::{AUDIO_PROBE_FRAMES, playback_rate, start_audio};
 use super::menu::{Achievements, AfterMenu, Game, chosen_options, hardcore_off_notice, pause};
 
@@ -435,12 +435,15 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
     let switch_to = crate::switcher::others(listed);
     let mut menu = PauseMenu::with(discs, cheat_source.is_some() && !restricted, session.is_some())
         .with_ghosting(ghosting)
-        .with_switching(!switch_to.is_empty());
+        .with_switching(!switch_to.is_empty())
+        .with_resuming(resume.is_some());
     let mut trigger = MenuTrigger::new();
     let mut release_at = None;
     let mut battery = power::Monitor::new();
     let mut fast_forwarding = false;
     let mut ending = Ending::Quit;
+    // QUIT's START OVER drops the place, so the next start begins from the game's save.
+    let mut keep_place = true;
     loop {
         let (leave, open_menu, lid_closed) = with_host(|host| {
             let (mut open_menu, mut lid_closed) = (None, false);
@@ -503,6 +506,10 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
             match pause(&mut core, &game, &mut achievements, &mut menu, opening, framebuffer, (&events, &levels))? {
                 AfterMenu::Resume => {}
                 AfterMenu::Quit => break,
+                AfterMenu::StartOver => {
+                    keep_place = false;
+                    break;
+                }
                 AfterMenu::Switch(next) => {
                     println!("switching to {}", next.path.display());
                     ending = Ending::Switch(next.path);
@@ -587,7 +594,11 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
         release_cpu_speed();
     }
     save_play_time(&mut play_clock);
-    save_progress(&mut core, persistence, &mut save_file, resume.as_deref())?;
+    let kept = resume.as_deref().filter(|_| keep_place);
+    save_progress(&mut core, persistence, &mut save_file, kept)?;
+    if let Some(path) = resume.as_deref().filter(|_| !keep_place) {
+        forget_place(path)?;
+    }
     if let Some(session) = session.take() {
         session.finish();
     }

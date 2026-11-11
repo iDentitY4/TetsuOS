@@ -254,6 +254,15 @@ Working on the test unit, confirmed by the user:
   the device over SSH with injected presses and screenshots: saving, loading, levels,
   quitting, resuming and Menu + Start. The user tried it with FireRed
   on 2026-11-08 and confirmed it feels right
+- QUIT's START OVER (2026-11-11). Left and Right on QUIT choose KEEP PLACE (as before) or
+  START OVER, which quits without the `.resume`: the save file is still written, then the
+  `.resume` is removed (`save::forget_place`), so the next start begins from the game's own
+  save, as a real console does after power-off. State slots stay. Each visit to the menu
+  starts on KEEP PLACE, so A twice by accident still keeps the place. A game whose save is
+  its whole state (`Persistence::FullState`, Tamagotchi) has no `.resume`, so its QUIT shows
+  no choice. Menu + Start, lid sleep, power-off and SWITCH GAME keep the place. Tested on
+  the PC (`pause.rs` tests and `--preview-pause` in both languages); the user checked it
+  on the device on 2026-11-11
 - The in-game menu's lists (2026-11-11), as fifteen rows had filled the panel to its edges.
   The main list has RESUME, SAVE STATE, LOAD STATE, CHANGE DISC, SCREENSHOT, DISPLAY,
   OPTIONS, ACHIEVEMENTS and QUIT, at most 9 rows (`pause::MOST_ROWS`) of 32 lines instead

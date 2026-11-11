@@ -137,6 +137,8 @@ fn finish_download(page: &mut CheatsPage, source: &CheatSource, result: Download
 pub(super) enum AfterMenu {
     Resume,
     Quit,
+    /// Quits without keeping the game's place, so the next start begins from its save.
+    StartOver,
     /// Leaves the game, as quitting does, for another one.
     Switch(SwitchGame),
 }
@@ -494,6 +496,7 @@ pub(super) fn pause(
             Action::Nothing => {}
             Action::Resume => break AfterMenu::Resume,
             Action::Quit => break AfterMenu::Quit,
+            Action::StartOver => break AfterMenu::StartOver,
             Action::Save(slot) => save_slot(core, menu, save, slot),
             Action::Load(_) if achievements.restricts() => {
                 menu.set_message(tr("HARDCORE ALLOWS NO LOADING").to_string());

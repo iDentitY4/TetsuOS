@@ -58,6 +58,18 @@ pub(super) fn load_resume(core: &mut Core, path: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// Removes the place a game was left at, so its next start begins from its save file.
+pub(super) fn forget_place(resume: &Path) -> io::Result<()> {
+    match std::fs::remove_file(resume) {
+        Ok(()) => {
+            println!("removed {}, so the game starts over", resume.display());
+            Ok(())
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
 /// Writes the game's save file, and the state to resume from where there is one.
 pub(super) fn save_progress(
     core: &mut Core,

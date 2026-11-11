@@ -173,7 +173,10 @@ impl List {
 pub enum Action {
     Nothing,
     Resume,
+    /// Leaves the game, keeping its place for the next start.
     Quit,
+    /// Leaves the game without keeping its place, so the next start begins from its save.
+    StartOver,
     Save(usize),
     Load(usize),
     /// Counted from 0, as the core does.
@@ -211,6 +214,10 @@ pub struct PauseMenu {
     /// The disc `Item::Disc` shows, counted from 0.
     disc: usize,
     message: Option<String>,
+    /// Whether the game has a place to keep, which QUIT can then choose to drop.
+    resumable: bool,
+    /// QUIT's choice: drop the place instead of keeping it.
+    start_over: bool,
 }
 
 impl PauseMenu {
@@ -231,7 +238,7 @@ impl PauseMenu {
                     && (item.list() != List::Achievements && item != Item::Achievements || achievements)
             })
             .collect();
-        let mut menu = Self { all, items: Vec::new(), list: List::Main, selected: 0, slot: 1, discs, disc: 0, message: None };
+        let mut menu = Self { all, items: Vec::new(), list: List::Main, selected: 0, slot: 1, discs, disc: 0, message: None, resumable: true, start_over: false };
         menu.show(List::Main, 0);
         menu
     }
@@ -249,6 +256,14 @@ impl PauseMenu {
     pub fn with_switching(mut self, switching: bool) -> Self {
         self.all.retain(|&item| item != Item::SwitchGame || switching);
         self.show(self.list, 0);
+        self
+    }
+
+    /// Leaves out QUIT's choice for a game whose save is its whole state, which keeps no
+    /// separate place to drop.
+    #[must_use]
+    pub fn with_resuming(mut self, resumable: bool) -> Self {
+        self.resumable = resumable;
         self
     }
 
@@ -276,6 +291,7 @@ impl PauseMenu {
         self.show(List::Main, 0);
         self.disc = disc;
         self.message = None;
+        self.start_over = false;
     }
 
     pub fn items(&self) -> &[Item] {
@@ -296,6 +312,11 @@ impl PauseMenu {
 
     pub fn discs(&self) -> usize {
         self.discs
+    }
+
+    /// QUIT's choice, for a game that has one: whether quitting drops the game's place.
+    pub fn start_over(&self) -> Option<bool> {
+        self.resumable.then_some(self.start_over)
     }
 
     pub fn slot(&self) -> usize {
@@ -323,6 +344,7 @@ impl PauseMenu {
                         self.slot = (self.slot as i32 - 1 + step).rem_euclid(SLOTS as i32) as usize + 1;
                     }
                     Item::Disc => self.disc = (self.disc as i32 + step).rem_euclid(self.discs as i32) as usize,
+                    Item::Quit if self.resumable => self.start_over = !self.start_over,
                     Item::Brightness => return Action::Brightness(step),
                     Item::Scaling => return Action::Scaling(step),
                     Item::Effect => return Action::Effect(step),
@@ -371,6 +393,7 @@ impl PauseMenu {
                     Item::UnlockNotices | Item::ProgressNotices | Item::OtherNotices => {
                         item.notice_kind().map_or(Action::Nothing, |kind| Action::Notices(kind, 1))
                     }
+                    Item::Quit if self.start_over => Action::StartOver,
                     Item::Quit => Action::Quit,
                     Item::Brightness | Item::Scaling | Item::Effect | Item::Ghosting | Item::Border => {
                         Action::Nothing
@@ -520,6 +543,36 @@ mod tests {
         assert_eq!(menu.press(Button::Menu), Action::Resume);
         menu.open(0);
         assert_eq!((menu.list(), menu.selected()), (List::Main, Item::Resume));
+    }
+
+    #[test]
+    fn quit_keeps_the_place_unless_start_over_is_chosen() {
+        let mut menu = menu_at(Item::Quit);
+        assert_eq!(menu.start_over(), Some(false));
+        assert_eq!(menu.press(Button::A), Action::Quit);
+        assert_eq!(menu.press(Button::Right), Action::Nothing);
+        assert_eq!(menu.start_over(), Some(true));
+        assert_eq!(menu.press(Button::A), Action::StartOver);
+        menu.press(Button::Left);
+        assert_eq!(menu.press(Button::A), Action::Quit);
+    }
+
+    #[test]
+    fn start_over_goes_back_to_keeping_the_place_each_visit() {
+        let mut menu = menu_at(Item::Quit);
+        menu.press(Button::Right);
+        menu.open(0);
+        select(&mut menu, Item::Quit);
+        assert_eq!(menu.press(Button::A), Action::Quit);
+    }
+
+    #[test]
+    fn a_game_without_a_place_to_keep_has_no_start_over() {
+        let mut menu = PauseMenu::new(1, false).with_resuming(false);
+        select(&mut menu, Item::Quit);
+        assert_eq!(menu.start_over(), None);
+        menu.press(Button::Right);
+        assert_eq!(menu.press(Button::A), Action::Quit);
     }
 
     #[test]

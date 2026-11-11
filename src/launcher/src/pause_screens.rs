@@ -121,6 +121,11 @@ pub fn pause_screen(
             Item::LoadState if view.slot_used => trf("SLOT {}", &[&menu.slot()]),
             Item::LoadState => trf("SLOT {} EMPTY", &[&menu.slot()]),
             Item::Disc => trf("DISC {} OF {}", &[&(menu.disc() + 1), &menu.discs()]),
+            Item::Quit => match menu.start_over() {
+                Some(true) => tr("START OVER").to_string(),
+                Some(false) => tr("KEEP PLACE").to_string(),
+                None => continue,
+            },
             Item::UnlockNotices | Item::ProgressNotices | Item::OtherNotices => {
                 let Some(kind) = item.notice_kind() else { continue };
                 // Settings' choice in full is too wide for the German labels.
