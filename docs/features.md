@@ -1475,21 +1475,37 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   Notices show at the bottom of the screen, centred, for 4 to 6 s, through the
   framebuffer's sign, like the volume, and one after another: the game loaded (`3 OF 40
   ACHIEVEMENTS UNLOCKED - HARDCORE` over its title), an unlock with its badge and points,
-  progress towards one (2 s, a newer one replacing any waiting), GAME COMPLETED or GAME
+  progress towards one (2 s, a newer one replacing any waiting, and only as it reaches
+  25, 50 and 75 % of the way, as rcheevos reports every step: Super Mario Bros.' 180
+  jumps showed a notice on each jump), GAME COMPLETED or GAME
   MASTERED, leaderboards started, failed and submitted (only in hardcore, where rcheevos
   runs them), a game the server doesn't know or that has no achievements, a failed login
   (WRONG NAME OR PASSWORD, LOG IN AGAIN IN SETTINGS for an expired token, NO CONNECTION TO
   RETROACHIEVEMENTS), and unlocks waiting for a connection and sent later. Leaderboard
   trackers and challenge indicators aren't shown.
 
+  Each kind of notice has its own place: UNLOCKS (NEUE ERFOLGE), PROGRESS (FORTSCHRITT)
+  and OTHER MESSAGES (SONSTIGES), everything else, from the loaded game to HARDCORE OFF
+  FOR THIS GAME. Each is BOTTOM (the default) or TOP, 8 pixels from the edge either way,
+  or HIDDEN, which leaves that kind out (`Notice::kind`). Hidden achievements still
+  unlock, and the in-game menu's list still shows them. Settings > ACHIEVEMENTS has the
+  three for every game (`notices_unlocks=`, `notices_progress=`, `notices_other=` in
+  `settings.txt`). In a game, the in-game menu's ACHIEVEMENTS opens a list of LIST (the
+  achievements page), then the same three for that game, each DEFAULT (STANDARD), which
+  follows Settings, or a place of its own. The full Settings value didn't fit beside the
+  German labels, so DEFAULT shows alone. A game's choices are kept as
+  `Tetris.gb.srm.notices` beside its saves (`progress=hidden` lines, removed once all are
+  DEFAULT), which count as game settings like `.achievements-off`: DELETE GAME AND SAVES
+  and RESET SETTINGS remove them.
+
   Badges are downloaded once the game has loaded, on a thread, one after another, as
   `/mnt/data/achievements/<badge name>.png`, stopping at the first failure to connect. The
   page shows them at 32 pixels, averaged down from 64, and grey and darker while locked,
   made from the same file; a notice shows them at 64.
 
-  ACHIEVEMENTS in the in-game menu, after SCREENSHOT, shows for a game with a session. Its
-  page, on the CORE OPTIONS panel, has `2 OF 6 UNLOCKED - 6/101 POINTS - HARDCORE` and the
-  achievements in rcheevos' groups (ALMOST THERE, LOCKED, UNLOCKED, ...), each with its
+  ACHIEVEMENTS in the in-game menu, after OPTIONS, shows for a game with a session, and
+  opens a list whose LIST is the achievements page. The page, on the CORE OPTIONS panel,
+  has `2 OF 6 UNLOCKED - 6/101 POINTS - HARDCORE` and the achievements in rcheevos' groups (ALMOST THERE, LOCKED, UNLOCKED, ...), each with its
   badge, title and points, or its progress such as `73/100`; Up and Down move, wrapping,
   L1 and R1 (or Left and Right) a page, and the selected one's description is below.
   While loading, or for a game without achievements, it says so. The in-game menu's rows

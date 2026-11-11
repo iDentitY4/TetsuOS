@@ -71,6 +71,9 @@ ADVANCED > RUN SETUP AGAIN repeats.
 - Core options: the German wording on the device, PCSX ReARMed and Genesis Plus GX in a
   game, options that only apply after a restart
 - Cheats: cores other than mGBA, a PlayStation code, a ZIP, the German wording on the device
+- RetroAchievements' notice places (UNLOCKS, PROGRESS, OTHER MESSAGES), in Settings and
+  per game in the in-game menu's ACHIEVEMENTS list (2026-11-11): TOP and HIDDEN in a
+  game, the German wording
 - RetroAchievements: hardcore (refused until the user's request to register the user agent
   is granted), turning them off for every game or one game, the details screen's count
 - Remapping and turbo: how turbo feels in a real game, cores other than mGBA, Menu + Start

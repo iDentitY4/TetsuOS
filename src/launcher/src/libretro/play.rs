@@ -3,12 +3,13 @@
 use crate::{
     achievements, cheats, controls, core_options, input, power, screens, settings,
 };
-use crate::achievements::{Notice, Session};
+use crate::achievements::{GameNotices, Notice, Session};
 use crate::cheats::CheatSource;
 use crate::controls::Layout;
 use crate::fb::Framebuffer;
 use crate::i18n::tr;
 use crate::input::{Button, Controls};
+use crate::settings::{NoticePlace, NoticePlaces};
 use crate::pause::{MenuTrigger, PauseMenu};
 use crate::play_time::PlayClock;
 use crate::power::Level;
@@ -189,11 +190,13 @@ fn start_achievements(core: &Core, rom: &Path, save: &Path, console: Option<&str
     }
 }
 
-/// Where notices show: at the bottom, where games tend to have least.
-const NOTICE_BOTTOM: usize = 8;
+/// How far notices keep from the screen's top or bottom edge.
+const NOTICE_MARGIN: usize = 8;
 
-/// Shows the next notice once the screen has no sign.
-fn show_next_notice(framebuffer: &mut Framebuffer, notices: &mut VecDeque<Notice>, session: Option<&mut Session>) -> io::Result<()> {
+/// Shows the next notice once the screen has no sign, where `places` puts its kind,
+/// leaving out the kinds that are hidden.
+fn show_next_notice(framebuffer: &mut Framebuffer, notices: &mut VecDeque<Notice>, session: Option<&mut Session>, places: NoticePlaces) -> io::Result<()> {
+    notices.retain(|notice| places.get(notice.kind) != NoticePlace::Hidden);
     if framebuffer.sign_wait() != Duration::MAX {
         return Ok(());
     }
@@ -203,7 +206,10 @@ fn show_next_notice(framebuffer: &mut Framebuffer, notices: &mut VecDeque<Notice
         _ => None,
     };
     let canvas = screens::achievement_notice(&notice, badge.as_ref(), crate::corner::current_theme());
-    let top = framebuffer.size().1.saturating_sub(canvas.height + NOTICE_BOTTOM);
+    let top = match places.get(notice.kind) {
+        NoticePlace::Top => NOTICE_MARGIN,
+        _ => framebuffer.size().1.saturating_sub(canvas.height + NOTICE_MARGIN),
+    };
     framebuffer.show_sign(&canvas, top, notice.time)
 }
 
@@ -391,6 +397,8 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
     });
     let mut core = Core::load(core_path, rom)?;
     let mut notices = VecDeque::new();
+    let mut game_notices = GameNotices::read(save);
+    let notice_defaults = settings::get().notices;
     let mut session = start_achievements(&core, rom, save, console, &mut notices);
     // Hardcore allows neither going back to a state nor cheats.
     let restricted = session.as_ref().is_some_and(Session::restricts);
@@ -476,12 +484,13 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
         if let Some(session) = session.as_mut() {
             achievements::queue(&mut notices, session.pump());
         }
-        show_next_notice(framebuffer, &mut notices, session.as_mut())?;
+        show_next_notice(framebuffer, &mut notices, session.as_mut(), game_notices.resolve(notice_defaults))?;
         if open_menu {
             save_play_time(&mut play_clock);
             hold_cpu_speed();
             let game = Game { rom, save, cheat_source };
-            let mut achievements = Achievements { session: &mut session, notices: &mut notices };
+            let mut achievements =
+                Achievements { session: &mut session, notices: &mut notices, game_notices: &mut game_notices };
             with_host(|host| host.rumble.hold());
             if pause(&mut core, &game, &mut achievements, &mut menu, framebuffer, &events, &levels)? == AfterMenu::Quit {
                 break;

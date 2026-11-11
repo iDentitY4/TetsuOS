@@ -93,6 +93,7 @@ pub(crate) fn write_pause_preview(path: &str) -> io::Result<()> {
         brightness_percent: Some(50),
         display: settings::GameDisplay::default(),
         auto_border: settings::Border::Off,
+        notices: achievements::GameNotices::default(),
     };
     write_ppm(&pause_screens::pause_screen(width, height, &frame, frame_size, &view, current_theme()), path)
 }

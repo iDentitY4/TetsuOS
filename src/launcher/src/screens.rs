@@ -572,6 +572,9 @@ pub(crate) fn setting_value(setting: Setting, settings: &Settings) -> Option<Str
         Setting::ChargeLimit => settings.charge.label(),
         Setting::Hardcore => on_off(settings.hardcore),
         Setting::AchievementsOn => on_off(!settings.achievements_off),
+        Setting::UnlockNotices => settings.notices.unlocks.label(),
+        Setting::ProgressNotices => settings.notices.progress.label(),
+        Setting::OtherNotices => settings.notices.other.label(),
         _ => return None,
     };
     Some(label.to_string())

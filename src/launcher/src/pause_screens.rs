@@ -1,7 +1,7 @@
 //! The in-game menu's screens: the menu itself and its pages for controls, core options,
 //! cheats and achievements, each drawn over the dimmed game.
 
-use crate::achievements::{self, Badges, Line, Page as AchievementsPage, Status, Summary};
+use crate::achievements::{self, Badges, GameNotices, Line, Page as AchievementsPage, Status, Summary};
 use crate::canvas::{text_width, Canvas, Theme, BODY, MUTED, TEXT};
 use crate::cheats::CheatsPage;
 use crate::color::Rgb;
@@ -22,6 +22,8 @@ pub struct PauseView<'a> {
     pub display: GameDisplay,
     /// What AUTO gives this game's console.
     pub auto_border: Border,
+    /// Where the game shows each kind of achievement notice, or Settings' choice.
+    pub notices: GameNotices,
 }
 
 const PAUSE_PANEL: (usize, usize, usize, usize) = (110, 15, 420, 450);
@@ -116,6 +118,11 @@ pub fn pause_screen(
             Item::LoadState if view.slot_used => trf("SLOT {}", &[&menu.slot()]),
             Item::LoadState => trf("SLOT {} EMPTY", &[&menu.slot()]),
             Item::Disc => trf("DISC {} OF {}", &[&(menu.disc() + 1), &menu.discs()]),
+            Item::UnlockNotices | Item::ProgressNotices | Item::OtherNotices => {
+                let Some(kind) = item.notice_kind() else { continue };
+                // Settings' choice in full is too wide for the German labels.
+                view.notices.get(kind).map_or(tr("DEFAULT"), |place| place.label()).to_string()
+            }
             _ if item.opens() => ">".to_string(),
             _ => continue,
         };
@@ -353,7 +360,14 @@ mod tests {
     }
 
     fn pause_view(menu: &PauseMenu) -> PauseView<'_> {
-        PauseView { menu, slot_used: false, brightness_percent: None, display: GameDisplay::default(), auto_border: Border::Bezel }
+        PauseView {
+            menu,
+            slot_used: false,
+            brightness_percent: None,
+            display: GameDisplay::default(),
+            auto_border: Border::Bezel,
+            notices: GameNotices::default(),
+        }
     }
 
     #[test]

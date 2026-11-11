@@ -121,6 +121,7 @@ mod tests {
         keys.extend(labels(s::ChargeLimit::ALL, s::ChargeLimit::label));
         keys.extend(labels(s::Vibration::ALL, s::Vibration::label));
         keys.extend(labels(s::SleepPowerOff::ALL, s::SleepPowerOff::label));
+        keys.extend(labels(s::NoticePlace::ALL, s::NoticePlace::label));
         keys
     }
 

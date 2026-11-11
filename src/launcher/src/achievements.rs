@@ -15,6 +15,7 @@
 use crate::color::Rgb;
 use crate::i18n::{tr, trf};
 use crate::image::Image;
+use crate::settings::{NoticeKind, NoticePlace, NoticePlaces, NOTICE_KINDS};
 use crate::storage::write_atomic;
 use std::io;
 use std::cell::RefCell;
@@ -388,7 +389,8 @@ struct Response {
 #[derive(Clone, Debug, PartialEq)]
 enum Happening {
     Unlocked { title: String, points: u32, badge: String },
-    Progress { title: String, progress: String, badge: String },
+    /// Progress towards an achievement, with how far along it is, from 0 to 100.
+    Progress { title: String, progress: String, badge: String, percent: f32 },
     LeaderboardStarted(String),
     LeaderboardFailed(String),
     LeaderboardSubmitted { title: String, value: String },
@@ -603,6 +605,7 @@ unsafe extern "C" fn event_handler(event: *const ffi::rc_client_event_t, _: *mut
                 title: text(achievement.title),
                 progress: field_text(&achievement.measured_progress),
                 badge: field_text(&achievement.badge_name),
+                percent: achievement.measured_percent,
             })
         }
         ffi::EVENT_LEADERBOARD_STARTED => Some(Happening::LeaderboardStarted(leaderboard)),
@@ -754,22 +757,35 @@ pub struct Notice {
     /// The badge to show beside it, by name.
     pub badge: Option<String>,
     pub time: Duration,
-    /// Progress towards an achievement, which a newer one replaces while it waits.
-    pub progress: bool,
+    /// Which setting says where it shows. A newer progress notice replaces one waiting.
+    pub kind: NoticeKind,
 }
 
 impl Notice {
     pub fn new(heading: impl Into<String>, title: impl Into<String>) -> Self {
-        Self { heading: heading.into(), title: title.into(), badge: None, time: Duration::from_secs(4), progress: false }
+        Self { heading: heading.into(), title: title.into(), badge: None, time: Duration::from_secs(4), kind: NoticeKind::Other }
     }
+}
+
+/// Whether progress towards the achievement `title` has reached a quarter of the way it
+/// hasn't been shown at, which it then counts as shown. rcheevos reports every step, such as
+/// each of 180 jumps, and a notice for each covered the game.
+fn progress_worth_showing(shown: &mut HashMap<String, u32>, title: &str, percent: f32) -> bool {
+    let quarter = (percent / 25.0).floor().clamp(0.0, 3.0) as u32;
+    let last = shown.entry(title.to_string()).or_insert(0);
+    if quarter <= *last {
+        return false;
+    }
+    *last = quarter;
+    true
 }
 
 /// Queues notices to show one after another. Progress towards an achievement replaces any
 /// still waiting, as it changes often and only the latest matters.
 pub fn queue(waiting: &mut std::collections::VecDeque<Notice>, new: Vec<Notice>) {
     for notice in new {
-        if notice.progress {
-            waiting.retain(|other| !other.progress);
+        if notice.kind == NoticeKind::Progress {
+            waiting.retain(|other| other.kind != NoticeKind::Progress);
         }
         waiting.push_back(notice);
     }
@@ -865,10 +881,98 @@ pub fn is_off_file(file: &Path) -> bool {
     file.extension().is_some_and(|extension| extension == "achievements-off")
 }
 
-/// Settings > ADVANCED > RESET SETTINGS: achievements on again for every game.
-pub fn remove_all_off(dir: &Path) {
+/// The file beside a game's save that says where its notices show, over Settings' choice.
+pub fn notices_path(save: &Path) -> PathBuf {
+    let mut name = save.as_os_str().to_owned();
+    name.push(".notices");
+    PathBuf::from(name)
+}
+
+/// Where a game shows each kind of notice, or `None` for Settings' choice. Kept as
+/// `unlocks=top` lines, one for each kind with a choice.
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub struct GameNotices {
+    pub unlocks: Option<NoticePlace>,
+    pub progress: Option<NoticePlace>,
+    pub other: Option<NoticePlace>,
+}
+
+impl GameNotices {
+    pub fn get(self, kind: NoticeKind) -> Option<NoticePlace> {
+        match kind {
+            NoticeKind::Unlock => self.unlocks,
+            NoticeKind::Progress => self.progress,
+            NoticeKind::Other => self.other,
+        }
+    }
+
+    fn get_mut(&mut self, kind: NoticeKind) -> &mut Option<NoticePlace> {
+        match kind {
+            NoticeKind::Unlock => &mut self.unlocks,
+            NoticeKind::Progress => &mut self.progress,
+            NoticeKind::Other => &mut self.other,
+        }
+    }
+
+    /// Moves a kind's choice by `steps`: Settings' own first, then each place in turn.
+    pub fn cycle(&mut self, kind: NoticeKind, steps: i32) {
+        let choices: Vec<Option<NoticePlace>> = std::iter::once(None).chain(NoticePlace::ALL.iter().copied().map(Some)).collect();
+        let choice = self.get_mut(kind);
+        *choice = crate::settings::cycle(&choices, *choice, steps);
+    }
+
+    /// Where each kind shows, with Settings' `defaults` for those without a choice.
+    pub fn resolve(self, defaults: NoticePlaces) -> NoticePlaces {
+        let mut places = defaults;
+        for kind in NOTICE_KINDS {
+            if let Some(place) = self.get(kind) {
+                *places.get_mut(kind) = place;
+            }
+        }
+        places
+    }
+
+    fn parse(text: &str) -> Self {
+        let mut notices = Self::default();
+        for (key, value) in text.lines().filter_map(|line| line.split_once('=')) {
+            if let Some(kind) = NOTICE_KINDS.into_iter().find(|kind| kind.key() == key.trim()) {
+                *notices.get_mut(kind) = NoticePlace::from_key(value.trim());
+            }
+        }
+        notices
+    }
+
+    fn format(self) -> String {
+        NOTICE_KINDS.into_iter().filter_map(|kind| Some(format!("{}={}\n", kind.key(), self.get(kind)?.key()))).collect()
+    }
+
+    /// The game's choices, none if it has no file.
+    pub fn read(save: &Path) -> Self {
+        std::fs::read_to_string(notices_path(save)).map(|text| Self::parse(&text)).unwrap_or_default()
+    }
+
+    /// Keeps the game's choices, removing the file once it has none.
+    pub fn write(self, save: &Path) -> io::Result<()> {
+        let path = notices_path(save);
+        if self == Self::default() {
+            return match std::fs::remove_file(&path) {
+                Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
+                _ => Ok(()),
+            };
+        }
+        write_atomic(&path, self.format().as_bytes())
+    }
+}
+
+pub fn is_notices_file(file: &Path) -> bool {
+    file.extension().is_some_and(|extension| extension == "notices")
+}
+
+/// Settings > ADVANCED > RESET SETTINGS: achievements on again for every game, and their
+/// notices where Settings puts them.
+pub fn remove_all_game_choices(dir: &Path) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
-    for path in entries.filter_map(|entry| Some(entry.ok()?.path())).filter(|path| is_off_file(path)) {
+    for path in entries.filter_map(|entry| Some(entry.ok()?.path())).filter(|path| is_off_file(path) || is_notices_file(path)) {
         if let Err(error) = std::fs::remove_file(&path) {
             eprintln!("warning: could not remove {}: {error}", path.display());
         }
@@ -935,6 +1039,8 @@ pub struct Session {
     /// Frames since the memory was last looked for, while the core had none to show.
     memory_retry: u32,
     badges: Badges,
+    /// The quarters of the way each achievement's progress has been shown at, by title.
+    progress_shown: HashMap<String, u32>,
 }
 
 impl Session {
@@ -951,6 +1057,7 @@ impl Session {
             summary_path: summary_path(save),
             memory_retry: 0,
             badges: Badges::new(Path::new(BADGE_DIR)),
+            progress_shown: HashMap::new(),
         };
         session.find_memory();
         let (Ok(user), Ok(token), Ok(path)) =
@@ -1024,6 +1131,10 @@ impl Session {
         let mut unlocked = false;
         for happening in happenings {
             unlocked |= matches!(happening, Happening::Unlocked { .. } | Happening::Completed);
+            let shown = &mut self.progress_shown;
+            if matches!(&happening, Happening::Progress { title, percent, .. } if !progress_worth_showing(shown, title, *percent)) {
+                continue;
+            }
             notices.push(self.notice_for(happening));
         }
         if unlocked {
@@ -1073,12 +1184,13 @@ impl Session {
             Happening::Unlocked { title, points, badge } => Notice {
                 badge: Some(badge),
                 time: Duration::from_secs(5),
+                kind: NoticeKind::Unlock,
                 ..Notice::new(trf("ACHIEVEMENT UNLOCKED - {} POINTS", &[&points]), title)
             },
-            Happening::Progress { title, progress, badge } => Notice {
+            Happening::Progress { title, progress, badge, .. } => Notice {
                 badge: Some(badge),
                 time: Duration::from_secs(2),
-                progress: true,
+                kind: NoticeKind::Progress,
                 ..Notice::new(progress, title)
             },
             Happening::LeaderboardStarted(title) => Notice::new(tr("LEADERBOARD STARTED"), title),
@@ -1609,9 +1721,57 @@ mod tests {
         set_off_for_game(&save, false).unwrap();
         assert!(!is_off_for_game(&save));
         set_off_for_game(&save, true).unwrap();
-        remove_all_off(&dir);
+        remove_all_game_choices(&dir);
         assert!(!is_off_for_game(&save));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn progress_shows_once_at_each_quarter_of_the_way() {
+        let mut shown = HashMap::new();
+        let showing: Vec<u32> =
+            (1..=180).filter(|&jumps| progress_worth_showing(&mut shown, "Jumps", jumps as f32 * 100.0 / 180.0)).collect();
+        assert_eq!(showing, [45, 90, 135]);
+        // Each achievement counts on its own.
+        assert!(progress_worth_showing(&mut shown, "Coins", 30.0));
+        assert!(!progress_worth_showing(&mut shown, "Coins", 40.0));
+    }
+
+    #[test]
+    fn a_game_keeps_its_own_notice_places() {
+        let dir = std::env::temp_dir().join(format!("launcher-ra-notices-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let save = dir.join("Tetris.gb.srm");
+        assert_eq!(GameNotices::read(&save), GameNotices::default());
+        let chosen = GameNotices { progress: Some(NoticePlace::Hidden), other: Some(NoticePlace::Top), ..GameNotices::default() };
+        chosen.write(&save).unwrap();
+        assert_eq!(GameNotices::read(&save), chosen);
+        assert!(is_notices_file(&notices_path(&save)));
+        remove_all_game_choices(&dir);
+        assert_eq!(GameNotices::read(&save), GameNotices::default());
+        chosen.write(&save).unwrap();
+        GameNotices::default().write(&save).unwrap();
+        GameNotices::default().write(&save).unwrap();
+        assert!(!notices_path(&save).exists());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_games_notice_choice_cycles_through_the_settings_one_first() {
+        let mut notices = GameNotices::default();
+        notices.cycle(NoticeKind::Progress, 1);
+        assert_eq!(notices.progress, Some(NoticePlace::Bottom));
+        notices.cycle(NoticeKind::Progress, -2);
+        assert_eq!(notices.progress, Some(NoticePlace::Hidden));
+        notices.cycle(NoticeKind::Progress, 1);
+        assert_eq!(notices, GameNotices::default());
+    }
+
+    #[test]
+    fn a_games_own_notice_places_win_over_the_settings() {
+        let defaults = NoticePlaces { unlocks: NoticePlace::Top, progress: NoticePlace::Top, other: NoticePlace::Top };
+        let game = GameNotices { unlocks: Some(NoticePlace::Hidden), ..GameNotices::default() };
+        assert_eq!(game.resolve(defaults), NoticePlaces { unlocks: NoticePlace::Hidden, ..defaults });
     }
 
     #[test]

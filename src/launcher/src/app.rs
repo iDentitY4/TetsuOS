@@ -555,7 +555,7 @@ fn reset_settings() {
     controls::remove_all_game_layouts(Path::new(SAVE_DIR));
     core_options::remove_all(Path::new(SAVE_DIR), Path::new(core_options::CONSOLE_DIR));
     cheats::remove_all_enabled(Path::new(SAVE_DIR));
-    achievements::remove_all_off(Path::new(SAVE_DIR));
+    achievements::remove_all_game_choices(Path::new(SAVE_DIR));
     let current = settings::get();
     performance::apply(current.performance);
     power::apply_charge_limit(current.charge);
@@ -735,6 +735,7 @@ pub(crate) fn act(
             Err(error) => eprintln!("warning: could not log out: {error}"),
         },
         Action::ToggleHardcore => change_settings(|s| s.hardcore = !s.hardcore),
+        Action::Notices(kind, steps) => change_settings(|s| *s.notices.get_mut(kind) = s.notices.get(kind).cycle(steps)),
         Action::ToggleAchievements => change_settings(|s| s.achievements_off = !s.achievements_off),
         Action::ToggleGameAchievements(rom) => {
             toggle_game_achievements(&rom);

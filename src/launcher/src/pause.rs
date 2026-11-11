@@ -2,6 +2,7 @@
 
 use crate::i18n::tr;
 use crate::input::{Button, Event};
+use crate::settings::NoticeKind;
 
 /// Save state slots per game.
 pub const SLOTS: usize = 8;
@@ -17,7 +18,14 @@ pub enum Item {
     Display,
     /// Opens the OPTIONS list.
     Options,
+    /// Opens the ACHIEVEMENTS list.
     Achievements,
+    /// Opens the page of the game's achievements.
+    AchievementList,
+    /// Where each kind of achievement notice shows in this game.
+    UnlockNotices,
+    ProgressNotices,
+    OtherNotices,
     Brightness,
     Scaling,
     Effect,
@@ -29,22 +37,23 @@ pub enum Item {
     Quit,
 }
 
-/// The menu's lists: the main one, and the two its DISPLAY and OPTIONS rows open.
+/// The menu's lists: the main one, and those its DISPLAY, OPTIONS and ACHIEVEMENTS rows open.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum List {
     Main,
     Display,
     Options,
+    Achievements,
 }
 
 #[cfg(test)]
-pub const LISTS: [List; 3] = [List::Main, List::Display, List::Options];
+pub const LISTS: [List; 4] = [List::Main, List::Display, List::Options, List::Achievements];
 
 /// Every choice, in the order of their lists. Games with one disc go without `Item::Disc`,
 /// games whose core ignores codes or that play in hardcore without `Item::Cheats`, games
-/// without `RetroAchievements` without `Item::Achievements`, and games on cores other than
+/// without `RetroAchievements` without `Item::Achievements` and its list, and games on cores other than
 /// mGBA without `Item::Ghosting`. Only `PlayStation` games have discs, so no game shows them all.
-pub const ITEMS: [Item; 17] = [
+pub const ITEMS: [Item; 21] = [
     Item::Resume,
     Item::SaveState,
     Item::LoadState,
@@ -62,6 +71,10 @@ pub const ITEMS: [Item; 17] = [
     Item::Controls,
     Item::CoreOptions,
     Item::Cheats,
+    Item::AchievementList,
+    Item::UnlockNotices,
+    Item::ProgressNotices,
+    Item::OtherNotices,
 ];
 
 /// The most rows a list can have, which the drawing makes room for.
@@ -78,6 +91,10 @@ impl Item {
             Self::Display => "DISPLAY",
             Self::Options => "OPTIONS",
             Self::Achievements => "ACHIEVEMENTS",
+            Self::AchievementList => "LIST",
+            Self::UnlockNotices => "UNLOCKS",
+            Self::ProgressNotices => "PROGRESS",
+            Self::OtherNotices => "OTHER MESSAGES",
             Self::Brightness => "BRIGHTNESS",
             Self::Scaling => "SCALING",
             Self::Effect => "SCREEN EFFECT",
@@ -95,6 +112,7 @@ impl Item {
         match self {
             Self::Brightness | Self::Scaling | Self::Effect | Self::Ghosting | Self::Border => List::Display,
             Self::Controls | Self::CoreOptions | Self::Cheats => List::Options,
+            Self::AchievementList | Self::UnlockNotices | Self::ProgressNotices | Self::OtherNotices => List::Achievements,
             Self::Resume
             | Self::SaveState
             | Self::LoadState
@@ -109,7 +127,20 @@ impl Item {
 
     /// Whether A opens a list or a page, which the menu marks with an arrow.
     pub fn opens(self) -> bool {
-        matches!(self, Self::Display | Self::Options | Self::Achievements | Self::Controls | Self::CoreOptions | Self::Cheats)
+        matches!(
+            self,
+            Self::Display | Self::Options | Self::Achievements | Self::AchievementList | Self::Controls | Self::CoreOptions | Self::Cheats
+        )
+    }
+
+    /// The kind of achievement notice the item places.
+    pub fn notice_kind(self) -> Option<NoticeKind> {
+        match self {
+            Self::UnlockNotices => Some(NoticeKind::Unlock),
+            Self::ProgressNotices => Some(NoticeKind::Progress),
+            Self::OtherNotices => Some(NoticeKind::Other),
+            _ => None,
+        }
     }
 }
 
@@ -119,6 +150,7 @@ impl List {
             Self::Main => "PAUSED",
             Self::Display => "DISPLAY",
             Self::Options => "OPTIONS",
+            Self::Achievements => "ACHIEVEMENTS",
         })
     }
 }
@@ -147,6 +179,8 @@ pub enum Action {
     Cheats,
     /// Opens the ACHIEVEMENTS page.
     Achievements,
+    /// Moves where a kind of achievement notice shows in this game by a number of choices.
+    Notices(NoticeKind, i32),
 }
 
 pub struct PauseMenu {
@@ -179,7 +213,7 @@ impl PauseMenu {
             .filter(|&item| {
                 (item != Item::Disc || discs > 1)
                     && (item != Item::Cheats || cheats)
-                    && (item != Item::Achievements || achievements)
+                    && (item.list() != List::Achievements && item != Item::Achievements || achievements)
             })
             .collect();
         let mut menu = Self { all, items: Vec::new(), list: List::Main, selected: 0, slot: 1, discs, disc: 0, message: None };
@@ -204,7 +238,11 @@ impl PauseMenu {
 
     /// Goes back to the main list, on the row that opened the one that was open.
     fn back(&mut self) {
-        let from = if self.list == List::Display { Item::Display } else { Item::Options };
+        let from = match self.list {
+            List::Display => Item::Display,
+            List::Achievements => Item::Achievements,
+            List::Options | List::Main => Item::Options,
+        };
         let row = self.all.iter().filter(|item| item.list() == List::Main).position(|&item| item == from);
         self.show(List::Main, row.unwrap_or(0));
     }
@@ -267,11 +305,15 @@ impl PauseMenu {
                     Item::Effect => return Action::Effect(step),
                     Item::Ghosting => return Action::Ghosting(step),
                     Item::Border => return Action::Border(step),
+                    Item::UnlockNotices | Item::ProgressNotices | Item::OtherNotices => {
+                        return item.notice_kind().map_or(Action::Nothing, |kind| Action::Notices(kind, step));
+                    }
                     Item::Resume
                     | Item::Screenshot
                     | Item::Display
                     | Item::Options
                     | Item::Achievements
+                    | Item::AchievementList
                     | Item::Controls
                     | Item::CoreOptions
                     | Item::Cheats
@@ -296,7 +338,14 @@ impl PauseMenu {
                     Item::Controls => Action::Controls,
                     Item::CoreOptions => Action::CoreOptions,
                     Item::Cheats => Action::Cheats,
-                    Item::Achievements => Action::Achievements,
+                    Item::Achievements => {
+                        self.show(List::Achievements, 0);
+                        Action::Nothing
+                    }
+                    Item::AchievementList => Action::Achievements,
+                    Item::UnlockNotices | Item::ProgressNotices | Item::OtherNotices => {
+                        item.notice_kind().map_or(Action::Nothing, |kind| Action::Notices(kind, 1))
+                    }
                     Item::Quit => Action::Quit,
                     Item::Brightness | Item::Scaling | Item::Effect | Item::Ghosting | Item::Border => {
                         Action::Nothing
@@ -350,6 +399,7 @@ mod tests {
             List::Main => None,
             List::Display => Some(Item::Display),
             List::Options => Some(Item::Options),
+            List::Achievements => Some(Item::Achievements),
         };
         if let Some(opener) = opener {
             select(menu, opener);

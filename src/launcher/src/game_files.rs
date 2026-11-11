@@ -87,6 +87,7 @@ fn is_game_setting(file: &Path) -> bool {
         || core_options::is_game_options(file)
         || cheats::is_game_cheats(file)
         || achievements::is_off_file(file)
+        || achievements::is_notices_file(file)
 }
 
 fn newest_save(saves: &[PathBuf]) -> Option<SystemTime> {
@@ -155,6 +156,7 @@ fn saves_beside(save: &Path) -> Vec<PathBuf> {
     files.push(cheats::game_path(save));
     files.push(achievements::summary_path(save));
     files.push(achievements::off_path(save));
+    files.push(achievements::notices_path(save));
     files.retain(|file| file.exists());
     files
 }

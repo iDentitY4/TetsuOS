@@ -134,6 +134,67 @@ choices! {
 }
 
 choices! {
+    /// Where `RetroAchievements` notices, such as an unlock, show over a game.
+    pub enum NoticePlace (default Bottom) {
+        /// Where games tend to have least.
+        Bottom => "bottom", "BOTTOM";
+        Top => "top", "TOP";
+        /// Not shown at all; achievements still unlock.
+        Hidden => "hidden", "HIDDEN";
+    }
+}
+
+/// The kinds of `RetroAchievements` notice, each shown where its own setting says.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum NoticeKind {
+    /// An achievement unlocked.
+    Unlock,
+    /// Progress towards one, such as `45/180`.
+    Progress,
+    /// Everything else: the game loaded, completed, leaderboards, the connection, warnings.
+    Other,
+}
+
+pub const NOTICE_KINDS: [NoticeKind; 3] = [NoticeKind::Unlock, NoticeKind::Progress, NoticeKind::Other];
+
+impl NoticeKind {
+    /// Its name in the settings file and a game's own choices.
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Unlock => "unlocks",
+            Self::Progress => "progress",
+            Self::Other => "other",
+        }
+    }
+}
+
+/// Where each kind of notice shows.
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub struct NoticePlaces {
+    pub unlocks: NoticePlace,
+    pub progress: NoticePlace,
+    pub other: NoticePlace,
+}
+
+impl NoticePlaces {
+    pub fn get(self, kind: NoticeKind) -> NoticePlace {
+        match kind {
+            NoticeKind::Unlock => self.unlocks,
+            NoticeKind::Progress => self.progress,
+            NoticeKind::Other => self.other,
+        }
+    }
+
+    pub fn get_mut(&mut self, kind: NoticeKind) -> &mut NoticePlace {
+        match kind {
+            NoticeKind::Unlock => &mut self.unlocks,
+            NoticeKind::Progress => &mut self.progress,
+            NoticeKind::Other => &mut self.other,
+        }
+    }
+}
+
+choices! {
     /// The theme colour. Each is bright enough for the dark text on a selected row.
     pub enum Accent (default Teal) {
         Teal => "teal", "TEAL";
@@ -445,6 +506,9 @@ pub struct Settings {
     pub hardcore: bool,
     /// `RetroAchievements` are off for every game.
     pub achievements_off: bool,
+    /// Where each kind of `RetroAchievements` notice shows, for games without a choice of
+    /// their own.
+    pub notices: NoticePlaces,
     /// The setup hasn't finished: there was no settings file, or it was left partway.
     pub setup_pending: bool,
 }
@@ -546,6 +610,10 @@ fn parse(text: &str) -> Settings {
     for line in text.lines() {
         let Some((key, value)) = line.split_once('=') else { continue };
         let value = value.trim();
+        if let Some(kind) = NOTICE_KINDS.into_iter().find(|kind| key.trim().strip_prefix("notices_") == Some(kind.key())) {
+            choose(settings.notices.get_mut(kind), NoticePlace::from_key(value));
+            continue;
+        }
         if let Some(console) = key.trim().strip_prefix(CONSOLE_DISPLAY_PREFIX) {
             if let Some(display) = parse_display(value) {
                 settings.set_console_display(console, display);
@@ -666,6 +734,9 @@ fn format(settings: &Settings) -> String {
     lines.push(format!("charge={}", settings.charge.key()));
     lines.push(format!("hardcore={}", on_off(settings.hardcore)));
     lines.push(format!("achievements={}", on_off(!settings.achievements_off)));
+    for kind in NOTICE_KINDS {
+        lines.push(format!("notices_{}={}", kind.key(), settings.notices.get(kind).key()));
+    }
     if settings.setup_pending {
         lines.push("setup=pending".to_string());
     }
@@ -969,6 +1040,7 @@ mod tests {
             charge: ChargeLimit::Less,
             hardcore: true,
             achievements_off: true,
+            notices: NoticePlaces { unlocks: NoticePlace::Top, progress: NoticePlace::Hidden, other: NoticePlace::Bottom },
             setup_pending: true,
         };
         assert_eq!(parse(&format(&settings)), settings);

@@ -3,7 +3,7 @@
 
 use crate::i18n::tr;
 use crate::input::Button;
-use crate::settings::{GameSort, GridSize};
+use crate::settings::{GameSort, GridSize, NoticeKind};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -191,7 +191,14 @@ impl Group {
                 ]
             }
             Self::Time => &[Setting::TimeZone, Setting::ClockFormat],
-            Self::Achievements => &[Setting::AchievementsOn, Setting::AchievementsAccount, Setting::Hardcore],
+            Self::Achievements => &[
+                Setting::AchievementsOn,
+                Setting::AchievementsAccount,
+                Setting::Hardcore,
+                Setting::UnlockNotices,
+                Setting::ProgressNotices,
+                Setting::OtherNotices,
+            ],
             Self::System => {
                 &[
                     Setting::ButtonTest,
@@ -271,6 +278,10 @@ pub enum Setting {
     /// Logs in to `RetroAchievements`, or out once logged in.
     AchievementsAccount,
     Hardcore,
+    /// Where each kind of achievement notice shows over a game, or that it doesn't.
+    UnlockNotices,
+    ProgressNotices,
+    OtherNotices,
 }
 
 impl Setting {
@@ -324,6 +335,9 @@ impl Setting {
             Self::AchievementsOn => "ACHIEVEMENTS",
             Self::AchievementsAccount => "ACCOUNT",
             Self::Hardcore => "HARDCORE",
+            Self::UnlockNotices => "UNLOCKS",
+            Self::ProgressNotices => "PROGRESS",
+            Self::OtherNotices => "OTHER MESSAGES",
         })
     }
 
@@ -378,6 +392,9 @@ impl Setting {
                 | Self::BootMessages
                 | Self::Hardcore
                 | Self::AchievementsOn
+                | Self::UnlockNotices
+                | Self::ProgressNotices
+                | Self::OtherNotices
         )
     }
 
@@ -509,6 +526,8 @@ pub enum Command {
     /// Forgets the `RetroAchievements` account, after a second press.
     LogOutOfAchievements,
     ToggleHardcore,
+    /// Moves where a kind of achievement notice shows by a number of choices.
+    Notices(NoticeKind, i32),
     /// The card's TETSU-DATA partition as a USB drive on the PC.
     UsbStorage,
     /// A web page for sending games over Wi-Fi, while its screen is open.
@@ -945,6 +964,9 @@ impl Launcher {
             Setting::BootMessages => Command::ToggleBootMessages,
             Setting::Hardcore => Command::ToggleHardcore,
             Setting::AchievementsOn => Command::ToggleAchievements,
+            Setting::UnlockNotices => Command::Notices(NoticeKind::Unlock, step),
+            Setting::ProgressNotices => Command::Notices(NoticeKind::Progress, step),
+            Setting::OtherNotices => Command::Notices(NoticeKind::Other, step),
             _ => return None,
         })
     }
@@ -1036,7 +1058,10 @@ impl Launcher {
                 | Setting::Ssh
                 | Setting::Performance
                 | Setting::ChargeLimit
-                | Setting::BootMessages => {}
+                | Setting::BootMessages
+                | Setting::UnlockNotices
+                | Setting::ProgressNotices
+                | Setting::OtherNotices => {}
             },
             _ => {}
         }

@@ -4,7 +4,7 @@ use crate::{
     achievements, cheats, controls, core_options, pause_screens, png,
     screenshot, settings,
 };
-use crate::achievements::{Notice, Session};
+use crate::achievements::{GameNotices, Notice, Session};
 use crate::cheats::{CheatAction, CheatSource, CheatsPage, Downloaded};
 use crate::controls::{ControlsMenu, Layout, PageAction, Scope};
 use crate::core_options::{
@@ -145,10 +145,12 @@ pub(super) struct Game<'a> {
     pub(super) cheat_source: Option<&'a CheatSource>,
 }
 
-/// The game's `RetroAchievements`, if it plays with them, and the notices waiting to show.
+/// The game's `RetroAchievements`, if it plays with them, the notices waiting to show, and
+/// the game's own choices of where they show.
 pub(super) struct Achievements<'a> {
     pub(super) session: &'a mut Option<Session>,
     pub(super) notices: &'a mut VecDeque<Notice>,
+    pub(super) game_notices: &'a mut GameNotices,
 }
 
 impl Achievements<'_> {
@@ -213,6 +215,7 @@ fn draw_menu(
     menu: &PauseMenu,
     session: Option<&mut Session>,
     save: &Path,
+    notices: GameNotices,
 ) -> io::Result<()> {
     let (width, height) = framebuffer.size();
     let frame_size = *frame_size;
@@ -240,6 +243,7 @@ fn draw_menu(
                 brightness_percent: settings::brightness_percent(),
                 display: with_host(|host| host.display),
                 auto_border: with_host(|host| super::border::resolve(crate::settings::Border::Auto, host.console)),
+                notices,
             };
             pause_screens::pause_screen(width, height, frame, frame_size, &view, theme)
         }
@@ -447,7 +451,8 @@ pub(super) fn pause(
         // Drawing again removes the volume sign.
         redraw |= framebuffer.sign_wait().is_zero();
         if redraw {
-            draw_menu(framebuffer, &backdrop, &pages, menu, achievements.session.as_mut(), save)?;
+            let notices = *achievements.game_notices;
+            draw_menu(framebuffer, &backdrop, &pages, menu, achievements.session.as_mut(), save, notices)?;
             redraw = false;
         }
         let event = match events.recv_timeout(Duration::from_millis(100)) {
@@ -493,6 +498,12 @@ pub(super) fn pause(
             Action::Border(steps) => change_display(|display| display.border = display.border.cycle(steps)),
             Action::Controls => pages.controls = Some(open_controls(save)),
             Action::CoreOptions => pages.options = Some(open_core_options(save)),
+            Action::Notices(kind, steps) => {
+                achievements.game_notices.cycle(kind, steps);
+                if let Err(error) = achievements.game_notices.write(save) {
+                    eprintln!("warning: could not keep the game's notice places: {error}");
+                }
+            }
             Action::Achievements => {
                 let lines = achievements.session.as_ref().map(Session::lines).unwrap_or_default();
                 pages.achievements = Some(achievements::Page::new(lines));
