@@ -30,7 +30,7 @@ use super::ffi::{
     ENVIRONMENT_SET_PIXEL_FORMAT, ENVIRONMENT_SET_VARIABLES, OptionDisplay, RawDiskControl,
     RumbleInterface, UpdateDisplay, Variable, c_text, read_options_v2,
 };
-use super::scale::{PixelFormat, picture_size, scale_frame};
+use super::scale::{PixelFormat, Scaler, picture_size};
 use super::core::c_path;
 
 const GHOSTING_OPTION: &str = core_options::FRONTEND_OWNED[0];
@@ -110,6 +110,8 @@ pub(super) struct Host {
     directory: CString,
     pub(super) frame: Vec<u32>,
     pub(super) frame_size: (usize, usize),
+    /// Scales the core's frames into `frame`, keeping its tables between them.
+    scaler: Scaler,
     /// What the screen shows around the picture, the whole screen's worth.
     pub(super) border: Vec<u32>,
     /// The picture size and choice `border` was made for.
@@ -437,7 +439,8 @@ pub(super) unsafe extern "C" fn video_refresh(
         for row in 0..height {
             host.source.extend_from_slice(&source[row * pitch..row * pitch + width * bytes_per_pixel]);
         }
-        scale_frame(source, pitch, host.format, (width, height), &mut host.frame, size, host.display.effect);
+        let effect = host.display.effect;
+        host.scaler.scale(source, pitch, host.format, (width, height), &mut host.frame, size, effect);
         host.frame_ready = true;
         host.scale_time += start.elapsed();
     });
@@ -527,6 +530,7 @@ pub(super) fn set_host(directory: &Path, target: (usize, usize), setup: CoreSetu
         directory: c_path(directory)?,
         frame: Vec::new(),
         frame_size: (0, 0),
+        scaler: Scaler::default(),
         border: Vec::new(),
         border_for: None,
         source_size: (0, 0),

@@ -61,12 +61,52 @@ fn gap_coverage(source: usize, dest: usize, gap: usize) -> Vec<u32> {
         .collect()
 }
 
-/// A pixel with each channel times `multiplier` out of 256, up to full brightness.
-fn brighten(pixel: u32, multiplier: u32) -> u32 {
-    let red = ((((pixel >> 16) & 0xFF) * multiplier) >> 8).min(0xFF);
-    let green = ((((pixel >> 8) & 0xFF) * multiplier) >> 8).min(0xFF);
-    let blue = (((pixel & 0xFF) * multiplier) >> 8).min(0xFF);
-    red << 16 | green << 8 | blue
+/// Brightened values up to this stay as they are; above it, highlights are compressed.
+const HIGHLIGHT_KNEE: u32 = 216;
+
+/// How an effect's gain brightens pixels without clipping them. Clipping each channel at
+/// full brightness flattened highlights and shifted colours, as a bright orange's red
+/// stopped growing while its green still grew. Instead, the brightest channel follows a
+/// curve that is straight up to `HIGHLIGHT_KNEE` and then bends to reach full brightness
+/// exactly at the gain's top, and the other channels are scaled with it, keeping the hue.
+struct Highlights {
+    /// How much the curve rises above the knee for each step of brightness, out of 65536,
+    /// rounded up so the gain's top reaches full brightness.
+    slope: u32,
+    /// For each brightest channel, 2^24 divided by it, rounded up, so dividing by it is
+    /// a multiply and full brightness never comes out a step short.
+    reciprocals: [u32; 256],
+}
+
+/// The knee and full brightness, out of 256 of a step.
+const KNEE: u32 = HIGHLIGHT_KNEE * 256;
+const FULL: u32 = 255 * 256;
+
+impl Highlights {
+    fn new(gain: u32) -> Self {
+        let mut reciprocals = [0; 256];
+        for (peak, reciprocal) in reciprocals.iter_mut().enumerate().skip(1) {
+            *reciprocal = (1_u32 << 24).div_ceil(peak as u32);
+        }
+        Highlights { slope: ((FULL - KNEE) << 16).div_ceil(255 * gain - KNEE), reciprocals }
+    }
+
+    /// A pixel with each channel times `multiplier` out of 256, with highlights compressed.
+    fn brighten(&self, pixel: u32, multiplier: u32) -> u32 {
+        let (red, green, blue) = ((pixel >> 16) & 0xFF, (pixel >> 8) & 0xFF, pixel & 0xFF);
+        let peak = red.max(green).max(blue);
+        // The brightest channel after the gain, out of 256, and each channel's multiplier
+        // out of 65536, in one step so no rounding makes a brighter pixel darker.
+        let brightened = peak * multiplier;
+        let ratio = if brightened <= KNEE {
+            multiplier << 8
+        } else {
+            let curved = (KNEE + (((brightened - KNEE) * self.slope) >> 16)).min(FULL);
+            ((u64::from(curved) * u64::from(self.reciprocals[peak as usize])) >> 16) as u32
+        };
+        let channel = |value: u32| ((value * ratio) >> 16).min(0xFF);
+        channel(red) << 16 | channel(green) << 8 | channel(blue)
+    }
 }
 
 /// A pixel's brightness, from 0 to 15.
@@ -85,52 +125,96 @@ const LCD_GAP: usize = 64;
 /// The gap darkens dark pixels by up to 75% and bright ones by 25%, like a CRT's beam
 /// that grows with brightness, and everything is brightened to make up for the gaps.
 fn crt_table() -> [[u32; 16]; 17] {
-    const GAIN: u32 = 320; // 1.25 times
     let mut table = [[0; 16]; 17];
     for (coverage, row) in table.iter_mut().enumerate() {
         for (level, multiplier) in row.iter_mut().enumerate() {
             let darkness = 192 - 128 * level as u32 / 15; // 75% to 25%, out of 256
             let kept = 256 - darkness * coverage as u32 / 16;
-            *multiplier = GAIN * kept / 256;
+            *multiplier = CRT_GAIN * kept / 256;
         }
     }
     table
 }
 
-/// Lays a screen effect over the scaled picture, or over the band of it from `first_line`.
-fn apply_effect(
-    frame: &mut [u32],
-    (width, height): (usize, usize),
-    (source_w, source_h): (usize, usize),
-    effect: Effect,
-    first_line: usize,
-) {
-    match effect {
-        Effect::None => {}
-        Effect::Crt => {
-            let table = crt_table();
-            let rows = gap_coverage(source_h, height, CRT_GAP);
-            for (line, &coverage) in frame.chunks_exact_mut(width).zip(&rows[first_line..]) {
-                let multipliers = &table[(coverage as usize * 16 + 128) / 256];
-                for pixel in line {
-                    *pixel = brighten(*pixel, multipliers[brightness_level(*pixel)]);
-                }
+/// CRT brightens 1.25 times and LCD 1.12 times, to make up for their gaps.
+const CRT_GAIN: u32 = 320;
+const LCD_GAIN: u32 = 287;
+
+/// A screen effect's tables for one picture size.
+enum EffectTables {
+    None,
+    /// For each screen line, the multipliers by brightness level.
+    Crt { lines: Vec<[u32; 16]>, highlights: Highlights },
+    /// For each screen line, its multiplier with the gain, and for each column, its own.
+    /// The columns' are at most 256.
+    Lcd { lines: Vec<u32>, columns: Vec<u32>, highlights: Highlights },
+}
+
+impl EffectTables {
+    fn new(effect: Effect, (source_w, source_h): (usize, usize), (width, height): (usize, usize)) -> Self {
+        match effect {
+            Effect::None => EffectTables::None,
+            Effect::Crt => {
+                let table = crt_table();
+                let lines = gap_coverage(source_h, height, CRT_GAP)
+                    .iter()
+                    .map(|&coverage| table[(coverage as usize * 16 + 128) / 256])
+                    .collect();
+                EffectTables::Crt { lines, highlights: Highlights::new(CRT_GAIN) }
+            }
+            Effect::Lcd => {
+                // Each axis keeps all of a line outside the gap, and down to 55% inside it.
+                let keep = |coverage: &u32| 256 - 115 * coverage / 256;
+                let columns = gap_coverage(source_w, width, LCD_GAP).iter().map(keep).collect();
+                let lines =
+                    gap_coverage(source_h, height, LCD_GAP).iter().map(|coverage| keep(coverage) * LCD_GAIN / 256).collect();
+                EffectTables::Lcd { lines, columns, highlights: Highlights::new(LCD_GAIN) }
             }
         }
-        Effect::Lcd => {
-            const GAIN: u32 = 287; // 1.12 times
-            // Each axis keeps all of a line outside the gap, and down to 55% inside it.
-            let keep = |coverage: &u32| 256 - 115 * coverage / 256;
-            let columns: Vec<u32> = gap_coverage(source_w, width, LCD_GAP).iter().map(keep).collect();
-            let rows: Vec<u32> = gap_coverage(source_h, height, LCD_GAP).iter().map(keep).collect();
-            for (line, &row) in frame.chunks_exact_mut(width).zip(&rows[first_line..]) {
-                let row = row * GAIN / 256;
-                for (pixel, &column) in line.iter_mut().zip(&columns) {
-                    *pixel = brighten(*pixel, row * column / 256);
+    }
+
+    /// Lays the effect over screen line `index`.
+    fn apply(&self, line: &mut [u32], index: usize) {
+        // Game pictures have runs of one colour, each game pixel spans several screen
+        // pixels, and the multiplier changes only at a gap, so the last result is kept.
+        // The top byte is never set in a pixel, so the first one is always worked out.
+        let mut last = (u32::MAX, 0, 0);
+        let mut brighten = |highlights: &Highlights, pixel: &mut u32, multiplier: u32| {
+            if (*pixel, multiplier) != (last.0, last.1) {
+                last = (*pixel, multiplier, highlights.brighten(*pixel, multiplier));
+            }
+            *pixel = last.2;
+        };
+        match self {
+            EffectTables::None => {}
+            EffectTables::Crt { lines, highlights } => {
+                let multipliers = &lines[index];
+                for pixel in line {
+                    let multiplier = multipliers[brightness_level(*pixel)];
+                    brighten(highlights, pixel, multiplier);
+                }
+            }
+            EffectTables::Lcd { lines, columns, highlights } => {
+                // The line's gain and gap first, then the column's gap, which only darkens,
+                // so it can't clip and the line's results can be kept along it.
+                let row = lines[index];
+                for (pixel, &column) in line.iter_mut().zip(columns) {
+                    brighten(highlights, pixel, row);
+                    if column < 256 {
+                        *pixel = darken(*pixel, column);
+                    }
                 }
             }
         }
     }
+}
+
+/// A pixel with each channel times `multiplier` out of 256, which is at most 256. Red and
+/// blue are multiplied together, then green.
+fn darken(pixel: u32, multiplier: u32) -> u32 {
+    let red_blue = (((pixel & 0x00FF_00FF) * multiplier) >> 8) & 0x00FF_00FF;
+    let green = (((pixel & 0x0000_FF00) * multiplier) >> 8) & 0x0000_FF00;
+    red_blue | green
 }
 
 /// Expands 5 or 6 bits to 8, so full brightness stays full.
@@ -201,29 +285,62 @@ fn scale_row(source: &[u8], format: PixelFormat, columns: &[(usize, u32)], conve
 /// A `PlayStation` frame took 8.7 ms on one, of the 20 ms a 50 Hz frame has.
 const BAND_MIN_LINES: usize = 64;
 
-pub(super) fn scale_frame(
-    source: &[u8],
-    pitch: usize,
-    format: PixelFormat,
-    source_size: (usize, usize),
-    dest: &mut [u32],
-    dest_size: (usize, usize),
-    effect: Effect,
-) {
-    let (dest_w, dest_h) = dest_size;
-    let columns = axis_weights(source_size.0, dest_w);
-    let rows = axis_weights(source_size.1, dest_h);
-    let band = Band { source, pitch, format, source_size, dest_size, columns: &columns, rows: &rows, effect };
-    if dest_h < 2 * BAND_MIN_LINES {
-        band.scale(0, dest);
-        return;
+/// Everything about scaling that depends only on the sizes and the effect, made again only
+/// when one of them changes, not for every frame.
+struct Tables {
+    made_for: ((usize, usize), (usize, usize), Effect),
+    columns: Vec<(usize, u32)>,
+    rows: Vec<(usize, u32)>,
+    effect: EffectTables,
+}
+
+impl Tables {
+    fn new(source_size: (usize, usize), dest_size: (usize, usize), effect: Effect) -> Self {
+        Tables {
+            made_for: (source_size, dest_size, effect),
+            columns: axis_weights(source_size.0, dest_size.0),
+            rows: axis_weights(source_size.1, dest_size.1),
+            effect: EffectTables::new(effect, source_size, dest_size),
+        }
     }
-    let split = dest_h / 2;
-    let (top, bottom) = dest.split_at_mut(split * dest_w);
-    std::thread::scope(|scope| {
-        scope.spawn(|| band.scale(split, bottom));
-        band.scale(0, top);
-    });
+}
+
+/// Scales a core's frames to the panel, keeping its tables from one frame to the next.
+#[derive(Default)]
+pub(super) struct Scaler {
+    tables: Option<Tables>,
+}
+
+impl Scaler {
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn scale(
+        &mut self,
+        source: &[u8],
+        pitch: usize,
+        format: PixelFormat,
+        source_size: (usize, usize),
+        dest: &mut [u32],
+        dest_size: (usize, usize),
+        effect: Effect,
+    ) {
+        let made_for = (source_size, dest_size, effect);
+        let tables = match &mut self.tables {
+            Some(tables) if tables.made_for == made_for => tables,
+            slot => slot.insert(Tables::new(source_size, dest_size, effect)),
+        };
+        let (dest_w, dest_h) = dest_size;
+        let band = Band { source, pitch, format, source_size, dest_w, tables };
+        if dest_h < 2 * BAND_MIN_LINES {
+            band.scale(0, dest);
+            return;
+        }
+        let split = dest_h / 2;
+        let (top, bottom) = dest.split_at_mut(split * dest_w);
+        std::thread::scope(|scope| {
+            scope.spawn(|| band.scale(split, bottom));
+            band.scale(0, top);
+        });
+    }
 }
 
 /// What every band of a picture is scaled with.
@@ -233,22 +350,23 @@ struct Band<'a> {
     pitch: usize,
     format: PixelFormat,
     source_size: (usize, usize),
-    dest_size: (usize, usize),
-    columns: &'a [(usize, u32)],
-    rows: &'a [(usize, u32)],
-    effect: Effect,
+    dest_w: usize,
+    tables: &'a Tables,
 }
 
 impl Band<'_> {
-    /// Scales the lines from `first_line` into `out`, which holds whole lines.
+    /// Scales the lines from `first_line` into `out`, which holds whole lines, laying the
+    /// effect over each line while it is still in the cache.
     fn scale(&self, first_line: usize, out: &mut [u32]) {
-        let dest_w = self.dest_size.0;
+        let dest_w = self.dest_w;
+        let (columns, rows) = (&self.tables.columns, &self.tables.rows);
+        let has_effect = !matches!(self.tables.effect, EffectTables::None);
         let mut converted = vec![0u32; self.source_size.0];
         // The two game rows scaled across most recently, with which rows they are.
         let mut scaled = [vec![0u32; dest_w], vec![0u32; dest_w]];
         let mut scaled_rows = [usize::MAX; 2];
         let row_bytes = |row: usize| &self.source[row * self.pitch..];
-        for (line, &(first, weight)) in out.chunks_exact_mut(dest_w).zip(&self.rows[first_line..]) {
+        for (index, (line, &(first, weight))) in out.chunks_exact_mut(dest_w).zip(&rows[first_line..]).enumerate() {
             let needed = if weight == 256 { 1 } else { 2 };
             for (slot, row) in (first..first + needed).enumerate() {
                 if scaled_rows[slot] != row {
@@ -257,7 +375,7 @@ impl Band<'_> {
                         scaled.swap(0, 1);
                         scaled_rows.swap(0, 1);
                     } else {
-                        scale_row(row_bytes(row), self.format, self.columns, &mut converted, &mut scaled[slot]);
+                        scale_row(row_bytes(row), self.format, columns, &mut converted, &mut scaled[slot]);
                         scaled_rows[slot] = row;
                     }
                 }
@@ -269,8 +387,10 @@ impl Band<'_> {
                     *pixel = mix(a, b, weight);
                 }
             }
+            if has_effect {
+                self.tables.effect.apply(line, first_line + index);
+            }
         }
-        apply_effect(out, self.dest_size, self.source_size, self.effect, first_line);
     }
 }
 
@@ -314,6 +434,18 @@ pub(super) fn rgb_samples(source: &[u8], format: PixelFormat) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn scale_frame(
+        source: &[u8],
+        pitch: usize,
+        format: PixelFormat,
+        source_size: (usize, usize),
+        dest: &mut [u32],
+        dest_size: (usize, usize),
+        effect: Effect,
+    ) {
+        Scaler::default().scale(source, pitch, format, source_size, dest, dest_size, effect);
+    }
 
     #[test]
     fn a_sign_gives_way_to_the_picture_and_the_border_around_it() {
@@ -371,17 +503,14 @@ mod tests {
         for effect in [Effect::None, Effect::Crt, Effect::Lcd] {
             let mut split = vec![0u32; size.0 * size.1];
             scale_frame(&source, source_w * 2, PixelFormat::Rgb565, (source_w, source_h), &mut split, size, effect);
-            let columns = axis_weights(source_w, size.0);
-            let rows = axis_weights(source_h, size.1);
+            let tables = Tables::new((source_w, source_h), size, effect);
             let band = Band {
                 source: &source,
                 pitch: source_w * 2,
                 format: PixelFormat::Rgb565,
                 source_size: (source_w, source_h),
-                dest_size: size,
-                columns: &columns,
-                rows: &rows,
-                effect,
+                dest_w: size.0,
+                tables: &tables,
             };
             let mut whole = vec![0u32; size.0 * size.1];
             band.scale(0, &mut whole);
@@ -412,11 +541,43 @@ mod tests {
     }
 
     #[test]
-    fn brightening_stops_at_full_and_keeps_channels_apart() {
-        assert_eq!(brighten(0x00FF_8000, 512), 0x00FF_FF00);
-        assert_eq!(brighten(0x0080_4020, 128), 0x0040_2010);
+    fn brightening_keeps_channels_apart_and_shadows_as_they_were() {
+        let highlights = Highlights::new(CRT_GAIN);
+        assert_eq!(highlights.brighten(0x0080_4020, 128), 0x0040_2010);
+        // Below the knee, only the gain.
+        assert_eq!(highlights.brighten(0x0064_6464, CRT_GAIN), 0x007D_7D7D);
         assert_eq!(brightness_level(0x00FF_FFFF), 15);
         assert_eq!(brightness_level(0), 0);
+    }
+
+    #[test]
+    fn highlights_reach_full_without_clipping() {
+        for gain in [CRT_GAIN, LCD_GAIN] {
+            let highlights = Highlights::new(gain);
+            // White stays white, and every brighter grey stays brighter.
+            assert_eq!(highlights.brighten(0x00FF_FFFF, gain), 0x00FF_FFFF, "{gain}");
+            let greys: Vec<u32> = (0..=255).map(|value| highlights.brighten(value * 0x0001_0101, gain) & 0xFF).collect();
+            assert!(greys.windows(2).all(|pair| pair[0] <= pair[1]), "{gain}");
+            assert!(greys[200] < greys[230] && greys[230] < greys[255], "{gain}");
+        }
+        // A bright orange keeps its hue: green stays half of red.
+        let orange = Highlights::new(CRT_GAIN).brighten(0x00FF_8000, CRT_GAIN);
+        assert_eq!(orange, 0x00FF_8000);
+        // Past the table, the brightest channel stays at full.
+        assert_eq!(Highlights::new(CRT_GAIN).brighten(0x00FF_8000, 512), 0x00FF_8000);
+    }
+
+    #[test]
+    fn tables_are_made_again_only_when_something_changes() {
+        let source = vec![0u8; 4 * 4 * 2];
+        let mut dest = vec![0; 8 * 8];
+        let mut scaler = Scaler::default();
+        scaler.scale(&source, 8, PixelFormat::Rgb565, (4, 4), &mut dest, (8, 8), Effect::Crt);
+        let first = scaler.tables.as_ref().map(|tables| tables.rows.as_ptr());
+        scaler.scale(&source, 8, PixelFormat::Rgb565, (4, 4), &mut dest, (8, 8), Effect::Crt);
+        assert_eq!(scaler.tables.as_ref().map(|tables| tables.rows.as_ptr()), first);
+        scaler.scale(&source, 8, PixelFormat::Rgb565, (4, 4), &mut dest, (8, 8), Effect::Lcd);
+        assert!(matches!(scaler.tables.as_ref().map(|tables| &tables.effect), Some(EffectTables::Lcd { .. })));
     }
 
     #[test]

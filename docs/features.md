@@ -1099,7 +1099,18 @@ Built but not yet tested on the device:
   512x480, SNES 512x448, Game Boy 480x432, GBA 480x320. SCREEN EFFECT CRT darkens the gap
   between game rows by up to 75% for dark pixels and 25% for bright ones, brightened 1.25
   times; LCD is a soft grid, brightened 1.12 times. Both use coverage of the pixel gap
-  (`gap_coverage`), so they stay smooth at any scale. LCD GHOSTING sets mGBA's interframe
+  (`gap_coverage`), so they stay smooth at any scale. The gain doesn't clip
+  (`Highlights`, 2026-11-11): once a pixel's brightest channel passes 216, it bends to
+  reach 255 at the gain's top, and the other channels follow it, so highlights keep
+  their detail and colours their hue (before, Super Mario Bros.' sky turned grey-cyan as
+  its blue clipped). Colours with a channel near full are brightened less than before,
+  and their scanlines are fainter. The effect is laid over each line as it is scaled,
+  the tables are kept in a `Scaler` until the sizes or effect change, and the last
+  result is kept along a line. On the device, a benchmark scaling real NES (512x480) and
+  Game Boy (533x480) screenshots took 3.35 to 3.48 ms with CRT against 4.21 to 4.23
+  before, and 2.79 to 2.83 ms with LCD against 3.12 to 3.19; with no effect, about the
+  same (1.35 to 1.57 ms). Random noise, the worst case, is slower: CRT 5.7 against 4.9 ms.
+  LCD GHOSTING sets mGBA's interframe
   blending: OFF, SMART (default, only flickering pixels) or FULL, applied live through
   `GET_VARIABLE_UPDATE`. Always on: mGBA colour correction (`Auto`) and FCEUmm's measured
   `smooth-v2-fbx` NES palette. The old `scanlines` and `grid` names load as CRT and LCD.

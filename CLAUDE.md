@@ -52,6 +52,9 @@ ADVANCED > RUN SETUP AGAIN repeats.
   Menu + Select on the real buttons, a PlayStation game, a ZIP, TF2, hardcore, the German
   wording
 
+- CRT and LCD without clipping (2026-11-11): bright colours keep their hue but are
+  brightened less and their scanlines are fainter; whether that looks better than before
+  (`HIGHLIGHT_KNEE` in `libretro/scale.rs` moves it back toward the old look)
 - The in-game menu's DISPLAY and OPTIONS lists (2026-11-11): on the device, their feel
   and the German wording
 - HDMI (2026-11-11): any real TV or monitor: picture, hotplug in the menus and in a game,
