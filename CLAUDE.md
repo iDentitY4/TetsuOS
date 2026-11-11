@@ -48,6 +48,8 @@ ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Not yet checked by the user
 
+- The in-game menu's DISPLAY and OPTIONS lists (2026-11-11): on the device, their feel
+  and the German wording
 - HDMI (2026-11-11): any real TV or monitor: picture, hotplug in the menus and in a game,
   a TV in at boot, tearing, lid sleep; the 24.75 MHz HDMI clock against 25.17 MHz is the
   first suspect if nothing shows (`docs/features.md`)

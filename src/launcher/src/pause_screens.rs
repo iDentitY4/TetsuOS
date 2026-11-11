@@ -9,7 +9,7 @@ use crate::controls::{self, ControlsMenu, Row};
 use crate::core_options::OptionsPage;
 use crate::font;
 use crate::i18n::{tr, trf};
-use crate::pause::{Item, PauseMenu, ITEMS};
+use crate::pause::{Item, List, PauseMenu, MOST_ROWS};
 use crate::screens::{self, OptionsLayout};
 use crate::settings::{Border, GameDisplay};
 
@@ -18,7 +18,6 @@ pub struct PauseView<'a> {
     pub menu: &'a PauseMenu,
     /// Whether the selected slot holds a state.
     pub slot_used: bool,
-    pub volume_percent: Option<u32>,
     pub brightness_percent: Option<u32>,
     pub display: GameDisplay,
     /// What AUTO gives this game's console.
@@ -26,15 +25,14 @@ pub struct PauseView<'a> {
 }
 
 const PAUSE_PANEL: (usize, usize, usize, usize) = (110, 15, 420, 450);
-const PAUSE_TOP: usize = 65;
-/// 22 fits every item a game can show: at 23, the fifteenth pushed the hint past the panel.
-const PAUSE_ROW: usize = 22;
+const PAUSE_TOP: usize = 75;
+/// Roomy enough for the eye to find a row, with the longest list still fitting.
+const PAUSE_ROW: usize = 32;
 const PAUSE_TEXT_SCALE: usize = 2;
 const PAUSE_BAR_WIDTH: usize = 120;
 
-// The rows, message and hint must fit inside the panel. A game shows one item fewer than
-// there are, as CHANGE DISC is only for PlayStation games and LCD GHOSTING only for mGBA's.
-const _: () = assert!(PAUSE_TOP + (ITEMS.len() - 1) * PAUSE_ROW + 70 <= PAUSE_PANEL.1 + PAUSE_PANEL.3);
+// The rows, message and hint must fit inside the panel.
+const _: () = assert!(PAUSE_TOP + MOST_ROWS * PAUSE_ROW + 70 <= PAUSE_PANEL.1 + PAUSE_PANEL.3);
 
 /// Darkens the game frame, so the menu stands out while the game stays recognisable.
 fn dim(pixel: u32) -> Rgb {
@@ -81,11 +79,11 @@ pub fn pause_screen(
 ) -> Canvas {
     let mut canvas = pause_backdrop(width, height, frame, frame_size, theme);
     let (panel_x, panel_y, panel_w, _) = PAUSE_PANEL;
-    canvas.text(tr("PAUSED"), panel_y + 20, 3, TEXT);
+    let menu = view.menu;
+    canvas.text(menu.list().title(), panel_y + 20, 3, TEXT);
 
     let label_x = panel_x + 20;
     let value_right = panel_x + panel_w - 20;
-    let menu = view.menu;
     for (row, &item) in menu.items().iter().enumerate() {
         let y = PAUSE_TOP + row * PAUSE_ROW;
         let selected = item == menu.selected();
@@ -98,12 +96,8 @@ pub fn pause_screen(
         let text_y = y + (PAUSE_ROW - 4 - font::HEIGHT * PAUSE_TEXT_SCALE) / 2;
         canvas.text_at(item.label(), label_x, text_y, PAUSE_TEXT_SCALE, text_color);
 
-        let level = match item {
-            Item::Volume => Some(view.volume_percent),
-            Item::Brightness => Some(view.brightness_percent),
-            _ => None,
-        };
-        if let Some(level) = level {
+        if item == Item::Brightness {
+            let level = view.brightness_percent;
             let bar_x = value_right - PAUSE_BAR_WIDTH;
             let bar_y = y + (PAUSE_ROW - 4) / 2 - 6;
             canvas.rect(bar_x, bar_y, PAUSE_BAR_WIDTH, 12, bar_color);
@@ -122,18 +116,21 @@ pub fn pause_screen(
             Item::LoadState if view.slot_used => trf("SLOT {}", &[&menu.slot()]),
             Item::LoadState => trf("SLOT {} EMPTY", &[&menu.slot()]),
             Item::Disc => trf("DISC {} OF {}", &[&(menu.disc() + 1), &menu.discs()]),
+            _ if item.opens() => ">".to_string(),
             _ => continue,
         };
-        let value = if selected { format!("< {value} >") } else { value };
+        let value = if selected && !item.opens() { format!("< {value} >") } else { value };
         let value_x = value_right - text_width(&value, PAUSE_TEXT_SCALE);
         canvas.text_at(&value, value_x, text_y, PAUSE_TEXT_SCALE, text_color);
     }
 
-    let message_y = PAUSE_TOP + menu.items().len() * PAUSE_ROW + 12;
+    // Below the longest list, so the hint stays put from list to list.
+    let message_y = PAUSE_TOP + MOST_ROWS * PAUSE_ROW + 12;
     if let Some(message) = menu.message() {
         canvas.text(message, message_y, PAUSE_TEXT_SCALE, canvas.theme.accent);
     }
-    canvas.text(tr("A SELECTS - B RESUMES"), message_y + 30, PAUSE_TEXT_SCALE, MUTED);
+    let hint = if menu.list() == List::Main { tr("A SELECTS - B RESUMES") } else { tr("A SELECTS - B BACK") };
+    canvas.text(hint, message_y + 30, PAUSE_TEXT_SCALE, MUTED);
     canvas
 }
 
@@ -356,7 +353,7 @@ mod tests {
     }
 
     fn pause_view(menu: &PauseMenu) -> PauseView<'_> {
-        PauseView { menu, slot_used: false, volume_percent: Some(80), brightness_percent: None, display: GameDisplay::default(), auto_border: Border::Bezel }
+        PauseView { menu, slot_used: false, brightness_percent: None, display: GameDisplay::default(), auto_border: Border::Bezel }
     }
 
     #[test]

@@ -90,7 +90,6 @@ pub(crate) fn write_pause_preview(path: &str) -> io::Result<()> {
     let view = pause_screens::PauseView {
         menu: &menu,
         slot_used: false,
-        volume_percent: Some(80),
         brightness_percent: Some(50),
         display: settings::GameDisplay::default(),
         auto_border: settings::Border::Off,

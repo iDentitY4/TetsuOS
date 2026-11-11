@@ -13,8 +13,11 @@ pub enum Item {
     LoadState,
     Disc,
     Screenshot,
+    /// Opens the DISPLAY list.
+    Display,
+    /// Opens the OPTIONS list.
+    Options,
     Achievements,
-    Volume,
     Brightness,
     Scaling,
     Effect,
@@ -26,18 +29,31 @@ pub enum Item {
     Quit,
 }
 
-/// Every choice. Games with one disc go without `Item::Disc`, games whose core ignores codes
-/// or that play in hardcore without `Item::Cheats`, games without `RetroAchievements`
-/// without `Item::Achievements`, and games on cores other than mGBA without
-/// `Item::Ghosting`. Only `PlayStation` games have discs, so no game shows them all.
-pub const ITEMS: [Item; 16] = [
+/// The menu's lists: the main one, and the two its DISPLAY and OPTIONS rows open.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum List {
+    Main,
+    Display,
+    Options,
+}
+
+#[cfg(test)]
+pub const LISTS: [List; 3] = [List::Main, List::Display, List::Options];
+
+/// Every choice, in the order of their lists. Games with one disc go without `Item::Disc`,
+/// games whose core ignores codes or that play in hardcore without `Item::Cheats`, games
+/// without `RetroAchievements` without `Item::Achievements`, and games on cores other than
+/// mGBA without `Item::Ghosting`. Only `PlayStation` games have discs, so no game shows them all.
+pub const ITEMS: [Item; 17] = [
     Item::Resume,
     Item::SaveState,
     Item::LoadState,
     Item::Disc,
     Item::Screenshot,
+    Item::Display,
+    Item::Options,
     Item::Achievements,
-    Item::Volume,
+    Item::Quit,
     Item::Brightness,
     Item::Scaling,
     Item::Effect,
@@ -46,8 +62,10 @@ pub const ITEMS: [Item; 16] = [
     Item::Controls,
     Item::CoreOptions,
     Item::Cheats,
-    Item::Quit,
 ];
+
+/// The most rows a list can have, which the drawing makes room for.
+pub const MOST_ROWS: usize = 9;
 
 impl Item {
     pub fn label(self) -> &'static str {
@@ -57,8 +75,9 @@ impl Item {
             Self::LoadState => "LOAD STATE",
             Self::Disc => "CHANGE DISC",
             Self::Screenshot => "SCREENSHOT",
+            Self::Display => "DISPLAY",
+            Self::Options => "OPTIONS",
             Self::Achievements => "ACHIEVEMENTS",
-            Self::Volume => "VOLUME",
             Self::Brightness => "BRIGHTNESS",
             Self::Scaling => "SCALING",
             Self::Effect => "SCREEN EFFECT",
@@ -68,6 +87,38 @@ impl Item {
             Self::CoreOptions => "CORE OPTIONS",
             Self::Cheats => "CHEATS",
             Self::Quit => "QUIT",
+        })
+    }
+
+    /// The list the item is in.
+    pub fn list(self) -> List {
+        match self {
+            Self::Brightness | Self::Scaling | Self::Effect | Self::Ghosting | Self::Border => List::Display,
+            Self::Controls | Self::CoreOptions | Self::Cheats => List::Options,
+            Self::Resume
+            | Self::SaveState
+            | Self::LoadState
+            | Self::Disc
+            | Self::Screenshot
+            | Self::Display
+            | Self::Options
+            | Self::Achievements
+            | Self::Quit => List::Main,
+        }
+    }
+
+    /// Whether A opens a list or a page, which the menu marks with an arrow.
+    pub fn opens(self) -> bool {
+        matches!(self, Self::Display | Self::Options | Self::Achievements | Self::Controls | Self::CoreOptions | Self::Cheats)
+    }
+}
+
+impl List {
+    pub fn title(self) -> &'static str {
+        tr(match self {
+            Self::Main => "PAUSED",
+            Self::Display => "DISPLAY",
+            Self::Options => "OPTIONS",
         })
     }
 }
@@ -83,7 +134,6 @@ pub enum Action {
     /// Counted from 0, as the core does.
     Disc(usize),
     Screenshot,
-    Volume(i32),
     Brightness(i32),
     Scaling(i32),
     Effect(i32),
@@ -100,7 +150,11 @@ pub enum Action {
 }
 
 pub struct PauseMenu {
+    /// The game's items in every list.
+    all: Vec<Item>,
+    /// The open list's items.
     items: Vec<Item>,
+    list: List,
     selected: usize,
     /// From 1 to `SLOTS`. Kept while the game runs, so saving again uses the same slot.
     slot: usize,
@@ -120,7 +174,7 @@ impl PauseMenu {
 
     /// Also offers the game's achievements, when it plays with `RetroAchievements`.
     pub fn with(discs: usize, cheats: bool, achievements: bool) -> Self {
-        let items = ITEMS
+        let all = ITEMS
             .into_iter()
             .filter(|&item| {
                 (item != Item::Disc || discs > 1)
@@ -128,26 +182,47 @@ impl PauseMenu {
                     && (item != Item::Achievements || achievements)
             })
             .collect();
-        Self { items, selected: 0, slot: 1, discs, disc: 0, message: None }
+        let mut menu = Self { all, items: Vec::new(), list: List::Main, selected: 0, slot: 1, discs, disc: 0, message: None };
+        menu.show(List::Main, 0);
+        menu
     }
 
     /// Leaves out LCD GHOSTING for a core that doesn't have it: only mGBA does.
     #[must_use]
     pub fn with_ghosting(mut self, ghosting: bool) -> Self {
-        self.items.retain(|&item| item != Item::Ghosting || ghosting);
+        self.all.retain(|&item| item != Item::Ghosting || ghosting);
+        self.show(self.list, 0);
         self
+    }
+
+    /// Opens a list, on its row `selected`.
+    fn show(&mut self, list: List, selected: usize) {
+        self.items = self.all.iter().copied().filter(|item| item.list() == list).collect();
+        self.list = list;
+        self.selected = selected;
+    }
+
+    /// Goes back to the main list, on the row that opened the one that was open.
+    fn back(&mut self) {
+        let from = if self.list == List::Display { Item::Display } else { Item::Options };
+        let row = self.all.iter().filter(|item| item.list() == List::Main).position(|&item| item == from);
+        self.show(List::Main, row.unwrap_or(0));
     }
 
     /// Starts each visit on Resume, so pressing A twice by accident does nothing harmful,
     /// and on the disc that is in, which loading a state may have changed.
     pub fn open(&mut self, disc: usize) {
-        self.selected = 0;
+        self.show(List::Main, 0);
         self.disc = disc;
         self.message = None;
     }
 
     pub fn items(&self) -> &[Item] {
         &self.items
+    }
+
+    pub fn list(&self) -> List {
+        self.list
     }
 
     pub fn selected(&self) -> Item {
@@ -187,7 +262,6 @@ impl PauseMenu {
                         self.slot = (self.slot as i32 - 1 + step).rem_euclid(SLOTS as i32) as usize + 1;
                     }
                     Item::Disc => self.disc = (self.disc as i32 + step).rem_euclid(self.discs as i32) as usize,
-                    Item::Volume => return Action::Volume(step),
                     Item::Brightness => return Action::Brightness(step),
                     Item::Scaling => return Action::Scaling(step),
                     Item::Effect => return Action::Effect(step),
@@ -195,6 +269,8 @@ impl PauseMenu {
                     Item::Border => return Action::Border(step),
                     Item::Resume
                     | Item::Screenshot
+                    | Item::Display
+                    | Item::Options
                     | Item::Achievements
                     | Item::Controls
                     | Item::CoreOptions
@@ -209,16 +285,25 @@ impl PauseMenu {
                     Item::LoadState => Action::Load(self.slot),
                     Item::Disc => Action::Disc(self.disc),
                     Item::Screenshot => Action::Screenshot,
+                    Item::Display => {
+                        self.show(List::Display, 0);
+                        Action::Nothing
+                    }
+                    Item::Options => {
+                        self.show(List::Options, 0);
+                        Action::Nothing
+                    }
                     Item::Controls => Action::Controls,
                     Item::CoreOptions => Action::CoreOptions,
                     Item::Cheats => Action::Cheats,
                     Item::Achievements => Action::Achievements,
                     Item::Quit => Action::Quit,
-                    Item::Volume | Item::Brightness | Item::Scaling | Item::Effect | Item::Ghosting | Item::Border => {
+                    Item::Brightness | Item::Scaling | Item::Effect | Item::Ghosting | Item::Border => {
                         Action::Nothing
                     }
                 }
             }
+            Button::B if self.list != List::Main => self.back(),
             Button::B | Button::Menu => return Action::Resume,
             _ => {}
         }
@@ -259,12 +344,30 @@ mod tests {
     const BTN_MODE: u16 = 0x13C;
     const BTN_START: u16 = 0x13B;
 
-    fn menu_at(item: Item) -> PauseMenu {
-        let mut menu = PauseMenu::new(2, true);
+    /// Moves to `item` in the main list, or into the list it is in.
+    fn select(menu: &mut PauseMenu, item: Item) {
+        let opener = match item.list() {
+            List::Main => None,
+            List::Display => Some(Item::Display),
+            List::Options => Some(Item::Options),
+        };
+        if let Some(opener) = opener {
+            select(menu, opener);
+            menu.press(Button::A);
+        }
         while menu.selected() != item {
             menu.press(Button::Down);
         }
+    }
+
+    fn menu_at(item: Item) -> PauseMenu {
+        let mut menu = PauseMenu::new(2, true);
+        select(&mut menu, item);
         menu
+    }
+
+    fn in_list(menu: &PauseMenu, list: List) -> Vec<Item> {
+        menu.all.iter().copied().filter(|item| item.list() == list).collect()
     }
 
     #[test]
@@ -291,11 +394,45 @@ mod tests {
 
     #[test]
     fn left_and_right_adjust_levels() {
-        assert_eq!(menu_at(Item::Volume).press(Button::Left), Action::Volume(-1));
         assert_eq!(menu_at(Item::Brightness).press(Button::Right), Action::Brightness(1));
-        assert_eq!(menu_at(Item::Volume).press(Button::A), Action::Nothing);
+        assert_eq!(menu_at(Item::Brightness).press(Button::A), Action::Nothing);
         assert_eq!(menu_at(Item::Scaling).press(Button::Right), Action::Scaling(1));
         assert_eq!(menu_at(Item::Effect).press(Button::Left), Action::Effect(-1));
+    }
+
+    #[test]
+    fn display_and_options_open_lists_and_b_goes_back_to_their_row() {
+        let mut menu = menu_at(Item::Display);
+        assert_eq!(menu.press(Button::A), Action::Nothing);
+        assert_eq!(menu.list(), List::Display);
+        assert_eq!(menu.selected(), Item::Brightness);
+        assert_eq!(menu.press(Button::B), Action::Nothing);
+        assert_eq!((menu.list(), menu.selected()), (List::Main, Item::Display));
+        menu.press(Button::Down);
+        menu.press(Button::A);
+        assert_eq!(menu.items(), [Item::Controls, Item::CoreOptions, Item::Cheats]);
+        menu.press(Button::Up);
+        assert_eq!(menu.selected(), Item::Cheats);
+        menu.press(Button::B);
+        assert_eq!(menu.selected(), Item::Options);
+        assert_eq!(menu.press(Button::B), Action::Resume);
+    }
+
+    #[test]
+    fn menu_resumes_from_a_list_and_opening_again_starts_on_the_main_one() {
+        let mut menu = menu_at(Item::Scaling);
+        assert_eq!(menu.press(Button::Menu), Action::Resume);
+        menu.open(0);
+        assert_eq!((menu.list(), menu.selected()), (List::Main, Item::Resume));
+    }
+
+    #[test]
+    fn no_list_has_more_rows_than_the_drawing_has_room_for() {
+        let menu = PauseMenu::with(2, true, true);
+        for list in LISTS {
+            assert!(in_list(&menu, list).len() <= MOST_ROWS, "{list:?}");
+        }
+        assert_eq!(in_list(&menu, List::Main).len(), MOST_ROWS);
     }
 
     #[test]
@@ -322,12 +459,12 @@ mod tests {
 
     #[test]
     fn only_a_core_that_applies_codes_offers_cheats() {
-        assert!(PauseMenu::new(1, true).items().contains(&Item::Cheats));
-        assert!(!PauseMenu::new(1, false).items().contains(&Item::Cheats));
+        assert!(PauseMenu::new(1, true).all.contains(&Item::Cheats));
+        assert!(!PauseMenu::new(1, false).all.contains(&Item::Cheats));
         assert!(!PauseMenu::new(1, true).items().contains(&Item::Achievements));
         let menu = PauseMenu::with(1, true, true);
         let at = |item| menu.items().iter().position(|&other| other == item).unwrap();
-        assert_eq!(at(Item::Achievements), at(Item::Screenshot) + 1);
+        assert_eq!(at(Item::Achievements), at(Item::Options) + 1);
     }
 
     #[test]
@@ -357,9 +494,9 @@ mod tests {
 
     #[test]
     fn only_a_game_with_several_discs_offers_changing() {
-        assert!(PauseMenu::new(1, true).items().contains(&Item::Ghosting));
-        assert!(!PauseMenu::new(1, true).with_ghosting(false).items().contains(&Item::Ghosting));
-        assert!(PauseMenu::new(1, true).with_ghosting(false).items().contains(&Item::Border));
+        assert!(PauseMenu::new(1, true).all.contains(&Item::Ghosting));
+        assert!(!PauseMenu::new(1, true).with_ghosting(false).all.contains(&Item::Ghosting));
+        assert!(PauseMenu::new(1, true).with_ghosting(false).all.contains(&Item::Border));
         assert!(!PauseMenu::new(0, true).items().contains(&Item::Disc));
         assert!(!PauseMenu::new(1, true).items().contains(&Item::Disc));
         assert!(PauseMenu::new(2, true).items().contains(&Item::Disc));

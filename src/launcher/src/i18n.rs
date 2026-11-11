@@ -99,6 +99,7 @@ mod tests {
             keys.extend(labels(group.settings(), launcher::Setting::label));
         }
         keys.extend(labels(&pause::ITEMS, pause::Item::label));
+        keys.extend(labels(&pause::LISTS, pause::List::title));
         keys.extend(clock::ZONES.iter().map(|zone| zone.label));
         keys.extend(clock::WEEKDAYS);
         keys.extend(clock::MONTHS);

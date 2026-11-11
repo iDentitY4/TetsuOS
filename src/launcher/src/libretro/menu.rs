@@ -237,7 +237,6 @@ fn draw_menu(
             let view = PauseView {
                 menu,
                 slot_used: slot_path(save, menu.slot()).exists(),
-                volume_percent: settings::volume_percent(),
                 brightness_percent: settings::brightness_percent(),
                 display: with_host(|host| host.display),
                 auto_border: with_host(|host| super::border::resolve(crate::settings::Border::Auto, host.console)),
@@ -484,10 +483,6 @@ pub(super) fn pause(
                 }
             }
             Action::Screenshot => menu.set_message(screenshot_message(save)),
-            Action::Volume(steps) => {
-                settings::change_volume(steps * settings::VOLUME_STEP);
-                settings_changed = true;
-            }
             Action::Brightness(steps) => {
                 settings::change_brightness(steps);
                 settings_changed = true;

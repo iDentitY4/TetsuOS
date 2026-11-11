@@ -254,6 +254,18 @@ Working on the test unit, confirmed by the user:
   the device over SSH with injected presses and screenshots: saving, loading, levels,
   quitting, resuming and Menu + Start. The user tried it with FireRed
   on 2026-11-08 and confirmed it feels right
+- The in-game menu's lists (2026-11-11), as fifteen rows had filled the panel to its edges.
+  The main list has RESUME, SAVE STATE, LOAD STATE, CHANGE DISC, SCREENSHOT, DISPLAY,
+  OPTIONS, ACHIEVEMENTS and QUIT, at most 9 rows (`pause::MOST_ROWS`) of 32 lines instead
+  of 22. DISPLAY opens a list with BRIGHTNESS, SCALING, SCREEN EFFECT, LCD GHOSTING and
+  BORDER, and OPTIONS one with CONTROLS, CORE OPTIONS and CHEATS (`pause::List`); the title
+  names the list. Rows that open a list or page show `>`. B goes back from a list to the
+  row that opened it, and from the main list resumes; Menu resumes from any list. Opening
+  the menu again starts on RESUME in the main list. A page that CONTROLS, CORE OPTIONS or
+  CHEATS opens goes back to OPTIONS. The hint stays below where the longest list ends, so
+  it doesn't move from list to list. VOLUME left the menu: the volume buttons do the same
+  and show their sign over it. Checked with `cargo test` and `--preview-pause` in English
+  and German; not yet on the device
 - The volume sign: a press of a volume button shows `VOL`, a bar and the percentage,
   centred at the top of the screen for 1.5 s, in the menus, during a game and in the
   in-game menu (`screens::volume_sign`, `app::show_volume`). It is 20 pixels tall and 6
@@ -266,13 +278,13 @@ Working on the test unit, confirmed by the user:
   launcher process still changes the volume, as `amixer` there doesn't hold up a frame,
   and writes the new percent as one byte to the game's standard input
   (`libretro::volume_levels`). So the game shows the level that was set, not one read too
-  early. Only the buttons show it: VOLUME in the settings and in-game menu has its own
+  early. Only the buttons show it: VOLUME in the settings has its own
   bar. Claude checked it on the device with injected presses and screenshots on 2026-11-09:
   a game list, Wi-Fi, the title keyboard, Super Mario Land during play and in its menu, and
   closing the menu with the sign up. A press every 1.4 s or so during play kept 59.6-59.75
   fps with no underruns, the same as without. The user confirmed on 2026-11-09 that it
   feels good on real presses, and that the lowest step is quiet but audible
-- Volume moves in steps of 5%, by the buttons and by the VOLUME rows
+- Volume moves in steps of 5%, by the buttons and by the VOLUME row in Settings
   (`settings::VOLUME_STEP`). The hardware has levels 0 to 31 at 1.5 dB each, with 0 and 1
   muted, so each step uses its nearest level (`percent_level`: 0, 2, 3, 5, 6, 8 ... 29, 31),
   which makes only 0% silent. `settings.txt` still saves the level, and one between steps,
