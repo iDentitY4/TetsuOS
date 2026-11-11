@@ -100,6 +100,43 @@ Working on the test unit, confirmed by the user:
   card. An empty battery leaves the screen, mounts the card and powers off. Writes need
   patch 0014 (see the MUSB fact below). Mounting, copying and deleting games and ejecting
   were checked by the user on Linux on 2026-11-08; Windows and macOS haven't been tried
+- A second card in TF2 (2026-11-11) adds games: those in its `roms` folder join the lists
+  with TETSU-DATA's, unmarked, and a game at the same path on both cards shows once, from
+  TETSU-DATA (`library::find_all_roms`). Their saves, states, covers, play time and
+  settings stay on TETSU-DATA, as they are named after the game, so taking the card out
+  loses nothing and a game moved between the cards keeps them. The card can be FAT32 or
+  exFAT (`CONFIG_EXFAT_FS`), as most cards over 32 GB come; a Tetsu OS card's TETSU-DATA
+  is used if it has one, or else its first FAT32 or exFAT file system, or the whole card
+  without a partition table. The kernel side is patch 0018: `mmc2`, card detect on PE22
+  and a 3.3 V supply on PE4 that stays on, from ROCKNIX, plus `mmc` aliases that keep
+  TF1 at `mmcblk0` and TF2 at `mmcblk2`.
+  `/usr/sbin/cards` knows a slot by its controller (`4020000.mmc`, `4022000.mmc`) in the
+  card's sysfs path, not its number. `S15data` finds TETSU-DATA on TF1 only, so a second
+  Tetsu card is never taken for it, and runs `cards mount`, which mounts TF2's games at
+  `/mnt/tf2` with `umask=022`, waiting up to 2 s for the partitions. The launcher checks
+  the slot once a second in its menus' loop, by the card's CID in
+  `/sys/block/mmcblk*/device/cid`, which also tells a card swapped during sleep: a card
+  going in is mounted, one coming out is unmounted (lazily if a file was open), and the
+  lists are read again, with a sign at the top for 3 s: `TF2: 12 GAMES`,
+  `TF2: CAN'T READ THE CARD` or `TF2: CARD TAKEN OUT`. A card that wouldn't mount is
+  tried again only once taken out. The check also runs once before the games are first
+  read, for a card the kernel found after `S15data`. Taking the card out during a game
+  isn't guarded against. System info's GAME STORAGE shows both cards' free space while
+  one is in, without the totals, for room.
+  USB STORAGE gives the card in TF2 to the PC as a second drive, the whole card, so the
+  PC can also format it: `lun.1` of the same mass storage function, so no endpoint more.
+  With no card there, the PC sees an empty card reader. The screen leaves once both are
+  ejected and says EJECT THE DRIVES; going back runs `partprobe` on the card, in case
+  the PC partitioned it anew, `cards check` (`fsck.fat -a` or exfatprogs' `fsck.exfat -y`)
+  and `cards mount`.
+  WI-FI TRANSFER lists both cards' games; a game on TF2 is named `TF2:` and its path,
+  which no FAT32 or exFAT file name can start with. With a card in TF2, the page shows
+  both cards' free space and a SEND TO choice (TF1 or TF2, TF2 by default, kept in the
+  browser), and uploads send `card=tf2`; a card gone since is refused as `no-card`.
+  Checked on the PC: `cargo test` (the merge, the slot by controller and CID, the mount
+  lookup), clippy, the device tree compiled with `dtc`, the patch with
+  `apply-patches.sh`, and previews of the USB STORAGE screen and the sign in both
+  languages
 - WI-FI TRANSFER, in Settings > SYSTEM and as SEND GAMES OVER WI-FI in the setup's games
   step (2026-11-10): a web page for a phone or PC browser on the same network, for
   getting games on without a cable or card reader. Off unless its screen is open:
@@ -1388,6 +1425,11 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
 
 ## Hardware facts in full
 
+- **TF2 is `mmc2`, with its own 3.3 V switch on PE4,** patch 0018 (values from ROCKNIX's
+  0126 and 0159). With that supply off, the card is powered back through its pulled-up
+  I/O pins, so it stays on, as the vendor firmware leaves it. The MMC hosts probe
+  asynchronously, so without aliases the card numbers could change; root is found by
+  PARTUUID either way.
 - **The vibration motor is on PH2, PWM channel 2,** patch 0015. It spins from 20 % duty.
   Its input device comes before the others, so `/dev/input/event*` numbers aren't fixed.
 

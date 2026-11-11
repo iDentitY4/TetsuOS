@@ -1,13 +1,13 @@
 //! Which files on the card belong to a game, for its details screen and for deleting it.
 
-use crate::{achievements, cheats, controls, core_options, favorites, play_time, recent};
+use crate::{achievements, cards, cheats, controls, core_options, favorites, play_time, recent};
 use crate::boxart::ART_DIR;
 use crate::boxart_fetch::art_path;
 use crate::i18n::{tr, trf};
 use crate::launcher::Library;
 use crate::library::{clean_path, is_m3u, path_key, read_m3u};
 use crate::pause::SLOTS;
-use crate::systems::{ROM_DIR, save_path, system_for};
+use crate::systems::{save_path, system_for};
 use std::io;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -23,7 +23,7 @@ pub(crate) struct GameFiles {
 
 impl GameFiles {
     pub(crate) fn of(rom: &Path) -> Self {
-        let game = game_files(rom, Path::new(ROM_DIR));
+        let game = game_files(rom, cards::rom_root(rom));
         let saves = saves_of(rom);
         let cover = Some(art_path(Path::new(ART_DIR), rom)).filter(|path| path.exists()).into_iter().collect();
         Self { game, saves, cover }
@@ -195,7 +195,7 @@ pub(crate) fn delete_game(rom: &Path, library: &Library) -> io::Result<()> {
         keep.extend(other.game.iter().chain(&other.saves).chain(&other.cover).map(|file| path_key(file)));
     }
     remove_files(&files.game, &keep)?;
-    remove_empty_folders(&files.game, Path::new(ROM_DIR));
+    remove_empty_folders(&files.game, cards::rom_root(rom));
     if let Err(error) = remove_files(&files.saves, &keep).and_then(|()| remove_files(&files.cover, &keep)) {
         eprintln!("warning: could not delete all that {} left: {error}", rom.display());
     }

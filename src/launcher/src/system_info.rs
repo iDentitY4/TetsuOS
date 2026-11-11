@@ -115,8 +115,16 @@ pub(crate) fn system_info(battery: Option<Battery>, games: usize) -> Vec<(String
     let battery = battery.map_or_else(unknown, |Battery { percent, charging }| {
         format!("{percent}%{}{volts}", if charging { format!(" {}", tr("CHARGING")) } else { String::new() })
     });
-    let storage = parse_df(&command_output("df", &["-k", crate::paths::DATA_DIR]))
-        .map_or_else(unknown, |(free, total)| trf("{} FREE OF {}", &[&gigabytes(free), &gigabytes(total)]));
+    let free_on = |folder: &str| parse_df(&command_output("df", &["-k", folder]));
+    let storage = match (free_on(crate::paths::DATA_DIR), crate::cards::tf2_mounted()) {
+        // Only what is free, as both cards' totals take too much room.
+        (Some((free, _)), true) => match free_on(crate::cards::TF2_DIR) {
+            Some((tf2_free, _)) => trf("{} + TF2 {} FREE", &[&gigabytes(free), &gigabytes(tf2_free)]),
+            None => trf("{} FREE", &[&gigabytes(free)]),
+        },
+        (Some((free, total)), false) => trf("{} FREE OF {}", &[&gigabytes(free), &gigabytes(total)]),
+        (None, _) => unknown(),
+    };
     let memory = read_text(crate::paths::MEMORY)
         .and_then(|meminfo| parse_meminfo(&meminfo))
         .map_or_else(unknown, |(free, total)| trf("{} FREE OF {}", &[&megabytes(free), &megabytes(total)]));

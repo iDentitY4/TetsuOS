@@ -1,0 +1,104 @@
+#!/bin/sh
+# The two card slots. TF1 holds the system and TETSU-DATA; TF2 may hold more games,
+# in a roms folder on its FAT32 or exFAT partition, mounted at /mnt/tf2.
+#
+#   cards disk tf1|tf2   prints the slot's card, such as /dev/mmcblk2, if one is in
+#   cards data           prints TF1's TETSU-DATA partition
+#   cards games          prints TF2's partition for games
+#   cards mount          mounts TF2's games at /mnt/tf2
+#   cards unmount        unmounts them, also once the card is gone
+#   cards check          repairs TF2's file system, which must not be mounted
+#
+# A slot is known by its controller, as the card numbers could change: TF1 is mmc0
+# at 0x4020000 and TF2 mmc2 at 0x4022000.
+
+TF2=/mnt/tf2
+
+controller() {
+	case "$1" in
+	tf1) echo 4020000.mmc ;;
+	tf2) echo 4022000.mmc ;;
+	*) return 1 ;;
+	esac
+}
+
+disk() {
+	want="$(controller "$1")" || return 1
+	for block in /sys/block/mmcblk*; do
+		[ -e "$block/device" ] || continue
+		case "$(readlink -f "$block/device")" in
+		*"/$want/"*)
+			echo "/dev/${block##*/}"
+			return 0
+			;;
+		esac
+	done
+	return 1
+}
+
+# The card's partitions and the card itself, each with what blkid reads of it
+probe() {
+	card="$(disk "$1")" || return 1
+	blkid | grep "^$card[p:]"
+}
+
+data() {
+	probe tf1 | grep 'LABEL="TETSU-DATA"' | head -n 1 | cut -d: -f1
+}
+
+# A Tetsu card's TETSU-DATA, or else the first FAT32 or exFAT file system
+games() {
+	found="$(probe tf2)" || return 1
+	part="$(echo "$found" | grep 'LABEL="TETSU-DATA"' | head -n 1 | cut -d: -f1)"
+	[ -n "$part" ] || part="$(echo "$found" | grep -E 'TYPE="(vfat|exfat)"' | head -n 1 | cut -d: -f1)"
+	[ -n "$part" ] && echo "$part"
+}
+
+kind() {
+	blkid "$1" | grep -o 'TYPE="[a-z]*"' | cut -d'"' -f2
+}
+
+case "$1" in
+disk)
+	disk "$2"
+	;;
+data)
+	data
+	;;
+games)
+	games
+	;;
+mount)
+	mountpoint -q "$TF2" && exit 0
+	disk tf2 > /dev/null || exit 1
+	# The partitions appear a moment after the card
+	tries=0
+	until part="$(games)"; do
+		tries=$((tries + 1))
+		[ "$tries" -lt 10 ] || { echo "cards: no FAT32 or exFAT partition on TF2" >&2; exit 2; }
+		usleep 200000
+	done
+	mkdir -p "$TF2"
+	# Fixed permissions, as in S15data
+	mount -t "$(kind "$part")" -o umask=022 "$part" "$TF2" || exit 2
+	mkdir -p "$TF2/roms"
+	echo "cards: $part is at $TF2"
+	;;
+unmount)
+	mountpoint -q "$TF2" || exit 0
+	sync
+	# Lazily if a file is still open, which a pulled card leaves no choice about
+	umount "$TF2" 2> /dev/null || umount -l "$TF2"
+	;;
+check)
+	part="$(games)" || exit 1
+	case "$(kind "$part")" in
+	vfat) fsck.fat -a -w "$part" ;;
+	exfat) fsck.exfat -y "$part" ;;
+	esac
+	;;
+*)
+	echo "Usage: $0 {disk tf1|tf2|data|games|mount|unmount|check}"
+	exit 1
+	;;
+esac

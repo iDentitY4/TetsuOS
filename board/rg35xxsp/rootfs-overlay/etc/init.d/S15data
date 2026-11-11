@@ -1,16 +1,22 @@
 #!/bin/sh
-# Mounts the card's TETSU-DATA partition, which holds the games and saves.
+# Mounts the card's TETSU-DATA partition, which holds the games and saves, and the
+# games on a second card in TF2, if there is one (see /usr/sbin/cards).
 
 case "$1" in
 start)
-	dev="$(blkid | grep 'LABEL="TETSU-DATA"' | head -n 1 | cut -d: -f1)"
+	# Only TF1's: a Tetsu card in TF2 has a TETSU-DATA too
+	dev="$(/usr/sbin/cards data)"
 	[ -n "$dev" ] || exit 1
 	mkdir -p /mnt/data
 	# Fixed permissions: vfat would otherwise take them from the caller's umask
 	mount -t vfat -o umask=022 "$dev" /mnt/data || exit 1
 	mkdir -p /mnt/data/roms /mnt/data/saves
+	# The launcher mounts a card put in later
+	/usr/sbin/cards mount
+	exit 0
 	;;
 stop)
+	/usr/sbin/cards unmount
 	umount /mnt/data
 	;;
 *)

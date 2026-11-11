@@ -280,7 +280,7 @@ pub(crate) fn write_setup_preview(step: usize, path: &str) -> io::Result<()> {
 /// Settings > SYSTEM > USB STORAGE, with a PC using the drive.
 pub(crate) fn write_usb_drive_preview(path: &str) -> io::Result<()> {
     let (width, height) = PREVIEW_SIZE;
-    let view = usb_drive_view(UsbLink::Connected, false);
+    let view = usb_drive_view(UsbLink::Connected, false, true);
     let frame = screens::Frame { theme: current_theme(), battery: Some(Battery { percent: 80, charging: true }) };
     write_ppm(&screens::usb_drive_screen(width, height, &view, &frame), path)
 }

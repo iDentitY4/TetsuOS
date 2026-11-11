@@ -1,0 +1,47 @@
+Subject: [PATCH] arm64: dts: allwinner: rg35xx-sp: add the second card slot
+
+TF2 is on mmc2, with card detect on PE22 and a 3.3V supply switched by PE4,
+as in ROCKNIX's 0126-20241018_macroalpha82_rg35xx_add_additional_hardware_support
+and 0159-arm64-dts-rg35xx-2024-keep-the-second-sd-card-powered. The supply stays
+on, as the vendor firmware leaves it. Aliases keep TF1 at mmcblk0 whatever order
+the hosts probe in, which they do asynchronously.
+---
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
+@@ -80,3 +80,36 @@
+ &mmc1 {
+ 	keep-power-in-suspend;
+ };
++
++/*
++ * The second card slot, TF2, as in ROCKNIX's 0126 and 0159. Its 3.3V supply is
++ * switched by PE4 and stays on: off, the card is powered back through its
++ * pulled-up I/O pins. The aliases fix the card numbers: TF1 is mmcblk0, TF2 mmcblk2.
++ */
++/ {
++	aliases {
++		mmc0 = &mmc0;
++		mmc1 = &mmc1;
++		mmc2 = &mmc2;
++	};
++
++	reg_vcc3v3_mmc2: regulator-vcc3v3-mmc2 {
++		compatible = "regulator-fixed";
++		enable-active-high;
++		gpio = <&pio 4 4 GPIO_ACTIVE_HIGH>; /* PE4 */
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++		regulator-name = "vcc3v3-mmc2";
++		regulator-always-on;
++	};
++};
++
++&mmc2 {
++	bus-width = <4>;
++	cd-gpios = <&pio 4 22 GPIO_ACTIVE_LOW>; /* PE22 */
++	disable-wp;
++	no-1-8-v;
++	vmmc-supply = <&reg_vcc3v3_mmc2>;
++	vqmmc-supply = <&reg_cldo3>;
++	status = "okay";
++};

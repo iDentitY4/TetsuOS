@@ -1171,6 +1171,15 @@ pub fn volume_sign(percent: u32, theme: Theme) -> Canvas {
     canvas
 }
 
+/// A short message in the volume sign's place, as wide as it needs.
+pub fn text_sign(text: &str, theme: Theme) -> Canvas {
+    let (width, height) = (text_width(text, TEXT_SCALE) + 16, font::HEIGHT * TEXT_SCALE + 6);
+    let mut canvas = Canvas::new(width, height, theme);
+    canvas.pixels.fill(Rgb(0, 0, 0));
+    canvas.text_at(text, 8, 3, TEXT_SCALE, TEXT);
+    canvas
+}
+
 /// The kernel's boot logo, shown centred on black until the launcher starts. It is made
 /// with `launcher --preview-splash` and kept as `board/rg35xxsp/logo.ppm`, in the first
 /// theme colour whatever is chosen, since the kernel shows it.
@@ -1206,6 +1215,8 @@ pub fn resume_screen(width: usize, height: usize, icon: &Icon, name: &str, theme
 pub struct UsbDriveView<'a> {
     pub status: &'a str,
     pub hint: &'a str,
+    /// Whether the card in TF2 is a second drive.
+    pub tf2: bool,
 }
 
 const USB_DRIVE_TOP: usize = 108;
@@ -1217,6 +1228,7 @@ pub fn usb_drive_screen(width: usize, height: usize, view: &UsbDriveView, frame:
     let lines = [
         tr("THE CARD'S TETSU-DATA PARTITION IS A USB"),
         tr("DRIVE ON THE PC. GAMES GO IN ITS ROMS FOLDER."),
+        if view.tf2 { tr("THE CARD IN TF2 IS A SECOND DRIVE.") } else { "" },
         "",
         tr("THE GAMES AND SETTINGS ARE BACK ON THE"),
         tr("DEVICE ONCE THE PC EJECTS THE DRIVE."),

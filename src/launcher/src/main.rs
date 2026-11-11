@@ -19,6 +19,7 @@ mod boxart;
 mod boxart_fetch;
 mod boxart_screen;
 mod canvas;
+mod cards;
 mod cheats;
 mod clock;
 mod color;
@@ -131,6 +132,9 @@ fn main() -> ExitCode {
             write_ppm(&screens::shutdown_screen(640, 480, i18n::tr("POWERING OFF"), current_theme()), path)
         }
         [flag, path] if flag == "--preview-volume" => write_ppm(&screens::volume_sign(80, current_theme()), path),
+        [flag, path] if flag == "--preview-card" => {
+            write_ppm(&screens::text_sign(&i18n::trf("TF2: {} GAMES", &[&128]), current_theme()), path)
+        }
         [flag, core, rom, save, persistence] if flag == "--play" => {
             app::show_shutdown_on_signal();
             let ending = parse_persistence(persistence).and_then(|persistence| {

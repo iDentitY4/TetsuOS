@@ -8,11 +8,16 @@
 //! The page itself is `transfer_page.html`; what it asks for is answered here, each request
 //! on a thread of its own. Uploads go to a hidden file beside where they belong and are
 //! renamed into place once complete, so the games never show half a file.
+//!
+//! A game is named by its path in `roms`, and one on a card in TF2 by that path after
+//! `TF2:`, which no file on FAT32 or exFAT can start with. Uploads go to TETSU-DATA, or to
+//! TF2 with `card=tf2`.
 
 use crate::boxart::{parse_ppm, ART_DIR};
 use crate::boxart_fetch::{art_path, MAX_SIZE};
 use crate::game_files::{delete_game, GameFiles};
-use crate::library::{build_library, find_roms, rom_label};
+use crate::cards::{self, TF2_ROM_DIR};
+use crate::library::{build_library, find_all_roms, find_roms, rom_label};
 use crate::libretro::resume_path;
 use crate::screenshot::SCREENSHOT_DIR;
 use crate::storage::write_atomic;
@@ -120,7 +125,9 @@ impl Server {
     /// Starts listening on every address, for those who give `code`.
     pub(crate) fn start(code: &str) -> io::Result<Self> {
         let server = tiny_http::Server::http(ADDRESS).map_err(io::Error::other)?;
-        remove_unfinished(Path::new(ROM_DIR));
+        for folder in cards::rom_dirs() {
+            remove_unfinished(folder);
+        }
         let shared = Arc::new(Shared {
             code: code.to_string(),
             sessions: Mutex::default(),
@@ -201,6 +208,7 @@ const NOT_FOUND: Refused = refused(404, "not-found");
 const BAD_NAME: Refused = refused(400, "bad-name");
 const NOT_A_GAME: Refused = refused(415, "not-a-game");
 const NO_GAME: Refused = refused(404, "no-game");
+const NO_CARD: Refused = refused(404, "no-card");
 const NO_LENGTH: Refused = refused(411, "no-length");
 const TOO_LARGE: Refused = refused(413, "too-large");
 const NO_ROOM: Refused = refused(507, "no-room");
@@ -277,7 +285,7 @@ fn route(request: &mut Request, shared: &Shared) -> Result<ResponseBox, Refused>
         (Method::Get, "/api/list") => Ok(json(&listing())),
         (Method::Get, "/api/cover") => cover_image(&find_game(argument("game"))?),
         (Method::Get, "/api/file") => download(argument("path")),
-        (Method::Put, "/api/game") => upload_game(request, argument("name"), shared),
+        (Method::Put, "/api/game") => upload_game(request, argument("name"), card_folder(argument("card"))?, shared),
         (Method::Put, "/api/save") => upload_save(request, &find_game(argument("game"))?, shared),
         (Method::Put, "/api/cover") => upload_cover(request, &find_game(argument("game"))?, shared),
         (Method::Delete, "/api/game") => remove_game(&find_game(argument("game"))?, shared),
@@ -474,9 +482,18 @@ struct Uploaded {
     replaced: bool,
 }
 
-/// A game, into its console's folder. A ZIP goes in a hidden file in `roms` first, until
-/// the game inside tells its console.
-fn upload_game(request: &mut Request, name: &str, shared: &Shared) -> Result<ResponseBox, Refused> {
+/// The `roms` folder of the card an upload asks for, TETSU-DATA's unless it names TF2.
+fn card_folder(card: &str) -> Result<&'static Path, Refused> {
+    match card {
+        "tf2" if cards::tf2_mounted() => Ok(Path::new(TF2_ROM_DIR)),
+        "tf2" => Err(NO_CARD),
+        _ => Ok(Path::new(ROM_DIR)),
+    }
+}
+
+/// A game, into its console's folder on the card `root` is on. A ZIP goes in a hidden file
+/// in `roms` first, until the game inside tells its console.
+fn upload_game(request: &mut Request, name: &str, root: &Path, shared: &Shared) -> Result<ResponseBox, Refused> {
     if !valid_file_name(name) {
         return Err(BAD_NAME);
     }
@@ -484,10 +501,9 @@ fn upload_game(request: &mut Request, name: &str, shared: &Shared) -> Result<Res
     if size > LARGEST_FILE {
         return Err(TOO_LARGE);
     }
-    if free_space(Path::new(ROM_DIR)).is_some_and(|free| free < size + KEPT_FREE) {
+    if free_space(root).is_some_and(|free| free < size + KEPT_FREE) {
         return Err(NO_ROOM);
     }
-    let root = Path::new(ROM_DIR);
     let roms = find_roms(root);
     let extension = extension_of(name);
     let console = if extension == "zip" { None } else { Some(console_for_upload(&extension).ok_or(NOT_A_GAME)?) };
@@ -521,7 +537,7 @@ fn upload_game(request: &mut Request, name: &str, shared: &Shared) -> Result<Res
     }
     println!("transfer: received {} ({size} bytes{})", destination.display(), if replaced { ", replaced" } else { "" });
     shared.finished(Done::Received(name.to_string()), true);
-    Ok(json(&Uploaded { path: relative(&destination, root), replaced }))
+    Ok(json(&Uploaded { path: game_id(&destination), replaced }))
 }
 
 /// Reads a whole body of at most `largest` bytes.
@@ -583,7 +599,7 @@ fn upload_cover(request: &mut Request, rom: &Path, shared: &Shared) -> Result<Re
 }
 
 fn remove_game(rom: &Path, shared: &Shared) -> Result<ResponseBox, Refused> {
-    let roms = find_roms(Path::new(ROM_DIR));
+    let roms = find_all_roms();
     let library = build_library(
         &roms,
         &recent::load(Path::new(recent::RECENT_PATH)),
@@ -599,10 +615,23 @@ fn remove_game(rom: &Path, shared: &Shared) -> Result<ResponseBox, Refused> {
     Ok(json(&serde_json::json!({})))
 }
 
-/// A game on the card, from its path in `roms`. Only games the launcher lists are found,
-/// so a path can't reach anything else.
-fn find_game(relative_path: &str) -> Result<PathBuf, Refused> {
-    let root = Path::new(ROM_DIR);
+/// What starts the name of a game on TF2.
+const TF2_PREFIX: &str = "TF2:";
+
+/// A game's name for the page: its path in `roms`, after `TF2:` for one on TF2.
+fn game_id(rom: &Path) -> String {
+    let root = cards::rom_root(rom);
+    let path = relative(rom, root);
+    if cards::on_tf2(rom) { format!("{TF2_PREFIX}{path}") } else { path }
+}
+
+/// A game on a card, from its name for the page. Only games the launcher lists are found,
+/// so a name can't reach anything else.
+fn find_game(id: &str) -> Result<PathBuf, Refused> {
+    let (root, relative_path) = match id.strip_prefix(TF2_PREFIX) {
+        Some(path) => (card_folder("tf2").map_err(|_| NO_GAME)?, path),
+        None => (Path::new(ROM_DIR), id),
+    };
     let wanted = root.join(relative_path);
     find_roms(root).into_iter().find(|rom| *rom == wanted).ok_or(NO_GAME)
 }
@@ -729,9 +758,18 @@ struct ConsoleListing {
 }
 
 #[derive(Serialize)]
+struct CardListing {
+    key: &'static str,
+    free: Option<u64>,
+}
+
+#[derive(Serialize)]
 struct Listing {
     language: &'static str,
+    /// TETSU-DATA's free space.
     free: Option<u64>,
+    /// The cards uploads can go to, TETSU-DATA first, with `tf2` only while one is in.
+    cards: Vec<CardListing>,
     /// Every extension the page may send, without the dot.
     accepts: Vec<&'static str>,
     consoles: Vec<ConsoleListing>,
@@ -739,16 +777,15 @@ struct Listing {
 }
 
 fn listing() -> Listing {
-    let root = Path::new(ROM_DIR);
     let mut consoles: Vec<ConsoleListing> = SYSTEMS
         .iter()
         .map(|system| ConsoleListing { key: system.key, name: system.console, extensions: system.extensions, games: Vec::new() })
         .collect();
-    for rom in find_roms(root) {
+    for rom in find_all_roms() {
         let Some(index) = system_index(&rom) else { continue };
         let files = GameFiles::of(&rom);
         consoles[index].games.push(GameListing {
-            path: relative(&rom, root),
+            path: game_id(&rom),
             name: rom_label(&rom),
             size: files.size(),
             cover: !files.cover.is_empty(),
@@ -767,7 +804,12 @@ fn listing() -> Listing {
     let mut accepts: Vec<&'static str> = SYSTEMS.iter().flat_map(|system| system.extensions.iter().copied()).collect();
     accepts.extend(DISC_TRACKS);
     accepts.push("zip");
-    Listing { language: settings::get().language.key(), free: free_space(root), accepts, consoles, screenshots }
+    let free = free_space(Path::new(ROM_DIR));
+    let mut cards = vec![CardListing { key: "tf1", free }];
+    if cards::tf2_mounted() {
+        cards.push(CardListing { key: "tf2", free: free_space(Path::new(TF2_ROM_DIR)) });
+    }
+    Listing { language: settings::get().language.key(), free, cards, accepts, consoles, screenshots }
 }
 
 #[cfg(test)]

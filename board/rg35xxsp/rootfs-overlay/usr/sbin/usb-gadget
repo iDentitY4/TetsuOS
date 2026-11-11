@@ -3,15 +3,18 @@
 #
 #   network   serial console (ttyGS0) plus CDC Ethernet (usb0), as the device runs
 #   storage   CDC Ethernet plus the TETSU-DATA partition as a USB drive, for
-#             Settings > SYSTEM > USB STORAGE
+#             Settings > SYSTEM > USB STORAGE, and the card in TF2 as a second one
 #
 # The controller has 4 IN and 4 OUT endpoints. Serial and Ethernet take 2 IN and
 # 1 OUT each, and the drive 1 IN and 1 OUT, so the drive replaces the serial port.
 #
 # usb-gadget start      sets up the functions and binds the network layout (S41usbnet)
-# usb-gadget storage    unmounts TETSU-DATA and hands it to the PC as a drive
-# usb-gadget network    takes it back, checks it with fsck.fat and mounts it again
-# usb-gadget ejected    exits 0 if the PC has ejected the drive, or it was never given
+# usb-gadget storage    unmounts TETSU-DATA, and TF2's games, and hands them to the PC
+# usb-gadget network    takes them back, checks them with fsck and mounts them again
+# usb-gadget ejected    exits 0 if the PC has ejected the drives, or they were never given
+#
+# Both drives are LUNs of one mass storage function, which needs no more endpoints.
+# TF2 goes as the whole card, so the PC can also format it.
 #
 # Each layout has its own product ID, because Windows remembers a device's interfaces
 # by its IDs. The network one is the ID that g_cdc, used before, had.
@@ -19,11 +22,13 @@
 G=/sys/kernel/config/usb_gadget/tetsu
 CONFIG="$G/configs/c.1"
 LUN="$G/functions/mass_storage.0/lun.0"
+TF2_LUN="$G/functions/mass_storage.0/lun.1"
 DATA=/mnt/data
+TF2=/mnt/tf2
 LABEL=TETSU-DATA
 
 data_device() {
-	blkid | grep "LABEL=\"$LABEL\"" | head -n 1 | cut -d: -f1
+	/usr/sbin/cards data
 }
 
 setup() {
@@ -49,6 +54,8 @@ setup() {
 	mkdir "$G/functions/mass_storage.0"
 	# Removable, so the PC can eject it, which closes it here (see "ejected")
 	echo 1 > "$LUN/removable"
+	mkdir "$G/functions/mass_storage.0/lun.1"
+	echo 1 > "$TF2_LUN/removable"
 
 	mkdir "$CONFIG"
 	echo 500 > "$CONFIG/MaxPower"
@@ -86,25 +93,42 @@ storage)
 	if mountpoint -q "$DATA"; then
 		umount "$DATA" || { echo "usb-gadget: $LABEL is in use" >&2; exit 2; }
 	fi
+	tf2="$(/usr/sbin/cards disk tf2)"
+	if [ -n "$tf2" ] && mountpoint -q "$TF2" && ! umount "$TF2"; then
+		/etc/init.d/S15data start
+		echo "usb-gadget: TF2 is in use" >&2
+		exit 2
+	fi
 	echo "$dev" > "$LUN/file" || { /etc/init.d/S15data start; exit 1; }
+	# Without a card, the PC sees an empty card reader
+	[ -n "$tf2" ] && { echo "$tf2" > "$TF2_LUN/file" || echo "usb-gadget: TF2 can't be a drive" >&2; }
 	use 0xa4a5 ecm.usb0 mass_storage.0
-	echo "usb-gadget: $dev is a USB drive"
+	echo "usb-gadget: $dev${tf2:+ and $tf2} are USB drives"
 	;;
 network)
 	setup
 	# Closes the drive even if the PC still has it open
+	tf2_given="$(cat "$TF2_LUN/file")"
 	[ -n "$(cat "$LUN/file")" ] && echo 1 > "$LUN/forced_eject"
+	[ -n "$tf2_given" ] && echo 1 > "$TF2_LUN/forced_eject"
 	use 0xa4aa acm.GS0 ecm.usb0
+	if [ -n "$tf2_given" ] && ! mountpoint -q "$TF2"; then
+		# The PC may have partitioned or formatted the card anew
+		partprobe "$tf2_given" 2> /dev/null
+		# Repairs what a PC unplugged without ejecting may have left half written
+		/usr/sbin/cards check
+	fi
 	if ! mountpoint -q "$DATA"; then
 		dev="$(data_device)"
-		# Repairs what a PC unplugged without ejecting may have left half written
 		[ -n "$dev" ] && fsck.fat -a -w "$dev"
 		/etc/init.d/S15data start
+	else
+		/usr/sbin/cards mount
 	fi
 	echo "usb-gadget: back to serial and network"
 	;;
 ejected)
-	[ -z "$(cat "$LUN/file" 2>/dev/null)" ]
+	[ -z "$(cat "$LUN/file" 2>/dev/null)" ] && [ -z "$(cat "$TF2_LUN/file" 2>/dev/null)" ]
 	;;
 *)
 	echo "Usage: $0 {start|storage|network|ejected}"

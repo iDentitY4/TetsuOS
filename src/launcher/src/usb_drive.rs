@@ -2,7 +2,7 @@
 //! PC, through `/usr/sbin/usb-gadget`. The partition is unmounted meanwhile, so nothing
 //! here reads or writes the settings or games until it is mounted again. Leaving, by
 //! ejecting the drive on the PC or pressing B, checks the partition, mounts it and reads
-//! the settings and games again.
+//! the settings and games again. A card in TF2 is a second drive, given back the same way.
 
 use crate::{fb, power, screens, settings, sounds};
 use crate::app::{button_sound, shut_down};
@@ -20,8 +20,10 @@ use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 const GADGET: &str = "/usr/sbin/usb-gadget";
-/// The drive's open file, which `usb-gadget` sets and the PC's eject empties.
+/// The drives' open files, which `usb-gadget` sets and the PC's eject empties: TETSU-DATA's,
+/// and TF2's card, empty without one.
 const LUN_FILE: &str = "/sys/kernel/config/usb_gadget/tetsu/functions/mass_storage.0/lun.0/file";
+const TF2_LUN_FILE: &str = "/sys/kernel/config/usb_gadget/tetsu/functions/mass_storage.0/lun.1/file";
 const UDC_DIR: &str = "/sys/class/udc";
 /// How often the PC's eject and the cable are checked.
 const POLL: Duration = Duration::from_millis(500);
@@ -57,23 +59,30 @@ fn link() -> UsbLink {
     parse_link(&state)
 }
 
+/// Whether the PC has ejected both drives.
 fn ejected() -> bool {
-    std::fs::read_to_string(LUN_FILE).is_ok_and(|file| file.trim().is_empty())
+    std::fs::read_to_string(LUN_FILE).is_ok_and(|file| file.trim().is_empty()) && !tf2_given()
+}
+
+fn tf2_given() -> bool {
+    std::fs::read_to_string(TF2_LUN_FILE).is_ok_and(|file| !file.trim().is_empty())
 }
 
 /// What the screen says, for the link and whether B was pressed once already.
-pub(crate) fn usb_drive_view(link: UsbLink, confirming: bool) -> screens::UsbDriveView<'static> {
+pub(crate) fn usb_drive_view(link: UsbLink, confirming: bool, tf2: bool) -> screens::UsbDriveView<'static> {
     let status = match link {
         UsbLink::Unplugged => tr("CONNECT THE DEVICE TO A PC"),
         UsbLink::Connecting => tr("CONNECTING TO THE PC"),
         UsbLink::Connected => tr("CONNECTED TO THE PC"),
     };
-    let hint = match (link, confirming) {
-        (UsbLink::Connected, true) => tr("THE PC HAS NOT EJECTED IT - B AGAIN LEAVES"),
-        (UsbLink::Connected, false) => tr("EJECT THE DRIVE ON THE PC - B LEAVES"),
+    let hint = match (link, confirming, tf2) {
+        (UsbLink::Connected, true, false) => tr("THE PC HAS NOT EJECTED IT - B AGAIN LEAVES"),
+        (UsbLink::Connected, true, true) => tr("THE PC HAS NOT EJECTED THEM - B AGAIN LEAVES"),
+        (UsbLink::Connected, false, false) => tr("EJECT THE DRIVE ON THE PC - B LEAVES"),
+        (UsbLink::Connected, false, true) => tr("EJECT THE DRIVES ON THE PC - B LEAVES"),
         _ => tr("B BACK"),
     };
-    screens::UsbDriveView { status, hint }
+    screens::UsbDriveView { status, hint, tf2 }
 }
 
 /// How the drive was left.
@@ -102,6 +111,7 @@ pub(crate) fn usb_drive(framebuffer: &mut fb::Framebuffer, events: &Receiver<Eve
         return Ok(false);
     }
     println!("usb storage: started {}", boot_time());
+    let tf2 = tf2_given();
 
     let mut monitor = power::Monitor::new();
     let mut confirming = false;
@@ -127,7 +137,7 @@ pub(crate) fn usb_drive(framebuffer: &mut fb::Framebuffer, events: &Receiver<Eve
         confirming &= link == UsbLink::Connected;
         let now_shown = (link, confirming, battery, corner_clock());
         if shown.as_ref() != Some(&now_shown) {
-            let mut canvas = screens::usb_drive_screen(width, height, &usb_drive_view(link, confirming), &screen_frame(battery));
+            let mut canvas = screens::usb_drive_screen(width, height, &usb_drive_view(link, confirming, tf2), &screen_frame(battery));
             add_clock(&mut canvas, battery);
             framebuffer.draw(&canvas)?;
             shown = Some(now_shown);
@@ -200,8 +210,10 @@ mod tests {
 
     #[test]
     fn b_asks_again_only_while_the_pc_uses_the_drive() {
-        assert_eq!(usb_drive_view(UsbLink::Unplugged, false).hint, "B BACK");
-        assert_eq!(usb_drive_view(UsbLink::Connected, false).hint, "EJECT THE DRIVE ON THE PC - B LEAVES");
-        assert!(usb_drive_view(UsbLink::Connected, true).hint.contains("B AGAIN"));
+        assert_eq!(usb_drive_view(UsbLink::Unplugged, false, false).hint, "B BACK");
+        assert_eq!(usb_drive_view(UsbLink::Connected, false, false).hint, "EJECT THE DRIVE ON THE PC - B LEAVES");
+        assert_eq!(usb_drive_view(UsbLink::Connected, false, true).hint, "EJECT THE DRIVES ON THE PC - B LEAVES");
+        assert!(usb_drive_view(UsbLink::Connected, true, false).hint.contains("B AGAIN"));
+        assert!(usb_drive_view(UsbLink::Connected, true, true).hint.contains("THEM - B AGAIN"));
     }
 }

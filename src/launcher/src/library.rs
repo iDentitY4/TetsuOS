@@ -1,9 +1,9 @@
-//! The games on the card, sorted onto shelves by console, and the home screen's tiles.
+//! The games on the cards, sorted onto shelves by console, and the home screen's tiles.
 
-use crate::{achievements, favorites, game_files, icons, names, recent, rom_zip, settings, storage};
+use crate::{achievements, cards, favorites, game_files, icons, names, recent, rom_zip, settings, storage};
 use crate::i18n::tr;
 use crate::launcher::{Game, Launcher, Library, List, Shelf, Tile};
-use crate::systems::{ROM_DIR, system_for, system_index, SYSTEMS};
+use crate::systems::{system_for, system_index, SYSTEMS};
 use std::collections::{BTreeMap, HashSet};
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt;
@@ -16,6 +16,30 @@ use std::path::{Component, Path, PathBuf};
 /// so that a game with several shows once.
 pub(crate) fn find_roms(directory: &Path) -> Vec<PathBuf> {
     rom_zip::forget_all();
+    find_roms_in(directory)
+}
+
+/// The games on TETSU-DATA and a card in TF2, by `find_roms`. A game at the same place in
+/// both `roms` folders shows once, from TETSU-DATA.
+pub(crate) fn find_all_roms() -> Vec<PathBuf> {
+    merge_cards(&cards::rom_dirs())
+}
+
+fn merge_cards(folders: &[&Path]) -> Vec<PathBuf> {
+    rom_zip::forget_all();
+    let mut seen = HashSet::new();
+    let mut roms = Vec::new();
+    for folder in folders {
+        for rom in find_roms_in(folder) {
+            if seen.insert(path_key(rom.strip_prefix(folder).unwrap_or(&rom))) {
+                roms.push(rom);
+            }
+        }
+    }
+    roms
+}
+
+fn find_roms_in(directory: &Path) -> Vec<PathBuf> {
     let mut roms = Vec::new();
     add_roms(directory, &mut roms);
     let discs: HashSet<String> = roms
@@ -324,7 +348,7 @@ pub(crate) fn tile_look(tile: Tile) -> (&'static icons::Icon, &'static str) {
 
 pub(crate) fn load_library() -> Library {
     let mut library = build_library(
-        &find_roms(Path::new(ROM_DIR)),
+        &find_all_roms(),
         &recent::load(Path::new(recent::RECENT_PATH)),
         &favorites::load(Path::new(favorites::FAVORITES_PATH)),
         settings::get().game_names,
@@ -609,6 +633,16 @@ mod tests {
     #[test]
     fn an_m3u_is_a_playstation_game() {
         assert_eq!(SYSTEMS[system_index(Path::new("/r/FF.M3U")).unwrap()].console, "PLAYSTATION");
+    }
+
+    #[test]
+    fn two_cards_merge_with_a_game_on_both_shown_once() {
+        let tf1 = temporary_roms("cards-tf1", &["GB/Both.gb", "GB/One.gb"]);
+        let tf2 = temporary_roms("cards-tf2", &["gb/both.gb", "GBA/Two.gba"]);
+        let roms = merge_cards(&[&tf1, &tf2, Path::new("/does/not/exist")]);
+        assert_eq!(roms, [tf1.join("GB/Both.gb"), tf1.join("GB/One.gb"), tf2.join("GBA/Two.gba")]);
+        std::fs::remove_dir_all(&tf1).unwrap();
+        std::fs::remove_dir_all(&tf2).unwrap();
     }
 
     #[test]

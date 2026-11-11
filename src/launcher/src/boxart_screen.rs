@@ -6,9 +6,9 @@ use crate::corner::{add_clock, BATTERY_REFRESH, corner_clock, read_battery, scre
 use crate::i18n::{tr, trf};
 use crate::input::{Button, Event};
 use crate::launcher::ArtDownload;
-use crate::library::find_roms;
+use crate::library::find_all_roms;
 use crate::sleep::sleep_until_lid_opens;
-use crate::systems::{ROM_DIR, system_for};
+use crate::systems::system_for;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
@@ -29,7 +29,7 @@ pub(crate) fn internet_problem() -> Option<&'static str> {
 
 /// The games on the card that can have a cover, with whether each has one.
 pub(crate) fn games_with_covers() -> Vec<(boxart_fetch::Job, bool)> {
-    find_roms(Path::new(ROM_DIR))
+    find_all_roms()
         .into_iter()
         .filter_map(|rom| {
             let collection = system_for(&rom)?.thumbnails?;

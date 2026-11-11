@@ -1,7 +1,7 @@
 //! The launcher's main loop: drawing its screens and carrying out what presses ask for.
 
 use crate::{
-    achievements, boot_partition, boxart, canvas, cheats, clock, controls, core_options, favorites,
+    achievements, boot_partition, boxart, canvas, cards, cheats, clock, controls, core_options, favorites,
     fb, game_files, icons, input, keyboard, launcher, performance, power, rumble, screens, settings, sounds,
     ssh,
 };
@@ -48,6 +48,9 @@ pub(crate) const SCROLL_TICK: Duration = Duration::from_millis(50);
 
 /// How long the volume stays on screen after a volume button.
 const VOLUME_SIGN_TIME: Duration = Duration::from_millis(1500);
+
+/// How long a card going in or out of TF2 is on screen.
+const CARD_SIGN_TIME: Duration = Duration::from_millis(3000);
 
 pub(crate) fn open_framebuffer() -> io::Result<fb::Framebuffer> {
     let mut remaining = FB_WAIT_SECONDS;
@@ -106,6 +109,18 @@ pub(crate) fn change_volume(button: Button) -> Option<u32> {
 pub(crate) fn show_volume(framebuffer: &mut fb::Framebuffer, percent: u32) -> io::Result<()> {
     let sign = screens::volume_sign(percent, current_theme());
     framebuffer.show_sign(&sign, screens::VOLUME_SIGN_TOP, VOLUME_SIGN_TIME)
+}
+
+/// Says at the top of the screen what a card going in or out of TF2 did.
+fn show_card_sign(framebuffer: &mut fb::Framebuffer, change: cards::Change, games: usize) -> io::Result<()> {
+    let text = match change {
+        cards::Change::Mounted if games == 1 => tr("TF2: 1 GAME").to_string(),
+        cards::Change::Mounted => trf("TF2: {} GAMES", &[&games.to_string()]),
+        cards::Change::Unreadable => tr("TF2: CAN'T READ THE CARD").to_string(),
+        cards::Change::Removed => tr("TF2: CARD TAKEN OUT").to_string(),
+    };
+    let sign = screens::text_sign(&text, current_theme());
+    framebuffer.show_sign(&sign, screens::VOLUME_SIGN_TOP, CARD_SIGN_TIME)
 }
 
 /// A volume button in the menus: changes the volume and shows it.
@@ -489,6 +504,8 @@ pub(crate) enum Wake {
     Redraw,
     /// No press for as long as Settings > SYSTEM > SLEEP WHEN IDLE allows.
     Idle,
+    /// A card went in or out of TF2, and was mounted or unmounted.
+    Card(cards::Change),
 }
 
 /// Changes the settings and saves them, warning if they can't be saved.
@@ -1016,6 +1033,7 @@ struct Watch {
     last_press: Instant,
     /// Set when only the scrolling name needs drawing again.
     scroll_tick: bool,
+    cards: cards::Watch,
 }
 
 /// Waits for input or a held button's repeat, waking to redraw when the battery changes and
@@ -1052,6 +1070,9 @@ fn wait_for_wake(
                 }
                 if watch.battery_read.elapsed() >= BATTERY_REFRESH {
                     watch.battery_read = Instant::now();
+                    if let Some(change) = watch.cards.check() {
+                        return Some(Wake::Card(change));
+                    }
                     let reading = read_battery(&power::battery_dir());
                     if reading != watch.battery {
                         watch.battery = reading;
@@ -1083,7 +1104,7 @@ fn action_for(
     watch: &mut Watch,
 ) -> io::Result<Action> {
     Ok(match wake {
-        Wake::Redraw => Action::Nothing,
+        Wake::Redraw | Wake::Card(_) => Action::Nothing,
         Wake::Idle => {
             repeater.stop();
             println!("sleeping after {} idle minutes {}", settings::get().idle_minutes, boot_time());
@@ -1141,6 +1162,9 @@ pub(crate) fn run_launcher() -> io::Result<()> {
     crate::audio_out::watch();
     let mut launcher = Launcher::new();
     let mut repeater = Repeater::new();
+    // Mounts a card that went in after S15data looked, before the games are read.
+    let mut card_watch = cards::Watch::new();
+    card_watch.check();
     let mut library = load_library();
     launcher.achievements_logged_in = achievements::Account::read(Path::new(achievements::ACCOUNT_PATH)).is_some();
     let mut monitor = power::Monitor::new();
@@ -1166,6 +1190,7 @@ pub(crate) fn run_launcher() -> io::Result<()> {
         shown_clock: None,
         last_press: Instant::now(),
         scroll_tick: false,
+        cards: card_watch,
     };
 
     loop {
@@ -1209,6 +1234,15 @@ pub(crate) fn run_launcher() -> io::Result<()> {
         };
         if matches!(wake, Wake::Event(_) | Wake::Repeat(..)) {
             watch.last_press = Instant::now();
+        }
+        if let Wake::Card(change) = wake {
+            art.clear();
+            let selected = launcher.selected_path(&library);
+            library = reload_library(&library);
+            launcher.select_path(&library, selected.as_deref());
+            launcher.leave_empty_list(&library);
+            let tf2_games = library.shelves.iter().flat_map(|shelf| &shelf.games).filter(|game| cards::on_tf2(&game.path)).count();
+            show_card_sign(&mut framebuffer, change, tf2_games)?;
         }
         if let Some(sound) = menu_sound(&wake) {
             if settings::get().menu_sounds {

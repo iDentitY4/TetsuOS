@@ -47,6 +47,8 @@ input[type=search], input[name=code] {
 input[name=code] { font-size: 28px; letter-spacing: 0.2em; text-align: center; max-width: 260px; display: block; margin: 12px 0; }
 .drop { border: 2px dashed var(--line); text-align: center; }
 .drop.over { border-color: var(--accent); }
+.target { display: flex; justify-content: center; align-items: center; gap: 6px; margin-bottom: 12px; }
+.target button[aria-pressed=true] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .queue { text-align: left; margin-top: 12px; }
 .item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 14px; }
 .item .name { overflow-wrap: anywhere; }
@@ -100,6 +102,11 @@ summary { cursor: pointer; font-weight: 600; padding: 8px 0; }
   <section class="card drop" id="drop">
     <h2 data-t="Add games"></h2>
     <p class="muted small" data-t="Drop game files here or choose them. Each goes to its console by its file type; a ZIP by the game inside. For a PlayStation disc, send the .cue with its .bin files."></p>
+    <div class="target" id="target" hidden>
+      <span class="muted small" data-t="Send to:"></span>
+      <button type="button" data-card="tf1" data-t="TF1 card"></button>
+      <button type="button" data-card="tf2" data-t="TF2 card"></button>
+    </div>
     <label class="button primary"><input type="file" id="pick" multiple hidden><span data-t="Choose files"></span></label>
     <div class="queue" id="queue"></div>
   </section>
@@ -129,6 +136,11 @@ const GERMAN = {
   "Search the games": "Spiele durchsuchen",
   "Screenshots": "Screenshots",
   "{0} free": "{0} frei",
+  "{0}: {1} free": "{0}: {1} frei",
+  "Send to:": "Senden an:",
+  "TF1 card": "Karte in TF1",
+  "TF2 card": "Karte in TF2",
+  "The card in TF2 is no longer there": "Die Karte in TF2 ist nicht mehr da",
   "Waiting": "Wartet",
   "Sending {0}%": "Sende {0} %",
   "Added": "Hinzugefügt",
@@ -173,6 +185,7 @@ const REASONS = {
   "incomplete": "The file did not arrive whole",
   "write-failed": "The card could not be written",
   "no-game": "The game is no longer on the card",
+  "no-card": "The card in TF2 is no longer there",
   "network": "No connection to the device",
 };
 const reason = (code) => t(REASONS[code] || "Something went wrong");
@@ -261,8 +274,21 @@ function showLogin() {
   showOnly("login");
 }
 
+// Where new games go: TF2 while a card is in it, unless TF1 was chosen.
+let card = "tf2";
+try { card = localStorage.getItem("card") || card; } catch (error) { /* no storage */ }
+const cardListing = (key) => listing && listing.cards.find((known) => known.key === key);
+const uploadCard = () => (cardListing(card) ? card : "tf1");
+
 function render() {
-  $("free").textContent = listing.free == null ? "" : t("{0} free", size(listing.free));
+  const known = listing.cards.filter((entry) => entry.free != null);
+  $("free").textContent = listing.cards.length > 1
+    ? known.map((entry) => t("{0}: {1} free", entry.key.toUpperCase(), size(entry.free))).join(" · ")
+    : listing.free == null ? "" : t("{0} free", size(listing.free));
+  $("target").hidden = listing.cards.length < 2;
+  for (const button of $("target").querySelectorAll("button")) {
+    button.setAttribute("aria-pressed", String(button.dataset.card === uploadCard()));
+  }
   const filter = $("search").value.trim().toLowerCase();
   const consoles = $("consoles");
   const open = new Set([...consoles.querySelectorAll("details[open]")].map((node) => node.dataset.key));
@@ -395,7 +421,7 @@ function addGames(files) {
     const fill = el("div");
     const item = el("div", { class: "item" }, el("span", { class: "name" }, file.name), status, el("div", { class: "bar" }, fill));
     $("queue").prepend(item);
-    waiting.push({ file, status, fill });
+    waiting.push({ file, status, fill, card: uploadCard() });
   }
   sendNext();
 }
@@ -411,19 +437,22 @@ async function sendNext() {
   if (!next) { refresh(); return; }
   sending = true;
   const { file, status, fill } = next;
+  const target = cardListing(next.card);
   const fail = (code) => { status.textContent = t("Not sent: {0}", reason(code)); status.className = "bad"; };
   if (listing && !listing.accepts.includes(extension(file.name))) fail("not-a-game");
-  else if (listing && listing.free != null && file.size + 16 * 1024 * 1024 > listing.free) fail("no-room");
+  else if (listing && !target) fail("no-card");
+  else if (target && target.free != null && file.size + 16 * 1024 * 1024 > target.free) fail("no-room");
   else {
     try {
-      const answer = await send("PUT", "/api/game?name=" + encodeURIComponent(file.name), file, (part) => {
+      const address = "/api/game?name=" + encodeURIComponent(file.name) + "&card=" + next.card;
+      const answer = await send("PUT", address, file, (part) => {
         status.textContent = t("Sending {0}%", Math.floor(part * 100));
         fill.style.width = (part * 100) + "%";
       });
       fill.style.width = "100%";
       status.textContent = answer.replaced ? t("Replaced") : t("Added");
       status.className = "ok";
-      if (listing && listing.free != null) listing.free -= file.size;
+      if (target && target.free != null) target.free -= file.size;
     } catch (error) {
       fail(error);
     }
@@ -442,6 +471,13 @@ drop.addEventListener("drop", (event) => {
 });
 $("pick").addEventListener("change", (event) => { addGames([...event.target.files]); event.target.value = ""; });
 $("search").addEventListener("input", () => listing && render());
+for (const button of $("target").querySelectorAll("button")) {
+  button.addEventListener("click", () => {
+    card = button.dataset.card;
+    try { localStorage.setItem("card", card); } catch (error) { /* no storage */ }
+    render();
+  });
+}
 refresh();
 </script>
 </body>

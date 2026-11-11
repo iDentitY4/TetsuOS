@@ -23,7 +23,9 @@ served only while its screen is open, with a code on screen; the vibration motor
 games that rumble (not PlayStation, see `docs/features.md`), with a strength setting;
 Bluetooth (Settings > BLUETOOTH, off by default): controllers, checked with a Backbone Pro,
 and headphones through bluez-alsa, checked with a Bose QC35 II, the sound moving to the
-speaker and back as they go and come.
+speaker and back as they go and come. A second card in TF2 (FAT32 or exFAT) adds the
+games in its `roms` folder, mounted at `/mnt/tf2` as it goes in and out, also through
+USB STORAGE (a second drive) and WI-FI TRANSFER (a SEND TO choice).
 
 Games: NES (FCEUmm), SNES (Snes9x), Game Boy, Color and Advance (mGBA), PlayStation (PCSX
 ReARMed, with discs grouped by name or an `.m3u`, and CHANGE DISC), Mega Drive, Master System and Game Gear (Genesis Plus GX), PC Engine (Beetle PCE
@@ -44,6 +46,9 @@ ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Not yet checked by the user
 
+- TF2 (2026-11-11): all of it on the device: the slot itself, FAT32 and exFAT cards,
+  putting a card in and taking it out in the menus, the sign, a card swapped during lid
+  sleep, USB STORAGE's second drive, WI-FI TRANSFER to TF2, the German wording
 - Bluetooth: controllers other than the Backbone Pro (classic ones such as a DualShock 4),
   a D-pad hat and stick, vibration, a lid close, the German wording on the device;
   headphones' volume buttons and how their delay feels in a game
@@ -101,7 +106,7 @@ ADVANCED > RUN SETUP AGAIN repeats.
   the menus; `--play`: one game in its own process; `--preview*`: PC screenshots).
   `app.rs` has the menus' loop and actions, `systems.rs` the consoles, `library.rs` the
   games and tiles, `game.rs` running and resuming games, `libretro/` the frontend (`ffi`, `host`, `core`, `scale`, `save`, `audio`, `menu`, `play`),
-  `rom_zip.rs` games in ZIPs, `bluetooth.rs` (BlueZ over `zbus`), `bluetooth_menu.rs` and `bluetooth_screen.rs`
+  `rom_zip.rs` games in ZIPs, `cards.rs` the second card slot, `bluetooth.rs` (BlueZ over `zbus`), `bluetooth_menu.rs` and `bluetooth_screen.rs`
   the Bluetooth screen, `audio_out.rs` where sound goes (Bluetooth headphones or the speaker), `transfer.rs` and `transfer_server.rs` the Wi-Fi transfer
   screen and web page (`transfer_page.html`), `controls.rs` button layouts and turbo, `core_options.rs` cores' own options, `cheats.rs` cheat files and the CHEATS page, `achievements.rs` RetroAchievements through rcheevos, `game_files.rs` which files are a game's, `screenshot.rs` the in-game menu's pictures, `sleep.rs`, `corner.rs` (clock and battery), `sounds.rs` the menu sounds and boot jingle, `boot_animation.rs` the animation drawn with it, `launcher.rs` the button logic,
   `screens.rs` and `canvas.rs` the drawing, `pause_screens.rs` the in-game menu's, `paths.rs`
@@ -160,6 +165,8 @@ In short here; `docs/features.md` has them in full.
 - **USB power may start the device** (AXP717). Test shutdown with the cable unplugged.
 - **Kernel power-off** writes the wrong AXP717 register, but falls through to PSCI, and
   TF-A turns it off.
+- **TF2 is `mmc2`** (patch 0018), with a 3.3 V switch on PE4 that must stay on.
+  `/usr/sbin/cards` finds each slot's card by its controller, not its number.
 - **The vibration motor is on PH2, PWM channel 2** (patch 0015); it adds an input device,
   so `/dev/input/event*` numbers move: find devices by name.
 - **X and Y are swapped on this unit** against the shared device tree; patch 0008 swaps them.

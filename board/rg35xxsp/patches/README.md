@@ -57,6 +57,13 @@ Ten patches are specific to this project:
   which `extlinux.conf` sets to 5000, so the Bluetooth firmware upload at boot doesn't
   slow the init scripts (0.2 s). It holds back the link sync, not the reset: Wi-Fi fails
   to load its firmware while the Bluetooth half is in reset.
+- `linux/0018-rg35xx-sp-second-card-slot.patch` turns on the second card slot, TF2, on
+  `mmc2`: card detect on PE22, I/O from `cldo3`, and a 3.3 V supply switched by PE4 that
+  stays on. The values are ROCKNIX's, from
+  `0126-20241018_macroalpha82_rg35xx_add_additional_hardware_support.patch` and
+  `0159-arm64-dts-rg35xx-2024-keep-the-second-sd-card-powered.patch`; with the supply
+  off, the card is powered back through its pulled-up pins. It also adds `mmc` aliases,
+  so TF1 stays `mmcblk0` and TF2 is `mmcblk2` though the hosts probe asynchronously.
 - `bluez5_utils/0001-device-raise-le-security-on-demand.patch` keeps BlueZ from starting
   encryption as soon as a paired LE device connects, and lets the first read the device
   refuses unencrypted start it instead. Started 26 ms in, a Backbone Pro never answered
