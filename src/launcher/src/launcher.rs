@@ -3,6 +3,7 @@
 
 use crate::i18n::tr;
 use crate::input::Button;
+use crate::play_log::Log;
 use crate::settings::{GameSort, GridSize, NoticeKind};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -13,6 +14,8 @@ use std::time::SystemTime;
 pub const COLUMNS: usize = 4;
 /// Games per screen in a list, which Left and Right move by.
 pub const PAGE: usize = 12;
+/// Consoles in view at once on the statistics screen.
+pub const STATS_CONSOLE_ROWS: usize = 5;
 
 #[derive(Clone)]
 pub struct Game {
@@ -54,6 +57,8 @@ pub struct Library {
     /// Each system's last played game and when, by index, found the first time the home
     /// screen asks. A new library starts without them.
     pub last_played: RefCell<HashMap<usize, Option<LastPlayed>>>,
+    /// Play time by day and console, for the statistics screen.
+    pub play_log: Log,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -86,6 +91,8 @@ pub enum Screen {
     Info,
     /// The list of home screen tiles to show or hide.
     HomeTiles,
+    /// Play time per console and per week, from the play log.
+    Statistics,
 }
 
 /// What can be done from a game's details.
@@ -103,8 +110,8 @@ pub enum DetailRow {
 pub const DETAIL_ROWS: [DetailRow; 4] = [DetailRow::Play, DetailRow::Star, DetailRow::Achievements, DetailRow::Delete];
 
 /// A tile on the settings grid. Each opens a list of its settings, except Wi-Fi and
-/// Bluetooth, which open their own screens, and Cores, which opens the consoles' core
-/// options.
+/// Bluetooth, which open their own screens, Cores, which opens the consoles' core
+/// options, and Statistics, which opens the play statistics.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Group {
     General,
@@ -118,9 +125,10 @@ pub enum Group {
     Advanced,
     Cores,
     Achievements,
+    Statistics,
 }
 
-pub const GROUPS: [Group; 11] = [
+pub const GROUPS: [Group; 12] = [
     Group::General,
     Group::InGame,
     Group::Wifi,
@@ -132,6 +140,7 @@ pub const GROUPS: [Group; 11] = [
     Group::Advanced,
     Group::Cores,
     Group::Achievements,
+    Group::Statistics,
 ];
 
 /// The most settings a group has, which the settings screen makes room for. Only SYSTEM
@@ -152,6 +161,7 @@ impl Group {
             Self::Advanced => "ADVANCED",
             Self::Cores => "CORES",
             Self::Achievements => "ACHIEVEMENTS",
+            Self::Statistics => "STATISTICS",
         })
     }
 
@@ -177,7 +187,7 @@ impl Group {
                     Setting::Language,
                 ],
             Self::InGame => &[Setting::Scaling, Setting::Effect, Setting::Ghosting, Setting::Border, Setting::UseForAllConsoles, Setting::Vibration],
-            Self::Wifi | Self::Bluetooth | Self::Cores => &[],
+            Self::Wifi | Self::Bluetooth | Self::Cores | Self::Statistics => &[],
             Self::BoxArt => &[Setting::ShowCovers, Setting::ScreenshotCovers, Setting::DownloadMissingArt, Setting::DownloadAllArt, Setting::DeleteArt],
             Self::Theme => {
                 &[
@@ -571,6 +581,8 @@ pub struct Launcher {
     confirming: Option<Setting>,
     /// Logged in to `RetroAchievements`, so A on its account logs out, after a second press.
     pub achievements_logged_in: bool,
+    /// The first console in view on the statistics screen, which Up and Down scroll.
+    stats_first: usize,
 }
 
 impl Library {
@@ -652,6 +664,7 @@ impl Launcher {
             delete_armed: false,
             confirming: None,
             achievements_logged_in: false,
+            stats_first: 0,
         }
     }
 
@@ -790,7 +803,7 @@ impl Launcher {
     }
 
     fn in_settings(&self) -> bool {
-        matches!(self.screen, Screen::Settings | Screen::SettingsGroup(_) | Screen::Info | Screen::HomeTiles)
+        matches!(self.screen, Screen::Settings | Screen::SettingsGroup(_) | Screen::Info | Screen::HomeTiles | Screen::Statistics)
     }
 
     fn open_settings(&mut self) {
@@ -827,7 +840,22 @@ impl Launcher {
                 Command::Nothing
             }
             Screen::HomeTiles => self.press_home_tiles(button, library),
+            Screen::Statistics => {
+                let last = library.play_log.per_console().len().saturating_sub(STATS_CONSOLE_ROWS);
+                match button {
+                    Button::A | Button::B => self.screen = Screen::Settings,
+                    Button::Up => self.stats_first = self.stats_first.saturating_sub(1),
+                    Button::Down => self.stats_first = (self.stats_first + 1).min(last),
+                    _ => {}
+                }
+                Command::Nothing
+            }
         }
+    }
+
+    /// The first console shown on the statistics screen.
+    pub fn stats_first(&self) -> usize {
+        self.stats_first
     }
 
     fn press_home_tiles(&mut self, button: Button, library: &Library) -> Command {
@@ -930,6 +958,10 @@ impl Launcher {
                 Group::Wifi => return Command::Wifi,
                 Group::Bluetooth => return Command::Bluetooth,
                 Group::Cores => return Command::CoreOptions,
+                Group::Statistics => {
+                    self.stats_first = 0;
+                    self.screen = Screen::Statistics;
+                }
                 group => self.screen = Screen::SettingsGroup(group),
             },
             _ => {}
@@ -1473,6 +1505,34 @@ mod tests {
     }
 
     /// Opens settings, then a group from the grid's first row.
+    #[test]
+    fn statistics_open_from_the_grid_and_scroll_through_the_consoles() {
+        let mut library = library();
+        for (day, console) in (1..).zip(["nes", "snes", "gb", "gba", "md", "ps1", "ngp"]) {
+            library.play_log.add(jiff::civil::date(2026, 11, day), console, 60);
+        }
+        let mut launcher = Launcher::new();
+        // The last tile on the grid.
+        launcher.press(Button::Start, &library);
+        press_all(&mut launcher, &library, &[Button::Right; 11]);
+        assert_eq!(launcher.group_selected(), Group::Statistics);
+        assert_eq!(launcher.press(Button::A, &library), Command::Nothing);
+        assert_eq!(launcher.screen(), Screen::Statistics);
+        assert_eq!(launcher.stats_first(), 0);
+        // Seven consoles, five in view: two rows to scroll, and no further.
+        press_all(&mut launcher, &library, &[Button::Down; 4]);
+        assert_eq!(launcher.stats_first(), 2);
+        launcher.press(Button::Up, &library);
+        assert_eq!(launcher.stats_first(), 1);
+        launcher.press(Button::B, &library);
+        assert_eq!((launcher.screen(), launcher.group_selected()), (Screen::Settings, Group::Statistics));
+        // Opening it again starts at the top, and Start closes it like any settings screen.
+        launcher.press(Button::A, &library);
+        assert_eq!(launcher.stats_first(), 0);
+        launcher.press(Button::Start, &library);
+        assert_eq!(launcher.screen(), Screen::Home);
+    }
+
     fn open_group(launcher: &mut Launcher, library: &Library, group: Group) {
         launcher.press(Button::Start, library);
         let index = GROUPS.iter().position(|&other| other == group).unwrap();
@@ -1644,7 +1704,7 @@ mod tests {
     fn every_group_fits_the_settings_screen() {
         for group in GROUPS {
             assert!(group.settings().len() <= MAX_GROUP_SETTINGS, "{group:?}");
-            assert_eq!(group.settings().is_empty(), matches!(group, Group::Wifi | Group::Bluetooth | Group::Cores));
+            assert_eq!(group.settings().is_empty(), matches!(group, Group::Wifi | Group::Bluetooth | Group::Cores | Group::Statistics));
         }
     }
 

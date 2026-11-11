@@ -851,6 +851,34 @@ pub const CORES: Icon = [
     "................................",
 ];
 
+/// Settings > STATISTICS: a bar chart.
+pub const STATISTICS: Icon = [
+    "................................",
+    "................................",
+    "...LL...........................",
+    "...LL...............KKKKKK......",
+    "...LL...............KYYYYK......",
+    "...LL...............KYYYYK......",
+    "...LL...............KYYYYK......",
+    "...LL........KKKKKK.KYYYYK......",
+    "...LL........KNNNNK.KYYYYK......",
+    "...LL........KNNNNK.KYYYYK......",
+    "...LL........KNNNNK.KYYYYK......",
+    "...LL........KNNNNK.KYYYYK......",
+    "...LL.KKKKKK.KNNNNK.KYYYYK......",
+    "...LL.KBBBBK.KNNNNK.KYYYYK......",
+    "...LL.KBBBBK.KNNNNK.KYYYYK......",
+    "...LL.KBBBBK.KNNNNK.KYYYYK......",
+    "...LL.KBBBBK.KNNNNK.KYYYYK......",
+    "...LL.KBBBBK.KNNNNK.KYYYYK......",
+    "...LL.KBBBBK.KNNNNK.KYYYYK......",
+    "...LL.KBBBBK.KNNNNK.KYYYYK......",
+    "...LLLLLLLLLLLLLLLLLLLLLLLLLL...",
+    "...LLLLLLLLLLLLLLLLLLLLLLLLLL...",
+    "................................",
+    "................................",
+];
+
 /// `RetroAchievements`, Settings > ACHIEVEMENTS: a trophy.
 pub const ACHIEVEMENTS: Icon = [
     "................................",
@@ -912,7 +940,7 @@ pub const LOGO: Icon = [
 mod tests {
     use super::*;
 
-    const ALL: [&Icon; 31] = [
+    const ALL: [&Icon; 32] = [
         &LOGO,
         &ACHIEVEMENTS,
         &CORES,
@@ -944,6 +972,7 @@ mod tests {
         &WIFI,
         &BLUETOOTH,
         &ADVANCED,
+        &STATISTICS,
     ];
 
     #[test]

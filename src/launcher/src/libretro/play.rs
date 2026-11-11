@@ -11,6 +11,7 @@ use crate::i18n::tr;
 use crate::input::{Button, Controls};
 use crate::settings::{NoticePlace, NoticePlaces};
 use crate::pause::{MenuTrigger, Opening, PauseMenu};
+use crate::play_log;
 use crate::play_time::PlayClock;
 use crate::power::Level;
 use crate::rumble::Rumble;
@@ -155,9 +156,19 @@ fn layout_for(save: &Path, console: Option<&str>) -> Layout {
         .unwrap_or_default()
 }
 
-fn save_play_time(clock: &mut PlayClock) {
-    if let Err(error) = clock.save(Instant::now()) {
-        eprintln!("warning: could not save the play time: {error}");
+/// Writes the game's play time, and adds what it gained to the play log under today's date.
+fn save_play_time(clock: &mut PlayClock, console: Option<&str>) {
+    let added = match clock.save(Instant::now()) {
+        Ok(added) => added,
+        Err(error) => {
+            eprintln!("warning: could not save the play time: {error}");
+            return;
+        }
+    };
+    let Some(console) = console.filter(|_| added > 0) else { return };
+    let today = crate::clock::local(jiff::Timestamp::now(), settings::get().time_zone()).date();
+    if let Err(error) = play_log::record(Path::new(play_log::LOG_PATH), today, console, added) {
+        eprintln!("warning: could not add to the play log: {error}");
     }
 }
 
@@ -477,7 +488,7 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
             if let Err(error) = save_progress(&mut core, persistence, &mut save_file, resume.as_deref()) {
                 eprintln!("warning: could not save before sleeping: {error}");
             }
-            save_play_time(&mut play_clock);
+            save_play_time(&mut play_clock, console);
         }
         match battery.check(Instant::now()) {
             Some(Level::Critical) => {
@@ -497,7 +508,7 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
         show_next_notice(framebuffer, &mut notices, session.as_mut(), game_notices.resolve(notice_defaults))?;
         // Menu + Select does nothing without another game to switch to.
         if let Some(opening) = open_menu.filter(|&opening| opening == Opening::Menu || !switch_to.is_empty()) {
-            save_play_time(&mut play_clock);
+            save_play_time(&mut play_clock, console);
             hold_cpu_speed();
             let game = Game { rom, save, cheat_source, switch_to: &switch_to };
             let mut achievements =
@@ -553,7 +564,7 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
 
         frames += 1;
         if play_clock.tick(Instant::now()) {
-            save_play_time(&mut play_clock);
+            save_play_time(&mut play_clock, console);
         }
         if frames == AUDIO_PROBE_FRAMES && with_host(|host| host.audio.is_none()) {
             start_probed_audio(sample_rate, fps);
@@ -593,7 +604,7 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
     if release_at.is_some() || fast_forwarding {
         release_cpu_speed();
     }
-    save_play_time(&mut play_clock);
+    save_play_time(&mut play_clock, console);
     let kept = resume.as_deref().filter(|_| keep_place);
     save_progress(&mut core, persistence, &mut save_file, kept)?;
     if let Some(path) = resume.as_deref().filter(|_| !keep_place) {

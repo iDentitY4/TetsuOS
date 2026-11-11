@@ -47,6 +47,7 @@ mod paths;
 mod pause;
 mod pause_screens;
 mod performance;
+mod play_log;
 mod play_time;
 mod png;
 mod power;
@@ -115,6 +116,7 @@ fn main() -> ExitCode {
         [flag, path] if flag == "--preview-usb" => write_usb_drive_preview(path),
         [flag, path] if flag == "--preview-transfer" => write_transfer_preview(path),
         [flag, path] if flag == "--preview-wifi" => write_wifi_preview(path),
+        [flag, path] if flag == "--preview-statistics" => previews::write_statistics_preview(path),
         [flag, path] if flag == "--preview-bluetooth" => previews::write_bluetooth_preview(path),
         [flag, path] if flag == "--preview-keyboard" => write_keyboard_preview(path),
         [flag, step, path] if flag == "--preview-setup" => match step.parse() {

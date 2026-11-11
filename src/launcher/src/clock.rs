@@ -135,7 +135,17 @@ pub fn date_text(time: &Zoned, format: ClockFormat) -> String {
 
 /// The date alone, such as "8 NOVEMBER 2026".
 pub fn short_date_text(time: &Zoned) -> String {
-    format!("{} {} {}", time.day(), tr(MONTHS[time.month() as usize - 1]), time.year())
+    day_text(time.date())
+}
+
+/// A day, such as "8 NOVEMBER 2026".
+pub fn day_text(date: jiff::civil::Date) -> String {
+    format!("{} {} {}", date.day(), tr(MONTHS[date.month() as usize - 1]), date.year())
+}
+
+/// The first three letters of `date`'s month, such as "NOV".
+pub fn short_month(date: jiff::civil::Date) -> String {
+    tr(MONTHS[date.month() as usize - 1]).chars().take(3).collect()
 }
 
 /// How long before `now` a game was played, such as "5 MIN AGO", "YESTERDAY" or a date

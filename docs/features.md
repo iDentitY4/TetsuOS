@@ -414,6 +414,21 @@ Working on the test unit, confirmed by the user:
   NOT YET, UNDER A MINUTE and, with a written 7500, 2 H 5 MIN, and deleting the game removed
   the file. The 5-minute write and a real lid closing haven't been seen on the device
 
+- Play statistics (`play_log.rs`, Settings > STATISTICS). Each time the game process writes a
+  game's play time, it adds the whole seconds gained to `/mnt/data/play-log.txt` under the
+  local date and the console's key, one line per day and console (`2026-11-11 gb 1234`),
+  merged and written atomically, so a year is a few kilobytes. A game's own `.playtime`
+  has no dates, so the user chose to count only from the log, which starts empty: older
+  play isn't in it, and the total can be less than the games' times added up. Deleting a
+  game leaves its time in the log. A session over midnight goes to the day of each write,
+  at most 5 minutes off.
+
+  The page is the twelfth tile on the settings grid. It shows the total since the log's
+  first day, the last 8 weeks (Monday to Sunday) as bars with their `H:MM` above and the
+  Monday below, this week in the accent colour, and the consoles by time, five at a time,
+  Up and Down scrolling. With no log it says NO PLAY TIME YET. The library reads the log,
+  so it is current after each game. `--preview-statistics` renders it with made-up weeks.
+
 - Display settings per console. Changing scaling, effect or ghosting in the in-game menu
   saves all three for that console, as `display.gb=fit,crt,smart` in `settings.txt`
   (`Settings::console_displays`, read with `display_for`). A console's key comes from

@@ -1,6 +1,7 @@
 //! The games on the cards, sorted onto shelves by console, and the home screen's tiles.
 
-use crate::{achievements, cards, favorites, game_files, icons, names, recent, rom_zip, settings, storage};
+use crate::{achievements, cards, favorites, game_files, icons, names, play_log, recent, rom_zip, settings, storage};
+use crate::play_log::Log;
 use crate::i18n::tr;
 use crate::launcher::{Game, LastPlayed, Launcher, Library, List, Shelf, Tile};
 use crate::systems::{system_for, system_index, SYSTEMS};
@@ -353,6 +354,7 @@ pub(crate) fn load_library() -> Library {
         &favorites::load(Path::new(favorites::FAVORITES_PATH)),
         settings::get().game_names,
     );
+    library.play_log = Log::read(Path::new(play_log::LOG_PATH));
     let started = std::time::Instant::now();
     sort_library(&mut library, settings::get().sort, &game_files::last_played, &game_files::time_played);
     if library.sort != settings::GameSort::Name {

@@ -372,6 +372,21 @@ pub(crate) fn write_usb_drive_preview(path: &str) -> io::Result<()> {
     write_ppm(&screens::usb_drive_screen(width, height, &view, &frame), path)
 }
 
+/// Settings > STATISTICS, with some weeks of play on several consoles up to today.
+pub(crate) fn write_statistics_preview(path: &str) -> io::Result<()> {
+    let (width, height) = PREVIEW_SIZE;
+    let today = crate::clock::local(jiff::Timestamp::now(), crate::settings::get().time_zone()).date();
+    let mut log = crate::play_log::Log::default();
+    let consoles = ["gba", "snes", "ps1", "gb", "md", "nes", "ngpc"];
+    for back in 0..45_i64 {
+        let Ok(day) = today.checked_sub(jiff::ToSpan::days(back)) else { continue };
+        let console = consoles[usize::try_from(back).unwrap_or(0) * 5 % consoles.len()];
+        log.add(day, console, u64::try_from((back * 37 + 11) % 97).unwrap_or(0) * 60);
+    }
+    let frame = screens::Frame { theme: current_theme(), battery: Some(Battery { percent: 80, charging: false }) };
+    write_ppm(&screens::statistics_screen(width, height, &crate::app::statistics(&log, 0), &frame), path)
+}
+
 /// Settings > SYSTEM > WI-FI TRANSFER, while a game arrives.
 pub(crate) fn write_transfer_preview(path: &str) -> io::Result<()> {
     let (width, height) = PREVIEW_SIZE;

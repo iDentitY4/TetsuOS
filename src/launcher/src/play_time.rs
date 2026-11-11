@@ -62,15 +62,18 @@ impl PlayClock {
         now.saturating_duration_since(self.last_save) >= SAVE_EVERY
     }
 
-    pub(crate) fn save(&mut self, now: Instant) -> io::Result<()> {
+    /// Writes the time, if it has changed. Returns the whole seconds added since the last
+    /// write, for the play log.
+    pub(crate) fn save(&mut self, now: Instant) -> io::Result<u64> {
         self.last_save = now;
         let seconds = self.total.as_secs();
         if seconds == self.saved_seconds {
-            return Ok(());
+            return Ok(0);
         }
         write_atomic(&self.path, seconds.to_string().as_bytes())?;
+        let added = seconds.saturating_sub(self.saved_seconds);
         self.saved_seconds = seconds;
-        Ok(())
+        Ok(added)
     }
 }
 
@@ -136,7 +139,8 @@ mod tests {
         assert!(!path.exists(), "nothing played, nothing written");
         clock.tick(start + Duration::from_millis(900));
         clock.tick(start + Duration::from_millis(1800));
-        clock.save(start).unwrap();
+        assert_eq!(clock.save(start).unwrap(), 1);
+        assert_eq!(clock.save(start).unwrap(), 0, "nothing new");
         assert_eq!(read(&path), Some(Duration::from_secs(1)));
         let mut again = PlayClock::start(&save, start);
         again.tick(start + Duration::from_millis(500));

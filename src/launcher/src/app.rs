@@ -2,7 +2,7 @@
 
 use crate::{
     achievements, boot_partition, boxart, canvas, cards, cheats, clock, controls, core_options, favorites,
-    fb, game_files, icons, input, keyboard, launcher, performance, power, recent, rumble, screens, settings, sounds,
+    fb, game_files, icons, input, keyboard, launcher, performance, play_log, power, recent, rumble, screens, settings, sounds,
     ssh,
 };
 use crate::boxart_screen::{art_counts, delete_box_art, download_box_art};
@@ -197,6 +197,41 @@ pub(crate) fn button_test(
     }
     events.try_iter().for_each(drop);
     Ok(())
+}
+
+/// Weeks on the statistics screen, this one last.
+const STATS_WEEKS: usize = 8;
+
+/// What the statistics screen shows from the play log, as of today.
+pub(crate) fn statistics(log: &play_log::Log, first: usize) -> screens::Statistics<'static> {
+    let zone = settings::get().time_zone();
+    let today = clock::local(jiff::Timestamp::now(), zone).date();
+    let this_week = play_log::week_of(today);
+    let weeks = log
+        .weeks(today, STATS_WEEKS)
+        .into_iter()
+        .map(|(monday, seconds)| screens::WeekBar {
+            day: u32::try_from(monday.day()).unwrap_or(0),
+            month: clock::short_month(monday),
+            seconds,
+            this_week: monday == this_week,
+        })
+        .collect();
+    let consoles = log
+        .per_console()
+        .into_iter()
+        .map(|(key, seconds)| match SYSTEMS.iter().find(|system| system.key == key) {
+            Some(system) => screens::ConsoleTime { icon: system.icon, name: system.label, seconds },
+            // A console this launcher no longer has.
+            None => screens::ConsoleTime { icon: &icons::SETTINGS, name: tr("OTHER"), seconds },
+        })
+        .collect();
+    let total = game_files::play_time_text(Duration::from_secs(log.total()));
+    let summary = match log.since() {
+        Some(since) => trf("{} SINCE {}", &[&total, &clock::day_text(since)]),
+        None => total,
+    };
+    screens::Statistics { summary, weeks, consoles, first }
 }
 
 /// The home screen, with a tile for each list that is shown.
@@ -453,6 +488,7 @@ pub(crate) fn launcher_canvas(
                 .collect();
             screens::home_tiles_screen(width, height, &rows, launcher.home_tiles_selected(library), &frame)
         }
+        Screen::Statistics => screens::statistics_screen(width, height, &statistics(&library.play_log, launcher.stats_first()), &frame),
     };
     add_clock(&mut canvas, battery);
     (canvas, scrolling)
