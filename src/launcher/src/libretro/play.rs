@@ -1,7 +1,7 @@
 //! Running one game: the frame loop, and rendering frames without a screen.
 
 use crate::{
-    achievements, cheats, controls, core_options, input, power, screens, settings,
+    achievements, cheats, controls, core_options, input, power, screens, settings, signs,
 };
 use crate::achievements::{GameNotices, Notice, Session};
 use crate::cheats::CheatSource;
@@ -94,7 +94,7 @@ const FAST_FORWARD_MAX: u32 = 8;
 /// Shows or clears the fast-forward sign in the top right corner, which is border for
 /// every system's picture, like the battery warning's corner.
 fn draw_fast_forward(framebuffer: &mut Framebuffer, on: bool) -> io::Result<()> {
-    let canvas = screens::fast_forward_sign(on, crate::corner::current_theme());
+    let canvas = signs::fast_forward_sign(on, crate::corner::current_theme());
     let (width, _) = framebuffer.size();
     let x = width.saturating_sub(canvas.width + WARNING_POSITION.0);
     if on {
@@ -121,7 +121,7 @@ pub(super) fn draw_whole_screen(framebuffer: &mut Framebuffer) -> io::Result<()>
 /// Shows the charge level in the corner while the battery is low.
 fn draw_battery_warning(framebuffer: &mut Framebuffer, percent: u32) -> io::Result<()> {
     let (x, y) = WARNING_POSITION;
-    framebuffer.blit_canvas(&screens::battery_warning(percent), x, y)
+    framebuffer.blit_canvas(&signs::battery_warning(percent), x, y)
 }
 
 /// The volume levels the launcher sends when a volume button is pressed, each one byte of
@@ -218,7 +218,7 @@ fn show_next_notice(framebuffer: &mut Framebuffer, notices: &mut VecDeque<Notice
         (Some(session), Some(name)) => session.badges().get(name, achievements::NOTICE_BADGE, false),
         _ => None,
     };
-    let canvas = screens::achievement_notice(&notice, badge.as_ref(), crate::corner::current_theme());
+    let canvas = signs::achievement_notice(&notice, badge.as_ref(), crate::corner::current_theme());
     let top = match places.get(notice.kind) {
         NoticePlace::Top => NOTICE_MARGIN,
         _ => framebuffer.size().1.saturating_sub(canvas.height + NOTICE_MARGIN),

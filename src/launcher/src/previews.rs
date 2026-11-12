@@ -281,7 +281,7 @@ pub(crate) fn write_wifi_preview(path: &str) -> io::Result<()> {
     menu.press(Button::Down);
     menu.press(Button::Down);
     let line = wifi_status_line(true, &status, None);
-    let view = screens::WifiView {
+    let view = crate::wifi_screen::WifiView {
         on: true,
         entries: &menu.entries,
         selected: menu.selected(),
@@ -291,7 +291,7 @@ pub(crate) fn write_wifi_preview(path: &str) -> io::Result<()> {
     };
     let (width, height) = PREVIEW_SIZE;
     let battery = Some(Battery { percent: 95, charging: true });
-    write_ppm(&screens::wifi_screen(width, height, &view, &screen_frame(battery)), path)
+    write_ppm(&crate::wifi_screen::wifi_screen(width, height, &view, &screen_frame(battery)), path)
 }
 
 /// Renders the Bluetooth screen with a controller connected and one being paired.
@@ -319,7 +319,7 @@ pub(crate) fn write_bluetooth_preview(path: &str) -> io::Result<()> {
     menu.press(Button::Down);
     menu.press(Button::Down);
     let line = crate::bluetooth_screen::status_line(true, true, Some((crate::bluetooth_screen::Doing::Pairing, "Pro Controller")));
-    let view = screens::BluetoothView {
+    let view = crate::bluetooth_screen::BluetoothView {
         on: true,
         entries: &menu.entries,
         selected: menu.selected(),
@@ -329,7 +329,7 @@ pub(crate) fn write_bluetooth_preview(path: &str) -> io::Result<()> {
     };
     let (width, height) = PREVIEW_SIZE;
     let battery = Some(Battery { percent: 95, charging: true });
-    write_ppm(&screens::bluetooth_screen(width, height, &view, &screen_frame(battery)), path)
+    write_ppm(&crate::bluetooth_screen::bluetooth_screen(width, height, &view, &screen_frame(battery)), path)
 }
 
 /// Renders the password keyboard partway through typing.
@@ -361,7 +361,7 @@ pub(crate) fn write_setup_preview(step: usize, path: &str) -> io::Result<()> {
     };
     let view = setup::setup_view(&setup, &settings::get(), status);
     let battery = Some(Battery { percent: 95, charging: true });
-    write_ppm(&screens::setup_screen(width, height, &view, &screen_frame(battery)), path)
+    write_ppm(&crate::setup::setup_screen(width, height, &view, &screen_frame(battery)), path)
 }
 
 /// Renders the button test to a PPM image. Up has been pressed and A is held, so the
@@ -371,7 +371,7 @@ pub(crate) fn write_usb_drive_preview(path: &str) -> io::Result<()> {
     let (width, height) = PREVIEW_SIZE;
     let view = usb_drive_view(UsbLink::Connected, false, true);
     let frame = screens::Frame { theme: current_theme(), battery: Some(Battery { percent: 80, charging: true }) };
-    write_ppm(&screens::usb_drive_screen(width, height, &view, &frame), path)
+    write_ppm(&crate::usb_drive::usb_drive_screen(width, height, &view, &frame), path)
 }
 
 /// Settings > STATISTICS, with some weeks of play on several consoles up to today.
@@ -386,7 +386,7 @@ pub(crate) fn write_statistics_preview(path: &str) -> io::Result<()> {
         log.add(day, console, u64::try_from((back * 37 + 11) % 97).unwrap_or(0) * 60);
     }
     let frame = screens::Frame { theme: current_theme(), battery: Some(Battery { percent: 80, charging: false }) };
-    write_ppm(&screens::statistics_screen(width, height, &crate::app::statistics(&log, 0), &frame), path)
+    write_ppm(&crate::statistics_screen::statistics_screen(width, height, &crate::app::statistics(&log, 0), &frame), path)
 }
 
 /// Settings > TIME > SET TIME, on the hour.
@@ -396,9 +396,9 @@ pub(crate) fn write_set_time_preview(path: &str) -> io::Result<()> {
     let time: jiff::civil::DateTime = "2026-11-12T16:05".parse().map_err(io::Error::other)?;
     let values = crate::set_time::field_values(time, settings.clock);
     let date = crate::clock::date_text(&crate::clock::zoned(time, settings.time_zone()), settings.clock);
-    let view = screens::SetTimeView { values: &values, selected: 3, date: &date, failed: false };
+    let view = crate::set_time::SetTimeView { values: &values, selected: 3, date: &date, failed: false };
     let frame = screens::Frame { theme: current_theme(), battery: Some(Battery { percent: 80, charging: false }) };
-    write_ppm(&screens::set_time_screen(width, height, &view, &frame), path)
+    write_ppm(&crate::set_time::set_time_screen(width, height, &view, &frame), path)
 }
 
 /// Settings > SYSTEM > WI-FI TRANSFER, while a game arrives.
@@ -411,7 +411,7 @@ pub(crate) fn write_transfer_preview(path: &str) -> io::Result<()> {
     };
     let view = transfer_view(Some("192.168.178.123"), "482913", &activity, false);
     let frame = screens::Frame { theme: current_theme(), battery: Some(Battery { percent: 80, charging: false }) };
-    write_ppm(&screens::transfer_screen(width, height, &view, &frame), path)
+    write_ppm(&crate::transfer::transfer_screen(width, height, &view, &frame), path)
 }
 
 pub(crate) fn write_button_preview(path: &str) -> io::Result<()> {
@@ -489,7 +489,7 @@ pub(crate) fn write_notice_preview(path: &str) -> io::Result<()> {
         ..achievements::Notice::new(i18n::trf("ACHIEVEMENT UNLOCKED - {} POINTS", &[&10]), "First Steps")
     };
     let badge = preview_badges()?.get("5", achievements::NOTICE_BADGE, false);
-    let sign = screens::achievement_notice(&notice, badge.as_ref(), current_theme());
+    let sign = crate::signs::achievement_notice(&notice, badge.as_ref(), current_theme());
     let mut canvas = canvas::Canvas::new(width, height, current_theme());
     for (index, pixel) in canvas.pixels.iter_mut().enumerate() {
         let (x, y) = (index % width, index / width);

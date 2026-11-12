@@ -5,13 +5,17 @@
 
 use crate::{clock, fb, icons, power, screens, settings, sounds, wifi};
 use crate::app::{button_sound, change_settings, press_volume, shut_down};
+use crate::canvas::{text_width, Canvas, MUTED, TEXT};
 use crate::corner::{read_battery, screen_frame, time_note};
 use crate::i18n::{tr, trf};
+use crate::icons::Icon;
 use crate::input::{Button, Event};
 use crate::launcher::Setting;
 use crate::library::load_library;
 use crate::repeat::Repeater;
-use crate::screens::{SetupRow, SetupView};
+use crate::screens::{
+    header, hint, row_text_y, Frame, HINT_Y, LIST_LEFT, LIST_ROW, SETTINGS_LEFT, SETTINGS_RIGHT, SETTINGS_ROW, TEXT_SCALE,
+};
 use crate::sleep::sleep_until_lid_opens;
 use crate::system_info::boot_time;
 use crate::transfer::wifi_transfer;
@@ -225,7 +229,7 @@ pub(crate) fn run_setup(framebuffer: &mut fb::Framebuffer, events: &Receiver<Eve
         };
         let view = setup_view(&setup, &settings::get(), status);
         let battery = read_battery(&power::battery_dir());
-        framebuffer.draw(&screens::setup_screen(width, height, &view, &screen_frame(battery)))?;
+        framebuffer.draw(&setup_screen(width, height, &view, &screen_frame(battery)))?;
 
         let timeout = REFRESH
             .min(repeater.wait(Instant::now()).unwrap_or(REFRESH))
@@ -293,6 +297,62 @@ pub(crate) fn run_setup(framebuffer: &mut fb::Framebuffer, events: &Receiver<Eve
             }
         }
     }
+}
+
+/// A row of a setup step, with a value on the right if it has one.
+pub struct SetupRow {
+    pub label: &'static str,
+    pub value: Option<String>,
+}
+
+/// A step of the setup: what it is about, its rows, and a line or two of status below them.
+pub struct SetupView {
+    pub icon: &'static Icon,
+    pub title: &'static str,
+    pub number: String,
+    pub lines: Vec<&'static str>,
+    pub rows: Vec<SetupRow>,
+    pub selected: usize,
+    pub status: String,
+    pub hint: &'static str,
+}
+
+const SETUP_NUMBER_Y: usize = 76;
+const SETUP_LINES_TOP: usize = 112;
+const SETUP_LINE: usize = 26;
+const SETUP_ROWS_TOP: usize = 208;
+const SETUP_STATUS_GAP: usize = 16;
+// The longest step: two rows and two status lines, which can hold a network's name.
+const _: () = assert!(SETUP_ROWS_TOP + 2 * SETTINGS_ROW + SETUP_STATUS_GAP + 2 * LIST_ROW <= HINT_Y);
+
+pub fn setup_screen(width: usize, height: usize, view: &SetupView, frame: &Frame) -> Canvas {
+    let mut canvas = Canvas::new(width, height, frame.theme);
+    header(&mut canvas, view.icon, view.title, frame.battery);
+    canvas.text_at(&view.number, LIST_LEFT, SETUP_NUMBER_Y, TEXT_SCALE, canvas.theme.accent);
+    for (row, line) in view.lines.iter().enumerate() {
+        canvas.text_at(line, LIST_LEFT, SETUP_LINES_TOP + row * SETUP_LINE, TEXT_SCALE, TEXT);
+    }
+    let right = width.saturating_sub(SETTINGS_RIGHT);
+    for (index, row) in view.rows.iter().enumerate() {
+        let y = SETUP_ROWS_TOP + index * SETTINGS_ROW;
+        let color = if index == view.selected {
+            canvas.rect(0, y, width, SETTINGS_ROW - 4, canvas.theme.accent);
+            canvas.theme.background
+        } else {
+            TEXT
+        };
+        let text_y = row_text_y(y, SETTINGS_ROW - 4);
+        canvas.text_at(row.label, SETTINGS_LEFT, text_y, TEXT_SCALE, color);
+        if let Some(value) = &row.value {
+            canvas.text_at(value, right - text_width(value, TEXT_SCALE), text_y, TEXT_SCALE, color);
+        }
+    }
+    let below = SETUP_ROWS_TOP + view.rows.len() * SETTINGS_ROW + SETUP_STATUS_GAP;
+    for (row, line) in view.status.lines().enumerate() {
+        canvas.text_cased_at(line, LIST_LEFT, below + row * LIST_ROW, TEXT_SCALE, MUTED);
+    }
+    hint(&mut canvas, view.hint);
+    canvas
 }
 
 #[cfg(test)]

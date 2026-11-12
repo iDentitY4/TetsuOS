@@ -2,13 +2,13 @@
 
 use crate::paths::DATA_DIR;
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const MOUNTS: &str = "/proc/mounts";
 
 /// Replaces a file's contents. The old contents survive a power cut during the write.
 pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
-    let temporary = path.with_extension("tmp");
+    let temporary = temporary_for(path);
     let mut file = std::fs::File::create(&temporary)?;
     file.write_all(contents)?;
     file.sync_all()?;
@@ -18,6 +18,15 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
         std::fs::File::open(directory)?.sync_all()?;
     }
     Ok(())
+}
+
+/// The file written before it replaces `path`: the whole name with `.tmp` after it, so
+/// files that differ only in their extension, such as a save and its resume point, don't
+/// share one.
+pub(crate) fn temporary_for(path: &Path) -> PathBuf {
+    let mut name = path.as_os_str().to_os_string();
+    name.push(".tmp");
+    PathBuf::from(name)
 }
 
 /// Whether TETSU-DATA is mounted read-only. The kernel does that when it finds the file
@@ -59,7 +68,8 @@ mod tests {
         write_atomic(&path, b"first").unwrap();
         write_atomic(&path, b"second").unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), b"second");
-        assert!(!path.with_extension("tmp").exists());
+        assert_eq!(temporary_for(&path), dir.join("file.state1.tmp"));
+        assert!(!temporary_for(&path).exists());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

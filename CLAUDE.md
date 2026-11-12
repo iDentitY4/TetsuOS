@@ -154,7 +154,7 @@ ADVANCED > RUN SETUP AGAIN repeats.
   screen, `network.rs` addresses, hostnames and countries, `transfer.rs` and `transfer_server.rs` the Wi-Fi transfer
   screen and web page (`transfer_page.html`), `controls.rs` button layouts and turbo, `switcher.rs` SWITCH GAME, `core_options.rs` cores' own options, `cheats.rs` cheat files and the CHEATS page, `achievements.rs` RetroAchievements through rcheevos, `game_files.rs` which files are a game's, `play_time.rs` each game's time, `play_log.rs`
   the dated log behind STATISTICS, `screenshot.rs` the in-game menu's pictures, `sleep.rs`, `corner.rs` (clock and battery), `set_time.rs` the time set by hand, `sounds.rs` the menu sounds and boot jingle, `boot_animation.rs` the animation drawn with it, `launcher.rs` the button logic,
-  `charging.rs` the charging screen, `screens.rs` and `canvas.rs` the drawing, `pause_screens.rs` the in-game menu's, `paths.rs`
+  `charging.rs` the charging screen, `screens.rs` and `canvas.rs` the drawing (the main menus' screens and what screens share; each other screen is drawn in its own module), `signs.rs` the volume, fast-forward and notice signs, `statistics_screen.rs` the STATISTICS page, `pause_screens.rs` the in-game menu's, `paths.rs`
   the device's paths and the macros a module builds its own from. Imports are by name, and
   `[lints.clippy]` in `Cargo.toml` is the bar: `cargo clippy --all-targets` stays clean.
 - **Settings:** `settings.rs` reads `/mnt/data/settings.txt` once per process.

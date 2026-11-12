@@ -3,7 +3,7 @@
 use crate::{
     achievements, boot_partition, boxart, canvas, cards, cheats, clock, controls, core_options, favorites,
     fb, game_files, icons, input, keyboard, launcher, performance, play_log, power, recent, rumble, screens, settings, sounds,
-    set_time, ssh, storage,
+    set_time, signs, ssh, statistics_screen, storage,
 };
 use crate::boxart_screen::{art_counts, delete_box_art, download_box_art};
 use crate::canvas::Battery;
@@ -107,8 +107,8 @@ pub(crate) fn change_volume(button: Button) -> Option<u32> {
 }
 
 pub(crate) fn show_volume(framebuffer: &mut fb::Framebuffer, percent: u32) -> io::Result<()> {
-    let sign = screens::volume_sign(percent, current_theme());
-    framebuffer.show_sign(&sign, screens::VOLUME_SIGN_TOP, VOLUME_SIGN_TIME)
+    let sign = signs::volume_sign(percent, current_theme());
+    framebuffer.show_sign(&sign, signs::VOLUME_SIGN_TOP, VOLUME_SIGN_TIME)
 }
 
 /// Says at the top of the screen what a card going in or out of TF2 did.
@@ -119,8 +119,8 @@ fn show_card_sign(framebuffer: &mut fb::Framebuffer, change: cards::Change, game
         cards::Change::Unreadable => tr("TF2: CAN'T READ THE CARD").to_string(),
         cards::Change::Removed => tr("TF2: CARD TAKEN OUT").to_string(),
     };
-    let sign = screens::text_sign(&text, current_theme());
-    framebuffer.show_sign(&sign, screens::VOLUME_SIGN_TOP, CARD_SIGN_TIME)
+    let sign = signs::text_sign(&text, current_theme());
+    framebuffer.show_sign(&sign, signs::VOLUME_SIGN_TOP, CARD_SIGN_TIME)
 }
 
 /// A volume button in the menus: changes the volume and shows it.
@@ -246,14 +246,14 @@ pub(crate) fn button_test(
 const STATS_WEEKS: usize = 8;
 
 /// What the statistics screen shows from the play log, as of today.
-pub(crate) fn statistics(log: &play_log::Log, first: usize) -> screens::Statistics<'static> {
+pub(crate) fn statistics(log: &play_log::Log, first: usize) -> statistics_screen::Statistics<'static> {
     let zone = settings::get().time_zone();
     let today = clock::local(jiff::Timestamp::now(), zone).date();
     let this_week = play_log::week_of(today);
     let weeks = log
         .weeks(today, STATS_WEEKS)
         .into_iter()
-        .map(|(monday, seconds)| screens::WeekBar {
+        .map(|(monday, seconds)| statistics_screen::WeekBar {
             day: u32::try_from(monday.day()).unwrap_or(0),
             month: clock::short_month(monday),
             seconds,
@@ -264,9 +264,9 @@ pub(crate) fn statistics(log: &play_log::Log, first: usize) -> screens::Statisti
         .per_console()
         .into_iter()
         .map(|(key, seconds)| match SYSTEMS.iter().find(|system| system.key == key) {
-            Some(system) => screens::ConsoleTime { icon: system.icon, name: system.label, seconds },
+            Some(system) => statistics_screen::ConsoleTime { icon: system.icon, name: system.label, seconds },
             // A console this launcher no longer has.
-            None => screens::ConsoleTime { icon: &icons::SETTINGS, name: tr("OTHER"), seconds },
+            None => statistics_screen::ConsoleTime { icon: &icons::SETTINGS, name: tr("OTHER"), seconds },
         })
         .collect();
     let total = game_files::play_time_text(Duration::from_secs(log.total()));
@@ -274,7 +274,7 @@ pub(crate) fn statistics(log: &play_log::Log, first: usize) -> screens::Statisti
         Some(since) => trf("{} SINCE {}", &[&total, &clock::day_text(since)]),
         None => total,
     };
-    screens::Statistics { summary, weeks, consoles, first }
+    statistics_screen::Statistics { summary, weeks, consoles, first }
 }
 
 /// The home screen, with a tile for each list that is shown.
@@ -531,7 +531,7 @@ pub(crate) fn launcher_canvas(
                 .collect();
             screens::home_tiles_screen(width, height, &rows, launcher.home_tiles_selected(library), &frame)
         }
-        Screen::Statistics => screens::statistics_screen(width, height, &statistics(&library.play_log, launcher.stats_first()), &frame),
+        Screen::Statistics => statistics_screen::statistics_screen(width, height, &statistics(&library.play_log, launcher.stats_first()), &frame),
     };
     add_corner(&mut canvas, battery);
     (canvas, scrolling)

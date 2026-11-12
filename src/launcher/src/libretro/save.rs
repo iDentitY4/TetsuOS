@@ -155,7 +155,7 @@ mod tests {
         progress[0] = 2;
         save.update(&progress).unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), progress);
-        assert!(!path.with_extension("tmp").exists());
+        assert!(!crate::storage::temporary_for(&path).exists());
 
         progress[0] = 3;
         save.update(&progress).unwrap();

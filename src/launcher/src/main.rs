@@ -62,9 +62,11 @@ mod screenshot;
 mod set_time;
 mod settings;
 mod setup;
+mod signs;
 mod sleep;
 mod sounds;
 mod ssh;
+mod statistics_screen;
 mod storage;
 mod system_info;
 mod switcher;
@@ -146,11 +148,11 @@ fn main() -> ExitCode {
         }
         [flag, path] if flag == "--preview-charging" => {
             let battery = canvas::Battery { percent: 64, charging: true };
-            write_ppm(&screens::charging_screen(640, 480, Some(battery), current_theme()), path)
+            write_ppm(&crate::charging::charging_screen(640, 480, Some(battery), current_theme()), path)
         }
-        [flag, path] if flag == "--preview-volume" => write_ppm(&screens::volume_sign(80, current_theme()), path),
+        [flag, path] if flag == "--preview-volume" => write_ppm(&signs::volume_sign(80, current_theme()), path),
         [flag, path] if flag == "--preview-card" => {
-            write_ppm(&screens::text_sign(&i18n::trf("TF2: {} GAMES", &[&128]), current_theme()), path)
+            write_ppm(&signs::text_sign(&i18n::trf("TF2: {} GAMES", &[&128]), current_theme()), path)
         }
         [flag, core, rom, save, persistence] if flag == "--play" => {
             app::show_shutdown_on_signal();

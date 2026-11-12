@@ -9,13 +9,16 @@
 use crate::app::change_settings;
 use crate::bluetooth::{self, Bluez, Device};
 use crate::bluetooth_menu::{self, BluetoothMenu, Request};
-use crate::canvas::{Battery, Canvas};
+use crate::canvas::{text_width, Battery, Canvas, BODY, MUTED, TEXT};
+use crate::font;
+use crate::icons;
 use crate::corner::{add_corner, read_battery, screen_frame};
 use crate::i18n::tr;
 use crate::input::Event;
 use crate::repeat::Repeater;
+use crate::screens::{header, hint, row_text_y, signal_bars, Frame, HINT_Y, LIST_LEFT, RAISED, TEXT_SCALE, WIFI_RIGHT, WIFI_ROW, WIFI_TOP};
 use crate::wifi_screen::wifi_status_text;
-use crate::{fb, power, screens, settings};
+use crate::{fb, power, settings};
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Receiver, TryRecvError};
@@ -283,7 +286,7 @@ fn carry_out(request: Request, link: &mut Link, menu: &mut BluetoothMenu) -> boo
 fn bluetooth_canvas(size: (usize, usize), menu: &BluetoothMenu, link: &Link, battery: Option<Battery>) -> Canvas {
     let doing = link.job.as_ref().map(|job| (job.doing, job.name.as_str()));
     let line = status_line(menu.on, link.bluez.is_some() && link.switching.is_none(), doing);
-    let view = screens::BluetoothView {
+    let view = BluetoothView {
         on: menu.on,
         entries: if menu.on { &menu.entries } else { &[] },
         selected: menu.selected(),
@@ -296,7 +299,7 @@ fn bluetooth_canvas(size: (usize, usize), menu: &BluetoothMenu, link: &Link, bat
         },
         message: menu.message.as_deref(),
     };
-    let mut canvas = screens::bluetooth_screen(size.0, size.1, &view, &screen_frame(battery));
+    let mut canvas = bluetooth_screen(size.0, size.1, &view, &screen_frame(battery));
     add_corner(&mut canvas, battery);
     canvas
 }
@@ -340,6 +343,80 @@ pub(crate) fn bluetooth_settings(framebuffer: &mut fb::Framebuffer, events: &Rec
             }
         }
     }
+}
+
+const _: () = assert!(WIFI_TOP + bluetooth_menu::PAGE * WIFI_ROW + 40 <= HINT_Y);
+
+/// The Bluetooth screen, as `bluetooth_screen` shows it.
+pub struct BluetoothView<'a> {
+    pub on: bool,
+    pub entries: &'a [bluetooth_menu::Entry],
+    /// 0 is the on/off row.
+    pub selected: usize,
+    pub status: &'a str,
+    /// What the busy device shows, such as PAIRING.
+    pub busy_label: &'a str,
+    pub message: Option<&'a str>,
+}
+
+/// The on/off row, then the devices, laid out as the Wi-Fi list.
+pub fn bluetooth_screen(width: usize, height: usize, view: &BluetoothView, frame: &Frame) -> Canvas {
+    let mut canvas = Canvas::new(width, height, frame.theme);
+    header(&mut canvas, &icons::BLUETOOTH, tr("BLUETOOTH"), frame.battery);
+    let status_color = if view.on { canvas.theme.accent } else { MUTED };
+    canvas.text_cased_at(view.status, LIST_LEFT, 76, TEXT_SCALE, status_color);
+    let advance = (font::WIDTH + 1) * TEXT_SCALE;
+    let rows = 1 + view.entries.len();
+    let first = view.selected / bluetooth_menu::PAGE * bluetooth_menu::PAGE;
+    for (line, index) in (first..rows).take(bluetooth_menu::PAGE).enumerate() {
+        let y = WIFI_TOP + line * WIFI_ROW;
+        let row_h = WIFI_ROW - 2;
+        let selected = index == view.selected;
+        let entry = index.checked_sub(1).map(|device| &view.entries[device]);
+        let available = entry.is_none_or(|entry| entry.device.rssi.is_some() || entry.device.connected);
+        let (color, muted, off) = if selected {
+            canvas.rect(0, y, width, row_h, canvas.theme.accent);
+            (canvas.theme.background, canvas.theme.background, RAISED)
+        } else {
+            (if available { TEXT } else { MUTED }, MUTED, BODY)
+        };
+        let text_y = row_text_y(y, row_h);
+        let bars_right = width.saturating_sub(WIFI_RIGHT);
+        let Some(entry) = entry else {
+            let value = if view.on { tr("ON") } else { tr("OFF") };
+            let value_color = if view.on && !selected { canvas.theme.accent } else { color };
+            canvas.text_at(value, bars_right.saturating_sub(text_width(value, TEXT_SCALE)), text_y, TEXT_SCALE, value_color);
+            canvas.text_at(tr("BLUETOOTH"), LIST_LEFT, text_y, TEXT_SCALE, color);
+            continue;
+        };
+        if let Some(rssi) = entry.device.rssi {
+            signal_bars(&mut canvas, bars_right, y + row_h - 6, bluetooth_menu::bars(rssi), color, off);
+        }
+        let label = if entry.busy {
+            view.busy_label
+        } else if entry.device.connected {
+            tr("CONNECTED")
+        } else if entry.device.paired {
+            tr("PAIRED")
+        } else {
+            ""
+        };
+        let label_x = bars_right.saturating_sub(24 + 18 + text_width(label, TEXT_SCALE));
+        let label_color = if (entry.device.connected || entry.busy) && !selected { canvas.theme.accent } else { muted };
+        canvas.text_at(label, label_x, text_y, TEXT_SCALE, label_color);
+        let columns = label_x.saturating_sub(LIST_LEFT + 12) / advance;
+        let name: String = entry.name.chars().take(columns).collect();
+        canvas.text_cased_at(&name, LIST_LEFT, text_y, TEXT_SCALE, color);
+    }
+    if view.on && view.entries.is_empty() {
+        canvas.text(tr("NO DEVICES FOUND YET"), WIFI_TOP + 2 * WIFI_ROW + 30, TEXT_SCALE, MUTED);
+    }
+    if let Some(message) = view.message {
+        canvas.text(message, WIFI_TOP + bluetooth_menu::PAGE * WIFI_ROW + 14, TEXT_SCALE, canvas.theme.accent);
+    }
+    let hint_text = if view.selected == 0 { tr("A TURNS ON OR OFF - B BACK") } else { tr("A CONNECTS - X FORGETS - B BACK") };
+    hint(&mut canvas, hint_text);
+    canvas
 }
 
 #[cfg(test)]

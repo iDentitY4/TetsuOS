@@ -5,9 +5,14 @@
 
 use crate::{fb, power, screens, settings, sounds, wifi};
 use crate::app::{button_sound, shut_down};
+use crate::canvas::{text_width, Canvas, MUTED, TEXT};
+use crate::color::Rgb;
 use crate::corner::{add_corner, BATTERY_REFRESH, corner_clock, current_theme, read_battery, screen_frame};
+use crate::font;
 use crate::i18n::{tr, trf};
+use crate::icons;
 use crate::input::{Button, Event};
+use crate::screens::{cut, header, hint, Frame, LIST_LEFT, LIST_ROW, TEXT_SCALE};
 use crate::sleep::BACKLIGHT_POWER;
 use crate::system_info::boot_time;
 use crate::transfer_server::{random_bytes, Activity, Done, Server};
@@ -59,7 +64,7 @@ fn wifi_address() -> Option<String> {
 
 /// What the screen says, from the address, the server's work and whether B was pressed
 /// once already during an upload.
-pub(crate) fn transfer_view(address: Option<&str>, code: &str, activity: &Activity, confirming: bool) -> screens::TransferView {
+pub(crate) fn transfer_view(address: Option<&str>, code: &str, activity: &Activity, confirming: bool) -> TransferView {
     let lines = match (&activity.receiving, &activity.last) {
         (Some(receiving), _) => [trf("RECEIVING - {}%", &[&receiving.percent()]), receiving.name.clone()],
         (None, Some(Done::Received(name))) => [tr("RECEIVED").to_string(), name.clone()],
@@ -74,7 +79,7 @@ pub(crate) fn transfer_view(address: Option<&str>, code: &str, activity: &Activi
         (true, true) => tr("AN UPLOAD IS RUNNING - B AGAIN STOPS IT"),
         _ => tr("B LEAVES"),
     };
-    screens::TransferView {
+    TransferView {
         address: address.map(|address| format!("http://{address}")),
         code: spaced(code),
         qr: address.and_then(|address| qr_code(&format!("http://{address}/?code={code}"))),
@@ -127,7 +132,7 @@ pub(crate) fn wifi_transfer(framebuffer: &mut fb::Framebuffer, events: &Receiver
         let view = transfer_view(address.as_deref(), &code, &activity, confirming);
         let now_shown = (view.clone(), battery, corner_clock());
         if shown.as_ref() != Some(&now_shown) {
-            let mut canvas = screens::transfer_screen(width, height, &view, &screen_frame(battery));
+            let mut canvas = transfer_screen(width, height, &view, &screen_frame(battery));
             add_corner(&mut canvas, battery);
             framebuffer.draw(&canvas)?;
             shown = Some(now_shown);
@@ -177,6 +182,64 @@ fn set_screen(on: bool) {
     if let Err(error) = std::fs::write(BACKLIGHT_POWER, if on { "0" } else { "4" }) {
         eprintln!("warning: could not turn the screen {}: {error}", if on { "on" } else { "off" });
     }
+}
+
+/// Settings > SYSTEM > WI-FI TRANSFER, while the web page is served.
+#[derive(Clone, PartialEq, Debug)]
+pub struct TransferView {
+    /// The page's address, None while not connected to Wi-Fi.
+    pub address: Option<String>,
+    pub code: String,
+    pub qr: Option<Qr>,
+    /// What is arriving or arrived last, and its name.
+    pub lines: [String; 2],
+    pub hint: &'static str,
+}
+
+const TRANSFER_TOP: usize = 84;
+const QR_MODULE: usize = 5;
+/// The light border a QR code needs around it, in modules.
+const QR_QUIET: usize = 4;
+const TRANSFER_ACTIVITY_TOP: usize = 290;
+
+pub fn transfer_screen(width: usize, height: usize, view: &TransferView, frame: &Frame) -> Canvas {
+    let mut canvas = Canvas::new(width, height, frame.theme);
+    header(&mut canvas, &icons::WIFI, tr("WI-FI TRANSFER"), frame.battery);
+    let accent = canvas.theme.accent;
+    let Some(address) = &view.address else {
+        canvas.text_at(tr("NOT CONNECTED - JOIN A NETWORK IN WI-FI"), LIST_LEFT, TRANSFER_TOP, TEXT_SCALE, accent);
+        canvas.text_at(tr("THE ADDRESS SHOWS HERE ONCE CONNECTED."), LIST_LEFT, TRANSFER_TOP + 40, TEXT_SCALE, MUTED);
+        hint(&mut canvas, view.hint);
+        return canvas;
+    };
+    let mut left_end = width.saturating_sub(LIST_LEFT);
+    if let Some(qr) = &view.qr {
+        let size = (qr.width + 2 * QR_QUIET) * QR_MODULE;
+        let x = width.saturating_sub(LIST_LEFT + size);
+        let y = TRANSFER_TOP - 8;
+        canvas.rect(x, y, size, size, Rgb(0xFF, 0xFF, 0xFF));
+        for (index, _) in qr.dark.iter().enumerate().filter(|(_, dark)| **dark) {
+            let (column, row) = (index % qr.width, index / qr.width);
+            canvas.rect(x + (QR_QUIET + column) * QR_MODULE, y + (QR_QUIET + row) * QR_MODULE, QR_MODULE, QR_MODULE, Rgb(0, 0, 0));
+        }
+        left_end = x.saturating_sub(16);
+    }
+    let room = left_end.saturating_sub(LIST_LEFT);
+    canvas.text_at(tr("OPEN IN A BROWSER:"), LIST_LEFT, TRANSFER_TOP, TEXT_SCALE, MUTED);
+    let scale = if text_width(address, 3) <= room { 3 } else { TEXT_SCALE };
+    canvas.text_cased_at(address, LIST_LEFT, TRANSFER_TOP + 30, scale, TEXT);
+    canvas.text_at(tr("CODE:"), LIST_LEFT, TRANSFER_TOP + 90, TEXT_SCALE, MUTED);
+    canvas.text_at(&view.code, LIST_LEFT, TRANSFER_TOP + 120, 4, accent);
+
+    let columns = width.saturating_sub(2 * LIST_LEFT) / ((font::WIDTH + 1) * TEXT_SCALE);
+    canvas.text_at(&view.lines[0], LIST_LEFT, TRANSFER_ACTIVITY_TOP, TEXT_SCALE, accent);
+    canvas.text_cased_at(&cut(&view.lines[1], columns), LIST_LEFT, TRANSFER_ACTIVITY_TOP + LIST_ROW, TEXT_SCALE, TEXT);
+    let notes = [tr("SEND GAMES, SAVES AND COVERS FROM THE PAGE."), tr("IT STOPS WHEN THIS SCREEN CLOSES.")];
+    for (row, line) in notes.iter().enumerate() {
+        canvas.text_at(line, LIST_LEFT, TRANSFER_ACTIVITY_TOP + 80 + row * LIST_ROW, TEXT_SCALE, MUTED);
+    }
+    hint(&mut canvas, view.hint);
+    canvas
 }
 
 #[cfg(test)]

@@ -1,31 +1,23 @@
 //! Lays out the launcher's screens: the console grid, game lists, settings and system info.
 
 use crate::image::Image;
-use crate::cheats::{self, CheatsPage};
-use crate::core_options::{OptionsPage, Row as OptionRow};
-use crate::canvas::{text_width, Battery, Canvas, Theme, BODY, LINKS_W, LOW, MUTED, TEXT};
+use crate::canvas::{text_width, Battery, Canvas, Theme, BODY, LINKS_W, MUTED, TEXT};
 use crate::color::Rgb;
 use crate::font;
 use crate::i18n::{tr, trf};
 use crate::icons::{self, Icon};
 use crate::keyboard::{self, Key, Keyboard};
-use crate::launcher::{DetailRow, Group, Setting, COLUMNS, DETAIL_ROWS, MAX_GROUP_SETTINGS, PAGE, STATS_CONSOLE_ROWS};
+use crate::launcher::{DetailRow, Group, Setting, COLUMNS, DETAIL_ROWS, MAX_GROUP_SETTINGS, PAGE};
 use crate::settings::GridSize;
 use crate::boot_partition::BootMessages;
 use crate::ssh;
-use crate::transfer::Qr;
-use crate::wifi::Security;
-use crate::wifi_menu::{self, Entry};
-use crate::bluetooth_menu;
 use std::time::Duration;
 use crate::settings::{idle_sleep_label, Settings};
 
-const TEXT_SCALE: usize = 2;
-/// How far from the top of the screen the volume sign shows.
-pub const VOLUME_SIGN_TOP: usize = 6;
-const HINT_Y: usize = 448;
+pub(crate) const TEXT_SCALE: usize = 2;
+pub(crate) const HINT_Y: usize = 448;
 /// A slightly lighter body, for the inside of the selected tile.
-const RAISED: Rgb = Rgb(0x3A, 0x41, 0x55);
+pub(crate) const RAISED: Rgb = Rgb(0x3A, 0x41, 0x55);
 
 const TILE_W: usize = 140;
 const TILE_GAP: usize = 12;
@@ -35,12 +27,12 @@ const GRID_TOP_UNTITLED: usize = 36;
 const GRID_BOTTOM: usize = 432;
 const TILE_BORDER: usize = 4;
 
-const LIST_TOP: usize = 76;
-const LIST_ROW: usize = 30;
-const LIST_LEFT: usize = 24;
+pub(crate) const LIST_TOP: usize = 76;
+pub(crate) const LIST_ROW: usize = 30;
+pub(crate) const LIST_LEFT: usize = 24;
 /// Rows in a list with an icon each, as recent games have, leave room for it.
-const LIST_ICON_LEFT: usize = 16;
-const LIST_ICON_TEXT_LEFT: usize = 60;
+pub(crate) const LIST_ICON_LEFT: usize = 16;
+pub(crate) const LIST_ICON_TEXT_LEFT: usize = 60;
 /// Where the star before a starred game goes, left of any icon.
 const STAR_LEFT: usize = 4;
 const STAR: Rgb = Rgb(0xF0, 0xC0, 0x30);
@@ -49,9 +41,9 @@ const STAR: Rgb = Rgb(0xF0, 0xC0, 0x30);
 const ART_PANEL: (usize, usize, usize, usize) = (420, LIST_TOP, 204, PAGE * LIST_ROW - 2);
 
 const SETTINGS_TOP: usize = 80;
-const SETTINGS_ROW: usize = 32;
-const SETTINGS_LEFT: usize = 40;
-const SETTINGS_RIGHT: usize = 40;
+pub(crate) const SETTINGS_ROW: usize = 32;
+pub(crate) const SETTINGS_LEFT: usize = 40;
+pub(crate) const SETTINGS_RIGHT: usize = 40;
 const BAR_W: usize = 160;
 
 // Lists, settings and the confirmation line must end above the hint.
@@ -101,18 +93,18 @@ pub struct SettingsView<'a> {
     pub achievements_user: Option<&'a str>,
 }
 
-fn row_text_y(top: usize, height: usize) -> usize {
+pub(crate) fn row_text_y(top: usize, height: usize) -> usize {
     top + height.saturating_sub(font::HEIGHT * TEXT_SCALE) / 2
 }
 
 /// The pictogram and name of the screen, top left, and the battery top right.
-fn header(canvas: &mut Canvas, icon: &Icon, title: &str, battery: Option<Battery>) {
+pub(crate) fn header(canvas: &mut Canvas, icon: &Icon, title: &str, battery: Option<Battery>) {
     canvas.icon(icon, 16, 12, 2);
     canvas.text_at(title, 16 + icons::WIDTH * 2 + 16, 26, 3, TEXT);
     canvas.battery(battery);
 }
 
-fn hint(canvas: &mut Canvas, text: &str) {
+pub(crate) fn hint(canvas: &mut Canvas, text: &str) {
     canvas.text(text, HINT_Y, TEXT_SCALE, MUTED);
 }
 
@@ -124,6 +116,10 @@ fn bar(canvas: &mut Canvas, right: usize, top: usize, height: usize, level: Opti
     canvas.rect(x + 2, y + 2, BAR_W - 4, 10, off);
     let fill = (BAR_W - 4) * level.unwrap_or(0).min(100) as usize / 100;
     canvas.rect(x + 2, y + 2, fill, 10, on);
+}
+
+pub(crate) fn clip(text: &str, columns: usize) -> String {
+    text.chars().take(columns).collect()
 }
 
 /// The width every grid takes, whatever its number of columns.
@@ -256,7 +252,7 @@ pub fn settings_grid(width: usize, height: usize, groups: &[Group], selected: us
 }
 
 /// Draws a small triangle pointing up or down, centred on `x`, for more rows that way.
-fn more_arrow(canvas: &mut Canvas, x: usize, y: usize, up: bool) {
+pub(crate) fn more_arrow(canvas: &mut Canvas, x: usize, y: usize, up: bool) {
     for step in 0..6 {
         let half = if up { step } else { 5 - step };
         canvas.rect(x.saturating_sub(half * 2 + 1), y + step, half * 4 + 2, 1, MUTED);
@@ -319,7 +315,7 @@ fn tile_grid(
 }
 
 /// The first row shown: lists scroll a whole page at a time.
-fn first_visible(selected: usize) -> usize {
+pub(crate) fn first_visible(selected: usize) -> usize {
     selected / PAGE * PAGE
 }
 
@@ -650,124 +646,6 @@ pub fn settings_screen(width: usize, height: usize, view: &SettingsView, frame: 
     canvas
 }
 
-/// One week's bar on the statistics screen.
-pub struct WeekBar {
-    /// Its Monday, as the day and the month's first letters on the line below.
-    pub day: u32,
-    pub month: String,
-    pub seconds: u64,
-    pub this_week: bool,
-}
-
-/// One console's row on the statistics screen.
-pub struct ConsoleTime<'a> {
-    pub icon: &'a Icon,
-    pub name: &'a str,
-    pub seconds: u64,
-}
-
-/// What the statistics screen shows: nothing at all yet, or the log's numbers.
-pub struct Statistics<'a> {
-    /// The whole time and since when, such as "12 H 5 MIN PLAYED SINCE 11 NOVEMBER 2026".
-    pub summary: String,
-    pub weeks: Vec<WeekBar>,
-    /// Most played first.
-    pub consoles: Vec<ConsoleTime<'a>>,
-    /// The first console in view.
-    pub first: usize,
-}
-
-const STATS_LEFT: usize = 40;
-const STATS_SUMMARY_Y: usize = 84;
-const STATS_WEEKS_TITLE_Y: usize = 112;
-const STATS_BAR_MAX: usize = 66;
-const STATS_BASELINE: usize = 218;
-const STATS_BAR_W: usize = 36;
-/// The weeks' columns, a little wider than the margins.
-const STATS_CHART: (usize, usize) = (16, 624);
-const STATS_CONSOLES_TITLE_Y: usize = 270;
-const STATS_CONSOLES_TOP: usize = 290;
-const STATS_CONSOLE_ROW: usize = 28;
-const STATS_CONSOLE_BAR: (usize, usize) = (224, 416);
-// Room for the arrow below the rows above the hint.
-const _: () = assert!(STATS_CONSOLES_TOP + STATS_CONSOLE_ROWS * STATS_CONSOLE_ROW + 10 <= HINT_Y);
-
-/// A week's time on its bar, short enough for its column: "2:05".
-pub fn hours_minutes(seconds: u64) -> String {
-    let minutes = seconds / 60;
-    format!("{}:{:02}", minutes / 60, minutes % 60)
-}
-
-/// The bar for `seconds` out of `most`, at least a sliver for any time at all.
-fn bar_length(seconds: u64, most: u64, full: usize) -> usize {
-    if seconds == 0 || most == 0 {
-        return 0;
-    }
-    let length = usize::try_from(u128::from(seconds) * full as u128 / u128::from(most)).unwrap_or(full);
-    length.clamp(2, full)
-}
-
-/// Settings > STATISTICS: the play time per week as bars, and per console as rows.
-pub fn statistics_screen(width: usize, height: usize, stats: &Statistics, frame: &Frame) -> Canvas {
-    let mut canvas = Canvas::new(width, height, frame.theme);
-    header(&mut canvas, &icons::STATISTICS, tr("PLAY STATISTICS"), frame.battery);
-    if stats.consoles.is_empty() {
-        canvas.text(tr("NO PLAY TIME YET"), 200, TEXT_SCALE, TEXT);
-        canvas.text(tr("GAMES PLAYED FROM NOW ON ARE COUNTED HERE"), 230, TEXT_SCALE, MUTED);
-        hint(&mut canvas, tr("B BACK"));
-        return canvas;
-    }
-    let right = width.saturating_sub(STATS_LEFT);
-    canvas.text_at(&stats.summary, STATS_LEFT, STATS_SUMMARY_Y, TEXT_SCALE, TEXT);
-
-    canvas.text_at(tr("PER WEEK"), STATS_LEFT, STATS_WEEKS_TITLE_Y, TEXT_SCALE, MUTED);
-    let (chart_left, chart_right) = STATS_CHART;
-    let column = (chart_right - chart_left) / stats.weeks.len().max(1);
-    let most = stats.weeks.iter().map(|week| week.seconds).max().unwrap_or(0);
-    for (index, week) in stats.weeks.iter().enumerate() {
-        let centre = chart_left + index * column + column / 2;
-        let color = if week.this_week { canvas.theme.accent } else { MUTED };
-        let length = bar_length(week.seconds, most, STATS_BAR_MAX);
-        let x = centre - STATS_BAR_W / 2;
-        canvas.rect(x, STATS_BASELINE - length, STATS_BAR_W, length, color);
-        canvas.rect(x - 4, STATS_BASELINE, STATS_BAR_W + 8, 2, BODY);
-        if week.seconds > 0 {
-            let value = hours_minutes(week.seconds);
-            let y = STATS_BASELINE - length - 6 - font::HEIGHT * TEXT_SCALE;
-            canvas.text_at(&value, centre.saturating_sub(text_width(&value, TEXT_SCALE) / 2), y, TEXT_SCALE, TEXT);
-        }
-        let label_color = if week.this_week { canvas.theme.accent } else { MUTED };
-        let day = week.day.to_string();
-        canvas.text_at(&day, centre.saturating_sub(text_width(&day, TEXT_SCALE) / 2), STATS_BASELINE + 8, TEXT_SCALE, label_color);
-        let month_x = centre.saturating_sub(text_width(&week.month, TEXT_SCALE) / 2);
-        canvas.text_at(&week.month, month_x, STATS_BASELINE + 26, TEXT_SCALE, label_color);
-    }
-
-    canvas.text_at(tr("PER CONSOLE"), STATS_LEFT, STATS_CONSOLES_TITLE_Y, TEXT_SCALE, MUTED);
-    let most = stats.consoles.first().map_or(0, |console| console.seconds);
-    let shown = stats.consoles.iter().skip(stats.first).take(STATS_CONSOLE_ROWS);
-    for (line, console) in shown.enumerate() {
-        let y = STATS_CONSOLES_TOP + line * STATS_CONSOLE_ROW;
-        canvas.icon(console.icon, STATS_LEFT, y + (STATS_CONSOLE_ROW - icons::HEIGHT) / 2, 1);
-        let text_y = row_text_y(y, STATS_CONSOLE_ROW);
-        canvas.text_at(console.name, STATS_LEFT + icons::WIDTH + 8, text_y, TEXT_SCALE, TEXT);
-        let (bar_left, bar_right) = STATS_CONSOLE_BAR;
-        let length = bar_length(console.seconds, most, bar_right - bar_left);
-        canvas.rect(bar_left, y + STATS_CONSOLE_ROW / 2 - 5, length, 10, canvas.theme.accent);
-        let time = crate::game_files::play_time_text(Duration::from_secs(console.seconds));
-        canvas.text_at(&time, right.saturating_sub(text_width(&time, TEXT_SCALE)), text_y, TEXT_SCALE, TEXT);
-    }
-    let scrolls = stats.consoles.len() > STATS_CONSOLE_ROWS;
-    if stats.first > 0 {
-        more_arrow(&mut canvas, width / 2, STATS_CONSOLES_TOP - 8, true);
-    }
-    if stats.first + STATS_CONSOLE_ROWS < stats.consoles.len() {
-        more_arrow(&mut canvas, width / 2, STATS_CONSOLES_TOP + STATS_CONSOLE_ROWS * STATS_CONSOLE_ROW + 2, false);
-    }
-    hint(&mut canvas, if scrolls { tr("UP DOWN SCROLLS - B BACK") } else { tr("B BACK") });
-    canvas
-}
-
 /// Rows of a label and a value under a title, such as SYSTEM INFO.
 pub fn info_screen(width: usize, height: usize, (icon, title): (&Icon, &str), lines: &[(String, String)], frame: &Frame) -> Canvas {
     let mut canvas = Canvas::new(width, height, frame.theme);
@@ -781,68 +659,6 @@ pub fn info_screen(width: usize, height: usize, (icon, title): (&Icon, &str), li
         canvas.text_at(value, right.saturating_sub(text_width(value, TEXT_SCALE)), y, TEXT_SCALE, TEXT);
     }
     hint(&mut canvas, tr("B BACK"));
-    canvas
-}
-
-/// Settings > TIME > SET TIME, as `set_time_screen` shows it.
-pub struct SetTimeView<'a> {
-    /// What each of `set_time::FIELDS` shows.
-    pub values: &'a [String; 5],
-    pub selected: usize,
-    /// The date and time in full, with the weekday.
-    pub date: &'a str,
-    /// Whether the last save failed.
-    pub failed: bool,
-}
-
-const SET_TIME_SCALE: usize = 4;
-const SET_TIME_LABEL_Y: usize = 124;
-const SET_TIME_BOX_Y: usize = 146;
-const SET_TIME_BOX_H: usize = 60;
-const SET_TIME_PAD: usize = 24;
-const SET_TIME_GAP: usize = 12;
-/// More room between the date and the time.
-const SET_TIME_WIDE_GAP: usize = 36;
-
-/// The date and time as a field each, the selected one in the accent colour with arrows
-/// above and below it for Up and Down.
-pub fn set_time_screen(width: usize, height: usize, view: &SetTimeView, frame: &Frame) -> Canvas {
-    let mut canvas = Canvas::new(width, height, frame.theme);
-    header(&mut canvas, &icons::TIME, tr("SET TIME"), frame.battery);
-    let fields = crate::set_time::FIELDS;
-    let widths: Vec<usize> = fields
-        .iter()
-        .zip(view.values)
-        .map(|(field, value)| text_width(value, SET_TIME_SCALE).max(text_width(field.label(), TEXT_SCALE)) + SET_TIME_PAD)
-        .collect();
-    let gap = |index: usize| if index == 3 { SET_TIME_WIDE_GAP } else { SET_TIME_GAP };
-    let total = widths.iter().sum::<usize>() + (1..fields.len()).map(gap).sum::<usize>();
-    let mut x = width.saturating_sub(total) / 2;
-    for (index, ((field, value), &w)) in fields.iter().zip(view.values).zip(&widths).enumerate() {
-        if index > 0 {
-            x += gap(index);
-        }
-        let selected = index == view.selected;
-        let label = field.label();
-        canvas.text_at(label, x + w.saturating_sub(text_width(label, TEXT_SCALE)) / 2, SET_TIME_LABEL_Y, TEXT_SCALE, MUTED);
-        let (fill, color) = if selected { (canvas.theme.accent, canvas.theme.background) } else { (BODY, TEXT) };
-        canvas.rect(x, SET_TIME_BOX_Y, w, SET_TIME_BOX_H, fill);
-        let text_y = SET_TIME_BOX_Y + (SET_TIME_BOX_H - font::HEIGHT * SET_TIME_SCALE) / 2;
-        canvas.text_at(value, x + w.saturating_sub(text_width(value, SET_TIME_SCALE)) / 2, text_y, SET_TIME_SCALE, color);
-        if selected {
-            more_arrow(&mut canvas, x + w / 2, SET_TIME_BOX_Y - 32, true);
-            more_arrow(&mut canvas, x + w / 2, SET_TIME_BOX_Y + SET_TIME_BOX_H + 6, false);
-        }
-        x += w;
-    }
-    canvas.text(view.date, 248, TEXT_SCALE, TEXT);
-    let (note, color) = if view.failed {
-        (tr("COULD NOT SET THE CLOCK"), LOW)
-    } else {
-        (tr("WI-FI SETS THE CLOCK AGAIN WHEN IT CONNECTS"), MUTED)
-    };
-    canvas.text(note, 288, TEXT_SCALE, color);
-    hint(&mut canvas, tr("LEFT RIGHT MOVES - UP DOWN CHANGES - A SAVES - B BACK"));
     canvas
 }
 
@@ -929,48 +745,6 @@ pub(crate) trait RowList {
     fn row_note(&self) -> Option<String>;
 }
 
-impl RowList for OptionsPage {
-    fn row_count(&self) -> usize {
-        self.rows().len()
-    }
-    fn selected_row(&self) -> usize {
-        self.selected_index()
-    }
-    fn row_label(&self, index: usize) -> String {
-        self.label(self.rows()[index])
-    }
-    fn row_value(&self, index: usize) -> Option<String> {
-        self.value(self.rows()[index])
-    }
-    fn row_steps(&self, index: usize) -> bool {
-        !matches!(self.rows()[index], OptionRow::Category(_))
-    }
-    fn row_note(&self) -> Option<String> {
-        if self.has_options() { self.note().map(String::from) } else { Some(tr("THIS CORE HAS NO OPTIONS").to_string()) }
-    }
-}
-
-impl RowList for CheatsPage {
-    fn row_count(&self) -> usize {
-        self.rows().len()
-    }
-    fn selected_row(&self) -> usize {
-        self.selected_index()
-    }
-    fn row_label(&self, index: usize) -> String {
-        self.label(self.rows()[index])
-    }
-    fn row_value(&self, index: usize) -> Option<String> {
-        self.value(self.rows()[index])
-    }
-    fn row_steps(&self, index: usize) -> bool {
-        matches!(self.rows()[index], cheats::Row::Cheat(_))
-    }
-    fn row_note(&self) -> Option<String> {
-        self.note()
-    }
-}
-
 /// The room the rows and the note take, from the top of the rows.
 pub(crate) const fn option_rows_height(layout: &OptionsLayout) -> usize {
     layout.shown * layout.row + 10 + OPTION_NOTE_LINES * OPTION_NOTE_LINE
@@ -1030,285 +804,16 @@ pub(crate) fn option_rows(canvas: &mut Canvas, page: &dyn RowList, layout: &Opti
     }
 }
 
-/// The CORE OPTIONS rows on the settings screens, with room for the note above the hint.
-const SETTINGS_OPTIONS: OptionsLayout =
-    OptionsLayout { left: 0, right: 640, pad: SETTINGS_LEFT, top: LIST_TOP, row: 28, shown: 10, values: OPTION_VALUE_COLUMNS };
-const _: () = assert!(SETTINGS_OPTIONS.top + option_rows_height(&SETTINGS_OPTIONS) <= HINT_Y);
-
-/// A console's CORE OPTIONS, from Settings > CORES.
-pub fn core_options_screen(width: usize, height: usize, icon: &Icon, console: &str, page: &OptionsPage, frame: &Frame) -> Canvas {
-    let mut canvas = Canvas::new(width, height, frame.theme);
-    let title: String = page.category_label().unwrap_or(console).chars().take(21).collect();
-    header(&mut canvas, icon, &title, frame.battery);
-    option_rows(&mut canvas, page, &OptionsLayout { right: width, ..SETTINGS_OPTIONS });
-    hint(&mut canvas, tr("LEFT RIGHT CHANGES - A OPENS - B BACK"));
-    canvas
-}
-
-/// The consoles in Settings > CORES, each opening its core's options.
-pub fn core_consoles_screen(width: usize, height: usize, rows: &[(&Icon, &str)], selected: usize, frame: &Frame) -> Canvas {
-    let mut canvas = Canvas::new(width, height, frame.theme);
-    header(&mut canvas, &icons::CORES, tr("CORE OPTIONS"), frame.battery);
-    let right = width.saturating_sub(SETTINGS_RIGHT);
-    let first = first_visible(selected);
-    if first > 0 {
-        more_arrow(&mut canvas, width / 2, LIST_TOP - 10, true);
-    }
-    if first + PAGE < rows.len() {
-        more_arrow(&mut canvas, width / 2, LIST_TOP + PAGE * LIST_ROW, false);
-    }
-    for (line, (index, &(icon, label))) in rows.iter().enumerate().skip(first).take(PAGE).enumerate() {
-        let y = LIST_TOP + line * LIST_ROW;
-        let color = if index == selected {
-            canvas.rect(0, y, width, LIST_ROW - 2, canvas.theme.accent);
-            canvas.theme.background
-        } else {
-            TEXT
-        };
-        canvas.icon(icon, LIST_ICON_LEFT, y + (LIST_ROW - 2 - icons::HEIGHT) / 2, 1);
-        let text_y = row_text_y(y, LIST_ROW - 2);
-        canvas.text_at(label, LIST_ICON_TEXT_LEFT, text_y, TEXT_SCALE, color);
-        canvas.text_at(">", right.saturating_sub(text_width(">", TEXT_SCALE)), text_y, TEXT_SCALE, color);
-    }
-    hint(&mut canvas, tr("A OPENS - B BACK"));
-    canvas
-}
-
-/// The box art download, as `boxart_screen` shows it.
-pub struct BoxArtView<'a> {
-    pub status: &'a str,
-    /// The game being fetched, or nothing.
-    pub detail: &'a str,
-    /// How far through the games, from 0 to 100, while downloading.
-    pub progress: Option<u32>,
-    /// Games with no cover, by readable name.
-    pub missing: &'a [String],
-    pub hint: &'a str,
-}
-
-const BOXART_TOP: usize = 92;
-/// Names that fit beside the left margin, as on the Wi-Fi screen.
-const BOXART_COLUMNS: usize = 49;
-const BOXART_MISSING_ROWS: usize = 7;
-const _: () = assert!(BOXART_TOP + 100 + (BOXART_MISSING_ROWS + 1) * LIST_ROW <= HINT_Y);
-
-fn clip(text: &str, columns: usize) -> String {
-    text.chars().take(columns).collect()
-}
-
-pub fn boxart_screen(width: usize, height: usize, view: &BoxArtView, frame: &Frame) -> Canvas {
-    let mut canvas = Canvas::new(width, height, frame.theme);
-    header(&mut canvas, &icons::SETTINGS, tr("BOX ART"), frame.battery);
-    canvas.text_at(&clip(view.status, BOXART_COLUMNS), LIST_LEFT, BOXART_TOP, TEXT_SCALE, TEXT);
-    canvas.text_at(&clip(view.detail, BOXART_COLUMNS), LIST_LEFT, BOXART_TOP + 30, TEXT_SCALE, MUTED);
-    let bar_w = width.saturating_sub(2 * LIST_LEFT);
-    if let (Some(percent), true) = (view.progress, bar_w > 4) {
-        let y = BOXART_TOP + 66;
-        canvas.rect(LIST_LEFT, y, bar_w, 14, canvas.theme.accent);
-        canvas.rect(LIST_LEFT + 2, y + 2, bar_w - 4, 10, canvas.theme.background);
-        canvas.rect(LIST_LEFT + 2, y + 2, (bar_w - 4) * percent.min(100) as usize / 100, 10, canvas.theme.accent);
-    }
-    if !view.missing.is_empty() {
-        let top = BOXART_TOP + 100;
-        canvas.text_at(tr("NO COVER FOUND FOR"), LIST_LEFT, top, TEXT_SCALE, MUTED);
-        let shown = if view.missing.len() > BOXART_MISSING_ROWS { BOXART_MISSING_ROWS - 1 } else { view.missing.len() };
-        for (row, name) in view.missing.iter().take(shown).enumerate() {
-            canvas.text_at(&clip(name, BOXART_COLUMNS), LIST_LEFT, top + (row + 1) * LIST_ROW, TEXT_SCALE, TEXT);
-        }
-        if shown < view.missing.len() {
-            let more = trf("AND {} MORE", &[&(view.missing.len() - shown)]);
-            canvas.text_at(&more, LIST_LEFT, top + (shown + 1) * LIST_ROW, TEXT_SCALE, MUTED);
-        }
-    }
-    hint(&mut canvas, view.hint);
-    canvas
-}
-
-const WIFI_TOP: usize = 108;
-const WIFI_ROW: usize = 30;
-const WIFI_RIGHT: usize = 24;
-const _: () = assert!(WIFI_TOP + wifi_menu::PAGE * WIFI_ROW + 40 <= HINT_Y);
-
-/// The Wi-Fi list, as `wifi_screen` shows it.
-pub struct WifiView<'a> {
-    pub on: bool,
-    pub entries: &'a [Entry],
-    /// 0 is the on/off row.
-    pub selected: usize,
-    /// The connection, or why there is none.
-    pub status: &'a str,
-    pub connected: bool,
-    pub message: Option<&'a str>,
-}
-
+pub(crate) const WIFI_TOP: usize = 108;
+pub(crate) const WIFI_ROW: usize = 30;
+pub(crate) const WIFI_RIGHT: usize = 24;
 /// Signal bars, bottom-aligned, with their right edge at `right`.
-fn signal_bars(canvas: &mut Canvas, right: usize, bottom: usize, bars: usize, on: Rgb, off: Rgb) {
+pub(crate) fn signal_bars(canvas: &mut Canvas, right: usize, bottom: usize, bars: usize, on: Rgb, off: Rgb) {
     for bar in 0..4 {
         let height = 4 + bar * 4;
         let x = right - (4 - bar) * 6 + 2;
         canvas.rect(x, bottom - height, 4, height, if bar < bars { on } else { off });
     }
-}
-
-/// A padlock 10 pixels wide, for networks that need a password.
-fn padlock(canvas: &mut Canvas, x: usize, top: usize, color: Rgb) {
-    canvas.rect(x + 2, top, 6, 2, color);
-    canvas.rect(x + 2, top, 2, 6, color);
-    canvas.rect(x + 6, top, 2, 6, color);
-    canvas.rect(x, top + 6, 10, 8, color);
-}
-
-pub fn wifi_screen(width: usize, height: usize, view: &WifiView, frame: &Frame) -> Canvas {
-    let mut canvas = Canvas::new(width, height, frame.theme);
-    header(&mut canvas, &icons::WIFI, tr("WI-FI"), frame.battery);
-    let status_color = if view.connected { canvas.theme.accent } else { MUTED };
-    canvas.text_cased_at(view.status, LIST_LEFT, 76, TEXT_SCALE, status_color);
-    let advance = (font::WIDTH + 1) * TEXT_SCALE;
-    let rows = 1 + if view.on { view.entries.len() } else { 0 };
-    let first = view.selected / wifi_menu::PAGE * wifi_menu::PAGE;
-    for (line, index) in (first..rows).take(wifi_menu::PAGE).enumerate() {
-        let y = WIFI_TOP + line * WIFI_ROW;
-        let row_h = WIFI_ROW - 2;
-        let selected = index == view.selected;
-        let entry = index.checked_sub(1).map(|network| &view.entries[network]);
-        let (color, muted, off) = if selected {
-            canvas.rect(0, y, width, row_h, canvas.theme.accent);
-            (canvas.theme.background, canvas.theme.background, RAISED)
-        } else {
-            (if entry.is_none_or(|entry| entry.signal.is_some()) { TEXT } else { MUTED }, MUTED, BODY)
-        };
-        let text_y = row_text_y(y, row_h);
-        let bars_right = width.saturating_sub(WIFI_RIGHT);
-        let Some(entry) = entry else {
-            let value = if view.on { tr("ON") } else { tr("OFF") };
-            let value_color = if view.on && !selected { canvas.theme.accent } else { color };
-            canvas.text_at(value, bars_right.saturating_sub(text_width(value, TEXT_SCALE)), text_y, TEXT_SCALE, value_color);
-            canvas.text_at(tr("WI-FI"), LIST_LEFT, text_y, TEXT_SCALE, color);
-            continue;
-        };
-        if let Some(signal) = entry.signal {
-            signal_bars(&mut canvas, bars_right, y + row_h - 6, wifi_menu::bars(signal), color, off);
-        }
-        let lock_x = bars_right.saturating_sub(24 + 18);
-        if entry.security != Security::Open {
-            padlock(&mut canvas, lock_x, y + (row_h - 14) / 2, muted);
-        }
-        let label = if entry.connected {
-            tr("CONNECTED")
-        } else if entry.saved.is_some() {
-            tr("SAVED")
-        } else if entry.security == Security::Unsupported {
-            tr("NOT SUPPORTED")
-        } else {
-            ""
-        };
-        let label_x = lock_x.saturating_sub(12 + text_width(label, TEXT_SCALE));
-        canvas.text_at(label, label_x, text_y, TEXT_SCALE, if entry.connected && !selected { canvas.theme.accent } else { muted });
-        let columns = label_x.saturating_sub(LIST_LEFT + 12) / advance;
-        let name: String = entry.name.chars().take(columns).collect();
-        canvas.text_cased_at(&name, LIST_LEFT, text_y, TEXT_SCALE, color);
-    }
-    if view.on && view.entries.is_empty() {
-        canvas.text(tr("NO NETWORKS FOUND YET"), WIFI_TOP + 2 * WIFI_ROW + 30, TEXT_SCALE, MUTED);
-    }
-    if let Some(message) = view.message {
-        canvas.text(message, WIFI_TOP + wifi_menu::PAGE * WIFI_ROW + 14, TEXT_SCALE, canvas.theme.accent);
-    }
-    let hint_text = if view.selected == 0 { tr("A TURNS ON OR OFF - START OPTIONS - B BACK") } else { tr("A CONNECTS - X EDITS - Y SCANS - START OPTIONS") };
-    hint(&mut canvas, hint_text);
-    canvas
-}
-
-/// The Wi-Fi rows: a network's own settings, or the options, under `title`.
-const WIFI_PAGE: OptionsLayout = OptionsLayout { left: 0, right: 640, pad: SETTINGS_LEFT, top: LIST_TOP, row: 28, shown: 10, values: 24 };
-const _: () = assert!(WIFI_PAGE.top + option_rows_height(&WIFI_PAGE) <= HINT_Y);
-
-/// A network's name is drawn as it is, since case matters in it.
-pub fn wifi_page_screen(width: usize, height: usize, (title, cased): (&str, bool), page: &dyn RowList, frame: &Frame) -> Canvas {
-    let mut canvas = Canvas::new(width, height, frame.theme);
-    if cased {
-        header(&mut canvas, &icons::WIFI, "", frame.battery);
-        canvas.text_cased_at(&cut(title, 21), 16 + icons::WIDTH * 2 + 16, 26, 3, TEXT);
-    } else {
-        header(&mut canvas, &icons::WIFI, &cut(title, 21), frame.battery);
-    }
-    option_rows(&mut canvas, page, &OptionsLayout { right: width, ..WIFI_PAGE });
-    hint(&mut canvas, tr("LEFT RIGHT CHANGES - A SELECTS - B BACK"));
-    canvas
-}
-
-const _: () = assert!(WIFI_TOP + bluetooth_menu::PAGE * WIFI_ROW + 40 <= HINT_Y);
-
-/// The Bluetooth screen, as `bluetooth_screen` shows it.
-pub struct BluetoothView<'a> {
-    pub on: bool,
-    pub entries: &'a [bluetooth_menu::Entry],
-    /// 0 is the on/off row.
-    pub selected: usize,
-    pub status: &'a str,
-    /// What the busy device shows, such as PAIRING.
-    pub busy_label: &'a str,
-    pub message: Option<&'a str>,
-}
-
-/// The on/off row, then the devices, laid out as the Wi-Fi list.
-pub fn bluetooth_screen(width: usize, height: usize, view: &BluetoothView, frame: &Frame) -> Canvas {
-    let mut canvas = Canvas::new(width, height, frame.theme);
-    header(&mut canvas, &icons::BLUETOOTH, tr("BLUETOOTH"), frame.battery);
-    let status_color = if view.on { canvas.theme.accent } else { MUTED };
-    canvas.text_cased_at(view.status, LIST_LEFT, 76, TEXT_SCALE, status_color);
-    let advance = (font::WIDTH + 1) * TEXT_SCALE;
-    let rows = 1 + view.entries.len();
-    let first = view.selected / bluetooth_menu::PAGE * bluetooth_menu::PAGE;
-    for (line, index) in (first..rows).take(bluetooth_menu::PAGE).enumerate() {
-        let y = WIFI_TOP + line * WIFI_ROW;
-        let row_h = WIFI_ROW - 2;
-        let selected = index == view.selected;
-        let entry = index.checked_sub(1).map(|device| &view.entries[device]);
-        let available = entry.is_none_or(|entry| entry.device.rssi.is_some() || entry.device.connected);
-        let (color, muted, off) = if selected {
-            canvas.rect(0, y, width, row_h, canvas.theme.accent);
-            (canvas.theme.background, canvas.theme.background, RAISED)
-        } else {
-            (if available { TEXT } else { MUTED }, MUTED, BODY)
-        };
-        let text_y = row_text_y(y, row_h);
-        let bars_right = width.saturating_sub(WIFI_RIGHT);
-        let Some(entry) = entry else {
-            let value = if view.on { tr("ON") } else { tr("OFF") };
-            let value_color = if view.on && !selected { canvas.theme.accent } else { color };
-            canvas.text_at(value, bars_right.saturating_sub(text_width(value, TEXT_SCALE)), text_y, TEXT_SCALE, value_color);
-            canvas.text_at(tr("BLUETOOTH"), LIST_LEFT, text_y, TEXT_SCALE, color);
-            continue;
-        };
-        if let Some(rssi) = entry.device.rssi {
-            signal_bars(&mut canvas, bars_right, y + row_h - 6, bluetooth_menu::bars(rssi), color, off);
-        }
-        let label = if entry.busy {
-            view.busy_label
-        } else if entry.device.connected {
-            tr("CONNECTED")
-        } else if entry.device.paired {
-            tr("PAIRED")
-        } else {
-            ""
-        };
-        let label_x = bars_right.saturating_sub(24 + 18 + text_width(label, TEXT_SCALE));
-        let label_color = if (entry.device.connected || entry.busy) && !selected { canvas.theme.accent } else { muted };
-        canvas.text_at(label, label_x, text_y, TEXT_SCALE, label_color);
-        let columns = label_x.saturating_sub(LIST_LEFT + 12) / advance;
-        let name: String = entry.name.chars().take(columns).collect();
-        canvas.text_cased_at(&name, LIST_LEFT, text_y, TEXT_SCALE, color);
-    }
-    if view.on && view.entries.is_empty() {
-        canvas.text(tr("NO DEVICES FOUND YET"), WIFI_TOP + 2 * WIFI_ROW + 30, TEXT_SCALE, MUTED);
-    }
-    if let Some(message) = view.message {
-        canvas.text(message, WIFI_TOP + bluetooth_menu::PAGE * WIFI_ROW + 14, TEXT_SCALE, canvas.theme.accent);
-    }
-    let hint_text = if view.selected == 0 { tr("A TURNS ON OR OFF - B BACK") } else { tr("A CONNECTS - X FORGETS - B BACK") };
-    hint(&mut canvas, hint_text);
-    canvas
 }
 
 const KEY_W: usize = 56;
@@ -1391,74 +896,6 @@ pub fn keyboard_screen(
     canvas
 }
 
-/// The charge level in red, small enough for the border around a game's picture.
-pub fn battery_warning(percent: u32) -> Canvas {
-    let text = format!("{percent}%");
-    let mut canvas = Canvas::new(text_width(&text, TEXT_SCALE) + 4, font::HEIGHT * TEXT_SCALE + 4, Theme::default());
-    canvas.pixels.fill(Rgb(0, 0, 0));
-    canvas.text_at(&text, 2, 2, TEXT_SCALE, LOW);
-    canvas
-}
-
-/// The fast-forward sign, or black to clear it, small enough for a game's border.
-pub fn fast_forward_sign(on: bool, theme: Theme) -> Canvas {
-    let text = ">>";
-    let mut canvas = Canvas::new(text_width(text, TEXT_SCALE) + 4, font::HEIGHT * TEXT_SCALE + 4, theme);
-    canvas.pixels.fill(Rgb(0, 0, 0));
-    if on {
-        canvas.text_at(text, 2, 2, TEXT_SCALE, canvas.theme.accent);
-    }
-    canvas
-}
-
-/// An achievement unlocked, or other news from `RetroAchievements`, shown over the game: the
-/// badge if there is one, what happened, and the achievement or game it was.
-pub fn achievement_notice(notice: &crate::achievements::Notice, badge: Option<&Image>, theme: Theme) -> Canvas {
-    let pad = 6;
-    let badge_w = badge.map_or(0, |image| image.width + pad);
-    let lines_h = 2 * font::HEIGHT * TEXT_SCALE + 8;
-    let height = badge.map_or(lines_h, |image| image.height.max(lines_h)) + 2 * pad;
-    let width = 520;
-    let mut canvas = Canvas::new(width, height, theme);
-    canvas.pixels.fill(Rgb(0, 0, 0));
-    // A frame in the theme colour, so it stands out from the game.
-    canvas.rect(0, 0, width, 2, canvas.theme.accent);
-    canvas.rect(0, height - 2, width, 2, canvas.theme.accent);
-    if let Some(image) = badge {
-        canvas.image(image, pad, (height - image.height) / 2);
-    }
-    let x = pad + badge_w + 4;
-    let columns = (width - x - pad) / ((font::WIDTH + 1) * TEXT_SCALE);
-    let top = (height - lines_h) / 2;
-    canvas.text_at(&cut(&notice.heading, columns), x, top, TEXT_SCALE, canvas.theme.accent);
-    canvas.text_cased_at(&cut(&notice.title, columns), x, top + font::HEIGHT * TEXT_SCALE + 8, TEXT_SCALE, TEXT);
-    canvas
-}
-
-/// Shows the volume over a menu or a game. Short enough for the border above a GBA
-/// picture, and black to blend into it.
-pub fn volume_sign(percent: u32, theme: Theme) -> Canvas {
-    let (width, height) = (240, font::HEIGHT * TEXT_SCALE + 6);
-    let mut canvas = Canvas::new(width, height, theme);
-    canvas.pixels.fill(Rgb(0, 0, 0));
-    canvas.text_at("VOL", 6, 3, TEXT_SCALE, TEXT);
-    let text = format!("{percent}%");
-    canvas.text_at(&text, width - 4 - text_width(&text, TEXT_SCALE), 3, TEXT_SCALE, TEXT);
-    let (bar_x, bar_w) = (48, 132);
-    canvas.rect(bar_x, 5, bar_w, height - 10, BODY);
-    canvas.rect(bar_x, 5, bar_w * percent.min(100) as usize / 100, height - 10, canvas.theme.accent);
-    canvas
-}
-
-/// A short message in the volume sign's place, as wide as it needs.
-pub fn text_sign(text: &str, theme: Theme) -> Canvas {
-    let (width, height) = (text_width(text, TEXT_SCALE) + 16, font::HEIGHT * TEXT_SCALE + 6);
-    let mut canvas = Canvas::new(width, height, theme);
-    canvas.pixels.fill(Rgb(0, 0, 0));
-    canvas.text_at(text, 8, 3, TEXT_SCALE, TEXT);
-    canvas
-}
-
 /// The kernel's boot logo, shown centred on black until the launcher starts. It is made
 /// with `launcher --preview-splash` and kept as `board/rg35xxsp/logo.ppm`, in the first
 /// theme colour whatever is chosen, since the kernel shows it.
@@ -1500,35 +937,7 @@ fn game_starting(width: usize, height: usize, icon: &Icon, heading: &str, name: 
     canvas
 }
 
-/// A message on its own, such as while the device powers off.
-/// Settings > SYSTEM > USB STORAGE, while the card's TETSU-DATA partition is a USB drive.
-pub struct UsbDriveView<'a> {
-    pub status: &'a str,
-    pub hint: &'a str,
-    /// Whether the card in TF2 is a second drive.
-    pub tf2: bool,
-}
-
-const USB_DRIVE_TOP: usize = 108;
-
-pub fn usb_drive_screen(width: usize, height: usize, view: &UsbDriveView, frame: &Frame) -> Canvas {
-    let mut canvas = Canvas::new(width, height, frame.theme);
-    header(&mut canvas, &icons::SYSTEM, tr("USB STORAGE"), frame.battery);
-    canvas.text_at(view.status, LIST_LEFT, USB_DRIVE_TOP, TEXT_SCALE, canvas.theme.accent);
-    let lines = [
-        tr("THE CARD'S TETSU-DATA PARTITION IS A USB"),
-        tr("DRIVE ON THE PC. GAMES GO IN ITS ROMS FOLDER."),
-        if view.tf2 { tr("THE CARD IN TF2 IS A SECOND DRIVE.") } else { "" },
-        "",
-        tr("THE GAMES AND SETTINGS ARE BACK ON THE"),
-        tr("DEVICE ONCE THE PC EJECTS THE DRIVE."),
-    ];
-    for (row, line) in lines.iter().enumerate() {
-        canvas.text_at(line, LIST_LEFT, USB_DRIVE_TOP + 50 + row * LIST_ROW, TEXT_SCALE, MUTED);
-    }
-    hint(&mut canvas, view.hint);
-    canvas
-}
+pub(crate) const USB_DRIVE_TOP: usize = 108;
 
 /// Shown when TETSU-DATA has become read-only, so nothing is saved until a restart
 /// repairs it.
@@ -1550,120 +959,7 @@ pub fn read_only_screen(width: usize, height: usize, frame: &Frame) -> Canvas {
     canvas
 }
 
-/// Settings > SYSTEM > WI-FI TRANSFER, while the web page is served.
-#[derive(Clone, PartialEq, Debug)]
-pub struct TransferView {
-    /// The page's address, None while not connected to Wi-Fi.
-    pub address: Option<String>,
-    pub code: String,
-    pub qr: Option<Qr>,
-    /// What is arriving or arrived last, and its name.
-    pub lines: [String; 2],
-    pub hint: &'static str,
-}
-
-const TRANSFER_TOP: usize = 84;
-const QR_MODULE: usize = 5;
-/// The light border a QR code needs around it, in modules.
-const QR_QUIET: usize = 4;
-const TRANSFER_ACTIVITY_TOP: usize = 290;
-
-pub fn transfer_screen(width: usize, height: usize, view: &TransferView, frame: &Frame) -> Canvas {
-    let mut canvas = Canvas::new(width, height, frame.theme);
-    header(&mut canvas, &icons::WIFI, tr("WI-FI TRANSFER"), frame.battery);
-    let accent = canvas.theme.accent;
-    let Some(address) = &view.address else {
-        canvas.text_at(tr("NOT CONNECTED - JOIN A NETWORK IN WI-FI"), LIST_LEFT, TRANSFER_TOP, TEXT_SCALE, accent);
-        canvas.text_at(tr("THE ADDRESS SHOWS HERE ONCE CONNECTED."), LIST_LEFT, TRANSFER_TOP + 40, TEXT_SCALE, MUTED);
-        hint(&mut canvas, view.hint);
-        return canvas;
-    };
-    let mut left_end = width.saturating_sub(LIST_LEFT);
-    if let Some(qr) = &view.qr {
-        let size = (qr.width + 2 * QR_QUIET) * QR_MODULE;
-        let x = width.saturating_sub(LIST_LEFT + size);
-        let y = TRANSFER_TOP - 8;
-        canvas.rect(x, y, size, size, Rgb(0xFF, 0xFF, 0xFF));
-        for (index, _) in qr.dark.iter().enumerate().filter(|(_, dark)| **dark) {
-            let (column, row) = (index % qr.width, index / qr.width);
-            canvas.rect(x + (QR_QUIET + column) * QR_MODULE, y + (QR_QUIET + row) * QR_MODULE, QR_MODULE, QR_MODULE, Rgb(0, 0, 0));
-        }
-        left_end = x.saturating_sub(16);
-    }
-    let room = left_end.saturating_sub(LIST_LEFT);
-    canvas.text_at(tr("OPEN IN A BROWSER:"), LIST_LEFT, TRANSFER_TOP, TEXT_SCALE, MUTED);
-    let scale = if text_width(address, 3) <= room { 3 } else { TEXT_SCALE };
-    canvas.text_cased_at(address, LIST_LEFT, TRANSFER_TOP + 30, scale, TEXT);
-    canvas.text_at(tr("CODE:"), LIST_LEFT, TRANSFER_TOP + 90, TEXT_SCALE, MUTED);
-    canvas.text_at(&view.code, LIST_LEFT, TRANSFER_TOP + 120, 4, accent);
-
-    let columns = width.saturating_sub(2 * LIST_LEFT) / ((font::WIDTH + 1) * TEXT_SCALE);
-    canvas.text_at(&view.lines[0], LIST_LEFT, TRANSFER_ACTIVITY_TOP, TEXT_SCALE, accent);
-    canvas.text_cased_at(&cut(&view.lines[1], columns), LIST_LEFT, TRANSFER_ACTIVITY_TOP + LIST_ROW, TEXT_SCALE, TEXT);
-    let notes = [tr("SEND GAMES, SAVES AND COVERS FROM THE PAGE."), tr("IT STOPS WHEN THIS SCREEN CLOSES.")];
-    for (row, line) in notes.iter().enumerate() {
-        canvas.text_at(line, LIST_LEFT, TRANSFER_ACTIVITY_TOP + 80 + row * LIST_ROW, TEXT_SCALE, MUTED);
-    }
-    hint(&mut canvas, view.hint);
-    canvas
-}
-
-/// A row of a setup step, with a value on the right if it has one.
-pub struct SetupRow {
-    pub label: &'static str,
-    pub value: Option<String>,
-}
-
-/// A step of the setup: what it is about, its rows, and a line or two of status below them.
-pub struct SetupView {
-    pub icon: &'static Icon,
-    pub title: &'static str,
-    pub number: String,
-    pub lines: Vec<&'static str>,
-    pub rows: Vec<SetupRow>,
-    pub selected: usize,
-    pub status: String,
-    pub hint: &'static str,
-}
-
-const SETUP_NUMBER_Y: usize = 76;
-const SETUP_LINES_TOP: usize = 112;
-const SETUP_LINE: usize = 26;
-const SETUP_ROWS_TOP: usize = 208;
-const SETUP_STATUS_GAP: usize = 16;
-// The longest step: two rows and two status lines, which can hold a network's name.
-const _: () = assert!(SETUP_ROWS_TOP + 2 * SETTINGS_ROW + SETUP_STATUS_GAP + 2 * LIST_ROW <= HINT_Y);
-
-pub fn setup_screen(width: usize, height: usize, view: &SetupView, frame: &Frame) -> Canvas {
-    let mut canvas = Canvas::new(width, height, frame.theme);
-    header(&mut canvas, view.icon, view.title, frame.battery);
-    canvas.text_at(&view.number, LIST_LEFT, SETUP_NUMBER_Y, TEXT_SCALE, canvas.theme.accent);
-    for (row, line) in view.lines.iter().enumerate() {
-        canvas.text_at(line, LIST_LEFT, SETUP_LINES_TOP + row * SETUP_LINE, TEXT_SCALE, TEXT);
-    }
-    let right = width.saturating_sub(SETTINGS_RIGHT);
-    for (index, row) in view.rows.iter().enumerate() {
-        let y = SETUP_ROWS_TOP + index * SETTINGS_ROW;
-        let color = if index == view.selected {
-            canvas.rect(0, y, width, SETTINGS_ROW - 4, canvas.theme.accent);
-            canvas.theme.background
-        } else {
-            TEXT
-        };
-        let text_y = row_text_y(y, SETTINGS_ROW - 4);
-        canvas.text_at(row.label, SETTINGS_LEFT, text_y, TEXT_SCALE, color);
-        if let Some(value) = &row.value {
-            canvas.text_at(value, right - text_width(value, TEXT_SCALE), text_y, TEXT_SCALE, color);
-        }
-    }
-    let below = SETUP_ROWS_TOP + view.rows.len() * SETTINGS_ROW + SETUP_STATUS_GAP;
-    for (row, line) in view.status.lines().enumerate() {
-        canvas.text_cased_at(line, LIST_LEFT, below + row * LIST_ROW, TEXT_SCALE, MUTED);
-    }
-    hint(&mut canvas, view.hint);
-    canvas
-}
-
+/// A message on its own, such as while the device powers off.
 pub fn message_screen(width: usize, height: usize, message: &str, theme: Theme) -> Canvas {
     let mut canvas = Canvas::new(width, height, theme);
     // Large, unless that would run off the screen.
@@ -1702,41 +998,8 @@ pub fn shutdown_screen(width: usize, height: usize, message: &str, theme: Theme)
     canvas
 }
 
-/// The battery picture's body, its outline, the gap inside it and the tip on the right.
-const CHARGE_BODY: (usize, usize) = (220, 110);
-const CHARGE_OUTLINE: usize = 8;
-const CHARGE_GAP: usize = 6;
-const CHARGE_TIP: (usize, usize) = (14, 44);
-
-/// The charging screen, when USB power started the device: a battery filled to the charge
-/// level in the accent colour, the level, and how to start fully.
-pub fn charging_screen(width: usize, height: usize, battery: Option<Battery>, theme: Theme) -> Canvas {
-    let mut canvas = Canvas::new(width, height, theme);
-    let (body_w, body_h) = CHARGE_BODY;
-    let (tip_w, tip_h) = CHARGE_TIP;
-    let x = width.saturating_sub(body_w + tip_w) / 2;
-    let y = (height / 2).saturating_sub(body_h / 2 + 64);
-    canvas.rect(x, y, body_w, body_h, TEXT);
-    let inset = CHARGE_OUTLINE;
-    canvas.rect(x + inset, y + inset, body_w - 2 * inset, body_h - 2 * inset, theme.background);
-    canvas.rect(x + body_w, y + (body_h - tip_h) / 2, tip_w, tip_h, TEXT);
-    let inner = CHARGE_OUTLINE + CHARGE_GAP;
-    let fill_w = body_w - 2 * inner;
-    let percent = battery.map_or(0, |battery| battery.percent.min(100) as usize);
-    canvas.rect(x + inner, y + inner, fill_w * percent / 100, body_h - 2 * inner, theme.accent);
-
-    let below = y + body_h + 36;
-    if let Some(battery) = battery {
-        canvas.text(&format!("{}%", battery.percent), below, 5, TEXT);
-    }
-    let state = if battery.is_some_and(|battery| !battery.charging) { tr("CHARGED") } else { tr("CHARGING") };
-    canvas.text(state, below + font::HEIGHT * 5 + 20, 3, MUTED);
-    canvas.text(tr("PRESS POWER TO START"), height.saturating_sub(48), TEXT_SCALE, MUTED);
-    canvas
-}
-
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     #[test]
     fn long_text_is_cut_with_dots() {
         assert_eq!(super::cut("SHORT", 8), "SHORT");
@@ -1747,11 +1010,11 @@ mod tests {
     use super::*;
 
     /// The first look, with no battery reading.
-    fn frame() -> Frame {
+    pub(crate) fn frame() -> Frame {
         Frame { theme: Theme::default(), battery: None }
     }
 
-    fn pixel(canvas: &Canvas, x: usize, y: usize) -> Rgb {
+    pub(crate) fn pixel(canvas: &Canvas, x: usize, y: usize) -> Rgb {
         canvas.pixels[y * canvas.width + x]
     }
 
@@ -1841,24 +1104,6 @@ mod tests {
         assert_eq!(pixel(&canvas, cx - 18, cy - 40), theme.background);
         assert_eq!(pixel(&canvas, cx, cy + 40), theme.accent);
         assert_eq!(pixel(&canvas, cx, cy), theme.background);
-    }
-
-    #[test]
-    fn the_charging_battery_fills_to_the_charge_level() {
-        let theme = Theme::default();
-        let filled_width = |percent| {
-            let canvas = charging_screen(640, 480, Some(Battery { percent, charging: true }), theme);
-            // Along the battery's middle row, where the fill is.
-            let (x, y) = ((640 - CHARGE_BODY.0 - CHARGE_TIP.0) / 2, 240 - 64);
-            (x..x + CHARGE_BODY.0).filter(|&x| pixel(&canvas, x, y) == theme.accent).count()
-        };
-        let full = CHARGE_BODY.0 - 2 * (CHARGE_OUTLINE + CHARGE_GAP);
-        assert_eq!(filled_width(0), 0);
-        assert_eq!(filled_width(50), full / 2);
-        assert_eq!(filled_width(100), full);
-        assert_eq!(filled_width(250), full, "a reading over 100% stays inside");
-        let unknown = charging_screen(640, 480, None, theme);
-        assert!(!unknown.pixels.contains(&theme.accent), "no reading, no fill");
     }
 
     #[test]
@@ -1962,25 +1207,6 @@ mod tests {
     }
 
     #[test]
-    fn the_box_art_screen_fits_a_long_list_of_missing_games() {
-        let missing: Vec<String> = (0..20).map(|n| format!("A VERY LONG GAME NAME THAT DOES NOT FIT ON ONE LINE {n}")).collect();
-        let view = BoxArtView {
-            status: "DOWNLOADING 3 OF 20",
-            detail: &missing[0],
-            progress: Some(150),
-            missing: &missing,
-            hint: "B STOPS",
-        };
-        let canvas = boxart_screen(640, 480, &view, &frame());
-        assert_eq!(canvas.pixels.len(), 640 * 480);
-        // Nothing drawn between the list and the hint.
-        let gap = BOXART_TOP + 100 + (BOXART_MISSING_ROWS + 1) * LIST_ROW;
-        assert!(canvas.pixels[gap * 640..(HINT_Y - 2) * 640].iter().all(|&pixel| pixel == Theme::default().background));
-        boxart_screen(100, 60, &view, &frame());
-        boxart_screen(40, 30, &view, &frame());
-    }
-
-    #[test]
     fn long_names_and_small_screens_are_safe() {
         let long = "X".repeat(500);
         let rows = [RowView { name: &long, icon: Some(&icons::SNES), starred: true }];
@@ -2076,33 +1302,6 @@ mod tests {
         assert!(text_width("COULD NOT CONNECT - CHECK THE PASSWORD", TEXT_SCALE) <= 640 - 16);
     }
 
-    fn entry(name: &str, signal: Option<i32>, security: Security, saved: bool, connected: bool) -> Entry {
-        Entry { ssid: name.as_bytes().to_vec(), name: name.into(), signal, security, saved: saved.then_some(0), connected }
-    }
-
-    #[test]
-    fn the_wifi_list_fits_long_names_and_many_networks() {
-        let long = "W".repeat(80);
-        let mut entries = vec![
-            entry(&long, Some(-40), Security::Password, true, true),
-            entry("Cafe", Some(-80), Security::Open, false, false),
-            entry("New", Some(-50), Security::Unsupported, false, false),
-            entry("Away", None, Security::Password, true, false),
-        ];
-        entries.extend((0..20).map(|i| entry(&format!("Net {i}"), Some(-60), Security::Password, false, false)));
-        for selected in [0, 12] {
-            let view = WifiView { on: true, entries: &entries, selected, status: "CONNECTED TO x", connected: true, message: Some("SCANNING") };
-            assert_eq!(wifi_screen(640, 480, &view, &frame()).pixels.len(), 640 * 480);
-            assert_eq!(wifi_screen(64, 48, &view, &frame()).pixels.len(), 64 * 48);
-        }
-        // The long name, under the on/off row, stops before the CONNECTED label.
-        let view = WifiView { on: true, entries: &entries, selected: 2, status: "", connected: false, message: None };
-        let canvas = wifi_screen(640, 480, &view, &frame());
-        let label_x = 640 - WIFI_RIGHT - 24 - 18 - 12 - text_width("CONNECTED", TEXT_SCALE);
-        let row = WIFI_TOP + WIFI_ROW..WIFI_TOP + 2 * WIFI_ROW - 2;
-        assert!((label_x - 12..label_x - 1).all(|x| row.clone().all(|y| pixel(&canvas, x, y) != TEXT)));
-    }
-
     #[test]
     fn names_wrap_at_spaces_and_stop_at_their_lines() {
         assert_eq!(wrapped_lines("a bb ccc", 4, 3), ["a bb", "ccc"]);
@@ -2158,36 +1357,6 @@ mod tests {
         assert!(640 - 16 - widest > home_title_end);
         let list_title_end = 16 + icons::WIDTH * 2 + 16 + text_width("GAME BOY ADVANCE", 3);
         assert!(640 - 16 - text_width("100 OF 100", TEXT_SCALE) > list_title_end);
-    }
-
-    #[test]
-    fn the_battery_warning_fits_inside_every_border() {
-        // It shows at 10% or below. The GBA picture leaves 27 pixels above it, and the
-        // narrowest side border is the SNES picture's, at 46.
-        let warning = battery_warning(10);
-        assert!(6 + warning.height <= 27, "shorter than the GBA border");
-        assert!(6 + warning.width <= 46, "narrower than the SNES border");
-        assert!(warning.pixels.contains(&LOW));
-    }
-
-    #[test]
-    fn the_fast_forward_sign_fits_inside_every_border() {
-        let sign = fast_forward_sign(true, Theme::default());
-        assert!(6 + sign.height <= 27 && 6 + sign.width <= 46);
-        assert!(sign.pixels.contains(&Theme::default().accent));
-        assert!(!fast_forward_sign(false, Theme::default()).pixels.contains(&Theme::default().accent));
-    }
-
-    #[test]
-    fn the_volume_sign_stays_above_the_gba_picture_and_shows_the_level() {
-        let accent = Theme::default().accent;
-        let filled = |percent| volume_sign(percent, Theme::default()).pixels.iter().filter(|&&p| p == accent).count();
-        let sign = volume_sign(100, Theme::default());
-        assert!(VOLUME_SIGN_TOP + sign.height <= 27, "shorter than the GBA border");
-        assert_eq!(filled(0), 0);
-        assert!(filled(5) > 0, "the lowest step shows");
-        assert!(filled(50) < filled(100));
-        assert_eq!(filled(100), 132 * (sign.height - 10));
     }
 
     #[test]

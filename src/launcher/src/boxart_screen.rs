@@ -1,12 +1,15 @@
 //! Settings > BOX ART's download screen.
 
-use crate::{boxart, boxart_fetch, fb, names, power, screens, wifi};
+use crate::{boxart, boxart_fetch, fb, names, power, wifi};
 use crate::app::press_volume;
+use crate::canvas::{Canvas, MUTED, TEXT};
 use crate::corner::{add_corner, BATTERY_REFRESH, corner_clock, read_battery, screen_frame};
 use crate::i18n::{tr, trf};
 use crate::input::{Button, Event};
 use crate::launcher::ArtDownload;
+use crate::icons;
 use crate::library::find_all_roms;
+use crate::screens::{clip, header, hint, Frame, HINT_Y, LIST_LEFT, LIST_ROW, TEXT_SCALE};
 use crate::sleep::sleep_until_lid_opens;
 use crate::systems::system_for;
 use std::io;
@@ -187,14 +190,14 @@ pub(crate) fn download_box_art(framebuffer: &mut fb::Framebuffer, events: &Recei
             } else {
                 tr("A AGAIN - B BACK")
             };
-            let view = screens::BoxArtView {
+            let view = BoxArtView {
                 status: &download.status,
                 detail: &download.detail,
                 progress: download.percent,
                 missing: &download.missing,
                 hint,
             };
-            let mut canvas = screens::boxart_screen(width, height, &view, &screen_frame(battery));
+            let mut canvas = boxart_screen(width, height, &view, &screen_frame(battery));
             add_corner(&mut canvas, battery);
             framebuffer.draw(&canvas)?;
             redraw = false;
@@ -232,4 +235,76 @@ pub(crate) fn download_box_art(framebuffer: &mut fb::Framebuffer, events: &Recei
     }
     events.try_iter().for_each(drop);
     Ok(())
+}
+
+/// The box art download, as `boxart_screen` shows it.
+pub struct BoxArtView<'a> {
+    pub status: &'a str,
+    /// The game being fetched, or nothing.
+    pub detail: &'a str,
+    /// How far through the games, from 0 to 100, while downloading.
+    pub progress: Option<u32>,
+    /// Games with no cover, by readable name.
+    pub missing: &'a [String],
+    pub hint: &'a str,
+}
+
+const BOXART_TOP: usize = 92;
+/// Names that fit beside the left margin, as on the Wi-Fi screen.
+const BOXART_COLUMNS: usize = 49;
+const BOXART_MISSING_ROWS: usize = 7;
+const _: () = assert!(BOXART_TOP + 100 + (BOXART_MISSING_ROWS + 1) * LIST_ROW <= HINT_Y);
+
+pub fn boxart_screen(width: usize, height: usize, view: &BoxArtView, frame: &Frame) -> Canvas {
+    let mut canvas = Canvas::new(width, height, frame.theme);
+    header(&mut canvas, &icons::SETTINGS, tr("BOX ART"), frame.battery);
+    canvas.text_at(&clip(view.status, BOXART_COLUMNS), LIST_LEFT, BOXART_TOP, TEXT_SCALE, TEXT);
+    canvas.text_at(&clip(view.detail, BOXART_COLUMNS), LIST_LEFT, BOXART_TOP + 30, TEXT_SCALE, MUTED);
+    let bar_w = width.saturating_sub(2 * LIST_LEFT);
+    if let (Some(percent), true) = (view.progress, bar_w > 4) {
+        let y = BOXART_TOP + 66;
+        canvas.rect(LIST_LEFT, y, bar_w, 14, canvas.theme.accent);
+        canvas.rect(LIST_LEFT + 2, y + 2, bar_w - 4, 10, canvas.theme.background);
+        canvas.rect(LIST_LEFT + 2, y + 2, (bar_w - 4) * percent.min(100) as usize / 100, 10, canvas.theme.accent);
+    }
+    if !view.missing.is_empty() {
+        let top = BOXART_TOP + 100;
+        canvas.text_at(tr("NO COVER FOUND FOR"), LIST_LEFT, top, TEXT_SCALE, MUTED);
+        let shown = if view.missing.len() > BOXART_MISSING_ROWS { BOXART_MISSING_ROWS - 1 } else { view.missing.len() };
+        for (row, name) in view.missing.iter().take(shown).enumerate() {
+            canvas.text_at(&clip(name, BOXART_COLUMNS), LIST_LEFT, top + (row + 1) * LIST_ROW, TEXT_SCALE, TEXT);
+        }
+        if shown < view.missing.len() {
+            let more = trf("AND {} MORE", &[&(view.missing.len() - shown)]);
+            canvas.text_at(&more, LIST_LEFT, top + (shown + 1) * LIST_ROW, TEXT_SCALE, MUTED);
+        }
+    }
+    hint(&mut canvas, view.hint);
+    canvas
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::canvas::Theme;
+    use crate::screens::tests::frame;
+
+    #[test]
+    fn the_box_art_screen_fits_a_long_list_of_missing_games() {
+        let missing: Vec<String> = (0..20).map(|n| format!("A VERY LONG GAME NAME THAT DOES NOT FIT ON ONE LINE {n}")).collect();
+        let view = BoxArtView {
+            status: "DOWNLOADING 3 OF 20",
+            detail: &missing[0],
+            progress: Some(150),
+            missing: &missing,
+            hint: "B STOPS",
+        };
+        let canvas = boxart_screen(640, 480, &view, &frame());
+        assert_eq!(canvas.pixels.len(), 640 * 480);
+        // Nothing drawn between the list and the hint.
+        let gap = BOXART_TOP + 100 + (BOXART_MISSING_ROWS + 1) * LIST_ROW;
+        assert!(canvas.pixels[gap * 640..(HINT_Y - 2) * 640].iter().all(|&pixel| pixel == Theme::default().background));
+        boxart_screen(100, 60, &view, &frame());
+        boxart_screen(40, 30, &view, &frame());
+    }
 }

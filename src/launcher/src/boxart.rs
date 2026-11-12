@@ -39,7 +39,9 @@ pub fn parse_ppm(bytes: &[u8]) -> Option<Image> {
     }
     let data = bytes.get(position + 1..)?;
     let (width, height): (usize, usize) = (fields[1].parse().ok()?, fields[2].parse().ok()?);
-    if fields[0] != "P6" || fields[3] != "255" || data.len() < width * height * 3 {
+    // Sizes whose product overflows would pass as a picture without pixels.
+    let bytes_needed = width.checked_mul(height)?.checked_mul(3)?;
+    if fields[0] != "P6" || fields[3] != "255" || data.len() < bytes_needed {
         return None;
     }
     let pixels = data.as_chunks::<3>().0.iter().take(width * height).map(|c| Rgb(c[0], c[1], c[2])).collect();
@@ -107,6 +109,7 @@ mod tests {
         assert!(parse_ppm(b"P6\n2 2\n255\n\x00\x00").is_none());
         assert!(parse_ppm(b"P6\n1 1\n65535\n\x00\x00\x00\x00\x00\x00").is_none());
         assert!(parse_ppm(b"").is_none());
+        assert!(parse_ppm(b"P6\n4294967296 4294967296\n255\n").is_none(), "a size that overflows");
     }
 
     #[test]

@@ -2,12 +2,16 @@
 //! device without Wi-Fi. The time is local, in the chosen zone. ntpd is started again
 //! after a save, so the network still sets the clock whenever Wi-Fi is up, and wins.
 
-use crate::{clock, fb, power, screens, settings, sounds};
+use crate::{clock, fb, power, settings, sounds};
 use crate::app::{button_sound, press_volume};
+use crate::canvas::{text_width, Canvas, BODY, LOW, MUTED, TEXT};
 use crate::corner::{add_corner, read_battery, screen_frame};
+use crate::font;
 use crate::i18n::tr;
+use crate::icons;
 use crate::input::{Button, Event};
 use crate::repeat::Repeater;
+use crate::screens::{header, hint, more_arrow, Frame, TEXT_SCALE};
 use crate::sleep::sleep_until_lid_opens;
 use jiff::civil::{self, DateTime};
 use std::io;
@@ -167,8 +171,8 @@ pub(crate) fn set_time(framebuffer: &mut fb::Framebuffer, events: &Receiver<Even
         let time = editor.time();
         let full = clock::date_text(&clock::zoned(time, zone), format);
         let values = field_values(time, format);
-        let view = screens::SetTimeView { values: &values, selected: editor.selected, date: &full, failed };
-        let mut canvas = screens::set_time_screen(width, height, &view, &screen_frame(battery));
+        let view = SetTimeView { values: &values, selected: editor.selected, date: &full, failed };
+        let mut canvas = set_time_screen(width, height, &view, &screen_frame(battery));
         add_corner(&mut canvas, battery);
         framebuffer.draw(&canvas)?;
 
@@ -228,6 +232,68 @@ pub(crate) fn set_time(framebuffer: &mut fb::Framebuffer, events: &Receiver<Even
             }
         }
     }
+}
+
+/// Settings > TIME > SET TIME, as `set_time_screen` shows it.
+pub struct SetTimeView<'a> {
+    /// What each of `set_time::FIELDS` shows.
+    pub values: &'a [String; 5],
+    pub selected: usize,
+    /// The date and time in full, with the weekday.
+    pub date: &'a str,
+    /// Whether the last save failed.
+    pub failed: bool,
+}
+
+const SET_TIME_SCALE: usize = 4;
+const SET_TIME_LABEL_Y: usize = 124;
+const SET_TIME_BOX_Y: usize = 146;
+const SET_TIME_BOX_H: usize = 60;
+const SET_TIME_PAD: usize = 24;
+const SET_TIME_GAP: usize = 12;
+/// More room between the date and the time.
+const SET_TIME_WIDE_GAP: usize = 36;
+
+/// The date and time as a field each, the selected one in the accent colour with arrows
+/// above and below it for Up and Down.
+pub fn set_time_screen(width: usize, height: usize, view: &SetTimeView, frame: &Frame) -> Canvas {
+    let mut canvas = Canvas::new(width, height, frame.theme);
+    header(&mut canvas, &icons::TIME, tr("SET TIME"), frame.battery);
+    let fields = crate::set_time::FIELDS;
+    let widths: Vec<usize> = fields
+        .iter()
+        .zip(view.values)
+        .map(|(field, value)| text_width(value, SET_TIME_SCALE).max(text_width(field.label(), TEXT_SCALE)) + SET_TIME_PAD)
+        .collect();
+    let gap = |index: usize| if index == 3 { SET_TIME_WIDE_GAP } else { SET_TIME_GAP };
+    let total = widths.iter().sum::<usize>() + (1..fields.len()).map(gap).sum::<usize>();
+    let mut x = width.saturating_sub(total) / 2;
+    for (index, ((field, value), &w)) in fields.iter().zip(view.values).zip(&widths).enumerate() {
+        if index > 0 {
+            x += gap(index);
+        }
+        let selected = index == view.selected;
+        let label = field.label();
+        canvas.text_at(label, x + w.saturating_sub(text_width(label, TEXT_SCALE)) / 2, SET_TIME_LABEL_Y, TEXT_SCALE, MUTED);
+        let (fill, color) = if selected { (canvas.theme.accent, canvas.theme.background) } else { (BODY, TEXT) };
+        canvas.rect(x, SET_TIME_BOX_Y, w, SET_TIME_BOX_H, fill);
+        let text_y = SET_TIME_BOX_Y + (SET_TIME_BOX_H - font::HEIGHT * SET_TIME_SCALE) / 2;
+        canvas.text_at(value, x + w.saturating_sub(text_width(value, SET_TIME_SCALE)) / 2, text_y, SET_TIME_SCALE, color);
+        if selected {
+            more_arrow(&mut canvas, x + w / 2, SET_TIME_BOX_Y - 32, true);
+            more_arrow(&mut canvas, x + w / 2, SET_TIME_BOX_Y + SET_TIME_BOX_H + 6, false);
+        }
+        x += w;
+    }
+    canvas.text(view.date, 248, TEXT_SCALE, TEXT);
+    let (note, color) = if view.failed {
+        (tr("COULD NOT SET THE CLOCK"), LOW)
+    } else {
+        (tr("WI-FI SETS THE CLOCK AGAIN WHEN IT CONNECTS"), MUTED)
+    };
+    canvas.text(note, 288, TEXT_SCALE, color);
+    hint(&mut canvas, tr("LEFT RIGHT MOVES - UP DOWN CHANGES - A SAVES - B BACK"));
+    canvas
 }
 
 #[cfg(test)]

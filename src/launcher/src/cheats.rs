@@ -11,6 +11,7 @@
 use crate::boxart_fetch::{self, Source};
 use crate::i18n::{tr, trf};
 use crate::input::Button;
+use crate::screens::RowList;
 use crate::storage::write_atomic;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -432,6 +433,27 @@ impl CheatsPage {
             _ => {}
         }
         CheatAction::Nothing
+    }
+}
+
+impl RowList for CheatsPage {
+    fn row_count(&self) -> usize {
+        self.rows().len()
+    }
+    fn selected_row(&self) -> usize {
+        self.selected_index()
+    }
+    fn row_label(&self, index: usize) -> String {
+        self.label(self.rows()[index])
+    }
+    fn row_value(&self, index: usize) -> Option<String> {
+        self.value(self.rows()[index])
+    }
+    fn row_steps(&self, index: usize) -> bool {
+        matches!(self.rows()[index], Row::Cheat(_))
+    }
+    fn row_note(&self) -> Option<String> {
+        self.note()
     }
 }
 

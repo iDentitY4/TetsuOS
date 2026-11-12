@@ -29,10 +29,10 @@ use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tiny_http::{Header, Method, Request, Response, ResponseBox};
 
 const PAGE: &str = include_str!("transfer_page.html");
@@ -44,6 +44,10 @@ const CHANGE_HEADER: &str = "X-Tetsu";
 const WRONG_CODE_WAIT: Duration = Duration::from_secs(1);
 /// What starts the hidden name an upload has until it is complete.
 const UPLOAD_PREFIX: &str = ".upload-";
+/// How long stopping waits for requests under way, before leaving them to finish alone.
+const HANDLER_WAIT: Duration = Duration::from_secs(2);
+/// Numbers each upload's hidden name, so two uploads of one name never share a file.
+static UPLOAD_NUMBER: AtomicU64 = AtomicU64::new(0);
 /// The largest file FAT32 holds.
 const LARGEST_FILE: u64 = 0xFFFF_FFFF;
 /// What the card keeps free, for saves and settings.
@@ -115,7 +119,7 @@ impl Shared {
 }
 
 /// The running server. Stopping it, or dropping it, stops uploads under way and waits for
-/// each request's thread.
+/// up to `HANDLER_WAIT` for each request's thread.
 pub(crate) struct Server {
     shared: Arc<Shared>,
     thread: Option<JoinHandle<()>>,
@@ -185,10 +189,26 @@ fn serve(server: &tiny_http::Server, shared: &Arc<Shared>) {
         }
         handlers.retain(|handler| !handler.is_finished());
     }
-    // Uploads see the stop between reads.
-    for handler in handlers {
+    // Uploads see the stop between reads, but a read from a phone that left the network
+    // never returns, so those still waiting after a while are left to end alone.
+    let deadline = Instant::now() + HANDLER_WAIT;
+    while handlers.iter().any(|handler| !handler.is_finished()) && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(20));
+    }
+    let (finished, waiting): (Vec<_>, Vec<_>) = handlers.into_iter().partition(JoinHandle::is_finished);
+    for handler in finished {
         let _ = handler.join();
     }
+    if !waiting.is_empty() {
+        eprintln!("warning: left {} transfer requests still running", waiting.len());
+    }
+}
+
+/// The hidden name an upload of `name` has until it is complete: unique to this upload, and
+/// ending in `name`, so its extension still tells a ZIP.
+fn upload_name(name: &str) -> String {
+    let number = UPLOAD_NUMBER.fetch_add(1, Ordering::Relaxed);
+    format!("{UPLOAD_PREFIX}{number}-{name}")
 }
 
 /// A refusal, with a reason the page shows in its own words.
@@ -509,7 +529,7 @@ fn upload_game(request: &mut Request, name: &str, root: &Path, shared: &Shared) 
     let console = if extension == "zip" { None } else { Some(console_for_upload(&extension).ok_or(NOT_A_GAME)?) };
     let staging = console.map_or_else(|| root.to_path_buf(), |system| folder_for(system, &roms, root));
     std::fs::create_dir_all(&staging).map_err(|_| NOT_WRITTEN)?;
-    let temporary = staging.join(format!("{UPLOAD_PREFIX}{name}"));
+    let temporary = staging.join(upload_name(name));
     receive(request.as_reader(), &temporary, size, name, shared)?;
 
     let system = match console {
@@ -526,6 +546,12 @@ fn upload_game(request: &mut Request, name: &str, root: &Path, shared: &Shared) 
     let folder = folder_for(system, &roms, root);
     let destination = folder.join(name);
     let replaced = destination.exists();
+    // A request left running after the server stopped never puts its file in place.
+    if shared.stop.load(Ordering::Relaxed) {
+        let _ = std::fs::remove_file(&temporary);
+        shared.finished(Done::Failed(name.to_string()), false);
+        return Err(INCOMPLETE);
+    }
     let placed = std::fs::create_dir_all(&folder)
         .and_then(|()| std::fs::rename(&temporary, &destination))
         .and_then(|()| sync_folder(&folder));
@@ -833,6 +859,18 @@ mod tests {
         assert_eq!(decode("%2"), None, "a cut off escape is refused");
         assert_eq!(decode("%FF"), None, "and so is text that isn't UTF-8");
         assert_eq!(split_url("/?name=%2").1.get("name"), None);
+    }
+
+    #[test]
+    fn each_upload_has_a_hidden_name_of_its_own() {
+        let first = upload_name("Game (USA).zip");
+        let second = upload_name("Game (USA).zip");
+        assert_ne!(first, second);
+        for hidden in [&first, &second] {
+            assert!(hidden.starts_with(UPLOAD_PREFIX));
+            assert!(hidden.ends_with("-Game (USA).zip"));
+            assert_eq!(Path::new(hidden).extension().and_then(|e| e.to_str()), Some("zip"));
+        }
     }
 
     #[test]

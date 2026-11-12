@@ -3,13 +3,21 @@
 
 use crate::{fb, icons, keyboard, power, screens, settings, wifi, wifi_menu};
 use crate::app::{change_settings, keyboard_sound, press_volume, type_text};
-use crate::canvas::{Battery, Canvas};
+use crate::canvas::{text_width, Battery, Canvas, BODY, MUTED, TEXT};
+use crate::color::Rgb;
+use crate::font;
 use crate::corner::{add_corner, read_battery, screen_frame};
 use crate::i18n::{tr, trf};
 use crate::input::{Button, Event};
 use crate::network::{self, detail_rows, MacMode};
 use crate::repeat::Repeater;
+use crate::screens::{
+    cut, header, hint, option_rows, option_rows_height, row_text_y, signal_bars, Frame, OptionsLayout, RowList, HINT_Y, LIST_LEFT, LIST_TOP,
+    RAISED, SETTINGS_LEFT, TEXT_SCALE, WIFI_RIGHT, WIFI_ROW, WIFI_TOP,
+};
 use crate::sleep::sleep_until_lid_opens;
+use crate::wifi::Security;
+use crate::wifi_menu::Entry;
 use crate::wifi_pages::{self, NetworkPage, NetworkRow, OptionsRequest, PageRequest, WifiOptions};
 use std::io;
 use std::path::Path;
@@ -159,11 +167,11 @@ enum View {
 fn wifi_canvas(size: (usize, usize), view: &View, menu: &wifi_menu::WifiMenu, link: &Link, battery: Option<Battery>) -> Canvas {
     let frame = screen_frame(battery);
     let mut canvas = match (view, &menu.keyboard) {
-        (View::Network(page), _) => screens::wifi_page_screen(size.0, size.1, (&page.name, true), page, &frame),
+        (View::Network(page), _) => wifi_page_screen(size.0, size.1, (&page.name, true), page, &frame),
         (View::Details(page, details), _) => {
             screens::info_screen(size.0, size.1, (&icons::WIFI, &page.name), &detail_rows(details), &frame)
         }
-        (View::Options(options), _) => screens::wifi_page_screen(size.0, size.1, (tr("WI-FI OPTIONS"), false), options, &frame),
+        (View::Options(options), _) => wifi_page_screen(size.0, size.1, (tr("WI-FI OPTIONS"), false), options, &frame),
         (View::List, Some((ssid, keyboard))) => {
             let subtitle = trf("FOR {}", &[&wifi::display_name(ssid)]);
             let view = screens::KeyboardView {
@@ -176,7 +184,7 @@ fn wifi_canvas(size: (usize, usize), view: &View, menu: &wifi_menu::WifiMenu, li
         }
         (View::List, None) => {
             let line = wifi_status_line(link.control.is_some(), &link.status, link.attempt.as_ref());
-            let view = screens::WifiView {
+            let view = WifiView {
                 on: menu.on,
                 entries: &menu.entries,
                 selected: menu.selected(),
@@ -184,7 +192,7 @@ fn wifi_canvas(size: (usize, usize), view: &View, menu: &wifi_menu::WifiMenu, li
                 connected: link.attempt.is_none() && link.status.connected(),
                 message: menu.message.as_deref(),
             };
-            screens::wifi_screen(size.0, size.1, &view, &frame)
+            wifi_screen(size.0, size.1, &view, &frame)
         }
     };
     add_corner(&mut canvas, battery);
@@ -550,9 +558,111 @@ pub(crate) fn wifi_settings(framebuffer: &mut fb::Framebuffer, events: &Receiver
     }
 }
 
+const _: () = assert!(WIFI_TOP + wifi_menu::PAGE * WIFI_ROW + 40 <= HINT_Y);
+
+/// The Wi-Fi list, as `wifi_screen` shows it.
+pub struct WifiView<'a> {
+    pub on: bool,
+    pub entries: &'a [Entry],
+    /// 0 is the on/off row.
+    pub selected: usize,
+    /// The connection, or why there is none.
+    pub status: &'a str,
+    pub connected: bool,
+    pub message: Option<&'a str>,
+}
+
+/// A padlock 10 pixels wide, for networks that need a password.
+fn padlock(canvas: &mut Canvas, x: usize, top: usize, color: Rgb) {
+    canvas.rect(x + 2, top, 6, 2, color);
+    canvas.rect(x + 2, top, 2, 6, color);
+    canvas.rect(x + 6, top, 2, 6, color);
+    canvas.rect(x, top + 6, 10, 8, color);
+}
+
+pub fn wifi_screen(width: usize, height: usize, view: &WifiView, frame: &Frame) -> Canvas {
+    let mut canvas = Canvas::new(width, height, frame.theme);
+    header(&mut canvas, &icons::WIFI, tr("WI-FI"), frame.battery);
+    let status_color = if view.connected { canvas.theme.accent } else { MUTED };
+    canvas.text_cased_at(view.status, LIST_LEFT, 76, TEXT_SCALE, status_color);
+    let advance = (font::WIDTH + 1) * TEXT_SCALE;
+    let rows = 1 + if view.on { view.entries.len() } else { 0 };
+    let first = view.selected / wifi_menu::PAGE * wifi_menu::PAGE;
+    for (line, index) in (first..rows).take(wifi_menu::PAGE).enumerate() {
+        let y = WIFI_TOP + line * WIFI_ROW;
+        let row_h = WIFI_ROW - 2;
+        let selected = index == view.selected;
+        let entry = index.checked_sub(1).map(|network| &view.entries[network]);
+        let (color, muted, off) = if selected {
+            canvas.rect(0, y, width, row_h, canvas.theme.accent);
+            (canvas.theme.background, canvas.theme.background, RAISED)
+        } else {
+            (if entry.is_none_or(|entry| entry.signal.is_some()) { TEXT } else { MUTED }, MUTED, BODY)
+        };
+        let text_y = row_text_y(y, row_h);
+        let bars_right = width.saturating_sub(WIFI_RIGHT);
+        let Some(entry) = entry else {
+            let value = if view.on { tr("ON") } else { tr("OFF") };
+            let value_color = if view.on && !selected { canvas.theme.accent } else { color };
+            canvas.text_at(value, bars_right.saturating_sub(text_width(value, TEXT_SCALE)), text_y, TEXT_SCALE, value_color);
+            canvas.text_at(tr("WI-FI"), LIST_LEFT, text_y, TEXT_SCALE, color);
+            continue;
+        };
+        if let Some(signal) = entry.signal {
+            signal_bars(&mut canvas, bars_right, y + row_h - 6, wifi_menu::bars(signal), color, off);
+        }
+        let lock_x = bars_right.saturating_sub(24 + 18);
+        if entry.security != Security::Open {
+            padlock(&mut canvas, lock_x, y + (row_h - 14) / 2, muted);
+        }
+        let label = if entry.connected {
+            tr("CONNECTED")
+        } else if entry.saved.is_some() {
+            tr("SAVED")
+        } else if entry.security == Security::Unsupported {
+            tr("NOT SUPPORTED")
+        } else {
+            ""
+        };
+        let label_x = lock_x.saturating_sub(12 + text_width(label, TEXT_SCALE));
+        canvas.text_at(label, label_x, text_y, TEXT_SCALE, if entry.connected && !selected { canvas.theme.accent } else { muted });
+        let columns = label_x.saturating_sub(LIST_LEFT + 12) / advance;
+        let name: String = entry.name.chars().take(columns).collect();
+        canvas.text_cased_at(&name, LIST_LEFT, text_y, TEXT_SCALE, color);
+    }
+    if view.on && view.entries.is_empty() {
+        canvas.text(tr("NO NETWORKS FOUND YET"), WIFI_TOP + 2 * WIFI_ROW + 30, TEXT_SCALE, MUTED);
+    }
+    if let Some(message) = view.message {
+        canvas.text(message, WIFI_TOP + wifi_menu::PAGE * WIFI_ROW + 14, TEXT_SCALE, canvas.theme.accent);
+    }
+    let hint_text = if view.selected == 0 { tr("A TURNS ON OR OFF - START OPTIONS - B BACK") } else { tr("A CONNECTS - X EDITS - Y SCANS - START OPTIONS") };
+    hint(&mut canvas, hint_text);
+    canvas
+}
+
+/// The Wi-Fi rows: a network's own settings, or the options, under `title`.
+const WIFI_PAGE: OptionsLayout = OptionsLayout { left: 0, right: 640, pad: SETTINGS_LEFT, top: LIST_TOP, row: 28, shown: 10, values: 24 };
+const _: () = assert!(WIFI_PAGE.top + option_rows_height(&WIFI_PAGE) <= HINT_Y);
+
+/// A network's name is drawn as it is, since case matters in it.
+pub fn wifi_page_screen(width: usize, height: usize, (title, cased): (&str, bool), page: &dyn RowList, frame: &Frame) -> Canvas {
+    let mut canvas = Canvas::new(width, height, frame.theme);
+    if cased {
+        header(&mut canvas, &icons::WIFI, "", frame.battery);
+        canvas.text_cased_at(&cut(title, 21), 16 + icons::WIDTH * 2 + 16, 26, 3, TEXT);
+    } else {
+        header(&mut canvas, &icons::WIFI, &cut(title, 21), frame.battery);
+    }
+    option_rows(&mut canvas, page, &OptionsLayout { right: width, ..WIFI_PAGE });
+    hint(&mut canvas, tr("LEFT RIGHT CHANGES - A SELECTS - B BACK"));
+    canvas
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::screens::tests::{frame, pixel};
 
     #[test]
     fn wifi_status_lines_fit_and_shorten_long_names() {
@@ -569,5 +679,32 @@ mod tests {
         assert_eq!(wifi_status_line(true, &wifi::Status::default(), None), "NOT CONNECTED");
         let unaddressed = wifi::Status { address: None, ssid: Some(b"Home".to_vec()), ..status };
         assert_eq!(wifi_status_line(true, &unaddressed, None), "CONNECTED TO Home - GETTING AN ADDRESS");
+    }
+
+    fn entry(name: &str, signal: Option<i32>, security: Security, saved: bool, connected: bool) -> Entry {
+        Entry { ssid: name.as_bytes().to_vec(), name: name.into(), signal, security, saved: saved.then_some(0), connected }
+    }
+
+    #[test]
+    fn the_wifi_list_fits_long_names_and_many_networks() {
+        let long = "W".repeat(80);
+        let mut entries = vec![
+            entry(&long, Some(-40), Security::Password, true, true),
+            entry("Cafe", Some(-80), Security::Open, false, false),
+            entry("New", Some(-50), Security::Unsupported, false, false),
+            entry("Away", None, Security::Password, true, false),
+        ];
+        entries.extend((0..20).map(|i| entry(&format!("Net {i}"), Some(-60), Security::Password, false, false)));
+        for selected in [0, 12] {
+            let view = WifiView { on: true, entries: &entries, selected, status: "CONNECTED TO x", connected: true, message: Some("SCANNING") };
+            assert_eq!(wifi_screen(640, 480, &view, &frame()).pixels.len(), 640 * 480);
+            assert_eq!(wifi_screen(64, 48, &view, &frame()).pixels.len(), 64 * 48);
+        }
+        // The long name, under the on/off row, stops before the CONNECTED label.
+        let view = WifiView { on: true, entries: &entries, selected: 2, status: "", connected: false, message: None };
+        let canvas = wifi_screen(640, 480, &view, &frame());
+        let label_x = 640 - WIFI_RIGHT - 24 - 18 - 12 - text_width("CONNECTED", TEXT_SCALE);
+        let row = WIFI_TOP + WIFI_ROW..WIFI_TOP + 2 * WIFI_ROW - 2;
+        assert!((label_x - 12..label_x - 1).all(|x| row.clone().all(|y| pixel(&canvas, x, y) != TEXT)));
     }
 }

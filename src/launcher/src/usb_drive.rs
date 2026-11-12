@@ -6,11 +6,14 @@
 
 use crate::{fb, power, screens, settings, sounds};
 use crate::app::{button_sound, shut_down};
+use crate::canvas::{Canvas, MUTED};
 use crate::corner::{
     add_corner, BATTERY_REFRESH, corner_clock, current_theme, read_battery, screen_frame,
 };
 use crate::i18n::tr;
+use crate::icons;
 use crate::input::{Button, Event};
+use crate::screens::{header, hint, Frame, LIST_LEFT, LIST_ROW, TEXT_SCALE, USB_DRIVE_TOP};
 use crate::sleep::BACKLIGHT_POWER;
 use crate::system_info::boot_time;
 use std::io;
@@ -69,7 +72,7 @@ fn tf2_given() -> bool {
 }
 
 /// What the screen says, for the link and whether B was pressed once already.
-pub(crate) fn usb_drive_view(link: UsbLink, confirming: bool, tf2: bool) -> screens::UsbDriveView<'static> {
+pub(crate) fn usb_drive_view(link: UsbLink, confirming: bool, tf2: bool) -> UsbDriveView<'static> {
     let status = match link {
         UsbLink::Unplugged => tr("CONNECT THE DEVICE TO A PC"),
         UsbLink::Connecting => tr("CONNECTING TO THE PC"),
@@ -82,7 +85,7 @@ pub(crate) fn usb_drive_view(link: UsbLink, confirming: bool, tf2: bool) -> scre
         (UsbLink::Connected, false, true) => tr("EJECT THE DRIVES ON THE PC - B LEAVES"),
         _ => tr("B BACK"),
     };
-    screens::UsbDriveView { status, hint, tf2 }
+    UsbDriveView { status, hint, tf2 }
 }
 
 /// How the drive was left.
@@ -137,7 +140,7 @@ pub(crate) fn usb_drive(framebuffer: &mut fb::Framebuffer, events: &Receiver<Eve
         confirming &= link == UsbLink::Connected;
         let now_shown = (link, confirming, battery, corner_clock());
         if shown.as_ref() != Some(&now_shown) {
-            let mut canvas = screens::usb_drive_screen(width, height, &usb_drive_view(link, confirming, tf2), &screen_frame(battery));
+            let mut canvas = usb_drive_screen(width, height, &usb_drive_view(link, confirming, tf2), &screen_frame(battery));
             add_corner(&mut canvas, battery);
             framebuffer.draw(&canvas)?;
             shown = Some(now_shown);
@@ -194,6 +197,33 @@ fn set_screen(on: bool) {
     if let Err(error) = std::fs::write(BACKLIGHT_POWER, if on { "0" } else { "4" }) {
         eprintln!("warning: could not turn the screen {}: {error}", if on { "on" } else { "off" });
     }
+}
+
+/// Settings > SYSTEM > USB STORAGE, while the card's TETSU-DATA partition is a USB drive.
+pub struct UsbDriveView<'a> {
+    pub status: &'a str,
+    pub hint: &'a str,
+    /// Whether the card in TF2 is a second drive.
+    pub tf2: bool,
+}
+
+pub fn usb_drive_screen(width: usize, height: usize, view: &UsbDriveView, frame: &Frame) -> Canvas {
+    let mut canvas = Canvas::new(width, height, frame.theme);
+    header(&mut canvas, &icons::SYSTEM, tr("USB STORAGE"), frame.battery);
+    canvas.text_at(view.status, LIST_LEFT, USB_DRIVE_TOP, TEXT_SCALE, canvas.theme.accent);
+    let lines = [
+        tr("THE CARD'S TETSU-DATA PARTITION IS A USB"),
+        tr("DRIVE ON THE PC. GAMES GO IN ITS ROMS FOLDER."),
+        if view.tf2 { tr("THE CARD IN TF2 IS A SECOND DRIVE.") } else { "" },
+        "",
+        tr("THE GAMES AND SETTINGS ARE BACK ON THE"),
+        tr("DEVICE ONCE THE PC EJECTS THE DRIVE."),
+    ];
+    for (row, line) in lines.iter().enumerate() {
+        canvas.text_at(line, LIST_LEFT, USB_DRIVE_TOP + 50 + row * LIST_ROW, TEXT_SCALE, MUTED);
+    }
+    hint(&mut canvas, view.hint);
+    canvas
 }
 
 #[cfg(test)]
