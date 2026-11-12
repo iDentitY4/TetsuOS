@@ -1,0 +1,7 @@
+config BR2_PACKAGE_FREEDOOM
+	bool "freedoom"
+	help
+	  Freedoom: Phase 1 and Phase 2, free games for Doom engines,
+	  installed for the launcher to copy to TETSU-DATA.
+
+	  https://freedoom.github.io

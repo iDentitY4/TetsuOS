@@ -259,6 +259,14 @@ impl PauseMenu {
         self
     }
 
+    /// Leaves out SAVE STATE and LOAD STATE for a game that only saves from its own menu.
+    #[must_use]
+    pub fn with_states(mut self, states: bool) -> Self {
+        self.all.retain(|&item| !matches!(item, Item::SaveState | Item::LoadState) || states);
+        self.show(self.list, 0);
+        self
+    }
+
     /// Leaves out QUIT's choice for a game whose save is its whole state, which keeps no
     /// separate place to drop.
     #[must_use]
@@ -594,6 +602,13 @@ mod tests {
         assert_eq!(menu.selected(), Item::Quit, "just above QUIT");
         let alone = PauseMenu::new(1, true).with_switching(false);
         assert!(!alone.items().contains(&Item::SwitchGame));
+    }
+
+    #[test]
+    fn a_game_that_saves_by_itself_has_no_state_slots() {
+        let menu = PauseMenu::new(1, false).with_states(false);
+        assert_eq!(menu.items()[..2], [Item::Resume, Item::Screenshot]);
+        assert!(PauseMenu::new(1, false).with_states(true).items().contains(&Item::LoadState));
     }
 
     #[test]

@@ -447,6 +447,7 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
     let mut menu = PauseMenu::with(discs, cheat_source.is_some() && !restricted, session.is_some())
         .with_ghosting(ghosting)
         .with_switching(!switch_to.is_empty())
+        .with_states(persistence != Persistence::OwnFiles)
         .with_resuming(resume.is_some());
     let mut trigger = MenuTrigger::new();
     let mut release_at = None;
@@ -470,7 +471,7 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
                     host.rumble.release();
                 }
             }
-            (wants_to_leave(&host.controls), open_menu, lid_closed)
+            (wants_to_leave(&host.controls) || host.shut_down, open_menu, lid_closed)
         });
         if leave {
             break;
@@ -538,9 +539,11 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
                 host.audio_time = Duration::ZERO;
             });
         }
-        // A button changed in the layout is for the game alone.
+        // A button changed in the layout is for the game alone. PC games, which save by
+        // themselves, run in real time, and Doom changes weapons with R2.
         let fast = with_host(|host| host.controls.is_held(FAST_FORWARD_BUTTON) && host.layout.is_unchanged(FAST_FORWARD_BUTTON))
-            && !session.as_ref().is_some_and(Session::restricts);
+            && !session.as_ref().is_some_and(Session::restricts)
+            && persistence != Persistence::OwnFiles;
         if fast != fast_forwarding {
             draw_fast_forward(framebuffer, fast)?;
             fast_forwarding = fast;

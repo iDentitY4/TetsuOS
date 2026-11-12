@@ -10,7 +10,8 @@ use super::core::Core;
 pub(super) fn autosave_frames(persistence: Persistence) -> u64 {
     match persistence {
         Persistence::BatteryRam => 120,
-        Persistence::FullState => 3600,
+        // The game's own files need nothing from the frontend.
+        Persistence::FullState | Persistence::OwnFiles => 3600,
     }
 }
 

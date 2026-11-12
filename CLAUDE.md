@@ -33,7 +33,9 @@ mirrors the screen at 640x480 (`video=` in `extlinux.conf`), without sound.
 Games: NES (FCEUmm), SNES (Snes9x), Game Boy, Color and Advance (mGBA), PlayStation (PCSX
 ReARMed, with discs grouped by name or an `.m3u`, and CHANGE DISC), Mega Drive, Master System and Game Gear (Genesis Plus GX), PC Engine (Beetle PCE
 Fast), Neo Geo Pocket and Color (Beetle NeoPop), WonderSwan and Color (Beetle Cygne), Lynx
-(Handy) and Tamagotchi (tamalib), cartridge games also in ZIP files, with an in-game menu (8 save slots, levels, display
+(Handy) and Tamagotchi (tamalib), and two games that aren't emulated, Doom (PrBoom, with
+Freedoom: Phase 1 and 2) and Cave Story (NXEngine), both copied to TETSU-DATA once and
+saving from their own menus; cartridge games also in ZIP files, with an in-game menu (8 save slots, levels, display
 options, screenshots to PNG, also used as the cover of a game without one, button remapping and turbo per console or game, each core's own options per console or game, cheat codes from `.cht` files, also downloaded on the device, and SWITCH GAME to the other recent games, each resuming, as a list or covers, also on Menu + Select), RetroAchievements (login, unlock notices with badges, a progress page, hardcore, off for every game or one), resume on leaving and after power-off, fast-forward on R2, sharp-bilinear
 scaling with CRT and LCD effects and a border (a drawn bezel on the handhelds by default,
 the theme's colours or black), kept per console, and a volume sign on the volume buttons, also in the menus.
@@ -50,6 +52,10 @@ A new install starts with a setup (language, Wi-Fi, time, adding games), which S
 ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Not yet checked by the user
+
+- Doom and Cave Story (2026-11-12): their sound, the controls on the real buttons, a Cave
+  Story save point and continuing from it, a WAD of the user's own and a PWAD beside it, the
+  transfer page's listing of them
 
 - SET TIME (2026-11-12): its feel on the real buttons, a set time surviving a power-off
   without Wi-Fi, the German wording on the device
@@ -252,7 +258,8 @@ In short here; `docs/features.md` has them in full.
   `genimage.cfg`, `post-image.sh`, `post-build.sh` (drops unused Mesa dependencies),
   `logo.ppm`
 - `external.mk`: includes the packages, builds Mesa without LLVM, installs the logo
-- `package/launcher/`, `package/libretro-*/`: Buildroot packages for the app and the cores
+- `package/launcher/`, `package/libretro-*/`: Buildroot packages for the app and the cores;
+  `package/freedoom/` the bundled Doom games
 - `src/launcher/`: the Rust launcher; `testdata/` has the PNG test images, `lang/` the
   translations, `rcheevos/` the RetroAchievements library that `build.rs` compiles in
 - `src/launcher/src/setup.rs`: the setup on a new install

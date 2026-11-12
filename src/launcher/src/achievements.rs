@@ -1679,7 +1679,9 @@ mod tests {
     #[test]
     fn every_console_with_achievements_has_an_id() {
         for system in &crate::systems::SYSTEMS {
-            assert_eq!(console_id(system.key).is_none(), system.key == "tamagotchi", "{}", system.key);
+            // RetroAchievements has none for the Tamagotchi, or for PC games.
+            let without = ["tamagotchi", "doom", "cavestory"].contains(&system.key);
+            assert_eq!(console_id(system.key).is_none(), without, "{}", system.key);
         }
         assert_eq!(console_id("gba"), Some(5));
         assert_eq!(console_id("wsc"), Some(53));

@@ -9,6 +9,9 @@ pub(super) const ENVIRONMENT_EXPERIMENTAL: c_uint = 0x10000;
 
 pub(super) const ENVIRONMENT_GET_CAN_DUPE: c_uint = 3;
 
+/// The game quit by itself, such as from Doom's own menu.
+pub(super) const ENVIRONMENT_SHUTDOWN: c_uint = 7;
+
 pub(super) const ENVIRONMENT_GET_SYSTEM_DIRECTORY: c_uint = 9;
 
 pub(super) const ENVIRONMENT_SET_PIXEL_FORMAT: c_uint = 10;

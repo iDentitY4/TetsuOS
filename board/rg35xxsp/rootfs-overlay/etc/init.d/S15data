@@ -11,6 +11,30 @@ dirty() {
 	echo $(( ${state:-0} & 1 ))
 }
 
+# The games that come with Tetsu OS: Cave Story and Freedoom. Each is copied to the games
+# once, so it can be deleted like any other and stays deleted; the list holds those copied.
+BUNDLED=/usr/share/tetsu/games
+COPIED=/mnt/data/bundled-games.txt
+
+copy_bundled_games() {
+	for game in "$BUNDLED"/*; do
+		[ -d "$game" ] || continue
+		name="${game##*/}"
+		grep -qxF "$name" "$COPIED" 2>/dev/null && continue
+		# A folder of that name already is the user's, so it is left as it is. Copying
+		# goes to a name with a dot, which the launcher doesn't list, until it is complete.
+		if [ -e "/mnt/data/roms/$name" ] ||
+			{ cp -r "$game" /mnt/data/roms/.copying && mv /mnt/data/roms/.copying "/mnt/data/roms/$name"; }; then
+			echo "$name" >> "$COPIED"
+			echo "S15data: copied $name to the games" > /dev/kmsg
+		else
+			# Such as a full card: tried again at the next start
+			rm -rf /mnt/data/roms/.copying
+			echo "S15data: could not copy $name to the games" > /dev/kmsg
+		fi
+	done
+}
+
 case "$1" in
 start)
 	# Only TF1's: a Tetsu card in TF2 has a TETSU-DATA too
@@ -27,6 +51,7 @@ start)
 	# Fixed permissions: vfat would otherwise take them from the caller's umask
 	mount -t vfat -o umask=022 "$dev" /mnt/data || exit 1
 	mkdir -p /mnt/data/roms /mnt/data/saves
+	copy_bundled_games
 	# The launcher mounts a card put in later
 	/usr/sbin/cards mount
 	exit 0

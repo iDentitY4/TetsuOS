@@ -464,6 +464,62 @@ pub const LYNX: Icon = [
     "................................",
 ];
 
+/// A horned skull, for the Doom engine's games.
+pub const DOOM: Icon = [
+    "................................",
+    "................................",
+    "....KK....................KK....",
+    "...KRRK..................KRRK...",
+    "...KRRRK................KRRRK...",
+    "....KRRRKKKKKKKKKKKKKKKKRRRK....",
+    ".....KRKLLLLLLLLLLLLLLLLKRK.....",
+    "......KLLLLLLLLLLLLLLLLLLK......",
+    ".....KLLLLLLLLLLLLLLLLLLLLK.....",
+    ".....KLLKKKKKLLLLLLKKKKKLLK.....",
+    ".....KLKKRRRKKLLLLKKRRRKKLK.....",
+    ".....KLKKRRRKKLLLLKKRRRKKLK.....",
+    ".....KLLKKKKKLLLLLLKKKKKLLK.....",
+    ".....KLLLLLLLLLKKLLLLLLLLLK.....",
+    "......KLLLLLLLKKKKLLLLLLLK......",
+    "......KLLLLLLLLLLLLLLLLLLK......",
+    ".......KLWKWKWKWWKWKWKWLK.......",
+    ".......KLWKWKWKWWKWKWKWLK.......",
+    "........KLLLLLLLLLLLLLLK........",
+    ".........KKKKKKKKKKKKKK.........",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+];
+
+/// A cave with a heart in it, for Cave Story.
+pub const CAVE_STORY: Icon = [
+    "................................",
+    "................................",
+    "........DDDDDDDDDDDDDDDD........",
+    ".....DDDGGGGGGGGGGGGGGGGDDD.....",
+    "...DDGGGGGGGGGGGGGGGGGGGGGGDD...",
+    "..DGGGGKKKKKKKKKKKKKKKKKKGGGGD..",
+    ".DGGGKKKKGKKKKKKKKKKKKGKKKKGGGD.",
+    ".DGGKKKKKGKKKKKKKKKKKKGKKKKKGGD.",
+    "DGGKKKKKKKKKKKGKKGKKKKKKKKKKKGGD",
+    "DGGKKKKKKKKKKKKKKKKKKKKKKKKKKGGD",
+    "DGKKKKKKKKKKRRKKKKRRKKKKKKKKKKGD",
+    "DGKKKKKKKKKRRRRRRRRRRKKKKKKKKKGD",
+    "DGKKKKKKKKKRRRRRRRRRRKKKKKKKKKGD",
+    "DGKKKKKKKKKKRRRRRRRRKKKKKKKKKKGD",
+    "DGKKKKKKKKKKKRRRRRRKKKKKKKKKKKGD",
+    "DGKKKKKKKKKKKKRRRRKKKKKKKKKKKKGD",
+    "DGKKKKKKKKKKKKKRRKKKKKKKKKKKKKGD",
+    "DGKKKKKKKKKKKKKKKKKKKKKKKKKKKKGD",
+    "DGGNNNNNNNNNNNNNNNNNNNNNNNNNNGGD",
+    "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+];
+
 pub const RECENT: Icon = [
     "................................",
     "................................",
@@ -940,7 +996,7 @@ pub const LOGO: Icon = [
 mod tests {
     use super::*;
 
-    const ALL: [&Icon; 32] = [
+    const ALL: [&Icon; 34] = [
         &LOGO,
         &ACHIEVEMENTS,
         &CORES,
@@ -966,6 +1022,8 @@ mod tests {
         &WONDERSWAN,
         &WONDERSWAN_COLOR,
         &LYNX,
+        &DOOM,
+        &CAVE_STORY,
         &RECENT,
         &FAVORITES,
         &SETTINGS,

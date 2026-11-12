@@ -16,7 +16,7 @@ use crate::i18n::{tr, trf};
 use crate::input::{Button, Controls, Event};
 use crate::launcher::{Command as Action, Group, GROUPS, Launcher, Library, List, Screen, Tile};
 use crate::library::{
-    find_games, last_played_game, load_library, open_start_screen, reload_library, rom_label, set_search, tile_key,
+    find_games, game_title, last_played_game, load_library, open_start_screen, reload_library, set_search, tile_key,
     tile_look,
 };
 use crate::libretro::Ending;
@@ -416,7 +416,7 @@ fn details_canvas(
             if let Some(summary) = summary {
                 facts.push((tr("ACHIEVEMENTS"), trf("{} OF {}", &[&summary.unlocked, &summary.total])));
             }
-            (SYSTEMS[game.system].icon, rom_label(&game.path), facts, library.is_favorite(game))
+            (SYSTEMS[game.system].icon, game_title(&game.path), facts, library.is_favorite(game))
         }
         // Only for the moment before the launcher goes back to the list.
         None => (&icons::RECENT, String::new(), Vec::new(), false),

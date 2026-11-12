@@ -673,6 +673,39 @@ Working on the test unit, confirmed by the user:
   checked by its picture on any of the three. Only a WonderSwan ROM renamed `.wsc` tested
   that tile, and no game that actually saves to flash has been tried. Nobody has heard these
   systems' sound or tried their controls
+- Doom and Cave Story (2026-11-12), the first games that aren't emulated: engines rebuilt
+  as libretro cores, `package/libretro-prboom` (`.wad`) and `package/libretro-nxengine`.
+  Both come with the system: NXEngine's source carries Cave Story's freeware data, and
+  `package/freedoom` installs Freedoom: Phase 1 and Phase 2 (0.13.0, BSD, checked against the
+  release's signed checksum). They go to `/usr/share/tetsu/games`, and `S15data` copies each
+  folder to `roms` once, noting it in `bundled-games.txt` on TETSU-DATA, so a deleted game
+  stays deleted and a folder of the same name is left alone; the first boot after the update
+  took 3.5 s longer for the 60 MB. `System::titles` names known files (`freedoom1` shows as
+  "Freedoom: Phase 1", `doom2` as "Doom II", `Doukutsu.exe` as "Cave Story") in the lists,
+  RECENT, SWITCH GAME, the details screen and the transfer page, with either GAME NAMES.
+  Cave Story's `.exe` only counts when it is named `Doukutsu.exe` (`System::only_titled`),
+  so DoConfig.exe and other programs aren't games, nothing can send one over Wi-Fi, and it
+  can't be zipped, as it needs its `data` folder; the details screen counts and deletes that
+  whole folder, unless the program sits loose in `roms`. Neither core saves a state the
+  frontend can use (NXEngine has none; PrBoom's size changes as a level runs, which
+  `load_state` refuses), so they use `Persistence::OwnFiles`: no save file, resume point,
+  SAVE STATE or LOAD STATE, and nothing kept on leaving or at a lid close. Each saves from its
+  own menu: Doom in `saves/<wad>/prbmsav*.dsg` (with `prboom.cfg`), Cave Story at its save
+  points in `saves/profile.dat`, writing `settings.dat` in its folder. R2 doesn't fast-forward
+  them, as Doom changes weapons with it. The frontend now answers `ENVIRONMENT_SHUTDOWN`, so
+  Doom's own QUIT GAME goes back to the launcher. PrBoom calls its log callback unchecked in
+  many places, and with no log interface every game crashed at address 0 in
+  `M_LoadDefaults` (found with gdb on `qemu-aarch64-static`), so
+  `0001-fall-back-to-a-log-function.patch` gives it one that prints warnings and errors;
+  its search for optional MP3 music logs six `FindFileInDir: not found` lines per track.
+  Its `prboom.wad` is built in. Measured on the device: PrBoom renders Freedoom at 192 fps
+  headless and plays at 59.85 fps in 320x200, shown at 4:3 over the whole screen, with 7.8
+  ms per frame at 1008 MHz; NXEngine at 441 fps headless and 59.9 fps at 480 MHz with 1.8 ms,
+  its 320x240 doubled exactly. Claude checked the tiles and titles, a new Freedoom game saved
+  from Doom's menu, quit, restarted and loaded at the same spot, Doom's own QUIT GAME, the
+  in-game menu without the state rows, Cave Story's intro, and deleting Cave Story from its
+  details screen removing its folder and play time. Nobody has heard either game, played
+  them on the buttons, or reached a Cave Story save point
 - With more consoles a full home screen reached four rows, too short for a tile's text, so
   GRID SIZE's NORMAL now shows three rows at a time and pages beyond, as LARGE does
 

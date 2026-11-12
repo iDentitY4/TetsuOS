@@ -120,9 +120,28 @@ fn game_files(rom: &Path, root: &Path) -> Vec<PathBuf> {
     }
     let tracks: Vec<PathBuf> = found.iter().flat_map(|file| cue_tracks(file)).collect();
     found.extend(tracks);
+    // Cave Story is its folder: the program, its `data` and the settings it writes there.
+    // Not when the program is loose in the `roms` folder, which holds every game.
+    if system_for(rom).is_some_and(|system| system.only_titled) {
+        if let Some(folder) = rom.parent().filter(|folder| clean_path(folder) != root) {
+            add_folder(folder, &mut found);
+        }
+    }
     let mut seen = HashSet::new();
     found.retain(|file| clean_path(file).starts_with(&root) && file.exists() && seen.insert(path_key(file)));
     found
+}
+
+/// Every file in a folder and those in it.
+fn add_folder(folder: &Path, found: &mut Vec<PathBuf>) {
+    for entry in std::fs::read_dir(folder).into_iter().flatten().flatten() {
+        // The entry's own type, so a link to a folder can't make this go round in circles.
+        match entry.file_type() {
+            Ok(kind) if kind.is_dir() => add_folder(&entry.path(), found),
+            Ok(_) => found.push(entry.path()),
+            Err(_) => {}
+        }
+    }
 }
 
 /// The files a `.cue` names, which start from its folder.
@@ -277,6 +296,24 @@ mod tests {
         let files = game_files(&root.join("Tetris.gb"), &root);
         assert_eq!(names(&files, &root), ["Tetris.gb"]);
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn cave_story_is_its_whole_folder_but_never_the_roms_folder() {
+        let root = folder("cave").join("roms");
+        for name in ["Cave Story/Doukutsu.exe", "Cave Story/settings.dat", "Cave Story/data/Stage/a.pxm", "Tetris.gb"] {
+            write(&root.join(name), "x");
+        }
+        let mut files = game_files(&root.join("Cave Story/Doukutsu.exe"), &root);
+        files.sort();
+        assert_eq!(names(&files, &root), ["Cave Story/Doukutsu.exe", "Cave Story/data/Stage/a.pxm", "Cave Story/settings.dat"]);
+        remove_files(&files, &HashSet::new()).unwrap();
+        remove_empty_folders(&files, &root);
+        assert!(!root.join("Cave Story").exists() && root.join("Tetris.gb").exists());
+
+        write(&root.join("Doukutsu.exe"), "x");
+        assert_eq!(names(&game_files(&root.join("Doukutsu.exe"), &root), &root), ["Doukutsu.exe"]);
+        std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
     }
 
     #[test]

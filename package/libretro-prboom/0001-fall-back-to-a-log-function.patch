@@ -1,0 +1,36 @@
+Fall back to a log function when the frontend has no log interface
+
+Much of the core calls log_cb without checking it, such as M_LoadDefaults when it
+loads the game, so with a frontend that has no log interface every game crashed
+with a call to address 0. Warnings and errors now go to stderr.
+
+--- a/libretro/libretro.c
++++ b/libretro/libretro.c
+@@ -905,6 +905,18 @@
+ #define ZONE_CAP_BYTES   (1024ULL * 1024ULL * 1024ULL)  /* 1 GB ceiling */
+ #define ZONE_FLOOR_BYTES (16ULL   * 1024ULL * 1024ULL)  /* sane minimum */
+ 
++/* For a frontend without a log interface: much of the core calls log_cb without
++ * checking it. Warnings and errors go to stderr, the rest nowhere. */
++static void RETRO_CALLCONV fallback_log(enum retro_log_level level, const char *fmt, ...)
++{
++   va_list args;
++   if (level < RETRO_LOG_WARN)
++      return;
++   va_start(args, fmt);
++   vfprintf(stderr, fmt, args);
++   va_end(args);
++}
++
+ void retro_init(void)
+ {
+    struct retro_log_callback log;
+@@ -916,7 +928,7 @@
+    if(environ_cb(RETRO_ENVIRONMENT_GET_LOG_INTERFACE, &log))
+       log_cb = log.log;
+    else
+-      log_cb = NULL;
++      log_cb = fallback_log;
+ 
+ #ifndef MEMORY_LOW
+    {

@@ -1,0 +1,8 @@
+config BR2_PACKAGE_LIBRETRO_NXENGINE
+	bool "libretro-nxengine"
+	help
+	  NXEngine, a rewrite of the Cave Story engine, as a libretro
+	  core. The freeware game's data comes with it and is
+	  installed for the launcher to copy to TETSU-DATA.
+
+	  https://github.com/libretro/nxengine-libretro

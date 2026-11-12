@@ -7,6 +7,7 @@ use crate::boxart_fetch::shrink;
 use crate::image::Image;
 use crate::input::Button;
 use crate::library::rom_label;
+use crate::systems::SYSTEMS;
 use crate::settings::{GameNames, SwitcherStyle};
 use crate::systems::system_index;
 use crate::{names, recent, settings};
@@ -37,9 +38,10 @@ fn candidates(recent: &[PathBuf], playing: &Path, names: GameNames, exists: impl
         .filter_map(|path| {
             let system = system_index(path)?;
             let stem = rom_label(path);
-            let name = match names {
-                GameNames::Short => names::short_name(&stem),
-                GameNames::Full => stem,
+            let name = match (SYSTEMS[system].title_of(path), names) {
+                (Some(title), _) => title.to_string(),
+                (None, GameNames::Short) => names::short_name(&stem),
+                (None, GameNames::Full) => stem,
             };
             Some(SwitchGame { path: path.clone(), name, system })
         })

@@ -196,11 +196,17 @@ pub(crate) fn rom_label(rom: &Path) -> String {
     rom.file_stem().unwrap_or_default().to_string_lossy().into_owned()
 }
 
+/// A game's full name: the title of a file its system knows, such as Doom's `doom2.wad`,
+/// or else the file's name.
+pub(crate) fn game_title(rom: &Path) -> String {
+    system_for(rom).and_then(|system| system.title_of(rom)).map_or_else(|| rom_label(rom), str::to_string)
+}
+
 /// Sorts games into a shelf per system, in the order of `SYSTEMS`, with readable names.
 /// Recent games only count while they are still among the games.
 pub(crate) fn build_library(roms: &[PathBuf], recent: &[PathBuf], favorites: &[PathBuf], names: settings::GameNames) -> Library {
     let mut shelves = Vec::new();
-    for system in 0..SYSTEMS.len() {
+    for (system, info) in SYSTEMS.iter().enumerate() {
         let paths: Vec<&PathBuf> = roms.iter().filter(|rom| system_index(rom) == Some(system)).collect();
         if paths.is_empty() {
             continue;
@@ -210,10 +216,14 @@ pub(crate) fn build_library(roms: &[PathBuf], recent: &[PathBuf], favorites: &[P
             settings::GameNames::Short => names::display_names(&stems),
             settings::GameNames::Full => stems,
         };
+        // A known title as it is, which shortening could cut, as in "Doom (Shareware)".
         let mut games: Vec<Game> = paths
             .iter()
             .zip(shown)
-            .map(|(path, name)| Game { path: (*path).clone(), name, system })
+            .map(|(path, name)| {
+                let name = info.title_of(path).map_or(name, str::to_string);
+                Game { path: (*path).clone(), name, system }
+            })
             .collect();
         games.sort_by_key(|game| game.name.to_ascii_lowercase());
         shelves.push(Shelf { system, games });
@@ -502,6 +512,32 @@ mod tests {
         let full = build_library(&roms, &roms, &[], settings::GameNames::Full);
         assert_eq!(full.shelves[0].games[0].name, "Legend of Zelda, The (USA) (Rev 1)");
         assert_eq!(full.recent[0].name, "Legend of Zelda, The (USA) (Rev 1)");
+    }
+
+    #[test]
+    fn known_files_show_their_titles_with_either_kind_of_name() {
+        let roms = [
+            PathBuf::from("/r/Freedoom/freedoom1.wad"),
+            PathBuf::from("/r/Doom/DOOM1.WAD"),
+            PathBuf::from("/r/Doom/sunlust.wad"),
+            PathBuf::from("/r/Cave Story/Doukutsu.exe"),
+            PathBuf::from("/r/Cave Story/DoConfig.exe"),
+        ];
+        for names in [settings::GameNames::Short, settings::GameNames::Full] {
+            let library = build_library(&roms, &roms, &[], names);
+            let shelves: Vec<(&str, Vec<&str>)> = library
+                .shelves
+                .iter()
+                .map(|shelf| (SYSTEMS[shelf.system].console, shelf.games.iter().map(|game| game.name.as_str()).collect()))
+                .collect();
+            assert_eq!(
+                shelves,
+                [("DOOM", vec!["Doom (Shareware)", "Freedoom: Phase 1", "sunlust"]), ("CAVE STORY", vec!["Cave Story"])],
+            );
+            assert_eq!(library.recent[0].name, "Freedoom: Phase 1");
+        }
+        assert_eq!(game_title(Path::new("/r/Cave Story/Doukutsu.exe")), "Cave Story");
+        assert_eq!(game_title(Path::new("/r/Tetris (World).gb")), "Tetris (World)");
     }
 
     #[test]

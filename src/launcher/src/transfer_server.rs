@@ -17,7 +17,7 @@ use crate::boxart::{parse_ppm, ART_DIR};
 use crate::boxart_fetch::{art_path, MAX_SIZE};
 use crate::game_files::{delete_game, GameFiles};
 use crate::cards::{self, TF2_ROM_DIR};
-use crate::library::{build_library, find_all_roms, find_roms, rom_label};
+use crate::library::{build_library, find_all_roms, find_roms, game_title, rom_label};
 use crate::libretro::resume_path;
 use crate::screenshot::SCREENSHOT_DIR;
 use crate::storage::write_atomic;
@@ -779,14 +779,18 @@ struct Listing {
 fn listing() -> Listing {
     let mut consoles: Vec<ConsoleListing> = SYSTEMS
         .iter()
-        .map(|system| ConsoleListing { key: system.key, name: system.console, extensions: system.extensions, games: Vec::new() })
+        // Cave Story's program alone is no game, so it can't be sent.
+        .map(|system| {
+            let extensions = if system.only_titled { &[] } else { system.extensions };
+            ConsoleListing { key: system.key, name: system.console, extensions, games: Vec::new() }
+        })
         .collect();
     for rom in find_all_roms() {
         let Some(index) = system_index(&rom) else { continue };
         let files = GameFiles::of(&rom);
         consoles[index].games.push(GameListing {
             path: game_id(&rom),
-            name: rom_label(&rom),
+            name: game_title(&rom),
             size: files.size(),
             cover: !files.cover.is_empty(),
             saves: files.player_saves().into_iter().map(|save| FileListing::of(&save)).collect(),
@@ -801,7 +805,8 @@ fn listing() -> Listing {
         .map(|path| FileListing::of(&path))
         .collect();
     screenshots.sort_by(|a, b| a.name.cmp(&b.name));
-    let mut accepts: Vec<&'static str> = SYSTEMS.iter().flat_map(|system| system.extensions.iter().copied()).collect();
+    let mut accepts: Vec<&'static str> =
+        SYSTEMS.iter().filter(|system| !system.only_titled).flat_map(|system| system.extensions.iter().copied()).collect();
     accepts.extend(DISC_TRACKS);
     accepts.push("zip");
     let free = free_space(Path::new(ROM_DIR));

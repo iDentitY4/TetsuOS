@@ -89,6 +89,11 @@ BR2_PACKAGE_LIBRETRO_BEETLE_PCE_FAST=y
 BR2_PACKAGE_LIBRETRO_BEETLE_NGP=y
 BR2_PACKAGE_LIBRETRO_BEETLE_WSWAN=y
 BR2_PACKAGE_LIBRETRO_HANDY=y
+# Game engines rather than emulators: Cave Story, with its freeware data, and Doom,
+# with Freedoom's two games
+BR2_PACKAGE_LIBRETRO_NXENGINE=y
+BR2_PACKAGE_LIBRETRO_PRBOOM=y
+BR2_PACKAGE_FREEDOOM=y
 
 # GPU: OpenGL ES through Panfrost, which Buildroot only offers with LLVM. Mesa
 # itself is built without it (external.mk), and post-build.sh removes the rest.

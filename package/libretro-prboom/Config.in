@@ -1,0 +1,7 @@
+config BR2_PACKAGE_LIBRETRO_PRBOOM
+	bool "libretro-prboom"
+	help
+	  PrBoom, a Doom engine, as a libretro core: Doom, Doom II,
+	  Final Doom and Freedoom WADs.
+
+	  https://github.com/libretro/libretro-prboom

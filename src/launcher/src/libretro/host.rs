@@ -27,7 +27,7 @@ use super::ffi::{
     ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK,
     ENVIRONMENT_SET_CORE_OPTIONS_V2, ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL,
     ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE, ENVIRONMENT_SET_MEMORY_MAPS,
-    ENVIRONMENT_SET_PIXEL_FORMAT, ENVIRONMENT_SET_VARIABLES, OptionDisplay, RawDiskControl,
+    ENVIRONMENT_SET_PIXEL_FORMAT, ENVIRONMENT_SET_VARIABLES, ENVIRONMENT_SHUTDOWN, OptionDisplay, RawDiskControl,
     RumbleInterface, UpdateDisplay, Variable, c_text, read_options_v2,
 };
 use super::scale::{PixelFormat, Scaler, picture_size};
@@ -161,6 +161,8 @@ pub(super) struct Host {
     pub(super) disk_control: Option<DiskControl>,
     /// The vibration motor, and what the game asked of it.
     pub(super) rumble: Rumble,
+    /// Set when the game quit by itself.
+    pub(super) shut_down: bool,
 }
 
 thread_local! {
@@ -293,6 +295,11 @@ pub(super) unsafe extern "C" fn environment(command: c_uint, data: *mut c_void) 
         match command & !ENVIRONMENT_EXPERIMENTAL {
             ENVIRONMENT_GET_CAN_DUPE => {
                 *data.cast::<bool>() = true;
+                true
+            }
+            ENVIRONMENT_SHUTDOWN => {
+                println!("the game quit by itself");
+                with_host(|host| host.shut_down = true);
                 true
             }
             ENVIRONMENT_GET_SYSTEM_DIRECTORY | ENVIRONMENT_GET_SAVE_DIRECTORY => {
@@ -557,6 +564,7 @@ pub(super) fn set_host(directory: &Path, target: (usize, usize), setup: CoreSetu
         display: console.map_or(settings::get().display, |console| settings::get().display_for(console)),
         console,
         options_changed: false,
+        shut_down: false,
         disk_control: None,
         // Only a game on the device opens the motor.
         rumble: Rumble::new(Vibration::Off),

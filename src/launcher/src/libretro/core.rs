@@ -175,6 +175,8 @@ impl Core {
         match persistence {
             Persistence::BatteryRam => Ok(self.save_ram().to_vec()),
             Persistence::FullState => self.save_state(),
+            // Nothing, which `SaveFile` never writes.
+            Persistence::OwnFiles => Ok(Vec::new()),
         }
     }
 
@@ -213,11 +215,15 @@ impl Core {
                 Ok(())
             }
             Persistence::FullState => self.load_state(saved),
+            Persistence::OwnFiles => Ok(()),
         }
     }
 
     /// Loads any save file, then returns a `SaveFile` to keep it up to date.
     pub(super) fn open_save(&mut self, path: &Path, persistence: Persistence) -> io::Result<SaveFile> {
+        if persistence == Persistence::OwnFiles {
+            return Ok(SaveFile { path: path.to_path_buf(), written: Vec::new() });
+        }
         match std::fs::read(path) {
             Ok(saved) => {
                 if let Err(error) = self.restore(persistence, &saved) {

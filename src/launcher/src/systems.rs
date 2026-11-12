@@ -13,6 +13,11 @@ pub enum Persistence {
     BatteryRam,
     /// The whole machine, for hardware with no separate save memory.
     FullState,
+    /// Files the game writes itself, from its own menu, as PC games do. The frontend keeps
+    /// no save file, resume point or state slots for it: the cores of these games either
+    /// can't save a state at all (`NXEngine`) or give it a size that changes as the game
+    /// runs (`PrBoom`).
+    OwnFiles,
 }
 
 /// How the frontend sets up a core for one console.
@@ -53,6 +58,12 @@ pub(crate) struct System {
     /// Its folder of cheat files in libretro-database, for a core that applies codes. The
     /// Lynx, Neo Geo Pocket and Tamagotchi cores ignore them.
     pub(crate) cheats: Option<&'static str>,
+    /// Games known by their file's name, in lower case without the extension, and the
+    /// titles the lists show for them, such as Doom's `doom2` for "Doom II".
+    pub(crate) titles: &'static [(&'static str, &'static str)],
+    /// Lists only the files in `titles`, for an extension other files have too, such as
+    /// Cave Story's `.exe`.
+    pub(crate) only_titled: bool,
 }
 
 pub(crate) const MGBA: &str = crate::paths::core_path!("mgba");
@@ -61,7 +72,7 @@ pub(crate) const BEETLE_NGP: &str = crate::paths::core_path!("mednafen_ngp");
 pub(crate) const BEETLE_WSWAN: &str = crate::paths::core_path!("mednafen_wswan");
 
 /// In the order the launcher lists them, which is by the console's release.
-pub(crate) const SYSTEMS: [System; 16] = [
+pub(crate) const SYSTEMS: [System; 18] = [
     System {
         console: "NES",
         key: "nes",
@@ -76,6 +87,8 @@ pub(crate) const SYSTEMS: [System; 16] = [
         setup: CoreSetup { aspect: None, declared_defaults: false },
         thumbnails: Some("Nintendo_-_Nintendo_Entertainment_System"),
         cheats: Some("Nintendo - Nintendo Entertainment System"),
+        titles: &[],
+        only_titled: false,
     },
     System {
         console: "MASTER SYSTEM",
@@ -91,6 +104,8 @@ pub(crate) const SYSTEMS: [System; 16] = [
         setup: CoreSetup { aspect: Some((4, 3)), declared_defaults: true },
         thumbnails: Some("Sega_-_Master_System_-_Mark_III"),
         cheats: Some("Sega - Master System - Mark III"),
+        titles: &[],
+        only_titled: false,
     },
     System {
         console: "PC ENGINE",
@@ -106,6 +121,8 @@ pub(crate) const SYSTEMS: [System; 16] = [
         setup: CoreSetup { aspect: Some((4, 3)), declared_defaults: true },
         thumbnails: Some("NEC_-_PC_Engine_-_TurboGrafx_16"),
         cheats: Some("NEC - PC Engine - TurboGrafx 16"),
+        titles: &[],
+        only_titled: false,
     },
     System {
         console: "MEGA DRIVE",
@@ -122,6 +139,8 @@ pub(crate) const SYSTEMS: [System; 16] = [
         setup: CoreSetup { aspect: Some((4, 3)), declared_defaults: true },
         thumbnails: Some("Sega_-_Mega_Drive_-_Genesis"),
         cheats: Some("Sega - Mega Drive - Genesis"),
+        titles: &[],
+        only_titled: false,
     },
     System {
         console: "GAME BOY",
@@ -137,6 +156,8 @@ pub(crate) const SYSTEMS: [System; 16] = [
         setup: CoreSetup { aspect: None, declared_defaults: false },
         thumbnails: Some("Nintendo_-_Game_Boy"),
         cheats: Some("Nintendo - Game Boy"),
+        titles: &[],
+        only_titled: false,
     },
     System {
         console: "LYNX",
@@ -152,6 +173,8 @@ pub(crate) const SYSTEMS: [System; 16] = [
         setup: CoreSetup { aspect: None, declared_defaults: true },
         thumbnails: Some("Atari_-_Lynx"),
         cheats: None,
+        titles: &[],
+        only_titled: false,
     },
     System {
         console: "GAME GEAR",
@@ -167,6 +190,8 @@ pub(crate) const SYSTEMS: [System; 16] = [
         setup: CoreSetup { aspect: None, declared_defaults: true },
         thumbnails: Some("Sega_-_Game_Gear"),
         cheats: Some("Sega - Game Gear"),
+        titles: &[],
+        only_titled: false,
     },
     System {
         console: "SNES",
@@ -182,6 +207,39 @@ pub(crate) const SYSTEMS: [System; 16] = [
         setup: CoreSetup { aspect: None, declared_defaults: false },
         thumbnails: Some("Nintendo_-_Super_Nintendo_Entertainment_System"),
         cheats: Some("Nintendo - Super Nintendo Entertainment System"),
+        titles: &[],
+        only_titled: false,
+    },
+    System {
+        console: "DOOM",
+        key: "doom",
+        label: "DOOM",
+        icon: &icons::DOOM,
+        // Add-ons (PWADs) too, which PrBoom plays on the game (IWAD) it finds beside them.
+        extensions: &["wad"],
+        core: crate::paths::core_path!("prboom"),
+        // Its own saves, in a folder of the save folder named after the WAD.
+        persistence: Persistence::OwnFiles,
+        save_extension: "srm",
+        rom_size: None,
+        short_save_names: false,
+        // 320x200, shown on a 4:3 screen as on a PC.
+        setup: CoreSetup { aspect: Some((4, 3)), declared_defaults: true },
+        thumbnails: None,
+        cheats: None,
+        titles: &[
+            ("doom", "Doom"),
+            ("doomu", "The Ultimate Doom"),
+            ("doom1", "Doom (Shareware)"),
+            ("doom2", "Doom II"),
+            ("tnt", "Final Doom: TNT Evilution"),
+            ("plutonia", "Final Doom: The Plutonia Experiment"),
+            ("freedoom1", "Freedoom: Phase 1"),
+            ("freedoom2", "Freedoom: Phase 2"),
+            ("heretic", "Heretic"),
+            ("hexen", "Hexen"),
+        ],
+        only_titled: false,
     },
     System {
         console: "PLAYSTATION",
@@ -201,6 +259,8 @@ pub(crate) const SYSTEMS: [System; 16] = [
         setup: CoreSetup { aspect: Some((4, 3)), declared_defaults: true },
         thumbnails: Some("Sony_-_PlayStation"),
         cheats: Some("Sony - PlayStation"),
+        titles: &[],
+        only_titled: false,
     },
     System {
         console: "TAMAGOTCHI",
@@ -216,6 +276,8 @@ pub(crate) const SYSTEMS: [System; 16] = [
         setup: CoreSetup { aspect: None, declared_defaults: false },
         thumbnails: None,
         cheats: None,
+        titles: &[],
+        only_titled: false,
     },
     System {
         console: "GAME BOY COLOR",
@@ -231,6 +293,8 @@ pub(crate) const SYSTEMS: [System; 16] = [
         setup: CoreSetup { aspect: None, declared_defaults: false },
         thumbnails: Some("Nintendo_-_Game_Boy_Color"),
         cheats: Some("Nintendo - Game Boy Color"),
+        titles: &[],
+        only_titled: false,
     },
     System {
         console: "NEO GEO POCKET",
@@ -246,6 +310,8 @@ pub(crate) const SYSTEMS: [System; 16] = [
         setup: CoreSetup { aspect: None, declared_defaults: true },
         thumbnails: Some("SNK_-_Neo_Geo_Pocket"),
         cheats: None,
+        titles: &[],
+        only_titled: false,
     },
     System {
         console: "NEO GEO POCKET COLOR",
@@ -261,6 +327,8 @@ pub(crate) const SYSTEMS: [System; 16] = [
         setup: CoreSetup { aspect: None, declared_defaults: true },
         thumbnails: Some("SNK_-_Neo_Geo_Pocket_Color"),
         cheats: None,
+        titles: &[],
+        only_titled: false,
     },
     System {
         console: "WONDERSWAN",
@@ -276,6 +344,8 @@ pub(crate) const SYSTEMS: [System; 16] = [
         setup: CoreSetup { aspect: None, declared_defaults: true },
         thumbnails: Some("Bandai_-_WonderSwan"),
         cheats: Some("Bandai - WonderSwan"),
+        titles: &[],
+        only_titled: false,
     },
     System {
         console: "WONDERSWAN COLOR",
@@ -291,6 +361,8 @@ pub(crate) const SYSTEMS: [System; 16] = [
         setup: CoreSetup { aspect: None, declared_defaults: true },
         thumbnails: Some("Bandai_-_WonderSwan_Color"),
         cheats: Some("Bandai - WonderSwan Color"),
+        titles: &[],
+        only_titled: false,
     },
     System {
         console: "GAME BOY ADVANCE",
@@ -306,6 +378,28 @@ pub(crate) const SYSTEMS: [System; 16] = [
         setup: CoreSetup { aspect: None, declared_defaults: false },
         thumbnails: Some("Nintendo_-_Game_Boy_Advance"),
         cheats: Some("Nintendo - Game Boy Advance"),
+        titles: &[],
+        only_titled: false,
+    },
+    System {
+        console: "CAVE STORY",
+        key: "cavestory",
+        label: "CAVE STORY",
+        icon: &icons::CAVE_STORY,
+        // The game's own program, which NXEngine reads its music and pictures from, with
+        // its `data` folder beside it.
+        extensions: &["exe"],
+        core: crate::paths::core_path!("nxengine"),
+        // `profile.dat` in the save folder, written by the game's save points.
+        persistence: Persistence::OwnFiles,
+        save_extension: "srm",
+        rom_size: None,
+        short_save_names: false,
+        setup: CoreSetup { aspect: None, declared_defaults: true },
+        thumbnails: None,
+        cheats: None,
+        titles: &[("doukutsu", "Cave Story")],
+        only_titled: true,
     },
 ];
 
@@ -315,22 +409,38 @@ pub(crate) const ROM_DIR: &str = crate::paths::data_path!("/roms");
 pub(crate) const SAVE_DIR: &str = crate::paths::data_path!("/saves");
 
 impl System {
-    /// A game that is one file. A `PlayStation` disc needs several side by side.
+    /// A game that is one file. A `PlayStation` disc needs several side by side, and Cave
+    /// Story its `data` folder.
     pub(crate) fn fits_in_zip(&self) -> bool {
-        !self.extensions.contains(&"m3u")
+        !self.extensions.contains(&"m3u") && !self.only_titled
+    }
+
+    /// The title of a game known by its file's name.
+    pub(crate) fn title_of(&self, rom: &Path) -> Option<&'static str> {
+        let stem = rom.file_stem()?.to_str()?;
+        self.titles.iter().find(|(name, _)| stem.eq_ignore_ascii_case(name)).map(|&(_, title)| title)
     }
 }
 
+/// The system for files with this extension. Not one that also needs the file's name, as
+/// an extension alone doesn't say that a file is its game.
 pub(crate) fn system_for_extension(extension: &str) -> Option<&'static System> {
-    SYSTEMS.iter().find(|system| system.extensions.iter().any(|known| extension.eq_ignore_ascii_case(known)))
+    SYSTEMS
+        .iter()
+        .filter(|system| !system.only_titled)
+        .find(|system| system.extensions.iter().any(|known| extension.eq_ignore_ascii_case(known)))
 }
 
 /// The system that runs a game, by its extension or, for a ZIP, that of the game inside.
 pub(crate) fn system_for(rom: &Path) -> Option<&'static System> {
-    match rom_zip::game_in(rom) {
-        Some(game) => system_for_extension(&game.extension),
-        None => system_for_extension(rom.extension()?.to_str()?),
+    if let Some(game) = rom_zip::game_in(rom) {
+        return system_for_extension(&game.extension);
     }
+    let extension = rom.extension()?.to_str()?;
+    SYSTEMS.iter().find(|system| {
+        system.extensions.iter().any(|known| extension.eq_ignore_ascii_case(known))
+            && (!system.only_titled || system.title_of(rom).is_some())
+    })
 }
 
 /// The index in `SYSTEMS` of the system that runs a game.
@@ -360,6 +470,7 @@ pub(crate) fn persistence_arg(persistence: Persistence) -> &'static str {
     match persistence {
         Persistence::BatteryRam => "battery",
         Persistence::FullState => "state",
+        Persistence::OwnFiles => "own",
     }
 }
 
@@ -367,6 +478,7 @@ pub(crate) fn parse_persistence(arg: &str) -> io::Result<Persistence> {
     match arg {
         "battery" => Ok(Persistence::BatteryRam),
         "state" => Ok(Persistence::FullState),
+        "own" => Ok(Persistence::OwnFiles),
         _ => Err(io::Error::other(format!("unknown save type: {arg}"))),
     }
 }
@@ -412,12 +524,36 @@ mod tests {
             ("a.ngpc", "ngp"),
             ("a.ws", "wswan"),
             ("a.wsc", "wswan"),
+            ("a.wad", "prboom"),
+            ("DOOM2.WAD", "prboom"),
+            ("Doukutsu.exe", "nxengine"),
+            ("doukutsu.EXE", "nxengine"),
         ] {
             assert!(system_for(Path::new(name)).unwrap().core.contains(core), "{name}");
         }
         assert!(system_for(Path::new("/roms/notes.txt")).is_none());
         assert!(system_for(Path::new("/roms/no-extension")).is_none());
         assert!(system_for(Path::new("/roms/Disc (Track 1).bin")).is_none(), "tracks of a disc aren't games");
+        assert!(system_for(Path::new("/roms/Cave Story/DoConfig.exe")).is_none(), "only Cave Story's own program");
+        assert!(system_for_extension("exe").is_none(), "nor any program in a ZIP or sent over Wi-Fi");
+    }
+
+    #[test]
+    fn known_files_have_titles() {
+        let title = |name: &str| system_for(Path::new(name)).and_then(|system| system.title_of(Path::new(name)));
+        assert_eq!(title("/roms/Doom/DOOM2.WAD"), Some("Doom II"));
+        assert_eq!(title("/roms/Freedoom/freedoom1.wad"), Some("Freedoom: Phase 1"));
+        assert_eq!(title("/roms/Cave Story/Doukutsu.exe"), Some("Cave Story"));
+        assert_eq!(title("/roms/Doom/sunlust.wad"), None);
+        assert_eq!(title("/roms/Tetris.gb"), None);
+    }
+
+    #[test]
+    fn games_with_their_own_saves_are_not_zipped() {
+        let cave_story = system_for(Path::new("Doukutsu.exe")).unwrap();
+        assert!(!cave_story.fits_in_zip());
+        assert_eq!(cave_story.persistence, Persistence::OwnFiles);
+        assert!(system_for(Path::new("doom.wad")).unwrap().fits_in_zip());
     }
 
     #[test]
@@ -463,7 +599,7 @@ mod tests {
 
     #[test]
     fn the_save_type_survives_the_command_line() {
-        for persistence in [Persistence::BatteryRam, Persistence::FullState] {
+        for persistence in [Persistence::BatteryRam, Persistence::FullState, Persistence::OwnFiles] {
             assert_eq!(parse_persistence(persistence_arg(persistence)).unwrap(), persistence);
         }
         assert!(parse_persistence("other").is_err());
