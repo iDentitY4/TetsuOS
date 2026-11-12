@@ -201,7 +201,7 @@ impl Group {
                     Setting::Switcher,
                 ]
             }
-            Self::Time => &[Setting::TimeZone, Setting::ClockFormat],
+            Self::Time => &[Setting::TimeZone, Setting::ClockFormat, Setting::SetTime],
             Self::Achievements => &[
                 Setting::AchievementsOn,
                 Setting::AchievementsAccount,
@@ -268,6 +268,8 @@ pub enum Setting {
     HomeTiles,
     TimeZone,
     ClockFormat,
+    /// The date and time typed by hand, for when there is no network.
+    SetTime,
     ButtonTest,
     SystemInfo,
     IdleSleep,
@@ -328,6 +330,7 @@ impl Setting {
             Self::HomeTiles => "HOME SCREEN TILES",
             Self::TimeZone => "TIME ZONE",
             Self::ClockFormat => "CLOCK",
+            Self::SetTime => "SET TIME",
             Self::ButtonTest => "BUTTON TEST",
             Self::SystemInfo => "SYSTEM INFO",
             Self::IdleSleep => "SLEEP WHEN IDLE",
@@ -362,6 +365,7 @@ impl Setting {
             Self::DownloadMissingArt
                 | Self::DownloadAllArt
                 | Self::TitleText
+                | Self::SetTime
                 | Self::HomeTiles
                 | Self::ButtonTest
                 | Self::SystemInfo
@@ -524,6 +528,8 @@ pub enum Command {
     ToggleTile(Tile),
     TimeZone(i32),
     ClockFormat(i32),
+    /// Opens the screen that sets the date and time by hand.
+    SetTime,
     SshAccess(i32),
     EditRootPassword,
     RemoveSshKeys,
@@ -1053,6 +1059,7 @@ impl Launcher {
                 Setting::DownloadAllArt => return Command::DownloadBoxArt(ArtDownload::All),
                 Setting::DeleteArt => return Command::DeleteBoxArt,
                 Setting::TitleText => return Command::EditTitle,
+                Setting::SetTime => return Command::SetTime,
                 Setting::HomeTiles => self.screen = Screen::HomeTiles,
                 Setting::ButtonTest => return Command::ButtonTest,
                 Setting::SystemInfo => self.screen = Screen::Info,
@@ -1649,6 +1656,9 @@ mod tests {
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Left, &library), Command::ClockFormat(-1));
         assert_eq!(launcher.press(Button::A, &library), Command::Nothing);
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::Right, &library), Command::Nothing);
+        assert_eq!(launcher.press(Button::A, &library), Command::SetTime);
     }
 
     #[test]

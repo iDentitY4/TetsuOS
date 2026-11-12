@@ -389,6 +389,18 @@ pub(crate) fn write_statistics_preview(path: &str) -> io::Result<()> {
     write_ppm(&screens::statistics_screen(width, height, &crate::app::statistics(&log, 0), &frame), path)
 }
 
+/// Settings > TIME > SET TIME, on the hour.
+pub(crate) fn write_set_time_preview(path: &str) -> io::Result<()> {
+    let (width, height) = PREVIEW_SIZE;
+    let settings = crate::settings::get();
+    let time: jiff::civil::DateTime = "2026-11-12T16:05".parse().map_err(io::Error::other)?;
+    let values = crate::set_time::field_values(time, settings.clock);
+    let date = crate::clock::date_text(&crate::clock::zoned(time, settings.time_zone()), settings.clock);
+    let view = screens::SetTimeView { values: &values, selected: 3, date: &date, failed: false };
+    let frame = screens::Frame { theme: current_theme(), battery: Some(Battery { percent: 80, charging: false }) };
+    write_ppm(&screens::set_time_screen(width, height, &view, &frame), path)
+}
+
 /// Settings > SYSTEM > WI-FI TRANSFER, while a game arrives.
 pub(crate) fn write_transfer_preview(path: &str) -> io::Result<()> {
     let (width, height) = PREVIEW_SIZE;

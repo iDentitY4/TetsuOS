@@ -59,6 +59,7 @@ mod rom_zip;
 mod rumble;
 mod screens;
 mod screenshot;
+mod set_time;
 mod settings;
 mod setup;
 mod sleep;
@@ -119,6 +120,7 @@ fn main() -> ExitCode {
         [flag, path] if flag == "--preview-transfer" => write_transfer_preview(path),
         [flag, path] if flag == "--preview-wifi" => write_wifi_preview(path),
         [flag, path] if flag == "--preview-statistics" => previews::write_statistics_preview(path),
+        [flag, path] if flag == "--preview-set-time" => previews::write_set_time_preview(path),
         [flag, path] if flag == "--preview-bluetooth" => previews::write_bluetooth_preview(path),
         [flag, path] if flag == "--preview-keyboard" => write_keyboard_preview(path),
         [flag, step, path] if flag == "--preview-setup" => match step.parse() {

@@ -784,6 +784,68 @@ pub fn info_screen(width: usize, height: usize, (icon, title): (&Icon, &str), li
     canvas
 }
 
+/// Settings > TIME > SET TIME, as `set_time_screen` shows it.
+pub struct SetTimeView<'a> {
+    /// What each of `set_time::FIELDS` shows.
+    pub values: &'a [String; 5],
+    pub selected: usize,
+    /// The date and time in full, with the weekday.
+    pub date: &'a str,
+    /// Whether the last save failed.
+    pub failed: bool,
+}
+
+const SET_TIME_SCALE: usize = 4;
+const SET_TIME_LABEL_Y: usize = 124;
+const SET_TIME_BOX_Y: usize = 146;
+const SET_TIME_BOX_H: usize = 60;
+const SET_TIME_PAD: usize = 24;
+const SET_TIME_GAP: usize = 12;
+/// More room between the date and the time.
+const SET_TIME_WIDE_GAP: usize = 36;
+
+/// The date and time as a field each, the selected one in the accent colour with arrows
+/// above and below it for Up and Down.
+pub fn set_time_screen(width: usize, height: usize, view: &SetTimeView, frame: &Frame) -> Canvas {
+    let mut canvas = Canvas::new(width, height, frame.theme);
+    header(&mut canvas, &icons::TIME, tr("SET TIME"), frame.battery);
+    let fields = crate::set_time::FIELDS;
+    let widths: Vec<usize> = fields
+        .iter()
+        .zip(view.values)
+        .map(|(field, value)| text_width(value, SET_TIME_SCALE).max(text_width(field.label(), TEXT_SCALE)) + SET_TIME_PAD)
+        .collect();
+    let gap = |index: usize| if index == 3 { SET_TIME_WIDE_GAP } else { SET_TIME_GAP };
+    let total = widths.iter().sum::<usize>() + (1..fields.len()).map(gap).sum::<usize>();
+    let mut x = width.saturating_sub(total) / 2;
+    for (index, ((field, value), &w)) in fields.iter().zip(view.values).zip(&widths).enumerate() {
+        if index > 0 {
+            x += gap(index);
+        }
+        let selected = index == view.selected;
+        let label = field.label();
+        canvas.text_at(label, x + w.saturating_sub(text_width(label, TEXT_SCALE)) / 2, SET_TIME_LABEL_Y, TEXT_SCALE, MUTED);
+        let (fill, color) = if selected { (canvas.theme.accent, canvas.theme.background) } else { (BODY, TEXT) };
+        canvas.rect(x, SET_TIME_BOX_Y, w, SET_TIME_BOX_H, fill);
+        let text_y = SET_TIME_BOX_Y + (SET_TIME_BOX_H - font::HEIGHT * SET_TIME_SCALE) / 2;
+        canvas.text_at(value, x + w.saturating_sub(text_width(value, SET_TIME_SCALE)) / 2, text_y, SET_TIME_SCALE, color);
+        if selected {
+            more_arrow(&mut canvas, x + w / 2, SET_TIME_BOX_Y - 32, true);
+            more_arrow(&mut canvas, x + w / 2, SET_TIME_BOX_Y + SET_TIME_BOX_H + 6, false);
+        }
+        x += w;
+    }
+    canvas.text(view.date, 248, TEXT_SCALE, TEXT);
+    let (note, color) = if view.failed {
+        (tr("COULD NOT SET THE CLOCK"), LOW)
+    } else {
+        (tr("WI-FI SETS THE CLOCK AGAIN WHEN IT CONNECTS"), MUTED)
+    };
+    canvas.text(note, 288, TEXT_SCALE, color);
+    hint(&mut canvas, tr("LEFT RIGHT MOVES - UP DOWN CHANGES - A SAVES - B BACK"));
+    canvas
+}
+
 /// A home screen tile in the list that shows or hides them.
 pub struct TileToggle<'a> {
     pub icon: &'a Icon,

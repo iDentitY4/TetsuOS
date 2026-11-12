@@ -102,6 +102,28 @@ pub fn local(time: Timestamp, zone: &Zone) -> Zoned {
     time.to_zoned(time_zone(zone))
 }
 
+/// A local date and time in `zone`. A time skipped when the clocks go forward is taken as
+/// the same time after the change, one repeated as the first of the two.
+pub fn zoned(time: jiff::civil::DateTime, zone: &Zone) -> Zoned {
+    let zone = time_zone(zone);
+    time.to_zoned(zone.clone()).unwrap_or_else(|_| Timestamp::UNIX_EPOCH.to_zoned(zone))
+}
+
+/// Sets the system clock to `time`, and the RTC from it, so it holds through a power-off,
+/// as `/usr/libexec/ntp-synced` does after the network sets it.
+pub fn set_system_time(time: Timestamp) -> std::io::Result<()> {
+    let spec = libc::timespec { tv_sec: time.as_second() as libc::time_t, tv_nsec: 0 };
+    // SAFETY: `spec` is a valid timespec that lives through the call.
+    if unsafe { libc::clock_settime(libc::CLOCK_REALTIME, &raw const spec) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let status = std::process::Command::new("hwclock").args(["-w", "-u"]).status()?;
+    if !status.success() {
+        return Err(std::io::Error::other(format!("hwclock -w -u: {status}")));
+    }
+    Ok(())
+}
+
 /// The hour and minute, such as "16:05" or "4:05 PM".
 pub fn time_text(time: &Zoned, format: ClockFormat) -> String {
     let (hour, minute) = (time.hour(), time.minute());
@@ -246,6 +268,17 @@ mod tests {
         let kathmandu = zone_named("Asia/Kathmandu").unwrap();
         assert_eq!(corner_text(winter, kathmandu, ClockFormat::Hours24).as_deref(), Some("20:50"));
         assert_eq!(date_text(&local(winter, berlin), ClockFormat::Off), "SUNDAY 8 NOVEMBER 2026, 16:05");
+    }
+
+    #[test]
+    fn local_times_are_found_across_the_clock_changes() {
+        let berlin = zone_named("Europe/Berlin").unwrap();
+        let at_local = |text: &str| zoned(text.parse().unwrap(), berlin).timestamp();
+        assert_eq!(at_local("2026-11-12T16:05"), at("2026-11-12T15:05:00Z"));
+        assert_eq!(at_local("2026-07-01T12:00"), at("2026-07-01T10:00:00Z"));
+        // 2:30 doesn't happen on 29 March 2026, and happens twice on 25 October.
+        assert_eq!(at_local("2026-03-29T02:30"), at("2026-03-29T01:30:00Z"));
+        assert_eq!(at_local("2026-10-25T02:30"), at("2026-10-25T00:30:00Z"));
     }
 
     #[test]

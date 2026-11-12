@@ -3,7 +3,7 @@
 use crate::{
     achievements, boot_partition, boxart, canvas, cards, cheats, clock, controls, core_options, favorites,
     fb, game_files, icons, input, keyboard, launcher, performance, play_log, power, recent, rumble, screens, settings, sounds,
-    ssh, storage,
+    set_time, ssh, storage,
 };
 use crate::boxart_screen::{art_counts, delete_box_art, download_box_art};
 use crate::canvas::Battery;
@@ -782,6 +782,7 @@ pub(crate) fn act(
             change_settings(|s| s.zone = Some(clock::cycle_zone(s.time_zone(), steps).name));
         }
         Action::ClockFormat(steps) => change_settings(|s| s.clock = s.clock.cycle(steps)),
+        Action::SetTime => set_time::set_time(framebuffer, events)?,
         Action::SshAccess(steps) => {
             let login = ssh::Login::read();
             change_settings(|s| s.ssh = ssh::next_access(ssh::effective(s.ssh, login), steps, login));

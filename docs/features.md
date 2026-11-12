@@ -1009,6 +1009,20 @@ Built but not yet tested on the device:
   the PC for all 58, in winter and summer. Claude checked the screens, the corner clock
   in both formats and off, and `TZ` in a game's environment. The zone is set to Berlin
   on the test unit. A game's clock was not checked inside a game
+- Setting the time by hand (2026-11-12), Settings > TIME > SET TIME (`set_time.rs`), for a
+  device without Wi-Fi. Day, month, year, hour and minute in boxes, Left and Right moving
+  between them and Up and Down changing one, wrapping within it like a watch (a minute
+  past 59 stays in the hour), the day kept within the month and the year between 2025
+  and 2099. The hour follows CLOCK (4 PM in 12 HOUR), and the full date with its weekday
+  shows below. It is local time in the chosen zone (`clock::zoned`: a time skipped when the
+  clocks go forward counts as after the change, a repeated one as the first). A saves it
+  with `clock_settime` and writes the RTC with `hwclock -w -u`, so it holds through a
+  power-off; B leaves unchanged. Then it restarts ntpd (`S43ntpd restart`): a running
+  BusyBox ntpd doesn't notice the jump and went on logging tiny offsets with the clock 2
+  hours off, while a new one steps it on its first answer. So the network still wins,
+  at once with Wi-Fi up or once it connects, which the screen says. Claude set 23:22
+  instead of 21:22 on the device: the system clock, the RTC and the corner followed, and
+  with the restart ntpd stepped it back within a second (-7175 s)
 - Vibration (2026-11-10). The motor is on PWM channel 2, pin PH2, as in ROCKNIX's
   `0150-add-forcefeedback`; patch 0015 makes it a mainline `pwm-vibrator` at 1 kHz
   (`CONFIG_INPUT_PWM_VIBRA`), an input device with `FF_RUMBLE`. Before the patch, Claude
