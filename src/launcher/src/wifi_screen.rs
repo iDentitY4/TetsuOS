@@ -3,7 +3,7 @@
 use crate::{fb, icons, power, screens, wifi, wifi_menu};
 use crate::app::{keyboard_sound, press_volume};
 use crate::canvas::{Battery, Canvas};
-use crate::corner::{add_clock, read_battery, screen_frame};
+use crate::corner::{add_corner, read_battery, screen_frame};
 use crate::i18n::{tr, trf};
 use crate::input::{Button, Event};
 use crate::repeat::Repeater;
@@ -158,7 +158,7 @@ fn wifi_canvas(size: (usize, usize), menu: &wifi_menu::WifiMenu, link: &Link, ba
             screens::wifi_screen(size.0, size.1, &view, &screen_frame(battery))
         }
     };
-    add_clock(&mut canvas, battery);
+    add_corner(&mut canvas, battery);
     canvas
 }
 

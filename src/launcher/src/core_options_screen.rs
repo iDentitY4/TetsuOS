@@ -5,7 +5,7 @@ use crate::{core_options, fb, power, screens, settings, sounds};
 use crate::app::{button_sound, press_volume};
 use crate::controls::PageAction;
 use crate::core_options::OptionsPage;
-use crate::corner::{add_clock, read_battery, screen_frame};
+use crate::corner::{add_corner, read_battery, screen_frame};
 use crate::input::{Button, Event};
 use crate::repeat::Repeater;
 use crate::sleep::sleep_until_lid_opens;
@@ -34,7 +34,7 @@ pub(crate) fn core_options_settings(framebuffer: &mut fb::Framebuffer, events: &
                 screens::core_consoles_screen(width, height, &rows, selected, &frame)
             }
         };
-        add_clock(&mut canvas, battery);
+        add_corner(&mut canvas, battery);
         framebuffer.draw(&canvas)?;
 
         // Drawing again removes the volume sign, and keeps the clock and battery current.

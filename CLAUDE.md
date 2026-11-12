@@ -49,6 +49,8 @@ ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Not yet checked by the user
 
+- Wi-Fi and Bluetooth in the corner (2026-11-12): their look, and Bluetooth with a
+  controller or headphones connected
 - TETSU-DATA safety (2026-11-12): the boot repair after a real reset or power cut, the
   CARD ERROR screen's A (restart) and German wording, and a real reset after an in-game
   save starting from the save rather than the older resume point

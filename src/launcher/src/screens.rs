@@ -3,7 +3,7 @@
 use crate::image::Image;
 use crate::cheats::{self, CheatsPage};
 use crate::core_options::{OptionsPage, Row as OptionRow};
-use crate::canvas::{text_width, Battery, Canvas, Theme, BODY, LOW, MUTED, TEXT};
+use crate::canvas::{text_width, Battery, Canvas, Theme, BODY, LINKS_W, LOW, MUTED, TEXT};
 use crate::color::Rgb;
 use crate::font;
 use crate::i18n::{tr, trf};
@@ -164,8 +164,8 @@ const HEADER_TEXT_LEFT: usize = LOGO_LEFT + icons::WIDTH * LOGO_SCALE + 12;
 const HEADER_TITLE_Y: usize = 14;
 const HEADER_TITLE_SCALE: usize = 3;
 const HEADER_LINE_Y: usize = 51;
-/// Room left for the clock and battery at the top right: "12:59 PM 100%+", and gaps.
-const CORNER_W: usize = 14 * (font::WIDTH + 1) * 2 + 32;
+/// Room left for the corner at the top right: Wi-Fi, Bluetooth, "12:59 PM 100%+", and gaps.
+const CORNER_W: usize = LINKS_W + 14 * (font::WIDTH + 1) * 2 + 32;
 /// Between the selected tile's name and what is said about it.
 const HEADER_NAME_GAP: usize = 16;
 

@@ -5,7 +5,7 @@
 
 use crate::{fb, power, screens, settings, sounds, wifi};
 use crate::app::{button_sound, shut_down};
-use crate::corner::{add_clock, BATTERY_REFRESH, corner_clock, current_theme, read_battery, screen_frame};
+use crate::corner::{add_corner, BATTERY_REFRESH, corner_clock, current_theme, read_battery, screen_frame};
 use crate::i18n::{tr, trf};
 use crate::input::{Button, Event};
 use crate::sleep::BACKLIGHT_POWER;
@@ -128,7 +128,7 @@ pub(crate) fn wifi_transfer(framebuffer: &mut fb::Framebuffer, events: &Receiver
         let now_shown = (view.clone(), battery, corner_clock());
         if shown.as_ref() != Some(&now_shown) {
             let mut canvas = screens::transfer_screen(width, height, &view, &screen_frame(battery));
-            add_clock(&mut canvas, battery);
+            add_corner(&mut canvas, battery);
             framebuffer.draw(&canvas)?;
             shown = Some(now_shown);
         }

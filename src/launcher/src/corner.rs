@@ -1,7 +1,7 @@
 //! The top-right corner: the battery level and the clock, and the time settings' note.
 
 use crate::{canvas, clock, screens, settings};
-use crate::canvas::Battery;
+use crate::canvas::{Battery, Links};
 use crate::i18n::{tr, trf};
 use std::path::Path;
 use std::time::Duration;
@@ -27,10 +27,28 @@ pub(crate) fn corner_clock() -> Option<String> {
     clock::corner_text(jiff::Timestamp::now(), settings.time_zone(), settings.clock)
 }
 
-pub(crate) fn add_clock(canvas: &mut canvas::Canvas, battery: Option<Battery>) {
-    if let Some(text) = corner_clock() {
-        canvas.clock(&text, battery);
+/// The clock and the connections, beside the battery level the screen drew.
+pub(crate) fn add_corner(canvas: &mut canvas::Canvas, battery: Option<Battery>) {
+    let clock = corner_clock();
+    if let Some(text) = &clock {
+        canvas.clock(text, battery);
     }
+    canvas.links(read_links(), clock.as_deref(), battery);
+}
+
+/// Up while associated with a network, `dormant` or `down` otherwise.
+const WIFI_STATE: &str = "/sys/class/net/wlan0/operstate";
+/// Holds `hci0:<handle>` for each connection to a Bluetooth device.
+const BLUETOOTH_DIR: &str = "/sys/class/bluetooth";
+
+/// The connections, from sysfs, cheap enough to read each second.
+pub(crate) fn read_links() -> Links {
+    let wifi = std::fs::read_to_string(WIFI_STATE).is_ok_and(|state| state.trim() == "up");
+    let bluetooth = settings::get().bluetooth.then(|| {
+        std::fs::read_dir(BLUETOOTH_DIR)
+            .is_ok_and(|mut entries| entries.any(|entry| entry.is_ok_and(|entry| entry.file_name().to_string_lossy().starts_with("hci0:"))))
+    });
+    Links { wifi, bluetooth }
 }
 
 /// The time settings' note: the date and time there, and when the network last set it.

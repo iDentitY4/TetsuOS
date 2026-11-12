@@ -2,7 +2,7 @@
 
 use crate::{boxart, boxart_fetch, fb, names, power, screens, wifi};
 use crate::app::press_volume;
-use crate::corner::{add_clock, BATTERY_REFRESH, corner_clock, read_battery, screen_frame};
+use crate::corner::{add_corner, BATTERY_REFRESH, corner_clock, read_battery, screen_frame};
 use crate::i18n::{tr, trf};
 use crate::input::{Button, Event};
 use crate::launcher::ArtDownload;
@@ -195,7 +195,7 @@ pub(crate) fn download_box_art(framebuffer: &mut fb::Framebuffer, events: &Recei
                 hint,
             };
             let mut canvas = screens::boxart_screen(width, height, &view, &screen_frame(battery));
-            add_clock(&mut canvas, battery);
+            add_corner(&mut canvas, battery);
             framebuffer.draw(&canvas)?;
             redraw = false;
         }

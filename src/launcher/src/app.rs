@@ -9,7 +9,7 @@ use crate::boxart_screen::{art_counts, delete_box_art, download_box_art};
 use crate::canvas::Battery;
 use crate::core_options_screen::core_options_settings;
 use crate::corner::{
-    add_clock, BATTERY_REFRESH, corner_clock, current_theme, read_battery, screen_frame, time_note,
+    add_corner, BATTERY_REFRESH, read_links, corner_clock, current_theme, read_battery, screen_frame, time_note,
 };
 use crate::game::{confirm_resume, forget_running_game, interrupted_game, play_game, PLAYING_PATH};
 use crate::i18n::{tr, trf};
@@ -144,7 +144,7 @@ fn warn_read_only(framebuffer: &mut fb::Framebuffer, events: &Receiver<Event>, m
             return shut_down(framebuffer, tr("BATTERY EMPTY"), &power::poweroff_command());
         }
         let mut canvas = screens::read_only_screen(width, height, &screen_frame(battery));
-        add_clock(&mut canvas, battery);
+        add_corner(&mut canvas, battery);
         framebuffer.draw(&canvas)?;
         // Also when a volume sign is due to go, as drawing again removes it.
         let pressed = match events.recv_timeout(BATTERY_REFRESH.min(framebuffer.sign_wait())) {
@@ -533,7 +533,7 @@ pub(crate) fn launcher_canvas(
         }
         Screen::Statistics => screens::statistics_screen(width, height, &statistics(&library.play_log, launcher.stats_first()), &frame),
     };
-    add_clock(&mut canvas, battery);
+    add_corner(&mut canvas, battery);
     (canvas, scrolling)
 }
 
@@ -856,7 +856,7 @@ pub(crate) fn edit_title(framebuffer: &mut fb::Framebuffer, events: &Receiver<Ev
     let battery = read_battery(&power::battery_dir());
     loop {
         let mut canvas = screens::keyboard_screen(width, height, &view, &keyboard, &screen_frame(battery));
-        add_clock(&mut canvas, battery);
+        add_corner(&mut canvas, battery);
         framebuffer.draw(&canvas)?;
         let event = match events.recv_timeout(framebuffer.sign_wait()) {
             Ok(event) => event,
@@ -904,7 +904,7 @@ pub(crate) fn search_games(
         let subtitle = if keyboard.can_finish() { trf("GAMES FOUND: {}", &[&found]) } else { tr("TYPE PART OF A GAME NAME").to_string() };
         let view = screens::KeyboardView { icon: &icons::SEARCH, title: tr("SEARCH"), subtitle: &subtitle, valid_note: "" };
         let mut canvas = screens::keyboard_screen(width, height, &view, &keyboard, &screen_frame(battery));
-        add_clock(&mut canvas, battery);
+        add_corner(&mut canvas, battery);
         framebuffer.draw(&canvas)?;
         let event = match events.recv_timeout(framebuffer.sign_wait()) {
             Ok(event) => event,
@@ -979,7 +979,7 @@ pub(crate) fn edit_root_password(framebuffer: &mut fb::Framebuffer, events: &Rec
     let battery = read_battery(&power::battery_dir());
     loop {
         let mut canvas = screens::keyboard_screen(width, height, &view, &keyboard, &screen_frame(battery));
-        add_clock(&mut canvas, battery);
+        add_corner(&mut canvas, battery);
         framebuffer.draw(&canvas)?;
         let event = match events.recv_timeout(framebuffer.sign_wait()) {
             Ok(event) => event,
@@ -1035,7 +1035,7 @@ fn type_text(
     let battery = read_battery(&power::battery_dir());
     let typed = loop {
         let mut canvas = screens::keyboard_screen(width, height, view, keyboard, &screen_frame(battery));
-        add_clock(&mut canvas, battery);
+        add_corner(&mut canvas, battery);
         framebuffer.draw(&canvas)?;
         let event = match events.recv_timeout(framebuffer.sign_wait()) {
             Ok(event) => event,
@@ -1154,6 +1154,8 @@ struct Watch {
     battery_read: Instant,
     /// The minute shown, to redraw when it changes. The time settings show it too.
     shown_clock: Option<String>,
+    /// The connections the corner shows, to redraw when they change.
+    links: canvas::Links,
     /// Since when no button has been pressed, for sleeping when idle.
     last_press: Instant,
     /// Set when only the scrolling name needs drawing again.
@@ -1209,6 +1211,11 @@ fn wait_for_wake(
                         return Some(Wake::Redraw);
                     }
                     if clock_minute(launcher) != watch.shown_clock {
+                        return Some(Wake::Redraw);
+                    }
+                    let links = read_links();
+                    if links != watch.links {
+                        watch.links = links;
                         return Some(Wake::Redraw);
                     }
                 }
@@ -1328,6 +1335,7 @@ pub(crate) fn run_launcher() -> io::Result<()> {
         battery: read_battery(&power::battery_dir()),
         battery_read: Instant::now(),
         shown_clock: None,
+        links: read_links(),
         last_press: Instant::now(),
         scroll_tick: false,
         cards: card_watch,

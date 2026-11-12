@@ -10,7 +10,7 @@ use crate::app::change_settings;
 use crate::bluetooth::{self, Bluez, Device};
 use crate::bluetooth_menu::{self, BluetoothMenu, Request};
 use crate::canvas::{Battery, Canvas};
-use crate::corner::{add_clock, read_battery, screen_frame};
+use crate::corner::{add_corner, read_battery, screen_frame};
 use crate::i18n::tr;
 use crate::input::Event;
 use crate::repeat::Repeater;
@@ -297,7 +297,7 @@ fn bluetooth_canvas(size: (usize, usize), menu: &BluetoothMenu, link: &Link, bat
         message: menu.message.as_deref(),
     };
     let mut canvas = screens::bluetooth_screen(size.0, size.1, &view, &screen_frame(battery));
-    add_clock(&mut canvas, battery);
+    add_corner(&mut canvas, battery);
     canvas
 }
 

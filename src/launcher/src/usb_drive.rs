@@ -7,7 +7,7 @@
 use crate::{fb, power, screens, settings, sounds};
 use crate::app::{button_sound, shut_down};
 use crate::corner::{
-    add_clock, BATTERY_REFRESH, corner_clock, current_theme, read_battery, screen_frame,
+    add_corner, BATTERY_REFRESH, corner_clock, current_theme, read_battery, screen_frame,
 };
 use crate::i18n::tr;
 use crate::input::{Button, Event};
@@ -138,7 +138,7 @@ pub(crate) fn usb_drive(framebuffer: &mut fb::Framebuffer, events: &Receiver<Eve
         let now_shown = (link, confirming, battery, corner_clock());
         if shown.as_ref() != Some(&now_shown) {
             let mut canvas = screens::usb_drive_screen(width, height, &usb_drive_view(link, confirming, tf2), &screen_frame(battery));
-            add_clock(&mut canvas, battery);
+            add_corner(&mut canvas, battery);
             framebuffer.draw(&canvas)?;
             shown = Some(now_shown);
         }

@@ -946,6 +946,17 @@ Built but not yet tested on the device:
   the device with `LAUNCHER_LONG_SLEEP=60`, a fake `Discharging` battery and a fake
   `LAUNCHER_POWEROFF`: it slept at 2 idle minutes, the alarm woke it 61 s later and the
   power-off command ran. A real power-off from idle sleep hasn't been tried
+- Wi-Fi and Bluetooth in the corner (2026-11-12), left of the clock and battery level on
+  every screen with them (`corner::add_corner`, `Canvas::links`). Wi-Fi shows while
+  `wlan0`'s `operstate` is `up`, that is connected; the kernel has no
+  `/proc/net/wireless`, so there is no signal strength without asking wpa_supplicant.
+  Bluetooth shows while it is on in the settings: dimmer with nothing connected, and as
+  bright as the clock while a device is, which the kernel shows as an `hci0:<handle>`
+  folder in `/sys/class/bluetooth`. Both are read from sysfs with the battery each
+  second, and the menus draw again when they change. The Bluetooth rune is 9 pixel rows,
+  centred on the 7-row text, since at 7 it reads as an asterisk. The home header's
+  `CORNER_W` leaves room for both. Checked on the device: Wi-Fi connected, Bluetooth on
+  with nothing connected, and turned off; a connected device wasn't tried
 - Battery display: Settings > GENERAL > BATTERY: PERCENT, WHEN LOW (only at 15% or below
   while not charging, in red) or HIDDEN, for the menus' top-right corner; the clock takes
   its place. Games' low-battery warning and shutdown don't change. Like the accent, it is

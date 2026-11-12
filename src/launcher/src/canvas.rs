@@ -200,10 +200,41 @@ impl Canvas {
 
     /// The clock, to the left of the battery level, or in its place when it is hidden.
     pub(crate) fn clock(&mut self, text: &str, battery: Option<Battery>) {
+        let x = self.corner_left(None, battery).saturating_sub(text_width(text, BATTERY_TEXT_SCALE));
+        self.text_at(text, x, BATTERY_TOP, BATTERY_TEXT_SCALE, MUTED);
+    }
+
+    /// Wi-Fi and Bluetooth, left of the clock and battery level, or in their place.
+    pub(crate) fn links(&mut self, links: Links, clock: Option<&str>, battery: Option<Battery>) {
+        let mut right = self.corner_left(clock, battery);
+        let dim = MUTED.toward(self.theme.background, 40);
+        let shown = [
+            links.bluetooth.map(|connected| (BLUETOOTH, if connected { MUTED } else { dim })),
+            links.wifi.then_some((WIFI, MUTED)),
+        ];
+        for (bitmap, color) in shown.into_iter().flatten() {
+            let width = bitmap[0].len() * BATTERY_TEXT_SCALE;
+            let x = right.saturating_sub(width);
+            let top = BATTERY_TOP.saturating_sub(bitmap.len().saturating_sub(font::HEIGHT) * BATTERY_TEXT_SCALE / 2);
+            for (row, line) in bitmap.iter().enumerate() {
+                for (col, c) in line.chars().enumerate() {
+                    if c == '#' {
+                        let (px, py) = (x + col * BATTERY_TEXT_SCALE, top + row * BATTERY_TEXT_SCALE);
+                        self.rect(px, py, BATTERY_TEXT_SCALE, BATTERY_TEXT_SCALE, color);
+                    }
+                }
+            }
+            right = x.saturating_sub(LINK_GAP);
+        }
+    }
+
+    /// Where the corner's items so far begin, with the gap before the next: the battery
+    /// level, then the clock if given.
+    fn corner_left(&self, clock: Option<&str>, battery: Option<Battery>) -> usize {
         let battery_w = battery_label(battery, self.theme.battery)
             .map_or(0, |label| text_width(&label, BATTERY_TEXT_SCALE) + CLOCK_GAP);
-        let x = self.width.saturating_sub(text_width(text, BATTERY_TEXT_SCALE) + battery_w + BATTERY_RIGHT);
-        self.text_at(text, x, BATTERY_TOP, BATTERY_TEXT_SCALE, MUTED);
+        let clock_w = clock.map_or(0, |text| text_width(text, BATTERY_TEXT_SCALE) + CLOCK_GAP);
+        self.width.saturating_sub(battery_w + clock_w + BATTERY_RIGHT)
     }
 
     /// One control: filled while held, outlined once it has been seen working.
@@ -290,6 +321,42 @@ pub struct Battery {
     pub charging: bool,
 }
 
+/// What the corner shows of the connections.
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub struct Links {
+    /// Connected to a Wi-Fi network.
+    pub wifi: bool,
+    /// Bluetooth is on, and whether a device is connected. Off is None.
+    pub bluetooth: Option<bool>,
+}
+
+/// The corner's pictograms, `#` for a pixel at its scale, centred on its text. The
+/// Bluetooth rune needs 9 rows to be told from an asterisk.
+const WIFI: &[&str] = &[
+    ".#######.",
+    "#.......#",
+    "..#####..",
+    ".#.....#.",
+    "...###...",
+    "..#...#..",
+    "....#....",
+];
+const BLUETOOTH: &[&str] = &[
+    "..#..",
+    "..##.",
+    "#.#.#",
+    ".###.",
+    "..#..",
+    ".###.",
+    "#.#.#",
+    "..##.",
+    "..#..",
+];
+/// Between the corner's pictograms, and from them to the clock.
+const LINK_GAP: usize = 10;
+/// The room both pictograms take, with their gaps.
+pub(crate) const LINKS_W: usize = (WIFI[0].len() + BLUETOOTH[0].len()) * BATTERY_TEXT_SCALE + 2 * LINK_GAP;
+
 /// At or below this level, while not charging, the level is shown as a warning.
 const LOW_BATTERY_PERCENT: u32 = 15;
 const BATTERY_TOP: usize = 8;
@@ -300,6 +367,33 @@ const BATTERY_TEXT_SCALE: usize = 2;
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_links_sit_left_of_the_clock_without_touching_it() {
+        let theme = Theme::default();
+        let battery = Some(Battery { percent: 80, charging: false });
+        let mut canvas = Canvas::new(640, 480, theme);
+        canvas.clock("18:35", battery);
+        let clock_left = (0..640).find(|&x| (0..40).any(|y| canvas.pixels[y * 640 + x] == MUTED)).unwrap();
+        let both = Links { wifi: true, bluetooth: Some(true) };
+        canvas.links(both, Some("18:35"), battery);
+        let links_right = (0..clock_left).rev().find(|&x| (0..40).any(|y| canvas.pixels[y * 640 + x] == MUTED)).unwrap();
+        assert!(links_right + 12 <= clock_left, "a gap between {links_right} and {clock_left}");
+
+        // Bluetooth on with nothing connected is dimmer; off draws nothing.
+        let mut idle = Canvas::new(640, 480, theme);
+        idle.links(Links { wifi: false, bluetooth: Some(false) }, None, None);
+        assert_eq!(count(&idle, MUTED), 0);
+        assert!(idle.pixels.iter().any(|&p| p != theme.background));
+        let mut none = Canvas::new(640, 480, theme);
+        none.links(Links::default(), None, None);
+        assert!(none.pixels.iter().all(|&p| p == theme.background));
+        for bitmap in [WIFI, BLUETOOTH] {
+            assert!(bitmap.iter().all(|row| row.len() == bitmap[0].len()));
+            // Odd extra rows couldn't be centred on the text.
+            assert!(bitmap.len() >= font::HEIGHT && (bitmap.len() - font::HEIGHT).is_multiple_of(2));
+        }
+    }
 
     #[test]
     fn the_battery_shows_as_chosen() {
