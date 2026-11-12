@@ -1,0 +1,32 @@
+#!/bin/sh
+# Names the device on the network: Settings > WI-FI > HOSTNAME, kept on TETSU-DATA, so
+# after S15data. Init has set the default from /etc/hostname by then.
+# "reload", after the setting changes, also tells the router and mdnsd.
+
+DEFAULT=tetsu-rg35xxsp
+
+apply() {
+	name="$(/usr/libexec/setting hostname "$DEFAULT")"
+	# A name the launcher allows: lowercase letters, digits and inner hyphens
+	echo "$name" | grep -qE '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$' || name=$DEFAULT
+	hostname "$name"
+	printf '127.0.0.1\tlocalhost\n127.0.1.1\t%s\n' "$name" > /etc/hosts
+}
+
+case "$1" in
+start)
+	apply
+	;;
+reload)
+	apply
+	# A new DHCP request carries the name to the router
+	/usr/libexec/wifi-event wlan0 REFRESH
+	[ -x /etc/init.d/S50mdnsd ] && /etc/init.d/S50mdnsd restart > /dev/null
+	;;
+stop)
+	;;
+*)
+	echo "Usage: $0 {start|stop|reload}"
+	exit 1
+	;;
+esac

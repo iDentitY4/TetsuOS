@@ -122,6 +122,7 @@ BR2_PACKAGE_WPA_SUPPLICANT=y
 BR2_PACKAGE_WPA_SUPPLICANT_CLI=y
 BR2_PACKAGE_WPA_SUPPLICANT_PASSPHRASE=y
 BR2_PACKAGE_IW=y
+BR2_PACKAGE_MDNSD=y
 
 # Bluetooth: BlueZ with D-Bus, for controllers and headphones. Neither starts
 # at boot (post-build.sh renames their init scripts); /usr/sbin/bluetooth starts

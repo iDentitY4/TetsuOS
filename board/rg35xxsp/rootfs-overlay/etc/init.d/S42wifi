@@ -3,8 +3,13 @@
 # reflashing. Add one over SSH with:
 #   wpa_passphrase 'name' 'password' >> /mnt/data/wpa_supplicant.conf
 # then restart this script. wpa_cli can also add networks; update_config saves them.
+#
+# Settings > WI-FI can turn it off (wifi=off in settings.txt) and choose the country.
+# wpa_cli -a runs /usr/libexec/wifi-event as networks connect, which gives each its
+# address: by DHCP, or the network's own settings.
 
 CONF=/mnt/data/wpa_supplicant.conf
+CLI_PID=/run/wpa_cli.pid
 
 start_wifi() {
 	# The driver may finish probing after init starts
@@ -13,12 +18,25 @@ start_wifi() {
 		sleep 0.25
 	done
 	[ -e /sys/class/net/wlan0 ] || { echo "S42wifi: no wlan0" >&2; return 1; }
+	if [ "$(/usr/libexec/setting wifi on)" = off ]; then
+		ip link set wlan0 down
+		return 0
+	fi
+	# Without one (00), the radio keeps to channels allowed everywhere until a router
+	# names its country. Setting it each time also undoes a country chosen before.
+	iw reg set "$(/usr/libexec/setting wifi_country 00)"
 	if [ ! -e "$CONF" ]; then
 		printf 'ctrl_interface=/run/wpa_supplicant\nupdate_config=1\n' > "$CONF"
 	fi
 	wpa_supplicant -B -i wlan0 -c "$CONF" -P /run/wpa_supplicant.pid || return 1
-	# Keeps trying in the background until a network gives it an address
-	udhcpc -b -S -i wlan0 -p /run/udhcpc.wlan0.pid -x hostname:"$(hostname)"
+	for _ in $(seq 20); do
+		wpa_cli -i wlan0 -a /usr/libexec/wifi-event -B -P "$CLI_PID" && break
+		sleep 0.1
+	done
+	# A connection made before wpa_cli listened would go unseen
+	if wpa_cli -i wlan0 status | grep -q '^wpa_state=COMPLETED'; then
+		/usr/libexec/wifi-event wlan0 CONNECTED
+	fi
 }
 
 case "$1" in
@@ -27,9 +45,10 @@ start)
 	start_wifi </dev/null >/dev/null 2>&1 &
 	;;
 stop)
-	[ -e /run/udhcpc.wlan0.pid ] && kill "$(cat /run/udhcpc.wlan0.pid)" 2>/dev/null
+	[ -e "$CLI_PID" ] && kill "$(cat "$CLI_PID")" 2>/dev/null
 	[ -e /run/wpa_supplicant.pid ] && kill "$(cat /run/wpa_supplicant.pid)" 2>/dev/null
-	rm -f /run/udhcpc.wlan0.pid /run/wpa_supplicant.pid
+	rm -f "$CLI_PID" /run/wpa_supplicant.pid
+	/usr/libexec/wifi-event wlan0 DISCONNECTED
 	ip link set wlan0 down 2>/dev/null
 	;;
 restart)

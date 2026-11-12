@@ -1217,13 +1217,15 @@ Built but not yet tested on the device:
   database built into the kernel, because the driver probes at 0.5 s, before the root
   filesystem. `external.mk` points `CONFIG_EXTRA_FIRMWARE_DIR` at the target, so
   `post-build.sh` keeps that one firmware file there. `S42wifi` starts `wpa_supplicant`
-  and `udhcpc` in the background, with networks in `/mnt/data/wpa_supplicant.conf`. The
-  launcher talks to wpa_supplicant's control socket (`wifi.rs`): the screen
+  and `wpa_cli -a /usr/libexec/wifi-event` in the background, with networks in
+  `/mnt/data/wpa_supplicant.conf`; the hook gives each connection its address (below).
+  The launcher talks to wpa_supplicant's control socket (`wifi.rs`): the screen
   (`wifi_menu.rs`) lists networks in range by signal, with saved ones out of range
-  last, scans every 10 s and on Y, joins with A, and forgets with X pressed twice. A
+  last, scans every 10 s and on Y, joins with A, and opens a saved network's page with
+  X (below). A
   password is typed on an on-screen keyboard (`keyboard.rs`) with lowercase and every
   printable symbol (`font::glyph_cased`, used only where case matters). A new network
-  is saved only once it connects, and `udhcpc` is then signalled for a fresh address.
+  is saved only once it connects.
   WPA3-only, enterprise and WEP networks show as NOT SUPPORTED, since WPA3 would need
   OpenSSL. Claude saw the list of 9 real networks and the keyboard on the device. Sleep
   works with Wi-Fi (patch 0013), checked with an RTC wake alarm
@@ -1232,6 +1234,59 @@ Built but not yet tested on the device:
   connected hung the device until the launcher started disconnecting first; with that,
   an RTC-timed sleep woke and rejoined within 8 s, and the user confirmed lid sleep
   works and Wi-Fi reconnects
+- More Wi-Fi settings (2026-11-12), all under Settings > WI-FI:
+  - An ON/OFF row first (`wifi=` in `settings.txt`). Off runs `S42wifi stop`: no
+    wpa_supplicant and `wlan0` down, also at boot, and the corner shows no Wi-Fi.
+  - A saved network's page (`wifi_pages::NetworkPage`), from X, or A on the connected
+    one: CONNECTION DETAILS (address and prefix from `ip`, gateway from
+    `/proc/net/route`, DNS from `resolv.conf`, MAC, signal, band and channel and speed
+    from `SIGNAL_POLL`, security), IP ADDRESS AUTOMATIC or MANUAL with ADDRESS
+    (`192.168.1.50/24`, or /24 without a prefix) and GATEWAY, DNS (up to 3, empty for
+    the router's), AUTO-JOIN, MAC ADDRESS DEVICE or PRIVATE, and FORGET (A twice).
+    MANUAL without an address opens the keyboard with the address and gateway DHCP gave.
+    Values are checked as typed (`network.rs`), and each change is saved at once.
+  - Where they are kept: wpa_supplicant's own network block, so forgetting removes
+    them. The address settings are its `id_str`
+    (`ip=static;address=..;gateway=..;dns=..;join=manual`, `network::NetworkConfig`),
+    which `wpa_cli` passes on: `/usr/libexec/wifi-event` sets a static address, route
+    and DNS (the gateway's without servers of its own), or runs `udhcpc` with
+    `/usr/libexec/wifi-dhcp`, which puts the network's servers in place of the router's.
+    It also applies POWER SAVING, and logs to `/var/log/wifi-event.log`. Leaving the page
+    applies changed address settings with `wifi-event wlan0 REFRESH`, without
+    reconnecting.
+  - AUTO-JOIN off is `disabled=1`. Choosing a network turns the others off in
+    wpa_supplicant, so instead of `ENABLE_NETWORK all` each save turns each network on
+    or off by its own setting (`Control::save_config`); turning off the connected one
+    doesn't leave it. Lid sleep rejoins the network it left even with AUTO-JOIN off.
+  - PRIVATE is `mac_addr=3` with a `mac_value` made up when it is chosen (local,
+    unicast); wpa_supplicant shows it only as `*`, and 2.12 didn't save it, so patch
+    `wpa_supplicant/0001`. rtw88 changing its address while Wi-Fi ran left the link
+    associated but sending nothing two times in seven (only `S42wifi restart` brought
+    it back), so a MAC change restarts Wi-Fi instead, six of six clean, and a new
+    address on each connection (`mac_addr=1`) isn't offered.
+  - Start opens WI-FI OPTIONS (`wifi_pages::WifiOptions`): HOSTNAME, COUNTRY, POWER
+    SAVING and ADD A HIDDEN NETWORK (name, then password, empty for open;
+    `scan_ssid=1`). The hostname (`hostname=`, lowercase letters, digits and inner
+    hyphens) is set at boot by `S16hostname` after TETSU-DATA is mounted, with
+    `/etc/hosts`; changing it runs `S16hostname reload`, which renews DHCP with the new
+    name and restarts `mdnsd`. `mdnsd` (Buildroot's, with its SSH service) answers to
+    `<hostname>.local` on Wi-Fi and USB; from the PC it resolved over both, the router
+    passing it on over the LAN. COUNTRY (`wifi_country=`, `network::COUNTRIES`, 55 by
+    name in the language in use, AUTOMATIC first) is set by `S42wifi` with `iw reg set`,
+    `00` for AUTOMATIC, after which the router's own country still applies. While
+    connected, a string of changes left cfg80211 with an intersection of them (country
+    98), so a new country applies on leaving the page by restarting Wi-Fi. POWER SAVING
+    (`wifi_power_save=`) is `iw dev wlan0 set power_save`, at once and on each connect.
+    RESET SETTINGS puts all four back and applies them.
+  - Init scripts read these with `/usr/libexec/setting KEY DEFAULT`, which also falls
+    back to `settings-backup.txt`.
+  - Checked on the device by Claude: on and off, the page and details, a static address
+    (pinged from the PC), DHCP with own DNS, AUTO-JOIN off saved as `disabled=1`,
+    PRIVATE and back with a restart each, a hidden open network that failed after 30 s
+    and was removed, forgetting, a hostname change (DHCP and `.local`), Germany and
+    Vietnam and back to AUTOMATIC, power saving off, and all of it after a reboot. Not
+    checked: lid sleep with AUTO-JOIN off, a real hidden network, the German wording on
+    the device
 
 Not working yet:
 

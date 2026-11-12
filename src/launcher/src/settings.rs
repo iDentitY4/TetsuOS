@@ -511,6 +511,14 @@ pub struct Settings {
     /// Bluetooth's services run and paired devices may connect. Off by default, so D-Bus
     /// and bluetoothd don't run for those who never use it.
     pub bluetooth: bool,
+    /// Wi-Fi is off: `S42wifi` doesn't start it, and the radio is down.
+    pub wifi_off: bool,
+    /// The name on the network, if one was typed (`network::valid_hostname`).
+    pub hostname: Option<String>,
+    /// The Wi-Fi country's code, one of `network::COUNTRIES`. None takes the router's.
+    pub wifi_country: Option<&'static str>,
+    /// Wi-Fi's power saving is off, for steadier transfers at some battery cost.
+    pub wifi_power_save_off: bool,
     pub ssh: SshAccess,
     pub performance: CpuLevel,
     pub charge: ChargeLimit,
@@ -678,6 +686,10 @@ fn parse(text: &str) -> Settings {
             "jingle" => settings.jingle_off = value == "off",
             "vibration" => choose(&mut settings.vibration, Vibration::from_key(value)),
             "bluetooth" => settings.bluetooth = value == "on",
+            "wifi" => settings.wifi_off = value == "off",
+            "hostname" => settings.hostname = Some(value.to_string()).filter(|name| crate::network::valid_hostname(name)),
+            "wifi_country" => settings.wifi_country = crate::network::country(value).map(|country| country.code),
+            "wifi_power_save" => settings.wifi_power_save_off = value == "off",
             "ssh" => choose(&mut settings.ssh, SshAccess::from_key(value)),
             "performance" => choose(&mut settings.performance, CpuLevel::from_key(value)),
             "charge" => choose(&mut settings.charge, ChargeLimit::from_key(value)),
@@ -743,6 +755,14 @@ fn format(settings: &Settings) -> String {
     lines.push(format!("jingle={}", on_off(!settings.jingle_off)));
     lines.push(format!("vibration={}", settings.vibration.key()));
     lines.push(format!("bluetooth={}", on_off(settings.bluetooth)));
+    lines.push(format!("wifi={}", on_off(!settings.wifi_off)));
+    if let Some(name) = &settings.hostname {
+        lines.push(format!("hostname={name}"));
+    }
+    if let Some(code) = settings.wifi_country {
+        lines.push(format!("wifi_country={code}"));
+    }
+    lines.push(format!("wifi_power_save={}", on_off(!settings.wifi_power_save_off)));
     lines.push(format!("ssh={}", settings.ssh.key()));
     lines.push(format!("performance={}", settings.performance.key()));
     lines.push(format!("charge={}", settings.charge.key()));
@@ -1093,6 +1113,10 @@ mod tests {
             jingle_off: true,
             vibration: Vibration::Low,
             bluetooth: true,
+            wifi_off: true,
+            hostname: Some("my-handheld".into()),
+            wifi_country: Some("DE"),
+            wifi_power_save_off: true,
             ssh: SshAccess::Wifi,
             performance: CpuLevel::Battery,
             charge: ChargeLimit::Less,
@@ -1106,8 +1130,16 @@ mod tests {
         assert_eq!((reset.volume, reset.brightness), (Some(25), Some(1250)));
         let kept = Settings { volume: Some(25), brightness: Some(1250), language: Language::German, ..Settings::default() };
         assert_eq!(reset, kept);
-        // S50dropbear reads the ssh line with sed, so it must be exactly this.
-        assert!(format(&settings).lines().any(|line| line == "ssh=wifi"));
+        // The init scripts read these lines with sed, so they must be exactly these.
+        for line in ["ssh=wifi", "wifi=off", "hostname=my-handheld", "wifi_country=DE", "wifi_power_save=off"] {
+            assert!(format(&settings).lines().any(|written| written == line), "{line}");
+        }
+        // What the scripts take as the defaults is what a new file says.
+        let defaults = format(&Settings::default());
+        assert!(defaults.contains("wifi=on\n") && defaults.contains("wifi_power_save=on\n"));
+        assert!(!defaults.contains("hostname=") && !defaults.contains("wifi_country="));
+        // A name or country that isn't allowed loads as the default.
+        assert_eq!(parse("hostname=Bad Name\nwifi_country=XX\n"), Settings::default());
     }
 
     #[test]

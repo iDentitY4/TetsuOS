@@ -10,7 +10,7 @@ use crate::core_options::OptionsPage;
 use crate::font;
 use crate::i18n::{tr, trf};
 use crate::pause::{Item, List, PauseMenu, MOST_ROWS};
-use crate::screens::{self, OptionsLayout};
+use crate::screens::{self, OptionsLayout, OPTION_VALUE_COLUMNS};
 use crate::settings::{Border, GameDisplay, SwitcherStyle};
 use crate::switcher::{SwitchPage, LARGE_COVER, SMALL_COVER};
 use crate::systems::SYSTEMS;
@@ -306,7 +306,7 @@ pub fn controls_screen(
 /// Wider than the menu's, as option names and choices come from the cores, at any length.
 const OPTIONS_PANEL: (usize, usize, usize, usize) = (20, 15, 600, 450);
 const OPTIONS_ROWS: OptionsLayout =
-    OptionsLayout { left: OPTIONS_PANEL.0, right: OPTIONS_PANEL.0 + OPTIONS_PANEL.2, pad: 16, top: 60, row: 24, shown: 12 };
+    OptionsLayout { left: OPTIONS_PANEL.0, right: OPTIONS_PANEL.0 + OPTIONS_PANEL.2, pad: 16, top: 60, row: 24, shown: 12, values: OPTION_VALUE_COLUMNS };
 
 // The rows, the note, then a line about restarting and the hint, 50 lines below the note.
 const _: () = assert!(OPTIONS_ROWS.top + screens::option_rows_height(&OPTIONS_ROWS) + 50 <= OPTIONS_PANEL.1 + OPTIONS_PANEL.3);

@@ -768,9 +768,12 @@ pub fn statistics_screen(width: usize, height: usize, stats: &Statistics, frame:
     canvas
 }
 
-pub fn info_screen(width: usize, height: usize, lines: &[(String, String)], frame: &Frame) -> Canvas {
+/// Rows of a label and a value under a title, such as SYSTEM INFO.
+pub fn info_screen(width: usize, height: usize, (icon, title): (&Icon, &str), lines: &[(String, String)], frame: &Frame) -> Canvas {
     let mut canvas = Canvas::new(width, height, frame.theme);
-    header(&mut canvas, &icons::SETTINGS, tr("SYSTEM INFO"), frame.battery);
+    // As it is, for a network's name; other titles are capitals already.
+    header(&mut canvas, icon, "", frame.battery);
+    canvas.text_cased_at(&cut(title, 21), 16 + icons::WIDTH * 2 + 16, 26, 3, TEXT);
     let right = width.saturating_sub(SETTINGS_RIGHT);
     for (row, (label, value)) in lines.iter().enumerate() {
         let y = row_text_y(SETTINGS_TOP + row * SETTINGS_ROW, SETTINGS_ROW - 4);
@@ -833,13 +836,15 @@ pub(crate) struct OptionsLayout {
     pub top: usize,
     pub row: usize,
     pub shown: usize,
+    /// The most characters of a choice shown, so a long one leaves room for its name.
+    pub values: usize,
 }
 
 /// Lines of the selected option's note under the rows.
 pub(crate) const OPTION_NOTE_LINES: usize = 3;
 const OPTION_NOTE_LINE: usize = 18;
 /// The most characters of a choice shown, so a long one leaves room for its option's name.
-const OPTION_VALUE_COLUMNS: usize = 16;
+pub(crate) const OPTION_VALUE_COLUMNS: usize = 16;
 
 /// `text` cut to `columns` characters, ending in `..` when it was longer.
 pub(crate) fn cut(text: &str, columns: usize) -> String {
@@ -912,7 +917,7 @@ pub(crate) const fn option_rows_height(layout: &OptionsLayout) -> usize {
 /// Draws the page's rows, a page of them at a time with arrows for more, and under them
 /// what the selected option does. A name too long for the room its choice leaves is cut.
 pub(crate) fn option_rows(canvas: &mut Canvas, page: &dyn RowList, layout: &OptionsLayout) {
-    let OptionsLayout { left, right, pad, top, row: row_h, shown } = *layout;
+    let OptionsLayout { left, right, pad, top, row: row_h, shown, values } = *layout;
     let advance = (font::WIDTH + 1) * TEXT_SCALE;
     let (label_x, value_right) = (left + pad, right.saturating_sub(pad));
     let count = page.row_count();
@@ -934,7 +939,7 @@ pub(crate) fn option_rows(canvas: &mut Canvas, page: &dyn RowList, layout: &Opti
         };
         let text_y = row_text_y(y, row_h - 2);
         let value = page.row_value(index).map(|value| {
-            let value = cut(&value, OPTION_VALUE_COLUMNS);
+            let value = cut(&value, values);
             if index == selected && page.row_steps(index) { format!("< {value} >") } else { value }
         });
         // Two characters between the name and its choice.
@@ -965,7 +970,7 @@ pub(crate) fn option_rows(canvas: &mut Canvas, page: &dyn RowList, layout: &Opti
 
 /// The CORE OPTIONS rows on the settings screens, with room for the note above the hint.
 const SETTINGS_OPTIONS: OptionsLayout =
-    OptionsLayout { left: 0, right: 640, pad: SETTINGS_LEFT, top: LIST_TOP, row: 28, shown: 10 };
+    OptionsLayout { left: 0, right: 640, pad: SETTINGS_LEFT, top: LIST_TOP, row: 28, shown: 10, values: OPTION_VALUE_COLUMNS };
 const _: () = assert!(SETTINGS_OPTIONS.top + option_rows_height(&SETTINGS_OPTIONS) <= HINT_Y);
 
 /// A console's CORE OPTIONS, from Settings > CORES.
@@ -1064,7 +1069,9 @@ const _: () = assert!(WIFI_TOP + wifi_menu::PAGE * WIFI_ROW + 40 <= HINT_Y);
 
 /// The Wi-Fi list, as `wifi_screen` shows it.
 pub struct WifiView<'a> {
+    pub on: bool,
     pub entries: &'a [Entry],
+    /// 0 is the on/off row.
     pub selected: usize,
     /// The connection, or why there is none.
     pub status: &'a str,
@@ -1094,22 +1101,29 @@ pub fn wifi_screen(width: usize, height: usize, view: &WifiView, frame: &Frame) 
     header(&mut canvas, &icons::WIFI, tr("WI-FI"), frame.battery);
     let status_color = if view.connected { canvas.theme.accent } else { MUTED };
     canvas.text_cased_at(view.status, LIST_LEFT, 76, TEXT_SCALE, status_color);
-    if view.entries.is_empty() {
-        canvas.text(tr("NO NETWORKS FOUND YET"), WIFI_TOP + 60, TEXT_SCALE, MUTED);
-    }
     let advance = (font::WIDTH + 1) * TEXT_SCALE;
+    let rows = 1 + if view.on { view.entries.len() } else { 0 };
     let first = view.selected / wifi_menu::PAGE * wifi_menu::PAGE;
-    for (line, (index, entry)) in view.entries.iter().enumerate().skip(first).take(wifi_menu::PAGE).enumerate() {
+    for (line, index) in (first..rows).take(wifi_menu::PAGE).enumerate() {
         let y = WIFI_TOP + line * WIFI_ROW;
         let row_h = WIFI_ROW - 2;
         let selected = index == view.selected;
+        let entry = index.checked_sub(1).map(|network| &view.entries[network]);
         let (color, muted, off) = if selected {
             canvas.rect(0, y, width, row_h, canvas.theme.accent);
             (canvas.theme.background, canvas.theme.background, RAISED)
         } else {
-            (if entry.signal.is_some() { TEXT } else { MUTED }, MUTED, BODY)
+            (if entry.is_none_or(|entry| entry.signal.is_some()) { TEXT } else { MUTED }, MUTED, BODY)
         };
+        let text_y = row_text_y(y, row_h);
         let bars_right = width.saturating_sub(WIFI_RIGHT);
+        let Some(entry) = entry else {
+            let value = if view.on { tr("ON") } else { tr("OFF") };
+            let value_color = if view.on && !selected { canvas.theme.accent } else { color };
+            canvas.text_at(value, bars_right.saturating_sub(text_width(value, TEXT_SCALE)), text_y, TEXT_SCALE, value_color);
+            canvas.text_at(tr("WI-FI"), LIST_LEFT, text_y, TEXT_SCALE, color);
+            continue;
+        };
         if let Some(signal) = entry.signal {
             signal_bars(&mut canvas, bars_right, y + row_h - 6, wifi_menu::bars(signal), color, off);
         }
@@ -1126,17 +1140,38 @@ pub fn wifi_screen(width: usize, height: usize, view: &WifiView, frame: &Frame) 
         } else {
             ""
         };
-        let text_y = row_text_y(y, row_h);
         let label_x = lock_x.saturating_sub(12 + text_width(label, TEXT_SCALE));
         canvas.text_at(label, label_x, text_y, TEXT_SCALE, if entry.connected && !selected { canvas.theme.accent } else { muted });
         let columns = label_x.saturating_sub(LIST_LEFT + 12) / advance;
         let name: String = entry.name.chars().take(columns).collect();
         canvas.text_cased_at(&name, LIST_LEFT, text_y, TEXT_SCALE, color);
     }
+    if view.on && view.entries.is_empty() {
+        canvas.text(tr("NO NETWORKS FOUND YET"), WIFI_TOP + 2 * WIFI_ROW + 30, TEXT_SCALE, MUTED);
+    }
     if let Some(message) = view.message {
         canvas.text(message, WIFI_TOP + wifi_menu::PAGE * WIFI_ROW + 14, TEXT_SCALE, canvas.theme.accent);
     }
-    hint(&mut canvas, tr("A CONNECTS - X FORGETS - Y SCANS - B BACK"));
+    let hint_text = if view.selected == 0 { tr("A TURNS ON OR OFF - START OPTIONS - B BACK") } else { tr("A CONNECTS - X EDITS - Y SCANS - START OPTIONS") };
+    hint(&mut canvas, hint_text);
+    canvas
+}
+
+/// The Wi-Fi rows: a network's own settings, or the options, under `title`.
+const WIFI_PAGE: OptionsLayout = OptionsLayout { left: 0, right: 640, pad: SETTINGS_LEFT, top: LIST_TOP, row: 28, shown: 10, values: 24 };
+const _: () = assert!(WIFI_PAGE.top + option_rows_height(&WIFI_PAGE) <= HINT_Y);
+
+/// A network's name is drawn as it is, since case matters in it.
+pub fn wifi_page_screen(width: usize, height: usize, (title, cased): (&str, bool), page: &dyn RowList, frame: &Frame) -> Canvas {
+    let mut canvas = Canvas::new(width, height, frame.theme);
+    if cased {
+        header(&mut canvas, &icons::WIFI, "", frame.battery);
+        canvas.text_cased_at(&cut(title, 21), 16 + icons::WIDTH * 2 + 16, 26, 3, TEXT);
+    } else {
+        header(&mut canvas, &icons::WIFI, &cut(title, 21), frame.battery);
+    }
+    option_rows(&mut canvas, page, &OptionsLayout { right: width, ..WIFI_PAGE });
+    hint(&mut canvas, tr("LEFT RIGHT CHANGES - A SELECTS - B BACK"));
     canvas
 }
 
@@ -1975,7 +2010,7 @@ mod tests {
     fn the_list_hint_fits() {
         assert!(text_width("A STARTS - B BACK - SELECT STARS - LEFT RIGHT PAGE", TEXT_SCALE) <= 640 - 16);
         assert!(text_width("A TYPES - B DELETES - X CASE - Y SPACE - START OK", TEXT_SCALE) <= 640 - 16);
-        assert!(text_width("PRESS X AGAIN TO FORGET THIS NETWORK", TEXT_SCALE) <= 640 - 16);
+        assert!(text_width("THIS NETWORK IS NOT SAVED", TEXT_SCALE) <= 640 - 16);
         assert!(text_width("COULD NOT CONNECT - CHECK THE PASSWORD", TEXT_SCALE) <= 640 - 16);
     }
 
@@ -1994,15 +2029,15 @@ mod tests {
         ];
         entries.extend((0..20).map(|i| entry(&format!("Net {i}"), Some(-60), Security::Password, false, false)));
         for selected in [0, 12] {
-            let view = WifiView { entries: &entries, selected, status: "CONNECTED TO x", connected: true, message: Some("SCANNING") };
+            let view = WifiView { on: true, entries: &entries, selected, status: "CONNECTED TO x", connected: true, message: Some("SCANNING") };
             assert_eq!(wifi_screen(640, 480, &view, &frame()).pixels.len(), 640 * 480);
             assert_eq!(wifi_screen(64, 48, &view, &frame()).pixels.len(), 64 * 48);
         }
-        // The long name stops before the CONNECTED label.
-        let view = WifiView { entries: &entries, selected: 1, status: "", connected: false, message: None };
+        // The long name, under the on/off row, stops before the CONNECTED label.
+        let view = WifiView { on: true, entries: &entries, selected: 2, status: "", connected: false, message: None };
         let canvas = wifi_screen(640, 480, &view, &frame());
         let label_x = 640 - WIFI_RIGHT - 24 - 18 - 12 - text_width("CONNECTED", TEXT_SCALE);
-        let row = WIFI_TOP..WIFI_TOP + WIFI_ROW - 2;
+        let row = WIFI_TOP + WIFI_ROW..WIFI_TOP + 2 * WIFI_ROW - 2;
         assert!((label_x - 12..label_x - 1).all(|x| row.clone().all(|y| pixel(&canvas, x, y) != TEXT)));
     }
 

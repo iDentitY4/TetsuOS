@@ -276,11 +276,13 @@ pub(crate) fn write_wifi_preview(path: &str) -> io::Result<()> {
         ssid: Some(b"Home Network".to_vec()),
         address: Some("192.168.178.42".into()),
     };
-    let mut menu = wifi_menu::WifiMenu::new();
+    let mut menu = wifi_menu::WifiMenu::new(true);
     menu.set_entries(wifi_menu::entries(&networks, &saved, &status));
+    menu.press(Button::Down);
     menu.press(Button::Down);
     let line = wifi_status_line(true, &status, None);
     let view = screens::WifiView {
+        on: true,
         entries: &menu.entries,
         selected: menu.selected(),
         status: &line,

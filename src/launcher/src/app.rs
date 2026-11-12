@@ -518,7 +518,7 @@ pub(crate) fn launcher_canvas(
         Screen::SettingsGroup(group) => settings_group_canvas((width, height), group, launcher, &frame),
         Screen::Info => {
             let games = library.shelves.iter().map(|shelf| shelf.games.len()).sum();
-            screens::info_screen(width, height, &system_info(battery, games), &frame)
+            screens::info_screen(width, height, (&icons::SETTINGS, tr("SYSTEM INFO")), &system_info(battery, games), &frame)
         }
         Screen::HomeTiles => {
             let rows: Vec<screens::TileToggle> = library
@@ -632,6 +632,7 @@ pub(crate) fn save_levels() {
 
 /// Puts every setting back to its default, with what games and consoles keep of their own.
 fn reset_settings() {
+    let before = settings::get();
     change_settings(|s| *s = s.reset());
     controls::remove_all_game_layouts(Path::new(SAVE_DIR));
     core_options::remove_all(Path::new(SAVE_DIR), Path::new(core_options::CONSOLE_DIR));
@@ -641,6 +642,7 @@ fn reset_settings() {
     performance::apply(current.performance);
     power::apply_charge_limit(current.charge);
     ssh::restart_server();
+    reset_network(&before);
     println!("settings: reset to defaults");
 }
 
@@ -1025,7 +1027,7 @@ pub(crate) fn edit_root_password(framebuffer: &mut fb::Framebuffer, events: &Rec
 
 /// Types text on the on-screen keyboard, with the icon, title and subtitle of `view`.
 /// Returns what was typed, or None for B on an empty field.
-fn type_text(
+pub(crate) fn type_text(
     framebuffer: &mut fb::Framebuffer,
     events: &Receiver<Event>,
     view: &screens::KeyboardView,
@@ -1146,6 +1148,26 @@ fn resume_interrupted_game(framebuffer: &mut fb::Framebuffer, events: &Receiver<
         forget_running_game();
     }
     Ok(())
+}
+
+/// Puts the network back to its defaults after RESET SETTINGS: Wi-Fi on, the default
+/// hostname, the country from the router and power saving on.
+fn reset_network(before: &settings::Settings) {
+    let quiet = |program: &str, args: &[&str]| {
+        let _ = Command::new(program).args(args).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
+    };
+    if before.wifi_off {
+        quiet(crate::wifi::WIFI_SCRIPT, &["start"]);
+    }
+    if before.wifi_country.is_some() {
+        quiet("iw", &["reg", "set", "00"]);
+    }
+    if before.wifi_power_save_off {
+        quiet("iw", &["dev", "wlan0", "set", "power_save", "on"]);
+    }
+    if before.hostname.is_some() {
+        spawn(move || quiet("/etc/init.d/S16hostname", &["reload"]));
+    }
 }
 
 /// What the launcher's loop keeps between draws, to know when to draw again or sleep.

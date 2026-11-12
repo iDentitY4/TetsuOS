@@ -43,6 +43,7 @@ mod launcher;
 mod library;
 mod libretro;
 mod names;
+mod network;
 mod paths;
 mod pause;
 mod pause_screens;
@@ -72,6 +73,7 @@ mod transfer_server;
 mod usb_drive;
 mod wifi;
 mod wifi_menu;
+mod wifi_pages;
 mod wifi_screen;
 
 use app::run_launcher;

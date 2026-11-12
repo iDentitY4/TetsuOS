@@ -1,0 +1,19 @@
+Subject: [PATCH] Write a network's mac_value to the configuration file
+
+A network with mac_addr=3 uses the address in mac_value, which is read from the
+configuration file, but SAVE_CONFIG left it out. After a restart the network
+had mac_addr=3 and an all-zero address, and never connected. Write it with
+mac_addr, as wpa_config_write_mac_value() would.
+---
+--- a/wpa_supplicant/config_file.c	2026-11-12 20:45:11.112624649 +0100
++++ b/wpa_supplicant/config_file.c	2026-11-12 20:45:11.122088077 +0100
+@@ -949,6 +949,9 @@
+ 	STR(roaming_consortium_selection);
+ #endif /* CONFIG_HS20 */
+ 	write_int(f, "mac_addr", ssid->mac_addr, -1);
++	if (ssid->mac_addr == WPAS_MAC_ADDR_STYLE_DEDICATED_PER_ESS)
++		fprintf(f, "\tmac_value=" MACSTR "\n",
++			MAC2STR(ssid->mac_value));
+ #ifdef CONFIG_MESH
+ 	STR(mesh_basic_rates);
+ 	INT_DEF(dot11MeshMaxRetries, DEFAULT_MESH_MAX_RETRIES);

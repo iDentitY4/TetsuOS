@@ -21,14 +21,16 @@ pub(crate) fn sleep_until_lid_opens(events: &Receiver<Event>) {
 /// hangs going to sleep. Without `wpa_supplicant` there is nothing to disconnect.
 pub(crate) fn without_wifi(sleep: impl FnOnce()) {
     let wifi = wifi::Control::open(Path::new(wifi::CONTROL_PATH)).ok();
+    let mut left = None;
     if let Some(control) = &wifi {
-        if let Err(error) = control.disconnect() {
-            eprintln!("warning: could not leave the Wi-Fi network before sleep: {error}");
+        match control.disconnect() {
+            Ok(network) => left = network,
+            Err(error) => eprintln!("warning: could not leave the Wi-Fi network before sleep: {error}"),
         }
     }
     sleep();
     if let Some(control) = &wifi {
-        if let Err(error) = control.reconnect() {
+        if let Err(error) = control.reconnect(left) {
             eprintln!("warning: could not rejoin the Wi-Fi network: {error}");
         }
     }

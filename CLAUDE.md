@@ -15,7 +15,9 @@ power button on and off, with a shutdown screen; a charging screen when the USB 
 updates over USB networking (`10.35.35.1`); audio with headphone switching; Panfrost GPU;
 CPU scaling to 1512 MHz; lid sleep (`s2idle`), with Wi-Fi and USB kept through it, and
 power-off after 2 hours (or as set) of it or of sleep when idle on battery; Wi-Fi
-set up on the device; network time (`ntpd`) and a time zone setting; battery level,
+set up on the device, with an on/off switch, per-network static IP, DNS, auto-join and a
+private MAC, hidden networks, a hostname (also as `<hostname>.local` through `mdnsd`), the
+country and power saving; network time (`ntpd`) and a time zone setting; battery level,
 low-battery save and power-off; SSH over USB only by default, over Wi-Fi with a key or
 root password; a CPU performance setting; USB STORAGE, which shows TETSU-DATA to a PC as
 a drive; WI-FI TRANSFER, a web page for sending games, saves and covers from a browser,
@@ -49,6 +51,8 @@ ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Not yet checked by the user
 
+- The Wi-Fi settings (2026-11-12): all of it to the user, lid sleep with AUTO-JOIN off, a
+  real hidden network, the German wording on the device
 - Wi-Fi and Bluetooth in the corner (2026-11-12): their look, and Bluetooth with a
   controller or headphones connected
 - TETSU-DATA safety (2026-11-12): the boot repair after a real reset or power cut, the
@@ -138,7 +142,8 @@ ADVANCED > RUN SETUP AGAIN repeats.
   `app.rs` has the menus' loop and actions, `systems.rs` the consoles, `library.rs` the
   games and tiles, `game.rs` running and resuming games, `libretro/` the frontend (`ffi`, `host`, `core`, `scale`, `border`, `save`, `audio`, `menu`, `play`),
   `rom_zip.rs` games in ZIPs, `cards.rs` the second card slot, `bluetooth.rs` (BlueZ over `zbus`), `bluetooth_menu.rs` and `bluetooth_screen.rs`
-  the Bluetooth screen, `audio_out.rs` where sound goes (Bluetooth headphones or the speaker), `transfer.rs` and `transfer_server.rs` the Wi-Fi transfer
+  the Bluetooth screen, `audio_out.rs` where sound goes (Bluetooth headphones or the speaker), `wifi.rs` (wpa_supplicant), `wifi_menu.rs`, `wifi_pages.rs` and `wifi_screen.rs` the Wi-Fi
+  screen, `network.rs` addresses, hostnames and countries, `transfer.rs` and `transfer_server.rs` the Wi-Fi transfer
   screen and web page (`transfer_page.html`), `controls.rs` button layouts and turbo, `switcher.rs` SWITCH GAME, `core_options.rs` cores' own options, `cheats.rs` cheat files and the CHEATS page, `achievements.rs` RetroAchievements through rcheevos, `game_files.rs` which files are a game's, `play_time.rs` each game's time, `play_log.rs`
   the dated log behind STATISTICS, `screenshot.rs` the in-game menu's pictures, `sleep.rs`, `corner.rs` (clock and battery), `sounds.rs` the menu sounds and boot jingle, `boot_animation.rs` the animation drawn with it, `launcher.rs` the button logic,
   `charging.rs` the charging screen, `screens.rs` and `canvas.rs` the drawing, `pause_screens.rs` the in-game menu's, `paths.rs`
@@ -225,6 +230,10 @@ In short here; `docs/features.md` has them in full.
   (`/usr/sbin/bluetooth` turns it off). Patch 0017 keeps the driver from sleeping in probe.
   LE encryption started right after connecting never completes (BlueZ patch 0001), and
   `btmon` shows what the radio does.
+- **Wi-Fi addresses:** `wpa_cli -a` runs `/usr/libexec/wifi-event`, which applies each
+  network's `id_str` (static IP, DNS); changing rtw88's MAC address while Wi-Fi runs
+  stalled the link 2 times in 7, so MAC changes restart Wi-Fi. Several `iw reg set` while
+  connected leave cfg80211 at an intersection (country 98); a restart applies one cleanly.
 - **Wi-Fi:** without `keep-power-in-suspend` (patch 0013) rtw88 aborts every suspend.
   Sleeping while connected hangs the device for good, so sleep sends `DISCONNECT` first
   and `RECONNECT` after. This `wpa_supplicant` has no syslog (`-s` just prints usage).

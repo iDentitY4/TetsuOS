@@ -69,3 +69,7 @@ Ten patches are specific to this project:
   refuses unencrypted start it instead. Started 26 ms in, a Backbone Pro never answered
   it and the link timed out on every reconnect; started half a second in, after the
   connection parameter and data length updates, it always worked.
+- `wpa_supplicant/0001-config-write-mac-value.patch` writes a network's `mac_value` with
+  `mac_addr=3` when wpa_supplicant 2.12 saves its configuration, which it reads but left
+  out. Settings > WI-FI's PRIVATE MAC address uses it; without it a network came back
+  after a restart with an all-zero address and never connected.

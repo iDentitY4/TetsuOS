@@ -1,5 +1,9 @@
 //! The Wi-Fi screen's list and buttons, kept apart from `wpa_supplicant` and drawing so
-//! they can be tested. `main.rs` runs it with a `wifi::Control`.
+//! they can be tested. `wifi_screen.rs` runs it with a `wifi::Control`.
+//!
+//! The first row turns Wi-Fi on or off; the networks follow while it is on. A saved
+//! network's page (`wifi_pages::NetworkPage`) opens with X, or A on the connected one,
+//! and Start opens the options (`wifi_pages::WifiOptions`).
 
 use crate::i18n::tr;
 use crate::input::Button;
@@ -7,7 +11,7 @@ use crate::keyboard::{Keyboard, Outcome};
 use crate::wifi::{self, Network, Saved, Security, Status};
 use std::time::{Duration, Instant};
 
-/// Networks per screen.
+/// Rows per screen, the on/off row included.
 pub const PAGE: usize = 9;
 /// How long a connection may take before it counts as failed.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -75,9 +79,14 @@ pub enum Request {
     Nothing,
     Back,
     Scan,
+    /// Turn Wi-Fi on or off.
+    Toggle,
     /// Join a saved network, or add one, with a password unless it is open.
     Connect { ssid: Vec<u8>, saved: Option<u32>, password: Option<String> },
-    Forget(u32),
+    /// Open a saved network's page.
+    Open(u32),
+    /// Open the options: hostname, country, power saving, hidden networks.
+    Options,
 }
 
 /// A connection being made, which the runner checks until it succeeds or fails.
@@ -113,42 +122,48 @@ impl Attempt {
 }
 
 pub struct WifiMenu {
+    pub on: bool,
     pub entries: Vec<Entry>,
     /// The selected network by name, so it stays selected as the list changes.
     selected: Option<Vec<u8>>,
+    /// 0 is the on/off row; networks follow.
     index: usize,
     /// Typing the password for this network.
     pub keyboard: Option<(Vec<u8>, Keyboard)>,
     pub message: Option<String>,
-    /// A network waiting for a second press of X to be forgotten.
-    forgetting: Option<u32>,
 }
 
 impl WifiMenu {
-    pub fn new() -> Self {
-        Self { entries: Vec::new(), selected: None, index: 0, keyboard: None, message: None, forgetting: None }
+    pub fn new(on: bool) -> Self {
+        Self { on, entries: Vec::new(), selected: None, index: 0, keyboard: None, message: None }
+    }
+
+    /// Rows on the screen: the on/off row, and the networks while on.
+    pub fn rows(&self) -> usize {
+        1 + if self.on { self.entries.len() } else { 0 }
     }
 
     pub fn set_entries(&mut self, entries: Vec<Entry>) {
         self.entries = entries;
-        if let Some(index) = self.entries.iter().position(|entry| Some(&entry.ssid) == self.selected.as_ref()) {
-            self.index = index;
+        if let Some(found) = self.entries.iter().position(|entry| Some(&entry.ssid) == self.selected.as_ref()) {
+            self.index = found + 1;
         }
-        self.index = self.index.min(self.entries.len().saturating_sub(1));
+        self.index = self.index.min(self.rows() - 1);
     }
 
+    /// The selected row, 0 being the on/off row.
     pub fn selected(&self) -> usize {
         self.index
     }
 
-    #[cfg(test)]
-    pub fn forgetting(&self) -> bool {
-        self.forgetting.is_some()
-    }
-
     fn select(&mut self, index: usize) {
         self.index = index;
-        self.selected = self.entries.get(index).map(|entry| entry.ssid.clone());
+        self.selected = self.entry().map(|entry| entry.ssid.clone());
+    }
+
+    /// The selected network, if a network's row is selected.
+    fn entry(&self) -> Option<&Entry> {
+        if self.on { self.index.checked_sub(1).and_then(|network| self.entries.get(network)) } else { None }
     }
 
     pub fn press(&mut self, button: Button) -> Request {
@@ -166,50 +181,43 @@ impl WifiMenu {
                 }
             };
         }
-        let forgetting = self.forgetting.take();
-        let count = self.entries.len();
+        let rows = self.rows();
         match button {
             Button::B => return Request::Back,
-            Button::Y => {
+            Button::Start => return Request::Options,
+            Button::Y if self.on => {
                 self.message = Some(tr("SCANNING").into());
                 return Request::Scan;
             }
-            _ if count == 0 => {}
-            Button::Up => self.select((self.index + count - 1) % count),
-            Button::Down => self.select((self.index + 1) % count),
+            Button::Up => self.select((self.index + rows - 1) % rows),
+            Button::Down => self.select((self.index + 1) % rows),
             Button::Left => self.select(self.index.saturating_sub(PAGE)),
-            Button::Right => self.select((self.index + PAGE).min(count - 1)),
-            Button::A => {
-                let entry = self.entries[self.index].clone();
+            Button::Right => self.select((self.index + PAGE).min(rows - 1)),
+            Button::A if self.index == 0 => {
                 self.message = None;
-                if entry.connected {
-                    self.message = Some(tr("ALREADY CONNECTED").into());
-                } else if let Some(id) = entry.saved {
-                    return Request::Connect { ssid: entry.ssid, saved: Some(id), password: None };
-                } else {
-                    match entry.security {
-                        Security::Open => return Request::Connect { ssid: entry.ssid, saved: None, password: None },
-                        Security::Password => {
-                            self.keyboard = Some((entry.ssid, Keyboard::new(64, wifi::valid_password)));
-                        }
-                        Security::Unsupported => {
-                            self.message = Some(tr("THIS KIND OF NETWORK IS NOT SUPPORTED").into());
-                        }
+                return Request::Toggle;
+            }
+            Button::A => {
+                let Some(entry) = self.entry().cloned() else { return Request::Nothing };
+                self.message = None;
+                match (entry.connected, entry.saved, entry.security) {
+                    (true, Some(id), _) => return Request::Open(id),
+                    (false, Some(id), _) => return Request::Connect { ssid: entry.ssid, saved: Some(id), password: None },
+                    (_, _, Security::Open) => return Request::Connect { ssid: entry.ssid, saved: None, password: None },
+                    (_, _, Security::Password) => {
+                        self.keyboard = Some((entry.ssid, Keyboard::new(64, wifi::valid_password)));
+                    }
+                    (_, _, Security::Unsupported) => {
+                        self.message = Some(tr("THIS KIND OF NETWORK IS NOT SUPPORTED").into());
                     }
                 }
             }
-            Button::X => match self.entries[self.index].saved {
-                Some(id) if forgetting == Some(id) => return Request::Forget(id),
-                Some(id) => {
-                    self.forgetting = Some(id);
-                    self.message = Some(tr("PRESS X AGAIN TO FORGET THIS NETWORK").into());
-                }
-                None => self.message = Some(tr("THIS NETWORK IS NOT SAVED").into()),
+            Button::X => match self.entry().map(|entry| entry.saved) {
+                Some(Some(id)) => return Request::Open(id),
+                Some(None) => self.message = Some(tr("THIS NETWORK IS NOT SAVED").into()),
+                None => {}
             },
             _ => {}
-        }
-        if forgetting.is_some() && self.forgetting.is_none() {
-            self.message = None;
         }
         Request::Nothing
     }
@@ -258,12 +266,18 @@ mod tests {
         assert_eq!([-30, -55, -60, -70, -90].map(bars), [4, 4, 3, 2, 1]);
     }
 
+    /// A menu that is on, with the first network selected.
+    fn menu() -> WifiMenu {
+        let mut menu = WifiMenu::new(true);
+        menu.set_entries(sample());
+        menu.press(Button::Down);
+        menu
+    }
+
     #[test]
     fn a_joins_saved_and_open_networks_and_asks_for_passwords() {
-        let mut menu = WifiMenu::new();
-        menu.set_entries(sample());
-        assert_eq!(menu.press(Button::A), Request::Nothing);
-        assert_eq!(menu.message.as_deref(), Some("ALREADY CONNECTED"));
+        let mut menu = menu();
+        assert_eq!(menu.press(Button::A), Request::Open(0), "the connected network's page");
         menu.press(Button::Down);
         menu.press(Button::A);
         assert!(menu.keyboard.is_some(), "Strong needs a password");
@@ -286,9 +300,26 @@ mod tests {
     }
 
     #[test]
-    fn b_leaves_the_keyboard_then_the_screen() {
-        let mut menu = WifiMenu::new();
+    fn the_first_row_turns_wifi_on_or_off_and_start_opens_the_options() {
+        let mut menu = WifiMenu::new(false);
         menu.set_entries(sample());
+        assert_eq!(menu.rows(), 1, "no networks while off");
+        assert_eq!(menu.press(Button::Down), Request::Nothing);
+        assert_eq!(menu.selected(), 0);
+        assert_eq!(menu.press(Button::A), Request::Toggle);
+        assert_eq!(menu.press(Button::Y), Request::Nothing, "no scanning while off");
+        assert_eq!(menu.press(Button::Start), Request::Options);
+        menu.on = true;
+        menu.set_entries(sample());
+        assert_eq!(menu.rows(), 6);
+        assert_eq!(menu.press(Button::Up), Request::Nothing);
+        assert_eq!(menu.selected(), 5, "Up wraps to the last network");
+        assert_eq!(menu.press(Button::Y), Request::Scan);
+    }
+
+    #[test]
+    fn b_leaves_the_keyboard_then_the_screen() {
+        let mut menu = menu();
         menu.press(Button::Down);
         menu.press(Button::A);
         assert_eq!(menu.press(Button::B), Request::Nothing);
@@ -297,35 +328,31 @@ mod tests {
     }
 
     #[test]
-    fn forgetting_needs_a_second_press_of_x() {
-        let mut menu = WifiMenu::new();
-        menu.set_entries(sample());
-        assert_eq!(menu.press(Button::X), Request::Nothing);
-        assert!(menu.forgetting());
-        assert_eq!(menu.press(Button::X), Request::Forget(0));
-        // Anything else in between cancels.
-        menu.press(Button::X);
-        menu.press(Button::Down);
-        menu.press(Button::Up);
-        assert!(!menu.forgetting());
-        assert_eq!(menu.message, None);
+    fn x_opens_a_saved_networks_page() {
+        let mut menu = menu();
+        assert_eq!(menu.press(Button::X), Request::Open(0));
         menu.press(Button::Down);
         assert_eq!(menu.press(Button::X), Request::Nothing);
         assert_eq!(menu.message.as_deref(), Some("THIS NETWORK IS NOT SAVED"));
+        menu.press(Button::Up);
+        menu.press(Button::Up);
+        assert_eq!(menu.press(Button::X), Request::Nothing, "the on/off row");
+        assert_eq!(menu.press(Button::Up), Request::Nothing);
+        assert_eq!(menu.press(Button::X), Request::Open(1), "Work, saved and away");
     }
 
     #[test]
     fn the_selection_follows_its_network_as_the_list_changes() {
-        let mut menu = WifiMenu::new();
-        menu.set_entries(sample());
+        let mut menu = menu();
         menu.press(Button::Down);
         menu.press(Button::Down);
-        assert_eq!(menu.entries[menu.selected()].name, "Cafe");
+        assert_eq!(menu.entries[menu.selected() - 1].name, "Cafe");
         let networks = [network("Cafe", -70, Security::Open), network("Other", -30, Security::Open)];
         menu.set_entries(entries(&networks, &[], &Status::default()));
-        assert_eq!(menu.entries[menu.selected()].name, "Cafe");
+        assert_eq!(menu.entries[menu.selected() - 1].name, "Cafe");
         menu.set_entries(Vec::new());
-        assert_eq!(menu.press(Button::A), Request::Nothing, "safe with no networks");
+        assert_eq!(menu.selected(), 0, "back on the on/off row");
+        assert_eq!(menu.press(Button::X), Request::Nothing, "safe with no networks");
     }
 
     #[test]

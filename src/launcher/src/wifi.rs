@@ -1,14 +1,16 @@
 //! Wi-Fi through `wpa_supplicant`'s control socket, which `S42wifi` starts. Networks are
-//! saved by `wpa_supplicant` itself, in `/mnt/data/wpa_supplicant.conf`.
+//! saved by `wpa_supplicant` itself, in `/mnt/data/wpa_supplicant.conf`, with their own
+//! settings: the address settings in `id_str` (`network::NetworkConfig`), which
+//! `wifi-event` applies as they connect, the MAC address in `mac_addr`, and auto-join off
+//! as `disabled`.
 
+use crate::network::{self, Details, MacMode, NetworkConfig};
 use std::io;
 use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub const CONTROL_PATH: &str = "/run/wpa_supplicant/wlan0";
-/// Where udhcpc, started by `S42wifi`, keeps its process number.
-const DHCP_PID_PATH: &str = "/run/udhcpc.wlan0.pid";
 
 /// What a network asks for to join it. Only what `wpa_supplicant` is built for here can be
 /// joined: WPA3-only, enterprise and WEP networks can't.
@@ -258,12 +260,17 @@ impl Control {
         self.expect_ok(&format!("SELECT_NETWORK {id}"))
     }
 
-    /// After connecting: turns the other networks back on, saves, and asks for an address.
+    /// After connecting: turns the other networks back on and saves. `wifi-event` gets
+    /// the address as it connects.
     pub fn keep(&self) -> io::Result<()> {
-        self.expect_ok("ENABLE_NETWORK all")?;
-        self.expect_ok("SAVE_CONFIG")?;
-        renew_address();
-        Ok(())
+        self.save_config()
+    }
+
+    /// Saves the networks, each joining by itself or not as its settings say: one with
+    /// auto-join off may be on for now, as after choosing it or waking from sleep.
+    fn save_config(&self) -> io::Result<()> {
+        self.enable_auto_join()?;
+        self.expect_ok("SAVE_CONFIG")
     }
 
     /// After failing: removes a network that was added for this attempt, and turns the
@@ -272,33 +279,128 @@ impl Control {
         if added {
             self.expect_ok(&format!("REMOVE_NETWORK {id}"))?;
         }
-        self.expect_ok("ENABLE_NETWORK all")
+        self.enable_auto_join()
+    }
+
+    /// Turns on the networks that join by themselves, which choosing one turned off, and
+    /// keeps the others off. Turning off the connected one doesn't leave it.
+    fn enable_auto_join(&self) -> io::Result<()> {
+        for known in self.saved()? {
+            if self.network_config(known.id).manual {
+                self.set_network(known.id, "disabled", "1")?;
+            } else {
+                self.expect_ok(&format!("ENABLE_NETWORK {}", known.id))?;
+            }
+        }
+        Ok(())
+    }
+
+    /// A field of a saved network, as `wpa_supplicant` writes it: strings in quotes.
+    fn get_network(&self, id: u32, field: &str) -> io::Result<String> {
+        let reply = self.request(&format!("GET_NETWORK {id} {field}"))?;
+        if reply.starts_with("FAIL") {
+            return Err(io::Error::other(format!("GET_NETWORK {id} {field}: {}", reply.trim())));
+        }
+        Ok(reply.trim().trim_matches('"').to_string())
+    }
+
+    fn set_network(&self, id: u32, field: &str, value: &str) -> io::Result<()> {
+        self.expect_ok(&format!("SET_NETWORK {id} {field} {value}"))
+    }
+
+    /// A network's own settings, or the defaults for one without.
+    pub fn network_config(&self, id: u32) -> NetworkConfig {
+        self.get_network(id, "id_str").map(|id_str| NetworkConfig::parse(&id_str)).unwrap_or_default()
+    }
+
+    pub fn mac_mode(&self, id: u32) -> MacMode {
+        self.get_network(id, "mac_addr").map(|value| MacMode::from_wpa(&value)).unwrap_or_default()
+    }
+
+    /// Keeps a network's settings and saves them. They apply as it next connects, or at
+    /// once with `apply`. `new_private` makes up a private address, for a network that
+    /// has just been switched to one; `wpa_supplicant` won't show the one it has.
+    pub fn save_network(&self, id: u32, config: &NetworkConfig, mac: MacMode, new_private: bool) -> io::Result<()> {
+        // A value without quotes or semicolons, which network::NetworkConfig never makes.
+        self.set_network(id, "id_str", &format!("\"{}\"", config.id_str()))?;
+        if new_private {
+            self.set_network(id, "mac_value", &network::private_mac(random_bytes()?))?;
+        }
+        self.set_network(id, "mac_addr", mac.wpa())?;
+        self.save_config()
+    }
+
+    /// Applies changed address settings to the network connected now, through
+    /// `wifi-event`. A new MAC address needs joining again instead.
+    pub fn apply(&self) -> io::Result<()> {
+        let status = std::process::Command::new(WIFI_EVENT)
+            .args(["wlan0", "REFRESH"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()?;
+        if status.success() { Ok(()) } else { Err(io::Error::other(format!("{WIFI_EVENT} REFRESH: {status}"))) }
+    }
+
+    /// Adds a network that doesn't show its name, which it then looks for by name.
+    pub fn add_hidden(&self, ssid: &[u8], password: Option<&str>) -> io::Result<u32> {
+        let id = self.add(ssid, password)?;
+        if let Err(error) = self.set_network(id, "scan_ssid", "1") {
+            let _ = self.request(&format!("REMOVE_NETWORK {id}"));
+            return Err(error);
+        }
+        Ok(id)
+    }
+
+    /// The connection now: addresses from the system, the rest from `wpa_supplicant`.
+    pub fn details(&self) -> io::Result<Details> {
+        let status = self.request("STATUS")?;
+        let field = |key: &str| status.lines().find_map(|line| line.strip_prefix(key)?.strip_prefix('=')).map(String::from);
+        let (signal, speed, frequency) = network::parse_signal_poll(&self.request("SIGNAL_POLL")?);
+        let ip = std::process::Command::new("ip").args(["-o", "-4", "addr", "show", "dev", "wlan0"]).output()?;
+        let route = std::fs::read_to_string("/proc/net/route").unwrap_or_default();
+        let resolv = std::fs::read_to_string("/etc/resolv.conf").unwrap_or_default();
+        Ok(Details {
+            address: network::parse_ip_address(&String::from_utf8_lossy(&ip.stdout)),
+            gateway: network::parse_gateway(&route, "wlan0"),
+            dns: network::parse_nameservers(&resolv),
+            mac: field("address"),
+            signal,
+            frequency: frequency.or_else(|| field("freq").and_then(|freq| freq.parse().ok())),
+            speed,
+            security: field("key_mgmt"),
+        })
     }
 
     /// Leaves the network before system sleep. rtw88 hangs in suspend while connected,
-    /// so the device never wakes, but sleeps fine when not. Waits until it has left.
-    pub fn disconnect(&self) -> io::Result<()> {
+    /// so the device never wakes, but sleeps fine when not. Waits until it has left, and
+    /// returns the network it left.
+    pub fn disconnect(&self) -> io::Result<Option<u32>> {
+        let left = self.status()?.connected().then(|| self.status().ok()?.id).flatten();
         self.expect_ok("DISCONNECT")?;
         let deadline = std::time::Instant::now() + Duration::from_secs(2);
         while std::time::Instant::now() < deadline {
             if !matches!(self.status()?.state.as_str(), "COMPLETED" | "ASSOCIATED" | "4WAY_HANDSHAKE" | "GROUP_HANDSHAKE") {
                 // A moment for the driver to finish with the last frames.
                 std::thread::sleep(Duration::from_millis(200));
-                return Ok(());
+                return Ok(left);
             }
             std::thread::sleep(Duration::from_millis(50));
         }
         Err(io::Error::other("still connected after DISCONNECT"))
     }
 
-    /// Joins the saved networks again after sleep.
-    pub fn reconnect(&self) -> io::Result<()> {
+    /// Joins the saved networks again after sleep, and the one it left even if it doesn't
+    /// join by itself, until the next save turns that off again.
+    pub fn reconnect(&self, left: Option<u32>) -> io::Result<()> {
+        if let Some(id) = left.filter(|&id| self.network_config(id).manual) {
+            self.set_network(id, "disabled", "0")?;
+        }
         self.expect_ok("RECONNECT")
     }
 
     pub fn forget(&self, id: u32) -> io::Result<()> {
         self.expect_ok(&format!("REMOVE_NETWORK {id}"))?;
-        self.expect_ok("SAVE_CONFIG")
+        self.save_config()
     }
 }
 
@@ -308,19 +410,16 @@ impl Drop for Control {
     }
 }
 
-/// Asks udhcpc for a new address at once: it releases the old one on SIGUSR2 and asks
-/// again on SIGUSR1. Otherwise it could wait up to 20 seconds, or keep the address
-/// from the network before.
-fn renew_address() {
-    let Some(pid) = std::fs::read_to_string(DHCP_PID_PATH).ok().and_then(|text| text.trim().parse().ok()) else {
-        eprintln!("warning: udhcpc isn't running for wlan0");
-        return;
-    };
-    // SAFETY: kill only sends a signal to the process number udhcpc wrote.
-    unsafe {
-        libc::kill(pid, libc::SIGUSR2);
-        libc::kill(pid, libc::SIGUSR1);
-    }
+/// Gives Wi-Fi its address as networks connect; REFRESH applies changed settings.
+const WIFI_EVENT: &str = "/usr/libexec/wifi-event";
+/// Runs and stops Wi-Fi: `wpa_supplicant`, `wpa_cli` and the radio.
+pub const WIFI_SCRIPT: &str = "/etc/init.d/S42wifi";
+
+fn random_bytes() -> io::Result<[u8; 6]> {
+    use std::io::Read;
+    let mut bytes = [0; 6];
+    std::fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
+    Ok(bytes)
 }
 
 #[cfg(test)]

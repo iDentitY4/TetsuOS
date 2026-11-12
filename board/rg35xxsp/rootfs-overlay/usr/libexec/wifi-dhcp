@@ -1,0 +1,17 @@
+#!/bin/sh
+# udhcpc's script for Wi-Fi: Buildroot's, then the network's own DNS servers in place of
+# the router's, from WIFI_DNS, which wifi-event sets.
+
+/usr/share/udhcpc/default.script "$@"
+case "$1" in
+renew|bound)
+	[ -n "$WIFI_DNS" ] || exit 0
+	grep -v "^nameserver .*# $interface\$" /etc/resolv.conf > "/run/resolv.conf.$$"
+	for server in $(echo "$WIFI_DNS" | tr ',' ' '); do
+		echo "nameserver $server # $interface" >> "/run/resolv.conf.$$"
+	done
+	cat "/run/resolv.conf.$$" > /etc/resolv.conf
+	rm -f "/run/resolv.conf.$$"
+	;;
+esac
+exit 0

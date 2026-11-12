@@ -1,0 +1,69 @@
+#!/bin/sh
+# Gives Wi-Fi its address as it connects and takes it away as it disconnects. wpa_cli -a
+# (S42wifi) runs it with the interface and CONNECTED or DISCONNECTED; REFRESH applies a
+# changed setting to the network connected now, if any.
+#
+# A network's IP settings are in its id_str in wpa_supplicant.conf, which the launcher
+# writes (Settings > WI-FI, a network's page), such as
+#   ip=static;address=192.168.1.50/24;gateway=192.168.1.1;dns=1.1.1.1,9.9.9.9
+# Without ip=static the address comes from DHCP, and dns= replaces the servers it gives.
+# A static address without dns= asks the gateway.
+
+IFACE="${1:-wlan0}"
+DHCP_PID="/run/udhcpc.$IFACE.pid"
+RESOLV=/etc/resolv.conf
+
+# One of the network's settings, from the id_str in $ID_STR
+field() {
+	echo "$ID_STR" | tr ';' '\n' | sed -n "s/^$1=//p"
+}
+
+# Takes this interface's servers out of resolv.conf, a link into /run; udhcpc's script
+# marks them "# wlan0"
+drop_dns() {
+	grep -v "# $IFACE\$" "$RESOLV" > "/run/resolv.conf.$$"
+	cat "/run/resolv.conf.$$" > "$RESOLV"
+	rm -f "/run/resolv.conf.$$"
+}
+
+forget_address() {
+	[ -e "$DHCP_PID" ] && kill "$(cat "$DHCP_PID")" 2> /dev/null
+	rm -f "$DHCP_PID"
+	ip -4 addr flush dev "$IFACE" 2> /dev/null
+	drop_dns
+}
+
+connected() {
+	ID_STR="$(wpa_cli -i "$IFACE" status | sed -n 's/^id_str=//p')"
+	forget_address
+	iw dev "$IFACE" set power_save "$(/usr/libexec/setting wifi_power_save on)"
+	if [ "$(field ip)" = static ]; then
+		ip -4 addr add "$(field address)" dev "$IFACE"
+		gateway="$(field gateway)"
+		[ -n "$gateway" ] && ip -4 route add default via "$gateway" dev "$IFACE"
+		# Without servers of its own, the router's: home routers answer DNS themselves
+		servers="$(field dns | tr ',' ' ')"
+		for server in ${servers:-$gateway}; do
+			echo "nameserver $server # $IFACE" >> "$RESOLV"
+		done
+	else
+		# wifi-dhcp puts the network's own servers in place of the router's
+		WIFI_DNS="$(field dns)" udhcpc -b -S -i "$IFACE" -p "$DHCP_PID" \
+			-s /usr/libexec/wifi-dhcp -x hostname:"$(hostname)"
+	fi
+}
+
+echo "$(date '+%F %T') $2" >> /var/log/wifi-event.log
+
+case "$2" in
+CONNECTED)
+	connected
+	;;
+REFRESH)
+	wpa_cli -i "$IFACE" status 2> /dev/null | grep -q '^wpa_state=COMPLETED' && connected
+	;;
+DISCONNECTED)
+	forget_address
+	;;
+esac
+exit 0

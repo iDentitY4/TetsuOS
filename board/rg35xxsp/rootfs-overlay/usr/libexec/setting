@@ -1,0 +1,12 @@
+#!/bin/sh
+# Prints a launcher setting from TETSU-DATA, or the default given, for the init scripts.
+# The backup stands in for a damaged settings.txt, as in the launcher.
+#   setting KEY [DEFAULT]
+
+for file in /mnt/data/settings.txt /mnt/data/settings-backup.txt; do
+	grep -q '^[a-z0-9_.]*=' "$file" 2>/dev/null || continue
+	value="$(sed -n "s/^$1=//p" "$file" | tail -n 1)"
+	echo "${value:-$2}"
+	exit 0
+done
+echo "$2"
