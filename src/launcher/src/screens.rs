@@ -1433,6 +1433,26 @@ pub fn usb_drive_screen(width: usize, height: usize, view: &UsbDriveView, frame:
     canvas
 }
 
+/// Shown when TETSU-DATA has become read-only, so nothing is saved until a restart
+/// repairs it.
+pub fn read_only_screen(width: usize, height: usize, frame: &Frame) -> Canvas {
+    let mut canvas = Canvas::new(width, height, frame.theme);
+    header(&mut canvas, &icons::SYSTEM, tr("CARD ERROR"), frame.battery);
+    canvas.text_at(tr("NOTHING CAN BE SAVED"), LIST_LEFT, USB_DRIVE_TOP, TEXT_SCALE, canvas.theme.accent);
+    let lines = [
+        tr("THE CARD'S TETSU-DATA PARTITION IS DAMAGED"),
+        tr("AND CAN ONLY BE READ. SAVES, RESUME POINTS,"),
+        tr("PLAY TIME AND SETTINGS ARE NOT KEPT."),
+        "",
+        tr("RESTARTING REPAIRS IT."),
+    ];
+    for (row, line) in lines.iter().enumerate() {
+        canvas.text_at(line, LIST_LEFT, USB_DRIVE_TOP + 50 + row * LIST_ROW, TEXT_SCALE, MUTED);
+    }
+    hint(&mut canvas, tr("A RESTARTS - B LATER"));
+    canvas
+}
+
 /// Settings > SYSTEM > WI-FI TRANSFER, while the web page is served.
 #[derive(Clone, PartialEq, Debug)]
 pub struct TransferView {

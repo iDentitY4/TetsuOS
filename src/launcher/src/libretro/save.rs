@@ -42,8 +42,16 @@ pub(crate) fn resume_path(save: &Path, persistence: Persistence) -> Option<PathB
     (persistence == Persistence::BatteryRam).then(|| save.with_extension("resume"))
 }
 
-/// Continues from where the game was left, if it was saved then.
-pub(super) fn load_resume(core: &mut Core, path: &Path) -> io::Result<()> {
+/// Continues from where the game was left, if it was saved then, unless the save file
+/// is newer.
+pub(super) fn load_resume(core: &mut Core, path: &Path, save: &Path) -> io::Result<()> {
+    if resume_is_stale(path, save) {
+        println!("{} is older than the save file, so the game starts from that", path.display());
+        return match std::fs::remove_file(path) {
+            Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
+            _ => Ok(()),
+        };
+    }
     let state = match std::fs::read(path) {
         Ok(state) => state,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
@@ -56,6 +64,17 @@ pub(super) fn load_resume(core: &mut Core, path: &Path) -> io::Result<()> {
         std::fs::rename(path, kept)?;
     }
     Ok(())
+}
+
+/// Whether the resume point is older than the save file. Leaving a game writes the save
+/// file first and the resume point after, so this only happens when a game ended without
+/// leaving, by the reset button, a power cut or a crash, after it had saved since it was
+/// last left; or when a save came in by WI-FI TRANSFER or USB STORAGE. A state holds the
+/// game's save memory too, so loading it would bring the older save back, and the next
+/// autosave would write that over the newer one.
+fn resume_is_stale(resume: &Path, save: &Path) -> bool {
+    let modified = |path: &Path| std::fs::metadata(path).and_then(|metadata| metadata.modified()).ok();
+    matches!((modified(resume), modified(save)), (Some(resume), Some(save)) if save > resume)
 }
 
 /// Removes the place a game was left at, so its next start begins from its save file.
@@ -92,6 +111,33 @@ mod tests {
     fn a_full_state_is_saved_less_often_than_battery_memory() {
         assert_eq!(autosave_frames(Persistence::BatteryRam), 120);
         assert_eq!(autosave_frames(Persistence::FullState), 3600);
+    }
+
+    #[test]
+    fn a_resume_point_older_than_the_save_file_is_stale() {
+        let dir = std::env::temp_dir().join(format!("launcher-stale-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (save, resume) = (dir.join("game.srm"), dir.join("game.resume"));
+        let set_time = |path: &Path, seconds: u64| {
+            let time = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(seconds);
+            std::fs::File::options().write(true).open(path).unwrap().set_modified(time).unwrap();
+        };
+        // Without either file, there is nothing to skip.
+        assert!(!resume_is_stale(&resume, &save));
+        std::fs::write(&resume, "state").unwrap();
+        assert!(!resume_is_stale(&resume, &save));
+        std::fs::write(&save, "save").unwrap();
+
+        // Left as usual: the save file first, the resume point after or in the same second.
+        set_time(&save, 1_000);
+        set_time(&resume, 1_002);
+        assert!(!resume_is_stale(&resume, &save));
+        set_time(&resume, 1_000);
+        assert!(!resume_is_stale(&resume, &save));
+        // Saved in the game after the last time it was left, then reset.
+        set_time(&save, 5_000);
+        assert!(resume_is_stale(&resume, &save));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

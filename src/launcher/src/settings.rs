@@ -17,6 +17,7 @@ use std::process::Command;
 use std::sync::Mutex;
 
 const SETTINGS_PATH: &str = crate::paths::SETTINGS;
+const BACKUP_PATH: &str = crate::paths::SETTINGS_BACKUP;
 const VOLUME_CONTROL: &str = "name=Line Out Playback Volume";
 /// The control's raw range. 0 and 1 both mute.
 const VOLUME_MAX: u32 = 31;
@@ -768,7 +769,50 @@ pub fn clean_title(text: &str) -> Option<String> {
 static CURRENT: Mutex<Option<Settings>> = Mutex::new(None);
 
 fn read_file() -> Settings {
-    from_file(std::fs::read_to_string(SETTINGS_PATH))
+    load(Path::new(SETTINGS_PATH), Path::new(BACKUP_PATH))
+}
+
+/// Whether the text is a whole settings file: some lines, each `key=value`. A reset or a
+/// power cut can lose a file just written; the repair at boot then leaves it empty, or
+/// holding other files' bytes.
+fn looks_whole(text: &str) -> bool {
+    let mut lines = text.lines().filter(|line| !line.trim().is_empty()).peekable();
+    let is_key = |key: &str| {
+        !key.is_empty() && key.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '_' | '.'))
+    };
+    lines.peek().is_some() && lines.all(|line| line.split_once('=').is_some_and(|(key, _)| is_key(key.trim())))
+}
+
+/// The settings from `path`, or from the backup when that is damaged or gone, losing at
+/// most the last change. Without either, it's a new install.
+fn load(path: &Path, backup: &Path) -> Settings {
+    let read = std::fs::read_to_string(path);
+    if read.as_ref().is_ok_and(|text| looks_whole(text)) {
+        return from_file(read);
+    }
+    match std::fs::read_to_string(backup) {
+        Ok(text) if looks_whole(&text) => {
+            eprintln!("warning: {} is damaged or missing, so the settings come from {}", path.display(), backup.display());
+            // Whole again, also for what reads the file itself, such as S50dropbear.
+            if let Err(error) = write_atomic(path, text.as_bytes()) {
+                eprintln!("warning: could not put the settings back: {error}");
+            }
+            parse(&text)
+        }
+        _ => from_file(read),
+    }
+}
+
+/// Writes the settings, first keeping the file they replace as the backup, if it is whole.
+fn save(path: &Path, backup: &Path, text: &str) -> io::Result<()> {
+    let old = std::fs::read_to_string(path).unwrap_or_default();
+    if old != text && looks_whole(&old) {
+        // The new settings still count more than the copy of the old.
+        if let Err(error) = write_atomic(backup, old.as_bytes()) {
+            eprintln!("warning: could not keep a copy of the settings: {error}");
+        }
+    }
+    write_atomic(path, text.as_bytes())
 }
 
 /// The settings from reading the file. Only a new install has no file, so that is what
@@ -797,7 +841,7 @@ pub fn update(change: impl FnOnce(&mut Settings)) -> io::Result<()> {
         change(settings);
         format(settings)
     });
-    write_atomic(Path::new(SETTINGS_PATH), text.as_bytes())
+    save(Path::new(SETTINGS_PATH), Path::new(BACKUP_PATH), &text)
 }
 
 /// The language chosen, which every text on screen asks for, so it doesn't copy the rest.
@@ -1090,6 +1134,51 @@ mod tests {
         let unfinished = Settings { setup_pending: true, ..Settings::default() };
         assert!(from_file(Ok(format(&unfinished))).setup_pending, "left partway");
         assert!(!format(&Settings::default()).contains("setup"), "finished: no line at all");
+    }
+
+    #[test]
+    fn a_damaged_file_loads_the_backup_from_before_the_last_change() {
+        let dir = std::env::temp_dir().join(format!("launcher-settings-backup-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (path, backup) = (dir.join("settings.txt"), dir.join("settings-backup.txt"));
+
+        // A new install has neither file.
+        assert!(load(&path, &backup).setup_pending);
+        let first = Settings { volume: Some(10), ..Settings::default() };
+        save(&path, &backup, &format(&first)).unwrap();
+        assert!(!backup.exists(), "nothing to keep yet");
+        let second = Settings { volume: Some(20), ..first.clone() };
+        save(&path, &backup, &format(&second)).unwrap();
+        // The same again keeps the older copy.
+        save(&path, &backup, &format(&second)).unwrap();
+        assert_eq!(load(&path, &backup).volume, Some(20));
+
+        // What a repair leaves of a lost file: empty, someone else's bytes, or nothing.
+        for damage in ["", "\n", "\u{1}\u{2}garbage\n", "volume=20\nAB\u{7f}=x\n"] {
+            std::fs::write(&path, damage).unwrap();
+            assert_eq!(load(&path, &backup).volume, Some(10), "{damage:?}");
+            assert_eq!(std::fs::read(&path).unwrap(), std::fs::read(&backup).unwrap(), "put back");
+        }
+        std::fs::write(&path, [0xff, 0xfe, 0x00]).unwrap();
+        assert_eq!(load(&path, &backup).volume, Some(10), "not text");
+        std::fs::remove_file(&path).unwrap();
+        let loaded = load(&path, &backup);
+        assert!(!loaded.setup_pending && loaded.volume == Some(10), "gone, with the backup there");
+
+        // A damaged file never replaces the backup.
+        std::fs::write(&path, "").unwrap();
+        save(&path, &backup, &format(&second)).unwrap();
+        assert_eq!(parse(&std::fs::read_to_string(&backup).unwrap()).volume, Some(10));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn every_saved_file_looks_whole() {
+        let mut settings = Settings { volume: Some(5), zone: Some("Europe/Berlin"), ..Settings::default() };
+        settings.set_console_display("gba", settings.display);
+        settings.title = Some("MY = TITLE".into());
+        assert!(looks_whole(&format(&settings)));
+        assert!(looks_whole(&format(&Settings::default())));
     }
 
     #[test]

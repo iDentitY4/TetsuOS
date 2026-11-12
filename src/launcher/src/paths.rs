@@ -27,6 +27,8 @@ pub(crate) use {core_path, cpufreq_path, data_path};
 /// Where TETSU-DATA is mounted.
 pub(crate) const DATA_DIR: &str = data_path!("");
 pub(crate) const SETTINGS: &str = data_path!("/settings.txt");
+/// The settings before their last change, for when `settings.txt` was damaged.
+pub(crate) const SETTINGS_BACKUP: &str = data_path!("/settings-backup.txt");
 /// The CPU's speed now, in kHz.
 pub(crate) const CPU_SPEED: &str = cpufreq_path!("/scaling_cur_freq");
 pub(crate) const UPTIME: &str = "/proc/uptime";

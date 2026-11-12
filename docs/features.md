@@ -100,6 +100,21 @@ Working on the test unit, confirmed by the user:
   card. An empty battery leaves the screen, mounts the card and powers off. Writes need
   patch 0014 (see the MUSB fact below). Mounting, copying and deleting games and ejecting
   were checked by the user on Linux on 2026-11-08; Windows and macOS haven't been tried
+- TETSU-DATA is repaired at boot after an unclean shutdown (2026-11-12). `S15data` reads
+  the FAT dirty bit (boot sector byte 65 on FAT32, 37 on FAT16) and runs `fsck.fat -a -w`
+  only when it is set, logging to `/var/log/fsck-data.log`: 1.2 s on the 64 GB card,
+  nothing on a clean boot. Without it, one power cut left directory entries pointing at
+  clusters the FAT still had free (the card kept an older FAT sector, though the launcher
+  `fsync`s before renaming), and the kernel, on reading such a file, made the partition
+  read-only: from then on settings, resume points and play time were silently not saved,
+  which looked like resume and BOOT JINGLE OFF breaking. The kernel never clears a dirty
+  bit it found at mount, so the warning repeats until a repair. A clean reboot during a
+  game was checked to leave the partition clean and resume. Should TETSU-DATA still go
+  read-only, the menus say so (CARD ERROR): `storage::data_read_only` reads
+  `/proc/mounts` with the battery each second, and before a game resumes at start. A
+  restarts, which repairs it; B goes on, and the warning comes back after each game.
+  Checked on the device with `mount -o remount,ro /mnt/data`: shown within a second, B
+  back to the menus; A (a plain reboot) and the German wording weren't tried there
 - A second card in TF2 (2026-11-11) adds games: those in its `roms` folder join the lists
   with TETSU-DATA's, unmarked, and a game at the same path on both cards shows once, from
   TETSU-DATA (`library::find_all_roms`). Their saves, states, covers, play time and
@@ -263,6 +278,15 @@ Working on the test unit, confirmed by the user:
   no choice. Menu + Start, lid sleep, power-off and SWITCH GAME keep the place. Tested on
   the PC (`pause.rs` tests and `--preview-pause` in both languages); the user checked it
   on the device on 2026-11-11
+- A stale `.resume` is skipped (2026-11-12). Leaving writes the save file first and the
+  `.resume` after, so a `.resume` older than the save file (`save::resume_is_stale`, by
+  modification time) means the game ended without leaving: the reset button (hardware,
+  unseen by Linux), a power cut or a crash, after the game saved in the meantime. A state
+  holds the game's save memory, so loading it would bring the older save back and the
+  2-second autosave would write that over the newer save file. The `.resume` is removed
+  and the game starts from its save file instead. A save sent by USB STORAGE is covered
+  too. Checked on the device: a `.resume` dated before the `.srm` was skipped and removed;
+  a normal stop and start still resumed
 - The in-game menu's lists (2026-11-11), as fifteen rows had filled the panel to its edges.
   The main list has RESUME, SAVE STATE, LOAD STATE, CHANGE DISC, SCREENSHOT, DISPLAY,
   OPTIONS, ACHIEVEMENTS and QUIT, at most 9 rows (`pause::MOST_ROWS`) of 32 lines instead
@@ -342,6 +366,15 @@ Working on the test unit, confirmed by the user:
   each reads the file again just before: the launcher before a volume button's save, or it
   undoes the game menu's display changes, and the game before saving those, or it brings
   back the old volume. Reproduced and checked on the device on 2026-11-09
+- `settings-backup.txt` (2026-11-12) holds the settings from before their last change.
+  `settings::save` copies the file it replaces there first, if that file is whole (some
+  lines, each `key=value`: `settings::looks_whole`). Loading uses the backup when
+  `settings.txt` is missing, unreadable or not whole, and writes it back as
+  `settings.txt`, also for S50dropbear, which reads `ssh=` itself. A reset right after a
+  change once lost `settings.txt`'s FAT entry; the boot repair emptied it and every
+  setting went back to its default. Now at most the last change is lost. Checked on the
+  device: an emptied `settings.txt` loaded the backup (one volume step behind) and was
+  written back
 - NES through `package/libretro-fceumm`, SNES through `package/libretro-snes9x` (free for
   non-commercial use only), and Game Boy and Game Boy Color through mGBA. Consoles
   appear in release order, set by the order of `SYSTEMS` in `systems.rs`. New systems name saves with the full file name, such as `Tetris.gb.srm`;
@@ -1262,8 +1295,8 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   A goes on, B goes back, and Start leaves from any step, because everything chosen here is
   also in Settings. Choosing German preselects Berlin when no zone is set yet; English
   stays on UTC. Settings > ADVANCED > RUN SETUP AGAIN starts it again.
-  It runs when `settings.txt` doesn't exist (`settings::from_file`), which only a new install
-  has. A file from before the setup has no `setup` line, so existing devices don't get it
+  It runs when `settings.txt` doesn't exist (`settings::from_file`) and neither does
+  `settings-backup.txt`, which only a new install has. A file from before the setup has no `setup` line, so existing devices don't get it
   after an update, and an unreadable file doesn't ask either. While it runs the file has
   `setup=pending`, removed on finishing, so powering off partway starts it over, with the
   choices so far kept. RESET SETTINGS doesn't start it. If TETSU-DATA can't be mounted the

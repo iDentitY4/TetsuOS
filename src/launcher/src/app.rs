@@ -3,7 +3,7 @@
 use crate::{
     achievements, boot_partition, boxart, canvas, cards, cheats, clock, controls, core_options, favorites,
     fb, game_files, icons, input, keyboard, launcher, performance, play_log, power, recent, rumble, screens, settings, sounds,
-    ssh,
+    ssh, storage,
 };
 use crate::boxart_screen::{art_counts, delete_box_art, download_box_art};
 use crate::canvas::Battery;
@@ -128,6 +128,49 @@ pub(crate) fn press_volume(framebuffer: &mut fb::Framebuffer, button: Button) ->
     match change_volume(button) {
         Some(percent) => show_volume(framebuffer, percent),
         None => Ok(()),
+    }
+}
+
+/// Says that TETSU-DATA has become read-only, so nothing is saved, until A restarts,
+/// which repairs it at boot (`S15data`), or B goes on without saving.
+fn warn_read_only(framebuffer: &mut fb::Framebuffer, events: &Receiver<Event>, mut battery: Option<Battery>) -> io::Result<()> {
+    eprintln!("warning: TETSU-DATA is read-only, so nothing can be saved");
+    let (width, height) = framebuffer.size();
+    let mut monitor = power::Monitor::new();
+    events.try_iter().for_each(drop);
+    loop {
+        if monitor.check(Instant::now()) == Some(power::Level::Critical) {
+            eprintln!("the battery is empty: powering off");
+            return shut_down(framebuffer, tr("BATTERY EMPTY"), &power::poweroff_command());
+        }
+        let mut canvas = screens::read_only_screen(width, height, &screen_frame(battery));
+        add_clock(&mut canvas, battery);
+        framebuffer.draw(&canvas)?;
+        // Also when a volume sign is due to go, as drawing again removes it.
+        let pressed = match events.recv_timeout(BATTERY_REFRESH.min(framebuffer.sign_wait())) {
+            Ok(event) => event.pressed(),
+            Err(RecvTimeoutError::Timeout) => {
+                battery = read_battery(&power::battery_dir());
+                continue;
+            }
+            Err(RecvTimeoutError::Disconnected) => return Ok(()),
+        };
+        if let Some(sound) = pressed.and_then(button_sound).filter(|_| settings::get().menu_sounds) {
+            sounds::play(sound);
+        }
+        match pressed {
+            Some(Button::A) => {
+                println!("read-only: restarting to repair TETSU-DATA");
+                return shut_down(framebuffer, tr("REBOOTING"), "reboot");
+            }
+            Some(Button::B) => {
+                println!("read-only: going on without saving");
+                return Ok(());
+            }
+            Some(Button::Lid) => sleep_until_lid_opens(events),
+            Some(button @ (Button::VolumeUp | Button::VolumeDown)) => press_volume(framebuffer, button)?,
+            _ => {}
+        }
     }
 }
 
@@ -570,6 +613,8 @@ pub(crate) enum Wake {
     Idle,
     /// A card went in or out of TF2, and was mounted or unmounted.
     Card(cards::Change),
+    /// TETSU-DATA became read-only, so nothing is saved.
+    ReadOnly,
 }
 
 /// Changes the settings and saves them, warning if they can't be saved.
@@ -1114,6 +1159,8 @@ struct Watch {
     /// Set when only the scrolling name needs drawing again.
     scroll_tick: bool,
     cards: cards::Watch,
+    /// Whether the read-only warning was shown, so it shows once, and again after a game.
+    read_only_warned: bool,
 }
 
 /// Waits for input or a held button's repeat, waking to redraw when the battery changes and
@@ -1153,6 +1200,9 @@ fn wait_for_wake(
                     if let Some(change) = watch.cards.check() {
                         return Some(Wake::Card(change));
                     }
+                    if !watch.read_only_warned && storage::data_read_only() {
+                        return Some(Wake::ReadOnly);
+                    }
                     let reading = read_battery(&power::battery_dir());
                     if reading != watch.battery {
                         watch.battery = reading;
@@ -1184,7 +1234,7 @@ fn action_for(
     watch: &mut Watch,
 ) -> io::Result<Action> {
     Ok(match wake {
-        Wake::Redraw | Wake::Card(_) => Action::Nothing,
+        Wake::Redraw | Wake::Card(_) | Wake::ReadOnly => Action::Nothing,
         Wake::Idle => {
             repeater.stop();
             println!("sleeping after {} idle minutes {}", settings::get().idle_minutes, boot_time());
@@ -1263,6 +1313,11 @@ pub(crate) fn run_launcher() -> io::Result<()> {
     }
     open_start_screen(&mut launcher, &library);
 
+    // Before a game resumes, as it could not save where it gets to.
+    let read_only = storage::data_read_only();
+    if read_only {
+        warn_read_only(&mut framebuffer, &events, read_battery(&power::battery_dir()))?;
+    }
     resume_interrupted_game(&mut framebuffer, &events, &mut library)?;
 
     let mut first_draw = true;
@@ -1276,6 +1331,7 @@ pub(crate) fn run_launcher() -> io::Result<()> {
         last_press: Instant::now(),
         scroll_tick: false,
         cards: card_watch,
+        read_only_warned: read_only,
     };
 
     loop {
@@ -1329,6 +1385,10 @@ pub(crate) fn run_launcher() -> io::Result<()> {
             let tf2_games = library.shelves.iter().flat_map(|shelf| &shelf.games).filter(|game| cards::on_tf2(&game.path)).count();
             show_card_sign(&mut framebuffer, change, tf2_games)?;
         }
+        if matches!(wake, Wake::ReadOnly) {
+            watch.read_only_warned = true;
+            warn_read_only(&mut framebuffer, &events, watch.battery)?;
+        }
         if let Some(sound) = menu_sound(&wake) {
             if settings::get().menu_sounds {
                 sounds::play(sound);
@@ -1353,6 +1413,8 @@ pub(crate) fn run_launcher() -> io::Result<()> {
             library = reload_library(&library);
             launcher.select_path(&library, selected.as_deref());
             if played {
+                // A game's progress is lost too, so the warning shows again after each.
+                watch.read_only_warned = false;
                 // SWITCH GAME may have ended on another game: it, if this list has it.
                 let last = recent::load(Path::new(recent::RECENT_PATH)).into_iter().next();
                 launcher.select_path(&library, last.as_deref());

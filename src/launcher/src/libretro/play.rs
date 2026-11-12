@@ -421,7 +421,7 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
     let resume = resume_path(save, persistence);
     match &resume {
         Some(_) if restricted => println!("achievements: hardcore, so the game starts from its save"),
-        Some(path) => load_resume(&mut core, path)?,
+        Some(path) => load_resume(&mut core, path, save)?,
         None => {}
     }
     if let Some(source) = cheat_source.filter(|_| !restricted) {

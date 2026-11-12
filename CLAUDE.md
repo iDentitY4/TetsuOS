@@ -49,6 +49,9 @@ ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Not yet checked by the user
 
+- TETSU-DATA safety (2026-11-12): the boot repair after a real reset or power cut, the
+  CARD ERROR screen's A (restart) and German wording, and a real reset after an in-game
+  save starting from the save rather than the older resume point
 - Play statistics (2026-11-11): the page on the device, a real game adding to
   `play-log.txt`, a week's change, scrolling, the German wording
 - The game switcher (2026-11-11): its feel and both looks on the device, SWITCHING TO,
@@ -143,7 +146,9 @@ ADVANCED > RUN SETUP AGAIN repeats.
   `settings::get()` returns the `Settings`, and `settings::update(|s| ...)` changes and
   saves them. A game's menu can change the display and levels, so `play_game` calls
   `settings::reload()` after it. Options with fixed choices use the `choices!` macro, plus
-  a line in `parse` and `format`. Unknown or missing lines load as defaults. Since the
+  a line in `parse` and `format`. Unknown or missing lines load as defaults. Each save
+  first copies the file it replaces to `settings-backup.txt`, loaded when `settings.txt`
+  is damaged or gone. Since the
   launcher holds them in memory, change settings on the device through its menus, never by
   editing the file while it runs.
 - **Colours:** each `Canvas` carries a `Theme` (accent, background, battery display) built
@@ -290,9 +295,9 @@ physical like the lid.
   Groups remember their selected row, and Up and Down wrap. Starting a game moves its
   resume point and puts it first in RECENT, so say when that happens. Menu + Start needs
   both held in one write to the input device, which `press.py` can't do.
-- **The setup:** it runs when `settings.txt` is missing. To see it as a new install, stop
-  the launcher, move the file aside, start the launcher, and move the file back with the
-  launcher stopped afterwards. Check `setup: started` in the log before pressing anything.
+- **The setup:** it runs when `settings.txt` and `settings-backup.txt` are both missing.
+  To see it as a new install, stop the launcher, move both aside, start the launcher, and
+  move them back with the launcher stopped afterwards. Check `setup: started` in the log before pressing anything.
 - **Test hooks:** `LAUNCHER_BATTERY_DIR` points the battery reading at test files,
   `LAUNCHER_POWEROFF` replaces `poweroff`, `LAUNCHER_LONG_SLEEP` sets the lid sleep
 before power-off in seconds and `LAUNCHER_PREVIEW_LANGUAGE=de` renders

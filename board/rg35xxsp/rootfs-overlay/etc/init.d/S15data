@@ -2,11 +2,27 @@
 # Mounts the card's TETSU-DATA partition, which holds the games and saves, and the
 # games on a second card in TF2, if there is one (see /usr/sbin/cards).
 
+# Prints 1 if a FAT file system's dirty bit is set. It is in the boot sector's state
+# byte: at offset 65 on FAT32, which has 0 in the 16-bit FAT size at 22, else at 37.
+dirty() {
+	fat16_size="$(dd if="$1" bs=1 skip=22 count=2 2>/dev/null | od -An -tu2 | tr -d ' ')"
+	[ "$fat16_size" = 0 ] && offset=65 || offset=37
+	state="$(dd if="$1" bs=1 skip="$offset" count=1 2>/dev/null | od -An -tu1 | tr -d ' ')"
+	echo $(( ${state:-0} & 1 ))
+}
+
 case "$1" in
 start)
 	# Only TF1's: a Tetsu card in TF2 has a TETSU-DATA too
 	dev="$(/usr/sbin/cards data)"
 	[ -n "$dev" ] || exit 1
+	# A power cut leaves the file system marked dirty, and maybe damaged. Unrepaired, the
+	# kernel finds the damage later, makes the partition read-only, and from then on
+	# every save, resume point and setting is lost without a sign.
+	if [ "$(dirty "$dev")" = 1 ]; then
+		echo "S15data: $dev was not unmounted cleanly, repairing it" > /dev/kmsg
+		fsck.fat -a -w "$dev" > /var/log/fsck-data.log 2>&1
+	fi
 	mkdir -p /mnt/data
 	# Fixed permissions: vfat would otherwise take them from the caller's umask
 	mount -t vfat -o umask=022 "$dev" /mnt/data || exit 1
