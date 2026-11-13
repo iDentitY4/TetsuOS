@@ -276,7 +276,16 @@ impl Group {
                     Setting::SetTime,
                 ],
             Self::InGame => &[Setting::DisplayPage, Setting::Vibration, Setting::Switcher, Setting::AchievementsPage],
-            Self::Display => &[Setting::Scaling, Setting::Effect, Setting::Ghosting, Setting::Border, Setting::UseForAllConsoles],
+            // 50 HZ GAMES AT 50 HZ is one setting for every console, so USE FOR ALL CONSOLES
+            // doesn't copy it and it comes after.
+            Self::Display => &[
+                Setting::Scaling,
+                Setting::Effect,
+                Setting::Ghosting,
+                Setting::Border,
+                Setting::UseForAllConsoles,
+                Setting::FiftyHz,
+            ],
             Self::Battery => &[
                 Setting::BatteryHistory,
                 Setting::BatteryHealth,
@@ -338,6 +347,8 @@ pub enum Setting {
     Volume,
     Brightness,
     Vibration,
+    /// Whether a 50 Hz game sets the panel to its own rate.
+    FiftyHz,
     StartScreen,
     GameNames,
     /// How SWITCH GAME in the in-game menu shows the games.
@@ -416,6 +427,7 @@ impl Setting {
             Self::Volume => "VOLUME",
             Self::Brightness => "BRIGHTNESS",
             Self::Vibration => "VIBRATION",
+            Self::FiftyHz => "50 HZ GAMES AT 50 HZ",
             Self::StartScreen => "START SCREEN",
             Self::GameNames => "GAME NAMES",
             Self::Switcher => "GAME SWITCHER",
@@ -511,6 +523,7 @@ impl Setting {
             Self::Volume
                 | Self::Brightness
                 | Self::Vibration
+                | Self::FiftyHz
                 | Self::StartScreen
                 | Self::GameNames
                 | Self::SortGames
@@ -652,6 +665,8 @@ pub enum Command {
     ToggleSounds,
     /// Turns the boot jingle on if it is off, or off.
     ToggleJingle,
+    /// Turns the panel's 50 Hz rate for 50 Hz games on if it is off, or off.
+    ToggleFiftyHz,
     Language(i32),
     IdleSleep(i32),
     SleepPowerOff(i32),
@@ -1350,6 +1365,7 @@ impl Launcher {
             Setting::Volume => Command::Volume(step),
             Setting::Brightness => Command::Brightness(step),
             Setting::Vibration => Command::Vibration(step),
+            Setting::FiftyHz => Command::ToggleFiftyHz,
             Setting::StartScreen => Command::StartScreen(step),
             Setting::GameNames => Command::GameNames(step),
             Setting::SortGames => Command::SortGames(step),
@@ -1468,6 +1484,7 @@ impl Launcher {
                 Setting::Volume
                 | Setting::Brightness
                 | Setting::Vibration
+                | Setting::FiftyHz
                 | Setting::StartScreen
                 | Setting::GameNames
                 | Setting::SortGames
@@ -2140,6 +2157,11 @@ mod tests {
         assert_eq!(launcher.press(Button::Left, &library), Command::Effect(-1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Right, &library), Command::Ghosting(1));
+        // DISPLAY's last row, Up from the first, turns 50 Hz games' rate on and off.
+        press_all(&mut launcher, &library, &[Button::Up, Button::Up, Button::Up]);
+        assert_eq!(launcher.setting_selected(Group::Display), Some(Setting::FiftyHz));
+        assert_eq!(launcher.press(Button::Left, &library), Command::ToggleFiftyHz);
+        press_all(&mut launcher, &library, &[Button::Down, Button::Down, Button::Down]);
         press_all(&mut launcher, &library, &[Button::B, Button::Down, Button::Down]);
         assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::InGame));
         assert_eq!(launcher.setting_selected(Group::InGame), Some(Setting::Switcher));

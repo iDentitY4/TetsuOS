@@ -43,7 +43,7 @@ Fast), Neo Geo Pocket and Color (Beetle NeoPop), WonderSwan and Color (Beetle Cy
 Supervision (Potator), 32X (PicoDrive) and Arduboy (Arduous), and two games that aren't emulated, Doom (PrBoom, with
 Freedoom: Phase 1 and 2) and Cave Story (NXEngine), both copied to TETSU-DATA once and
 saving from their own menus; cartridge games also in ZIP files, with an in-game menu (8 save slots, levels, display
-options, screenshots to PNG, also used as the cover of a game without one and kept in a gallery to look through and delete, button remapping and turbo per console or game, each core's own options per console or game, cheat codes from `.cht` files, also downloaded on the device, and SWITCH GAME to the other recent games, each resuming, as a list or covers, also on Menu + Select), RetroAchievements (login, unlock notices with badges, a progress page, hardcore, off for every game or one, offline for a game played online before, with unlocks sent on the next connection), resume on leaving and after power-off, fast-forward on R2, sharp-bilinear
+options, screenshots to PNG, also used as the cover of a game without one and kept in a gallery to look through and delete, button remapping and turbo per console or game, each core's own options per console or game, cheat codes from `.cht` files, also downloaded on the device, and SWITCH GAME to the other recent games, each resuming, as a list or covers, also on Menu + Select), RetroAchievements (login, unlock notices with badges, a progress page, hardcore, off for every game or one, offline for a game played online before, with unlocks sent on the next connection), resume on leaving and after power-off, 50 Hz games with the panel at their own rate, fast-forward on R2, sharp-bilinear
 scaling with CRT and LCD effects and a border (a drawn bezel on the handhelds by default,
 the theme's colours or black), kept per console, and a volume sign on the volume buttons, also in the menus.
 
@@ -64,6 +64,12 @@ A new install starts with a setup (language, Wi-Fi, time, adding games), which S
 ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Not yet checked by the user
+
+- 50 Hz games at 50 Hz (2026-11-14): the user saw the panel at 50 Hz on the menus,
+  without flicker. Not yet: the 162 ms black at a PAL game's start and end, smoothness in a real PAL game
+  (PlayStation, Mega Drive, SNES), the lid during one, HDMI with one, the German wording
+  of its setting (IN GAME > DISPLAY > 50 HZ GAMES AT 50 HZ). Checked by Claude with
+  Pac-Man (Europe), with the setting on and off (`docs/features.md`)
 
 - COLLECTIONS and HIDDEN GAMES (2026-11-13): their feel on the real buttons, the COLLECTIONS
   row in place of STAR on the details, a collection's icon and tile, more than a page of
@@ -179,7 +185,6 @@ ADVANCED > RUN SETUP AGAIN repeats.
 - A faint high-pitched noise with USB connected, not heard since; VBUS read 4.42 V
 - USB host mode is disabled (see the PHY note below), so USB accessories don't work
 - An occasional single audio underrun during play, seen in `/var/log/launcher.log`
-- 50 Hz games show some frames twice on the 59.94 Hz panel
 - Twice (2026-11-09, 2026-11-13), Wi-Fi stayed connected but sent nothing from 53 s and
   312 s after boot, with rtw88 logging `failed to get tx report from firmware`; restarting
   `S42wifi` didn't help, a reboot did. Deep power save is off since 2026-11-13
@@ -196,7 +201,7 @@ ADVANCED > RUN SETUP AGAIN repeats.
 - **Modules:** `main.rs` declares them and picks the mode from the arguments (no arguments:
   the menus; `--play`: one game in its own process; `--preview*`: PC screenshots).
   They are in folders (since 2026-11-12), so a file named below is `crate::<folder>::<name>`:
-  `ui/` (canvas, color, font, icons, image, png, fb, screens, signs, corner, keyboard,
+  `ui/` (canvas, color, font, icons, image, png, fb, panel_rate, screens, signs, corner, keyboard,
   repeat, input), `wifi/` (`mod.rs` is the former `wifi.rs`, with network), `bluetooth/`,
   `transfer/` (with usb_drive and `transfer_page.html`), `backup/` (mod: the backup's
   files, its ZIP and restore; syncthing: the service and REST API; backup_menu,

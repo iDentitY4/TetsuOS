@@ -535,6 +535,9 @@ pub struct Settings {
     pub menu_sounds: bool,
     /// The boot jingle is off. It plays by default, also for a settings file from before it.
     pub jingle_off: bool,
+    /// A 50 Hz game leaves the panel at 59.94 Hz instead of setting it to its own rate
+    /// (`ui::panel_rate`). On by default, also for a settings file from before it.
+    pub fifty_hz_off: bool,
     pub vibration: Vibration,
     /// Bluetooth's services run and paired devices may connect. Off by default, so D-Bus
     /// and bluetoothd don't run for those who never use it.
@@ -718,6 +721,7 @@ fn parse(text: &str) -> Settings {
             "sleep_power_off" => choose(&mut settings.sleep_power_off, SleepPowerOff::from_key(value)),
             "sounds" => settings.menu_sounds = value == "on",
             "jingle" => settings.jingle_off = value == "off",
+            "50hz" => settings.fifty_hz_off = value == "off",
             "vibration" => choose(&mut settings.vibration, Vibration::from_key(value)),
             "bluetooth" => settings.bluetooth = value == "on",
             "save_backup" => settings.save_backup = value == "on",
@@ -793,6 +797,7 @@ fn format(settings: &Settings) -> String {
     lines.push(format!("sleep_power_off={}", settings.sleep_power_off.key()));
     lines.push(format!("sounds={}", on_off(settings.menu_sounds)));
     lines.push(format!("jingle={}", on_off(!settings.jingle_off)));
+    lines.push(format!("50hz={}", on_off(!settings.fifty_hz_off)));
     lines.push(format!("vibration={}", settings.vibration.key()));
     lines.push(format!("bluetooth={}", on_off(settings.bluetooth)));
     lines.push(format!("save_backup={}", on_off(settings.save_backup)));
@@ -1183,6 +1188,7 @@ mod tests {
             sleep_power_off: SleepPowerOff::Hours8,
             menu_sounds: true,
             jingle_off: true,
+            fifty_hz_off: true,
             vibration: Vibration::Low,
             bluetooth: true,
             save_backup: true,
@@ -1224,6 +1230,7 @@ mod tests {
         assert_eq!((old.accent, old.title_hidden, old.title()), (Accent::Teal, false, DEFAULT_TITLE));
         assert_eq!(old.display.ghosting, Ghosting::Smart);
         assert!(!old.covers_hidden && !old.screenshot_covers_off && !old.menu_sounds && !old.jingle_off && old.idle_minutes == 0);
+        assert!(!old.fifty_hz_off, "50 Hz games set the panel's rate for a settings file from before it");
         assert!(!old.bluetooth, "Bluetooth is off for a settings file from before it");
         assert_eq!((old.grid, old.background, old.battery), (GridSize::Normal, Background::Dark, BatteryDisplay::Percent));
         assert_eq!((old.start_screen, old.game_names), (StartScreen::Home, GameNames::Short));

@@ -411,8 +411,8 @@ Working on the test unit, confirmed by the user:
   of the 20 ms that 50 Hz European games have. Claude ran Final Fantasy VII, Metal Slug X
   and Star Wars Episode I (all European) on the device: 50 fps, Metal Slug X in play at
   the lowest 480 MHz and 44 C with no underruns, FF7 sees a formatted card, and save
-  states (4.4 MB) save and load. 50 Hz games can't match the 59.94 Hz panel, so some
-  frames show twice. The user hasn't tried it yet, so sound and feel are unchecked
+  states (4.4 MB) save and load. 50 Hz games set the panel to their own rate since
+  2026-11-14 (below). The user hasn't tried it yet, so sound and feel are unchecked
 - Sorting. Settings > THEME > SORT GAMES BY chooses NAME, RECENTLY PLAYED or MOST PLAYED
   (`settings::GameSort`, `sort=` in `settings.txt`, under THEME since GENERAL has no room).
   `library::sort_library` applies it to consoles' lists and favorites; RECENT stays in the
@@ -737,7 +737,7 @@ Working on the test unit, confirmed by the user:
   `pokemini_video_scale` to 1x, so the frontend scales the 96x64 picture and draws its LCD
   effect and bezel, instead of the core's 4x dot matrix. Beetle VB shows the plain red and
   black picture by default (anaglyph mode with the preset disabled). Vectrex and Virtual Boy
-  are 50 Hz, so they show some frames twice, as PAL games do. PokeMini aborts on a file of
+  are 50 Hz, so they set the panel to 50 Hz, as PAL games do. PokeMini aborts on a file of
   0x2100 bytes or less, which it refuses, but a real cartridge is never that small, and a
   game runs in its own process.
 
@@ -1346,6 +1346,33 @@ Built but not yet tested on the device:
 - The sound probe never lowers the samples per frame below the core's timing. Starting
   games make less sound: LeafGreen measured 1065 against 1097, and lowering the rate made
   it wait on the audio at 58.1 fps. FireRed now plays at its full 65536 Hz
+- 50 Hz games at their own rate (2026-11-14, `ui/panel_rate.rs`). A game whose core runs
+  at 45 to 55 fps (PAL games, Vectrex, Virtual Boy) sets the panel to the nearest rate it
+  can make, instead of 59.94 Hz, where some frames showed twice. Settings > IN GAME >
+  DISPLAY > 50 HZ GAMES AT 50 HZ turns it off (`50hz=off`, `fifty_hz_off`; on by default,
+  also for an older settings file); it is the last row, after USE FOR ALL CONSOLES, since
+  it is one setting for every console, and its note says so. The `--play` process
+  opens `/dev/dri/card1`, becomes DRM master and sets a mode with `SETCRTC` on the first
+  CRTC with `fb_id` -1, which keeps the framebuffer fbdev made, so drawing into
+  `/dev/fb0` doesn't change. The pixel clock stays 24 MHz (`pll-video0` at 72 MHz, which
+  HDMI also uses); only the porches grow, from the panel's 770 x 520 up to at most
+  800 x 700, before each sync pulse. The panel runs in DE mode (`0x23 = 0xa0`), so it
+  takes them. Found rates: PAL SNES and NES 50.007 fps on 792 x 606 (50.005 Hz), Mega
+  Drive 49.7015 on 789 x 612 (49.703), PlayStation 49.7607 on 783 x 616 (49.759), 50.000
+  on 800 x 600. The mode change turns the panel off and on, 162 ms, at the game's start
+  and end. Closing the device, also when the process ends or crashes, makes the kernel
+  restore its own mode (lastclose); the menus process holds only `/dev/fb0`, which this
+  needs. While a master exists, the kernel refuses `FBIO_WAITFORVSYNC` with EBUSY
+  (`drm_client_modeset_wait_for_vblank`), so the game waits with `DRM_IOCTL_WAIT_VBLANK`
+  on the same device. The sound's rate uses the panel's real rate (`playback_rate`), and
+  the TCON registers (`0x651104c`, `0x6511050`: totals, the lines doubled) show the mode
+  with `devmem`. Checked on the device with Pac-Man (Europe): 50.005 Hz set, the TCON at
+  792 x 606, 59.94 Hz again after QUIT, and 49.92 fps steady, the sound's 0.1% margin
+  making the game wait on the sound about once every 12 s (a repeated frame). With
+  the setting OFF, the same game left the panel at 520 lines and ran as before. A test
+  program measured 50.033, 49.953 and 49.715 Hz from vblank times for 623, 624 and 627
+  lines. While the game holds the display, the kernel doesn't light a newly plugged HDMI
+  TV until the game ends; one plugged in before keeps 59.94 Hz
 
 - Fast-forward: holding R2 runs extra frames in each panel refresh, within 6 ms and up
   to 8 frames, keeping only the last frame's picture and sound, so sound keeps flowing.

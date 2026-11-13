@@ -571,6 +571,7 @@ pub(crate) fn setting_value(setting: Setting, settings: &Settings) -> Option<Str
         Setting::Battery => settings.battery.label(),
         Setting::MenuSounds => on_off(settings.menu_sounds),
         Setting::BootJingle => on_off(!settings.jingle_off),
+        Setting::FiftyHz => on_off(!settings.fifty_hz_off),
         Setting::IdleSleep => return Some(idle_sleep_label(settings.idle_minutes)),
         Setting::SleepPowerOff => settings.sleep_power_off.label(),
         Setting::Language => settings.language.label(),

@@ -9,22 +9,19 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{JoinHandle, spawn};
 use super::host::with_host;
 
-/// The panel's refresh rate, which paces the game. Measured with kmscube.
-const PANEL_HZ: f64 = 59.94;
-
 /// Frames run before the sound starts, to measure how much sound a frame makes.
 pub(super) const AUDIO_PROBE_FRAMES: u64 = 30;
 
-/// The rate to play a core's sound at, from the samples it makes per frame. Paced by the
-/// panel, a core that makes less than its sample rate's worth per panel refresh, like NES
+/// The rate to play a core's sound at, from the samples it makes per frame and the
+/// panel's rate (`ui::panel_rate`), which paces the game. Paced by the panel, a core that makes less than its sample rate's worth per panel refresh, like NES
 /// and SNES made for 60.10 fps, would run out every few seconds. It plays at a matching
 /// lower rate, a little below what it makes, so the game waits on the audio now and then
 /// instead. A core that makes more, like the Game Boy Advance, plays at its own rate.
 /// The samples are measured, not worked out from the core's frame rate, because mGBA
 /// reports 61.17 fps for Super Game Boy games but makes sound as at 59.73.
-pub(super) fn playback_rate(sample_rate: f64, samples_per_frame: f64) -> f64 {
+pub(super) fn playback_rate(sample_rate: f64, samples_per_frame: f64, panel_hz: f64) -> f64 {
     const MARGIN: f64 = 0.999;
-    sample_rate.min(samples_per_frame * PANEL_HZ * MARGIN)
+    sample_rate.min(samples_per_frame * panel_hz * MARGIN)
 }
 
 /// Plays through aplay. A small pipe keeps latency low, and paces the game to the
@@ -91,15 +88,27 @@ impl Drop for Silence {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ui::panel_rate::PANEL_HZ;
 
     #[test]
     fn sound_plays_slower_only_for_cores_making_less_than_the_panel_plays() {
         // GBA at 59.73 fps, and a Super Game Boy game, which makes the same per frame.
-        assert_eq!(playback_rate(65536.0, 65536.0 / 59.73), 65536.0);
-        assert_eq!(playback_rate(131072.0, 131072.0 / 59.73), 131072.0);
+        assert_eq!(playback_rate(65536.0, 65536.0 / 59.73, PANEL_HZ), 65536.0);
+        assert_eq!(playback_rate(131072.0, 131072.0 / 59.73, PANEL_HZ), 131072.0);
         // NES at 60.10 fps.
-        let nes = playback_rate(48000.0, 48000.0 / 60.0988);
+        let nes = playback_rate(48000.0, 48000.0 / 60.0988, PANEL_HZ);
         let produced = 48000.0 * PANEL_HZ / 60.0988;
         assert!(nes < produced && nes > produced * 0.998, "{nes} vs {produced}");
+    }
+
+    #[test]
+    fn a_matched_panel_plays_the_sound_at_the_cores_rate() {
+        // A PAL SNES game at 50.007 fps on the panel at 50.005 Hz.
+        assert_eq!(playback_rate(32040.0, 32040.0 / 50.007, 50.005), 32040.0 / 50.007 * 50.005 * 0.999);
+        // A Mega Drive one at 49.7015 fps on the panel at 49.703 Hz, within the margin.
+        let mega_drive = playback_rate(44100.0, 44100.0 / 49.7015, 49.703);
+        assert!(mega_drive < 44100.0 && mega_drive > 44100.0 * 0.999, "{mega_drive}");
+        // On the panel's own 59.94 Hz, a 50 Hz game would play at its own rate.
+        assert_eq!(playback_rate(44100.0, 44100.0 / 49.7015, PANEL_HZ), 44100.0);
     }
 }

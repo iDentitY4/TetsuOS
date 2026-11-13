@@ -31,6 +31,7 @@ use super::scale::picture_in_area;
 use super::core::Core;
 use super::save::{autosave_frames, forget_place, load_resume, resume_path, save_progress};
 use super::audio::{AUDIO_PROBE_FRAMES, playback_rate, start_audio};
+use crate::ui::panel_rate::{PANEL_HZ, PanelRate};
 use super::menu::{Achievements, AfterMenu, Game, chosen_options, hardcore_off_notice, pause};
 
 /// Set when the system asks the game to stop with SIGTERM, as it does at power-off.
@@ -310,12 +311,13 @@ fn run_extra_frames(core: &mut Core, session: &mut Option<Session>, run_start: I
 }
 
 /// Shows the frame the core made, if it made one, once the panel is ready for it.
-fn show_frame(framebuffer: &mut Framebuffer, stats: &mut Stats, vsync_works: &mut bool) -> io::Result<()> {
+fn show_frame(framebuffer: &mut Framebuffer, panel_rate: Option<&PanelRate>, stats: &mut Stats, vsync_works: &mut bool) -> io::Result<()> {
     with_host(|host| {
         if host.frame_ready {
             if *vsync_works {
                 let vsync_start = Instant::now();
-                if let Err(error) = framebuffer.wait_for_vsync() {
+                let waited = panel_rate.map_or_else(|| framebuffer.wait_for_vsync(), PanelRate::wait_for_vblank);
+                if let Err(error) = waited {
                     eprintln!("warning: can't wait for the panel, so the game may tear: {error}");
                     *vsync_works = false;
                 }
@@ -337,14 +339,14 @@ fn show_frame(framebuffer: &mut Framebuffer, stats: &mut Stats, vsync_works: &mu
 }
 
 /// Starts the sound, at a rate from what the game's first frames made.
-fn start_probed_audio(sample_rate: f64, fps: f64) {
+fn start_probed_audio(sample_rate: f64, fps: f64, panel_hz: f64) {
     let measured = with_host(|host| host.audio_bytes) as f64 / 4.0 / AUDIO_PROBE_FRAMES as f64;
     // Starting games can make less sound than they do later, so the measurement
     // can only raise the amount the core's timing says, as Super Game Boy games
     // need. LeafGreen measured 1065 against 1097 from its timing, and lowering the
     // rate to match made it wait on the audio at 58.1 fps.
     let samples_per_frame = measured.max(sample_rate / fps);
-    let rate = playback_rate(sample_rate, samples_per_frame);
+    let rate = playback_rate(sample_rate, samples_per_frame, panel_hz);
     println!("{samples_per_frame:.1} samples per frame: playing sound at {rate:.0} Hz");
     let device = crate::device::audio_out::device();
     match start_audio(rate) {
@@ -435,6 +437,10 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
     println!("playing {} at {fps:.2} fps, {sample_rate:.0} Hz", rom.display());
 
     let frame_time = Duration::from_secs_f64(1.0 / fps);
+    // Held until the game ends: then the kernel sets the panel's own rate again.
+    // Settings > IN GAME > DISPLAY > 50 HZ GAMES AT 50 HZ can leave the panel as it is.
+    let panel_rate = if settings::get().fifty_hz_off { None } else { PanelRate::for_game(fps) };
+    let panel_hz = panel_rate.as_ref().map_or(PANEL_HZ, PanelRate::hz);
     let events = input::spawn_readers();
     let levels = volume_levels();
     framebuffer.clear()?;
@@ -573,14 +579,14 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
             session.do_frame();
         }
         stats.run_time += run_start.elapsed();
-        show_frame(framebuffer, &mut stats, &mut vsync_works)?;
+        show_frame(framebuffer, panel_rate.as_ref(), &mut stats, &mut vsync_works)?;
 
         frames += 1;
         if play_clock.tick(Instant::now()) {
             save_play_time(&mut play_clock, console);
         }
         if frames == AUDIO_PROBE_FRAMES && with_host(|host| host.audio.is_none()) {
-            start_probed_audio(sample_rate, fps);
+            start_probed_audio(sample_rate, fps, panel_hz);
         } else if frames.is_multiple_of(AUDIO_CHECK_FRAMES) {
             follow_audio_device();
         }

@@ -488,6 +488,9 @@ fn settings_group_canvas((width, height): (usize, usize), group: Group, launcher
         Group::InGame if launcher.setting_selected(group) == Some(launcher::Setting::Vibration) => {
             Some(tr("THE SAME FOR EVERY CONSOLE AND GAME").into())
         }
+        Group::Display if launcher.setting_selected(group) == Some(launcher::Setting::FiftyHz) => {
+            Some(tr("THE SAME FOR EVERY CONSOLE AND GAME").into())
+        }
         Group::Display => Some(game_screen_note(&current)),
         Group::Battery => Some(battery_note(launcher.setting_selected(group))),
         Group::System if current.idle_minutes > 0 => Some(tr("THE POWER BUTTON WAKES IT FROM SLEEP").into()),
@@ -801,6 +804,7 @@ pub(crate) fn act(
                 sounds::play(sounds::Sound::Select);
             }
         }
+        Action::ToggleFiftyHz => change_settings(|s| s.fifty_hz_off = !s.fifty_hz_off),
         Action::ToggleJingle => {
             change_settings(|s| s.jingle_off = !s.jingle_off);
             if !settings::get().jingle_off {
