@@ -1,116 +1,139 @@
-# Tetsu OS
+<p align="center">
+  <img src="docs/logo.png" alt="The Tetsu OS logo: a pixel-art iron kettle with a gamepad's D-pad and buttons on its side" width="160">
+</p>
 
-![The Tetsu OS logo: a pixel-art iron kettle with a gamepad's D-pad and buttons on its side](docs/logo.png)
+<h1 align="center">Tetsu OS</h1>
 
-Tetsu OS is a Linux distribution for retro handhelds. It currently runs on the
-Anbernic RG35XX SP (Allwinner H700) and boots to its own game launcher, written in
-Rust: *tetsu* (鉄) is Japanese for iron.
+<p align="center">
+  A small, fast Linux system for retro handhelds, with its own game launcher.<br>
+  Runs on the <b>Anbernic RG35XX SP</b>.
+</p>
 
-**Documentation:** [identity4.github.io/TetsuOS](https://identity4.github.io/TetsuOS/), built
-from [`docs/`](docs/) with VitePress (`npm install && npm run docs:dev`): installation,
-upgrading, every feature, and a developer guide.
+<p align="center">
+  <a href="https://identity4.github.io/TetsuOS/"><img src="https://github.com/iDentitY4/TetsuOS/actions/workflows/docs.yml/badge.svg" alt="Documentation"></a>
+  <a href="https://github.com/iDentitY4/TetsuOS/releases"><img src="https://img.shields.io/github/v/release/iDentitY4/TetsuOS?include_prereleases&label=release" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
+</p>
 
-**Status: boots to the launcher on an LPDDR3 RG35XX SP (first confirmed
-2026-11-06). The power button and USB-C console also work on that unit. USB host
-mode is disabled, so USB accessories don't work yet.**
+<p align="center">
+  <a href="https://identity4.github.io/TetsuOS/"><b>Documentation</b></a> ·
+  <a href="https://identity4.github.io/TetsuOS/guide/installation">Installation</a> ·
+  <a href="https://identity4.github.io/TetsuOS/reference/systems">Supported systems</a> ·
+  <a href="https://github.com/iDentitY4/TetsuOS/releases">Download</a>
+</p>
 
-**RAM type:** RG35XX SP units vary. This build is for LPDDR3 at 1.2V, using values
-read from one unit's working bootloader. An LPDDR4 unit needs different settings
-in `board/rg35xxsp/uboot.fragment`, and without
-`board/rg35xxsp/patches/linux/0006-rg35xx-sp-lpddr3-ram-voltage.patch`. To check a
-unit, read the 32-bit value at offset `0x3c` of its working boot0, which starts
-8 KiB into the SD card: 7 is LPDDR3, 8 is LPDDR4.
+Tetsu OS boots straight into a launcher written from scratch in Rust, with a built-in
+libretro frontend for the emulators: no RetroArch, no desktop, just your games a few
+seconds after pressing power. *Tetsu* (鉄) is Japanese for iron, and the logo is an iron
+kettle.
 
-| Layer | Choice |
+| | |
 | --- | --- |
-| Build system | Buildroot 2026.08.1, as an external tree |
-| Kernel | Linux 7.2.15 plus the display patches in `board/rg35xxsp/patches/` |
-| Bootloader | U-Boot 2026.10 and TF-A v2.12 |
-| Launcher | Rust app in `src/launcher/`, drawing to `/dev/fb0` |
+| ![The home screen: a grid of console tiles](docs/public/screenshots/home.png) | ![A game list with box art](docs/public/screenshots/list.png) |
+| ![The in-game menu](docs/public/screenshots/pause.png) | ![The game switcher](docs/public/screenshots/switcher.png) |
 
-## Build
+## Features
+
+- **Fast start.** The launcher is up 3.8 seconds after pressing power, or 6.4 with the boot
+  jingle and its animation.
+- **25 consoles**, from the Atari 2600 and NES to the Game Boy Advance and PlayStation,
+  plus Doom (Freedoom) and Cave Story ready to play. [All systems](https://identity4.github.io/TetsuOS/reference/systems)
+- **Resume everywhere.** Quitting, closing the lid, switching games or a power cut bring
+  you back to the same spot.
+- **A full in-game menu:** save slots, CRT and LCD effects and bezels, button remapping
+  and turbo, core options, cheats, screenshots and a game switcher.
+- **RetroAchievements**, with unlock notices, hardcore mode and offline unlocks.
+- **A launcher made for a small screen:** recent games, favorites, collections, box art,
+  search and play statistics.
+- **Wi-Fi and Bluetooth:** send games from a browser, download covers and cheats, back up
+  saves with Syncthing, use Bluetooth controllers and headphones.
+- **Careful power handling:** lid sleep, a charging screen, a battery log with time left
+  and a charge limit.
+- **Safe updates** over Wi-Fi into a second system slot, with an automatic fall back if
+  the new one doesn't start.
+- **English and German.**
+
+The [user guide](https://identity4.github.io/TetsuOS/guide/) covers each of these.
+
+## Getting started
+
+You need an RG35XX SP, a spare microSD card of at least 6 GB (16 GB or more leaves room for
+games) and a computer with a card reader. Tetsu OS runs from the card and leaves the
+device's own firmware alone: take the card out and the stock system starts as before.
+
+1. **Check your memory type.** RG35XX SP units ship with LPDDR3 or LPDDR4 memory, and the
+   images are built for **LPDDR3**. [Requirements](https://identity4.github.io/TetsuOS/guide/requirements#check-your-memory-type)
+   shows how to check from the stock card in a minute.
+2. **Download** the newest `tetsu-rg35xxsp-…-sdcard.img.gz` from
+   [Releases](https://github.com/iDentitY4/TetsuOS/releases).
+3. **Write it to the card** with [balenaEtcher](https://etcher.balena.io) or
+   [Raspberry Pi Imager](https://www.raspberrypi.com/software/) ("Use custom"). This
+   erases the card.
+4. **Boot.** Put the card in the **TF1** slot and press power. A short setup asks for the
+   language, Wi-Fi and time zone.
+5. **Add games.** Copy them to the `roms` folder of the card's **TETSU-DATA** drive:
+   connect the USB cable and open Settings > SYSTEM > USB STORAGE, use WI-FI TRANSFER
+   from a browser, or put the card in your computer.
+   [Adding games](https://identity4.github.io/TetsuOS/guide/adding-games)
+
+In the menus, **A** opens, **B** goes back and **Start** opens Settings. In a game, tap
+**Menu** for the in-game menu, hold **R2** to fast-forward and press **Menu + Start** to
+leave. More in [Controls](https://identity4.github.io/TetsuOS/guide/controls).
+
+Something not working? See [Troubleshooting](https://identity4.github.io/TetsuOS/guide/troubleshooting)
+and the [FAQ](https://identity4.github.io/TetsuOS/guide/faq).
+
+## Status
+
+Tetsu OS is young and developed on a single LPDDR3 RG35XX SP. Most features are checked on
+that unit, but expect rough edges, and LPDDR4 units need their own build for now. USB
+accessories don't work yet, as the USB-C port runs in device mode only. Other H700 devices
+(RG35XX Plus, RG40XX, RG28XX) are not supported yet.
+
+## Building from source
+
+Tetsu OS is a [Buildroot](https://buildroot.org) external tree with a mainline Linux kernel
+and U-Boot. On Linux:
 
 ```sh
-make            # full build; the image is output/images/sdcard.img
-make preview    # renders the screen to launcher-preview.ppm on this PC
+git clone https://github.com/iDentitY4/TetsuOS.git
+cd TetsuOS
+make        # the first build also makes a cross toolchain, so it takes a while
+scripts/flash.sh /dev/sdX   # or write output/images/sdcard.img with any image writer
 ```
 
-The first build compiles a cross-toolchain into `output-toolchain/`, so it takes a
-while; `make clean` keeps it, and `ccache/` keeps compiled C code. The configuration is
-`configs/common.config` plus `board/rg35xxsp/buildroot.config`: run `make config`
-after changing either. To run the app tests, use `cargo test` in `src/launcher/`.
+The [developer guide](https://identity4.github.io/TetsuOS/developer/) covers the build,
+updating the device over USB, the boot process, the launcher's code and the hardware notes.
 
-## Flash and boot
+## Contributing
 
-Use a spare card of at least 6 GiB. Flashing erases it, except for the TETSU-DATA
-partition on a card flashed before, which keeps its games and saves.
+Issues and pull requests are welcome. Translations and testing on other RG35XX SP units
+help most. See [Contributing](https://identity4.github.io/TetsuOS/developer/contributing)
+before opening a pull request.
 
-```sh
-scripts/flash.sh                        # lists disks
-scripts/flash.sh /dev/sdX               # checks the target, then asks you to confirm
-scripts/flash.sh --format-data /dev/sdX # also erases TETSU-DATA's games and saves
-```
+## Credits
 
-A card with a data partition of another name, such as `RGDATA` from before the
-rename to Tetsu OS, needs `--format-data`.
+Tetsu OS stands on a lot of other people's work:
 
-Put the card in the TF1 slot and power on. A new install starts with a short setup:
-language, Wi-Fi, time and adding games. To add games later, open Settings > SYSTEM >
-USB STORAGE with the device connected to a PC, which then shows TETSU-DATA as a USB
-drive, or put the card in a PC. Copy the games to the `roms` folder on TETSU-DATA, in
-folders of your choice or none. The launcher shows a tile for each console with games: NES (`.nes`), Game Boy (`.gb`),
-Master System (`.sms`), PC Engine (`.pce`), Mega Drive (`.md`, `.gen`, `.smd`; rename
-`.bin`), Lynx (`.lnx`, `.lyx`), Game Gear (`.gg`), SNES (`.sfc`, `.smc`), Tamagotchi (`tama.b`), Game Boy Color (`.gbc`),
-Neo Geo Pocket (`.ngp`) and Color (`.ngc`, `.ngpc`), WonderSwan (`.ws`) and Color (`.wsc`), Game Boy
-Advance (`.gba`), SG-1000 (`.sg`), Atari 2600 (`.a26`) and 7800 (`.a78`), Vectrex (`.vec`),
-Virtual Boy (`.vb`, `.vboy`), Pokemon Mini (`.min`), Watara Supervision (`.sv`), 32X
-(`.32x`) and Arduboy (`.hex`). On WonderSwan, Select rotates the screen for vertical games. Zipped games aren't supported. In a list, hold Up or Down to
-scroll, and use Left and Right to page. Start opens the settings. In a game, tap Menu for save states, volume, brightness and
-quit, or hold Menu + Start to leave straight away. Hold R2 to fast-forward.
-
-For box art in the game lists, run `scripts/boxart.py` with the device connected. It
-fetches covers for the games on the device from the libretro-thumbnails collections
-and copies them there. Run it again after adding games. It needs Pillow.
-
-## Updating over USB
-
-Once a card has been flashed, most changes can go over the USB cable instead. The
-USB/OTG port is also a network adapter: the device is `10.35.35.1` and gives the PC
-`10.35.35.2`, which NetworkManager picks up without setup. After `make`, run:
-
-```sh
-scripts/push.sh app      # the launcher, restarted in about a second
-scripts/push.sh rootfs   # changed root filesystem files, without deleting any
-scripts/push.sh boot     # kernel, device tree and extlinux.conf, then a reboot
-scripts/push.sh all      # rootfs, then boot
-```
-
-`ssh root@10.35.35.1` gives a shell. U-Boot changes still need `flash.sh`, and so
-does a kernel that doesn't boot, because nothing can reach the device then.
-
-## Debugging a failed boot
-
-This setup works without a serial adapter. The screen shows a logo while Linux
-starts, and kernel messages go to `ttynull`, so they stay off the screen; read them
-with `dmesg`. For a boot that fails
-before the logo, check the flash and the slot, then the board's RAM type.
-
-Once Linux boots, it writes `bootlog.txt` to the card's `TETSU-BOOT` partition about 15
-seconds after init starts, and again about a minute after, so wait before powering
-off. It has connector, backlight, deferred probe, app and `dmesg` output. Without a
-`bootlog.txt`, Linux failed or didn't finish, and a USB-serial adapter on the UART is
-the next step. U-Boot no longer writes `bootcount.txt` and `uboot-env.txt`, which
-cost 0.3 seconds a boot.
-
-Once booted, the USB/OTG port also offers a root shell. On the PC, run
-`screen /dev/ttyACM0 115200`, press Enter, and log in as `root`. Quit with
-Ctrl-a, then k, then y. Root has no password, over serial or SSH, so this image
-is for development only.
+- [Buildroot](https://buildroot.org), [Linux](https://kernel.org),
+  [U-Boot](https://u-boot.org) and [Trusted Firmware-A](https://www.trustedfirmware.org)
+- [ROCKNIX](https://github.com/ROCKNIX/distribution), whose H700 kernel patches drive the
+  display and backlight
+- The [libretro](https://www.libretro.com) emulator cores: FCEUmm, Snes9x, mGBA, PCSX
+  ReARMed, Genesis Plus GX, PicoDrive, Beetle PCE Fast, NeoPop, Cygne and VB, Handy,
+  Stella, ProSystem, vecx, PokeMini, Potator, Arduous, tamalib, PrBoom and NXEngine
+- [Freedoom](https://freedoom.github.io) and Studio Pixel's Cave Story
+- [rcheevos](https://github.com/RetroAchievements/rcheevos) and
+  [RetroAchievements](https://retroachievements.org),
+  [libretro-thumbnails](https://github.com/libretro-thumbnails) for box art,
+  [Syncthing](https://syncthing.net), BlueZ and bluez-alsa
 
 ## License
 
 Tetsu OS's own code (the launcher, scripts, Buildroot packages and board files) is under
-the MIT license in `LICENSE`. The patches in `board/rg35xxsp/patches/` change the Linux
-kernel and BlueZ and are under GPL-2.0 like them; `src/launcher/rcheevos/` keeps its own
-MIT license. The emulator cores are downloaded at build time under their own licenses,
-some of which forbid commercial use.
+the [MIT license](LICENSE). The kernel and BlueZ patches in `board/rg35xxsp/patches/` are
+under GPL-2.0, like the code they change. The emulator cores are downloaded at build time
+under their own licenses, some of which forbid commercial use.
+
+Tetsu OS is not affiliated with Anbernic. It comes with no games apart from the free ones
+named above: bring your own.
