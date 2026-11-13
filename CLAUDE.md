@@ -397,7 +397,10 @@ before power-off in seconds and `LAUNCHER_PREVIEW_LANGUAGE=de` renders
 
 - Never write to a disk on the PC from Claude's side: it has internal disks with the
   user's data, and flashing stays with the user. Writing to the device over SSH is fine.
-- Commit only when the user asks. Don't push: there is no remote yet.
+- Commit only when the user asks, and push only when the user asks. The remote is
+  `origin` (github.com/iDentitY4/TetsuOS); its SSH URL needs the passphrase-protected key,
+  so push over HTTPS through `gh`:
+  `git -c credential.helper='!gh auth git-credential' push https://github.com/iDentitY4/TetsuOS.git main`
 - Ask before larger changes, with options to choose from.
 - Check that a patch applies with `support/scripts/apply-patches.sh`, because plain
   `patch` allows fuzz that Buildroot rejects.
