@@ -34,8 +34,9 @@ pub const WAITING_RETRY: Duration = Duration::from_secs(60);
 pub const BADGE_DIR: &str = crate::device::paths::data_path!("/achievements");
 /// How long a login from Settings may take.
 const LOGIN_TIMEOUT: Duration = Duration::from_secs(40);
-/// How long leaving a game waits for unlocks still being sent.
-const FINISH_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long leaving a game waits for unlocks still being sent, before keeping them to send
+/// later. Other requests aren't waited for: the next game asks again.
+const FINISH_TIMEOUT: Duration = Duration::from_millis(500);
 /// The size badges are drawn at in the list.
 pub const SMALL_BADGE: usize = 32;
 /// The size badges are drawn at in a notice, as they are downloaded.
@@ -495,7 +496,6 @@ type Outcome = Result<(), (c_int, String)>;
 /// What the callbacks need, one per thread with a client.
 struct State {
     sender: Sender<Response>,
-    in_flight: usize,
     happenings: Vec<Happening>,
     login: Option<Outcome>,
     load: Option<Outcome>,
@@ -612,10 +612,7 @@ unsafe extern "C" fn server_call(
     let url = text(request.url);
     let post = (!request.post_data.is_null()).then(|| text(request.post_data));
     let content_type = text(request.content_type);
-    let Some((sender, user_agent)) = with_state(|state| {
-        state.in_flight += 1;
-        (state.sender.clone(), state.user_agent.clone())
-    }) else {
+    let Some((sender, user_agent)) = with_state(|state| (state.sender.clone(), state.user_agent.clone())) else {
         return;
     };
     let data = data as usize;
@@ -760,7 +757,6 @@ impl Client {
         STATE.with(|state| {
             *state.borrow_mut() = Some(State {
                 sender,
-                in_flight: 0,
                 happenings: Vec::new(),
                 login: None,
                 load: None,
@@ -777,7 +773,6 @@ impl Client {
     fn pump(&self) {
         for response in self.responses.try_iter() {
             with_state(|state| {
-                state.in_flight = state.in_flight.saturating_sub(1);
                 match response.source {
                     offline::Source::Server => {}
                     offline::Source::ServerAfterWaiting => state.happenings.push(Happening::Reconnected),
@@ -800,10 +795,6 @@ impl Client {
             // client that made the request still exists.
             unsafe { (response.callback)(&raw const answer, response.data as *mut c_void) };
         }
-    }
-
-    fn in_flight(&self) -> usize {
-        with_state(|state| state.in_flight).unwrap_or(0)
     }
 }
 
@@ -1461,12 +1452,20 @@ impl Session {
         &mut self.badges
     }
 
-    /// Waits a moment for unlocks still on their way to the server, as the game is ending.
+    /// Waits a moment for unlocks still on their way to the server, as the game is ending,
+    /// and keeps those it didn't see arrive to send later. A login, the game's achievements
+    /// or a ping still on its way is left behind, as on a hung connection each can take
+    /// many seconds.
     pub fn finish(mut self) {
+        let dir = offline_dir();
         let deadline = Instant::now() + FINISH_TIMEOUT;
-        while self.client.in_flight() > 0 && Instant::now() < deadline {
+        while offline::unsent(&dir) > 0 && Instant::now() < deadline {
             self.client.pump();
             std::thread::sleep(Duration::from_millis(20));
+        }
+        let kept = offline::keep_unsent(&dir);
+        if kept > 0 {
+            println!("achievements: {kept} unlocks still being sent wait for the next connection");
         }
         let _ = self.pump();
     }

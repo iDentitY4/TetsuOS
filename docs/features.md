@@ -1907,6 +1907,16 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   doesn't retry it; it is added to the kept session too, so the game starts with it
   unlocked next time offline, and an unlock that reaches the server is added there as well. The
   notice UNLOCKS WAIT FOR A CONNECTION shows once, for a connection lost during a game.
+  Leaving a game (`Session::finish`, 2026-11-13) waits at most 0.5 s
+  (`FINISH_TIMEOUT`), and only while an unlock is being sent (`offline::unsent`); those
+  still unanswered then go to `waiting.txt` too (`keep_unsent`; one the server took
+  meanwhile is answered `User already has` when sent). A login, `achievementsets`,
+  `startsession` or ping still on its way is left behind, as the next game asks again.
+  It used to wait up to 5 s for any request: with Wi-Fi hung (see Known issues in
+  `CLAUDE.md`) each DNS lookup takes about 12 s to fail, so nearly every quit waited the
+  full 5 s, while 0.36 s was measured from QUIT to the menu drawn with working Wi-Fi.
+  With DNS pointed at an address that never answers and the game's achievements still
+  pending, the game process now ends 0.17 s after the press.
   `sync` sends the waiting unlocks, rebuilt with rcheevos' own
   `rc_api_init_award_achievement_request` and the token of the account logged in, with
   `o=` the seconds since the unlock (signed into `v=`), so the server dates them when

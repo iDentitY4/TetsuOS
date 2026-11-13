@@ -9,13 +9,16 @@
 //! happened, and rcheevos is told it went through. The kept session gets the unlock as
 //! well, so the next game offline starts with it. `sync` sends the waiting unlocks with
 //! how long ago each happened, so the server dates them right: before a game's session
-//! starts, and from the launcher's menus every minute while any wait.
+//! starts, and from the launcher's menus every minute while any wait. An unlock still on
+//! its way when the game ends is put there too (`keep_unsent`), so a slow connection can't
+//! hold up leaving the game, nor lose the unlock.
 
 use crate::device::storage::write_atomic;
 use std::collections::HashMap;
 use std::ffi::c_int;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 /// The kept answers and the unlocks waiting to be sent.
 pub const OFFLINE_DIR: &str = crate::device::paths::data_path!("/achievements/offline");
@@ -107,6 +110,52 @@ pub(super) enum Source {
     Waiting,
 }
 
+/// The unlocks being sent, with the folder each would wait in, until their answers come.
+static SENDING: Mutex<Vec<(u64, PathBuf, Unlock)>> = Mutex::new(Vec::new());
+/// The number the next unlock sent is noted under in `SENDING`.
+static NEXT_SENDING: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Notes an unlock as being sent, until the returned number is given to `sent`.
+fn sending(dir: &Path, unlock: &Unlock) -> u64 {
+    let number = NEXT_SENDING.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    SENDING.lock().unwrap_or_else(std::sync::PoisonError::into_inner).push((number, dir.to_path_buf(), unlock.clone()));
+    number
+}
+
+/// Notes an unlock's answer as come.
+fn sent(number: u64) {
+    SENDING.lock().unwrap_or_else(std::sync::PoisonError::into_inner).retain(|(noted, ..)| *noted != number);
+}
+
+/// How many unlocks that would wait in `dir` are being sent.
+pub(super) fn unsent(dir: &Path) -> usize {
+    SENDING.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().filter(|(_, noted, _)| noted == dir).count()
+}
+
+/// Puts the unlocks still being sent with the ones waiting for a connection, as the game
+/// ends without their answers. One the server took meanwhile is taken again when it is
+/// sent later (`unlock_taken`). Returns how many it kept.
+pub(super) fn keep_unsent(dir: &Path) -> usize {
+    let unsent: Vec<Unlock> = SENDING
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .iter()
+        .filter(|(_, noted, _)| noted == dir)
+        .map(|(.., unlock)| unlock.clone())
+        .collect();
+    let mut kept = 0;
+    for unlock in &unsent {
+        match wait(dir, unlock) {
+            Ok(()) => {
+                mark_unlocked(dir, unlock);
+                kept += 1;
+            }
+            Err(error) => eprintln!("warning: could not keep achievement {} to send later: {error}", unlock.id),
+        }
+    }
+    kept
+}
+
 /// Sends a request: its URL and form body, giving the HTTP status, or a value of 0 or less
 /// when the server wasn't reached, and the body.
 pub(super) type Send<'a> = &'a dyn Fn(&str, Option<&str>) -> (c_int, Vec<u8>);
@@ -125,7 +174,12 @@ pub(super) fn answer(dir: &Path, url: &str, post: Option<&str>, send: Send) -> (
             }
         }
     }
+    let unlock = (kind == "awardachievement").then(|| Unlock::from_params(&params)).flatten();
+    let number = unlock.as_ref().map(|unlock| sending(dir, unlock));
     let (status, body) = send(url, post);
+    if let Some(number) = number {
+        sent(number);
+    }
     let kept = kept_path(dir, &params);
     if let Some(kept) = &kept {
         if !unreachable(status) && succeeded(&body) {
@@ -140,7 +194,7 @@ pub(super) fn answer(dir: &Path, url: &str, post: Option<&str>, send: Send) -> (
         }
     }
     if kind == "awardachievement" {
-        if let Some(unlock) = Unlock::from_params(&params) {
+        if let Some(unlock) = unlock {
             if unlock_taken(status, &body) {
                 mark_unlocked(dir, &unlock);
             } else if unreachable(status) {
@@ -369,6 +423,41 @@ mod tests {
         assert_eq!(kept("r=achievementsets&u=Tester&t=Tok&m=ab12"), Some(dir.join("Tester-achievementsets-ab12.json")));
         assert_eq!(kept("r=startsession&u=Te/../x&t=Tok&g=7&m=ab12"), Some(dir.join("Te____x-startsession-ab12.json")));
         assert_eq!(kept("r=awardachievement&u=Tester&a=1"), None);
+    }
+
+    #[test]
+    fn an_unlock_still_being_sent_as_the_game_ends_waits() {
+        let dir = test_dir("unsent");
+        let award = "r=awardachievement&u=Tester&t=Tok&a=5501&h=1&m=ab12&v=x";
+        // The game ends while the server takes its time: the unlock waits, once, even if
+        // the answer comes after all.
+        let ended = std::cell::Cell::new(0);
+        let slow = |_: &str, _: Option<&str>| {
+            assert_eq!(unsent(&dir), 1);
+            ended.set(keep_unsent(&dir));
+            ended.set(ended.get() + keep_unsent(&dir));
+            (-2, Vec::new())
+        };
+        assert_eq!(answer(&dir, "u", Some(award), &slow).2, Source::Waiting);
+        assert_eq!(ended.get(), 2);
+        assert_eq!(waiting(&dir), 1);
+        assert_eq!(unsent(&dir), 0, "its answer came");
+        let line = std::fs::read_to_string(dir.join(WAITING_FILE)).unwrap();
+        let unlock = Unlock::parse(line.trim_end()).unwrap();
+        assert_eq!((unlock.id, unlock.hardcore, unlock.hash.as_str()), (5501, true, "ab12"));
+
+        // Other requests aren't kept, and an unlock answered before the end isn't either.
+        let other = test_dir("unsent-other");
+        let ping = |_: &str, _: Option<&str>| {
+            assert_eq!(keep_unsent(&other), 0);
+            (-2, Vec::new())
+        };
+        answer(&other, "u", Some("r=ping&u=Tester&t=Tok&g=7"), &ping);
+        let online = |_: &str, _: Option<&str>| (200, br#"{"Success":true,"AchievementID":5501}"#.to_vec());
+        answer(&other, "u", Some(award), &online);
+        assert_eq!((keep_unsent(&other), waiting(&other)), (0, 0));
+        std::fs::remove_dir_all(&dir).unwrap();
+        let _ = std::fs::remove_dir_all(&other);
     }
 
     #[test]

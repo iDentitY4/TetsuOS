@@ -180,8 +180,9 @@ ADVANCED > RUN SETUP AGAIN repeats.
 - USB host mode is disabled (see the PHY note below), so USB accessories don't work
 - An occasional single audio underrun during play, seen in `/var/log/launcher.log`
 - 50 Hz games show some frames twice on the 59.94 Hz panel
-- Once (2026-11-09), Wi-Fi stayed connected but sent nothing from 53 s after boot, with
-  rtw88 logging `failed to get tx report from firmware`; a reboot fixed it
+- Twice (2026-11-09, 2026-11-13), Wi-Fi stayed connected but sent nothing from 53 s and
+  312 s after boot, with rtw88 logging `failed to get tx report from firmware`; restarting
+  `S42wifi` didn't help, a reboot did
 
 ## Next steps
 
