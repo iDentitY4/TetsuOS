@@ -1,0 +1,6 @@
+config BR2_PACKAGE_LIBRETRO_BEETLE_VB
+	bool "libretro-beetle-vb"
+	help
+	  The Beetle VB emulator (Mednafen), as a libretro core: Virtual Boy.
+
+	  https://github.com/libretro/beetle-vb-libretro

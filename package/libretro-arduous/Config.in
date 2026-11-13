@@ -1,0 +1,6 @@
+config BR2_PACKAGE_LIBRETRO_ARDUOUS
+	bool "libretro-arduous"
+	help
+	  The Arduous emulator, as a libretro core: Arduboy.
+
+	  https://github.com/libretro/arduous

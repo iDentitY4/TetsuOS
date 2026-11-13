@@ -1,0 +1,6 @@
+config BR2_PACKAGE_LIBRETRO_PICODRIVE
+	bool "libretro-picodrive"
+	help
+	  The PicoDrive emulator, as a libretro core: Sega 32X.
+
+	  https://github.com/libretro/picodrive

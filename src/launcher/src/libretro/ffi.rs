@@ -3,7 +3,7 @@
 use crate::ingame::core_options::{
     Category, Choice, Declarations, Declared,
 };
-use std::ffi::{c_char, c_uint, c_void, CStr};
+use std::ffi::{c_char, c_int, c_uint, c_void, CStr};
 
 pub(super) const ENVIRONMENT_EXPERIMENTAL: c_uint = 0x10000;
 
@@ -31,6 +31,10 @@ pub(super) const ENVIRONMENT_SET_MEMORY_MAPS: c_uint = 36;
 
 pub(super) const ENVIRONMENT_GET_CORE_OPTIONS_VERSION: c_uint = 52;
 
+pub(super) const ENVIRONMENT_GET_LOG_INTERFACE: c_uint = 27;
+/// The first core options interface, without categories, which `PokeMini` and Beetle VB use.
+pub(super) const ENVIRONMENT_SET_CORE_OPTIONS: c_uint = 53;
+pub(super) const ENVIRONMENT_SET_CORE_OPTIONS_INTL: c_uint = 54;
 pub(super) const ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY: c_uint = 55;
 
 pub(super) const ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION: c_uint = 57;
@@ -60,6 +64,17 @@ pub(super) struct Variable {
     pub(super) value: *const c_char,
 }
 
+/// `struct retro_log_callback`.
+#[repr(C)]
+pub(super) struct LogCallback {
+    pub(super) log: unsafe extern "C" fn(level: c_int, format: *const c_char, ...),
+}
+
+unsafe extern "C" {
+    /// In `core_log.c`: prints a core's warnings and errors.
+    pub(super) fn launcher_core_log(level: c_int, format: *const c_char, ...);
+}
+
 /// `struct retro_core_option_value`.
 #[repr(C)]
 pub(super) struct OptionValue {
@@ -87,6 +102,23 @@ pub(super) struct OptionDefinition {
     pub(super) category_key: *const c_char,
     pub(super) values: [OptionValue; 128],
     pub(super) default_value: *const c_char,
+}
+
+/// `struct retro_core_option_definition`, the first interface's.
+#[repr(C)]
+pub(super) struct OptionDefinitionV1 {
+    pub(super) key: *const c_char,
+    pub(super) desc: *const c_char,
+    pub(super) info: *const c_char,
+    pub(super) values: [OptionValue; 128],
+    pub(super) default_value: *const c_char,
+}
+
+/// `struct retro_core_options_intl`. Only `us` is read, as with the second interface.
+#[repr(C)]
+pub(super) struct CoreOptionsV1Intl {
+    pub(super) us: *const OptionDefinitionV1,
+    pub(super) local: *const OptionDefinitionV1,
 }
 
 /// `struct retro_core_options_v2`.
@@ -169,6 +201,42 @@ pub(super) unsafe fn read_options_v2(options: &CoreOptionsV2) -> Declarations {
                 label: pick(item.desc_categorized, item.desc),
                 info: pick(item.info_categorized, item.info),
                 category,
+                choices,
+                default,
+            });
+            definition = definition.add(1);
+        }
+        declarations
+    }
+}
+
+/// What a core declares with the first interface: a list of definitions, with no categories.
+///
+/// # Safety
+/// `definition` is null or points to a list that ends in an entry without a key.
+pub(super) unsafe fn read_options_v1(mut definition: *const OptionDefinitionV1) -> Declarations {
+    // SAFETY: the caller promises a list that ends in an entry without a key, which is where
+    // the loop stops. Its strings are null or C strings, as `c_text` needs.
+    unsafe {
+        let mut declarations = Declarations::default();
+        while !definition.is_null() && !(*definition).key.is_null() {
+            let item = &*definition;
+            let choices: Vec<Choice> = item
+                .values
+                .iter()
+                .take_while(|value| !value.value.is_null())
+                .map(|value| Choice { value: c_text(value.value), label: c_text(value.label) })
+                .collect();
+            let default = if item.default_value.is_null() {
+                choices.first().map(|choice| choice.value.clone()).unwrap_or_default()
+            } else {
+                c_text(item.default_value)
+            };
+            declarations.options.push(Declared {
+                key: c_text(item.key),
+                label: c_text(item.desc),
+                info: c_text(item.info),
+                category: String::new(),
                 choices,
                 default,
             });

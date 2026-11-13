@@ -1,0 +1,6 @@
+config BR2_PACKAGE_LIBRETRO_STELLA
+	bool "libretro-stella"
+	help
+	  The Stella emulator, as a libretro core: Atari 2600.
+
+	  https://github.com/stella-emu/stella

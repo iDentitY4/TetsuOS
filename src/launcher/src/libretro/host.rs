@@ -19,15 +19,16 @@ use std::path::Path;
 use std::process::Child;
 use std::time::{Duration, Instant};
 use super::ffi::{
-    CoreOptionsV2, CoreOptionsV2Intl, DEVICE_JOYPAD, ENVIRONMENT_EXPERIMENTAL,
+    CoreOptionsV1Intl, CoreOptionsV2, CoreOptionsV2Intl, DEVICE_JOYPAD, ENVIRONMENT_EXPERIMENTAL,
     ENVIRONMENT_GET_CAN_DUPE, ENVIRONMENT_GET_CORE_OPTIONS_VERSION,
-    ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION, ENVIRONMENT_GET_RUMBLE_INTERFACE, ENVIRONMENT_GET_SAVE_DIRECTORY,
+    ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION, ENVIRONMENT_GET_LOG_INTERFACE, ENVIRONMENT_GET_RUMBLE_INTERFACE, ENVIRONMENT_GET_SAVE_DIRECTORY,
     ENVIRONMENT_GET_SYSTEM_DIRECTORY, ENVIRONMENT_GET_VARIABLE, ENVIRONMENT_GET_VARIABLE_UPDATE,
-    ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK,
-    ENVIRONMENT_SET_CORE_OPTIONS_V2, ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL,
-    ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE, ENVIRONMENT_SET_MEMORY_MAPS,
-    ENVIRONMENT_SET_PIXEL_FORMAT, ENVIRONMENT_SET_VARIABLES, ENVIRONMENT_SHUTDOWN, OptionDisplay, RawDiskControl,
-    RumbleInterface, UpdateDisplay, Variable, c_text, read_options_v2,
+    ENVIRONMENT_SET_CORE_OPTIONS, ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, ENVIRONMENT_SET_CORE_OPTIONS_INTL,
+    ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK, ENVIRONMENT_SET_CORE_OPTIONS_V2,
+    ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL, ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE, ENVIRONMENT_SET_MEMORY_MAPS,
+    ENVIRONMENT_SET_PIXEL_FORMAT, ENVIRONMENT_SET_VARIABLES, ENVIRONMENT_SHUTDOWN, OptionDefinitionV1, OptionDisplay,
+    LogCallback, RawDiskControl, RumbleInterface, UpdateDisplay, Variable, c_text, launcher_core_log,
+    read_options_v1, read_options_v2,
 };
 use super::scale::{PixelFormat, Scaler, picture_size};
 use super::core::c_path;
@@ -273,6 +274,7 @@ fn needs_data(command: c_uint) -> bool {
             | ENVIRONMENT_GET_VARIABLE_UPDATE
             | ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION
             | ENVIRONMENT_GET_RUMBLE_INTERFACE
+            | ENVIRONMENT_GET_LOG_INTERFACE
             | ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE
             | ENVIRONMENT_SET_MEMORY_MAPS
     )
@@ -294,6 +296,10 @@ pub(super) unsafe extern "C" fn environment(command: c_uint, data: *mut c_void) 
         match command & !ENVIRONMENT_EXPERIMENTAL {
             ENVIRONMENT_GET_CAN_DUPE => {
                 *data.cast::<bool>() = true;
+                true
+            }
+            ENVIRONMENT_GET_LOG_INTERFACE => {
+                (*data.cast::<LogCallback>()).log = launcher_core_log;
                 true
             }
             ENVIRONMENT_SHUTDOWN => {
@@ -342,6 +348,21 @@ pub(super) unsafe extern "C" fn environment(command: c_uint, data: *mut c_void) 
             }
             ENVIRONMENT_GET_CORE_OPTIONS_VERSION => {
                 *data.cast::<c_uint>() = 2;
+                true
+            }
+            ENVIRONMENT_SET_CORE_OPTIONS | ENVIRONMENT_SET_CORE_OPTIONS_INTL => {
+                let definitions = if command & !ENVIRONMENT_EXPERIMENTAL == ENVIRONMENT_SET_CORE_OPTIONS {
+                    data as *const OptionDefinitionV1
+                } else if data.is_null() {
+                    std::ptr::null()
+                } else {
+                    (*(data as *const CoreOptionsV1Intl)).us
+                };
+                if definitions.is_null() {
+                    return false;
+                }
+                let declarations = read_options_v1(definitions);
+                with_host(|host| host.declarations = declarations);
                 true
             }
             ENVIRONMENT_SET_CORE_OPTIONS_V2 | ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL => {
@@ -576,10 +597,10 @@ pub(super) fn set_host(directory: &Path, target: (usize, usize), setup: CoreSetu
 mod tests {
     use super::*;
     use crate::libretro::ffi::{
-        CoreOptionsV2, CoreOptionsV2Intl, ENVIRONMENT_GET_CORE_OPTIONS_VERSION,
-        ENVIRONMENT_GET_VARIABLE, ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY,
+        CoreOptionsV1Intl, CoreOptionsV2, CoreOptionsV2Intl, ENVIRONMENT_GET_CORE_OPTIONS_VERSION,
+        ENVIRONMENT_GET_VARIABLE, ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, ENVIRONMENT_SET_CORE_OPTIONS_INTL,
         ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL, ENVIRONMENT_SET_VARIABLES, OptionCategory,
-        OptionDefinition, OptionDisplay, OptionValue, Variable, c_text,
+        OptionDefinition, OptionDefinitionV1, OptionDisplay, OptionValue, Variable, c_text,
     };
 
     #[test]
@@ -657,6 +678,48 @@ mod tests {
         assert_eq!((borders.label.as_str(), borders.category.as_str(), borders.default.as_str()), ("Borders", "video", "ON"));
         assert_eq!((bios.label.as_str(), bios.default.as_str()), ("Skip BIOS Intro", "OFF"));
         assert_eq!(bios.choices.iter().map(|choice| choice.value.as_str()).collect::<Vec<_>>(), ["OFF", "ON"]);
+    }
+
+    #[test]
+    fn cores_get_a_log_function_that_takes_c_arguments() {
+        test_host(false);
+        let mut callback = std::mem::MaybeUninit::<LogCallback>::uninit();
+        assert!(call(ENVIRONMENT_GET_LOG_INTERFACE, callback.as_mut_ptr().cast::<c_void>()));
+        // SAFETY: the frontend filled it in, and the format matches its arguments.
+        unsafe {
+            let log = callback.assume_init().log;
+            log(3, c"core error: %s at %d (from a test)\n".as_ptr(), c"text".as_ptr(), 42);
+            log(1, c"info, left out\n".as_ptr());
+        }
+        assert!(!call(ENVIRONMENT_GET_LOG_INTERFACE, std::ptr::null_mut()), "nowhere to write it");
+    }
+
+    #[test]
+    fn a_core_declares_version_1_options() {
+        test_host(true);
+        let none = std::ptr::null();
+        let option = |key: &CStr, values: &[&CStr], default: Option<&CStr>| OptionDefinitionV1 {
+            key: if key.is_empty() { none } else { key.as_ptr() },
+            desc: c"60 Hz Mode".as_ptr(),
+            info: none,
+            values: std::array::from_fn(|index| OptionValue {
+                value: values.get(index).map_or(none, |value| value.as_ptr()),
+                label: none,
+            }),
+            default_value: default.map_or(none, CStr::as_ptr),
+        };
+        let definitions = [
+            option(c"pokemini_60hz_mode", &[c"disabled", c"enabled"], Some(c"enabled")),
+            option(c"pokemini_palette", &[c"Default", c"Old"], None),
+            option(c"", &[], None),
+        ];
+        let mut intl = CoreOptionsV1Intl { us: definitions.as_ptr(), local: std::ptr::null() };
+        assert!(call(ENVIRONMENT_SET_CORE_OPTIONS_INTL, (&raw mut intl).cast::<c_void>()));
+        let declarations = with_host(|host| host.declarations.clone());
+        let [hz, palette] = &declarations.options[..] else { panic!("{declarations:?}") };
+        assert_eq!((hz.label.as_str(), hz.default.as_str(), hz.category.as_str()), ("60 Hz Mode", "enabled", ""));
+        assert_eq!(palette.default, "Default", "the first choice, when the core names none");
+        assert_eq!(get(c"pokemini_60hz_mode").as_deref(), Some("enabled"), "answered, as the core declares defaults");
     }
 
     #[test]

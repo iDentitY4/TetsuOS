@@ -1,5 +1,5 @@
-//! Compiles rcheevos, the `RetroAchievements` library, into the launcher. Buildroot sets
-//! `CC` and `CFLAGS` for the device, which the `cc` crate uses.
+//! Compiles rcheevos, the `RetroAchievements` library, and the cores' log function into
+//! the launcher. Buildroot sets `CC` and `CFLAGS` for the device, which the `cc` crate uses.
 
 fn main() {
     let root = std::path::Path::new("rcheevos");
@@ -24,6 +24,8 @@ fn main() {
         .define("RC_HASH_NO_ENCRYPTED", None)
         .warnings(false)
         .compile("rcheevos");
+    cc::Build::new().file("core_log.c").compile("core_log");
+    println!("cargo:rerun-if-changed=core_log.c");
     println!("cargo:rerun-if-changed=rcheevos");
     println!("cargo:rerun-if-changed=rcheevos_layout.c");
 }

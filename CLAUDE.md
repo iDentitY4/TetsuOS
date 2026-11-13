@@ -33,7 +33,9 @@ mirrors the screen at 640x480 (`video=` in `extlinux.conf`), without sound.
 Games: NES (FCEUmm), SNES (Snes9x), Game Boy, Color and Advance (mGBA), PlayStation (PCSX
 ReARMed, with discs grouped by name or an `.m3u`, and CHANGE DISC), Mega Drive, Master System and Game Gear (Genesis Plus GX), PC Engine (Beetle PCE
 Fast), Neo Geo Pocket and Color (Beetle NeoPop), WonderSwan and Color (Beetle Cygne), Lynx
-(Handy) and Tamagotchi (tamalib), and two games that aren't emulated, Doom (PrBoom, with
+(Handy), Tamagotchi (tamalib), SG-1000 (Genesis Plus GX), Atari 2600 (Stella) and 7800
+(ProSystem), Vectrex (vecx), Virtual Boy (Beetle VB), Pokemon Mini (PokeMini), Watara
+Supervision (Potator), 32X (PicoDrive) and Arduboy (Arduous), and two games that aren't emulated, Doom (PrBoom, with
 Freedoom: Phase 1 and 2) and Cave Story (NXEngine), both copied to TETSU-DATA once and
 saving from their own menus; cartridge games also in ZIP files, with an in-game menu (8 save slots, levels, display
 options, screenshots to PNG, also used as the cover of a game without one, button remapping and turbo per console or game, each core's own options per console or game, cheat codes from `.cht` files, also downloaded on the device, and SWITCH GAME to the other recent games, each resuming, as a list or covers, also on Menu + Select), RetroAchievements (login, unlock notices with badges, a progress page, hardcore, off for every game or one), resume on leaving and after power-off, fast-forward on R2, sharp-bilinear
@@ -52,6 +54,11 @@ A new install starts with a setup (language, Wi-Fi, time, adding games), which S
 ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Not yet checked by the user
+
+- The nine consoles from 2026-11-13 (SG-1000, Atari 2600 and 7800, Vectrex, Virtual Boy,
+  Pokemon Mini, Supervision, 32X, Arduboy): sound, controls, real games for the 7800,
+  Supervision, SG-1000 and Pokemon Mini, the icons' look; the Arduboy plays at about 57 fps
+  under schedutil (`docs/features.md`). Test ROMs are in `roms/TEST` on the device
 
 - Doom and Cave Story (2026-11-12): their sound, the controls on the real buttons, a Cave
   Story save point and continuing from it, a WAD of the user's own and a PWAD beside it, the

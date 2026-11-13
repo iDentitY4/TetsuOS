@@ -30,6 +30,9 @@ fn handheld_body(console: &str) -> Option<Body> {
         "ws" => (0xD5D1C7, 0x3A3D46),
         "wsc" => (0x3D6FA7, 0x1A1D24),
         "lynx" => (0x2C2C2C, 0x121212),
+        "sv" => (0x3E4147, 0x18191D),
+        "pokemini" => (0x8C7FC0, 0x22212B),
+        "arduboy" => (0xB8BDC4, 0x141518),
         _ => return None,
     };
     Some(Body { shell: rgb(shell), glass: rgb(glass) })
@@ -192,7 +195,7 @@ mod tests {
 
     #[test]
     fn auto_gives_the_handhelds_a_bezel_and_the_others_black() {
-        for console in ["gb", "gbc", "gba", "gg", "ngp", "ngpc", "ws", "wsc", "lynx"] {
+        for console in ["gb", "gbc", "gba", "gg", "ngp", "ngpc", "ws", "wsc", "lynx", "sv", "pokemini", "arduboy"] {
             assert_eq!(resolve(Border::Auto, Some(console)), Border::Bezel, "{console}");
         }
         for console in [Some("nes"), Some("snes"), Some("ps1"), Some("md"), None] {
@@ -207,7 +210,7 @@ mod tests {
     fn every_handheld_has_a_body() {
         for system in &crate::library::systems::SYSTEMS {
             let handheld = handheld_body(system.key).is_some();
-            let expected = matches!(system.key, "gb" | "gbc" | "gba" | "gg" | "ngp" | "ngpc" | "ws" | "wsc" | "lynx");
+            let expected = matches!(system.key, "gb" | "gbc" | "gba" | "gg" | "ngp" | "ngpc" | "ws" | "wsc" | "lynx" | "sv" | "pokemini" | "arduboy");
             assert_eq!(handheld, expected, "{}", system.key);
         }
     }

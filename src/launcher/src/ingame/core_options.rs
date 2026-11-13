@@ -22,7 +22,7 @@ use std::sync::Mutex;
 pub const CONSOLE_DIR: &str = crate::device::paths::data_path!("/core-options");
 
 /// Options whose default here differs from the core's. Any other option keeps its default.
-pub const FRONTEND_DEFAULTS: [(&str, &str); 4] = [
+pub const FRONTEND_DEFAULTS: [(&str, &str); 5] = [
     // Super Game Boy games would otherwise fill only half the screen, inside a border.
     ("mgba_sgb_borders", "OFF"),
     // The original screens were dim and washed out, so games chose strong colours to make
@@ -33,6 +33,9 @@ pub const FRONTEND_DEFAULTS: [(&str, &str); 4] = [
     // The PlayStation's second memory card would be a file shared by all games, which
     // nothing uses. The first is the game's save memory, in its `.srm` file.
     ("pcsx_rearmed_memcard2", "none"),
+    // PokeMini draws its own dot matrix at four times the size. At its own size, the
+    // frontend scales it and draws its LCD effect and bezel, as for the other handhelds.
+    ("pokemini_video_scale", "1x"),
 ];
 
 /// Options the frontend sets from its own menus, which the page leaves out.

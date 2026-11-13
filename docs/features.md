@@ -706,6 +706,55 @@ Working on the test unit, confirmed by the user:
   in-game menu without the state rows, Cave Story's intro, and deleting Cave Story from its
   details screen removing its folder and play time. Nobody has heard either game, played
   them on the buttons, or reached a Cave Story save point
+- Nine more consoles (2026-11-13). SG-1000 (`.sg`) runs on Genesis Plus GX, which already
+  ships. Eight new cores, each its own package, built from a pinned commit:
+  `libretro-stella` (Atari 2600, `.a26`; current Stella from `stella-emu/stella`, built in
+  `src/os/libretro`, rather than Stella2014), `libretro-prosystem` (Atari 7800, `.a78`),
+  `libretro-vecx` (Vectrex, `.vec`, built with `HAS_GPU=0`, as the frontend has no GL),
+  `libretro-beetle-vb` (Virtual Boy, `.vb`, `.vboy`), `libretro-pokemini` (Pokemon Mini,
+  `.min`), `libretro-potator` (Watara Supervision, `.sv`), `libretro-arduous` (Arduboy,
+  `.hex`, a CMake package) and `libretro-picodrive` (32X, `.32x`). PicoDrive and Arduous
+  have git submodules, so they download with `SITE_METHOD = git`. `.bin`, which several of
+  these cores also take, stays unlisted, as for the Mega Drive. None of them needs a BIOS:
+  vecx has the Vectrex's built in (an empty cartridge runs Mine Storm), PokeMini uses its
+  FreeBIOS, ProSystem skips the 7800's, and PicoDrive emulates the 32X's own. All use
+  `Persistence::BatteryRam` with declared defaults. Virtual Boy, 32X and Arduboy keep save
+  memory in the `.srm`. PokeMini writes `saves/<game>.eep` itself when the game unloads, as
+  the Lynx does. The 2600, 7800, Vectrex and Supervision have no save memory, so their games
+  keep only the resume point and state slots. Only PicoDrive applies cheat codes, so only the
+  32X has a `cheats` folder. Box art comes from the libretro-thumbnails folders of the same
+  names, and RetroAchievements uses consoles 33 (SG-1000), 25, 51, 46, 28, 24, 63, 71 and 10
+  (32X). The Supervision, Pokemon Mini and Arduboy are handhelds with a bezel. The tiles go
+  in release order, from the Atari 2600 (1977) to the Arduboy (2016), after Cave Story.
+
+  PicoDrive forces the libretro file interface (`USE_LIBRETRO_VFS := 1`), with which
+  `dr_mp3.h` assigns stdio's `FILE *` to libretro's `RFILE *`, an error in GCC 15. The
+  frontend doesn't offer that interface anyway, so it is built with `USE_LIBRETRO_VFS=0`.
+  It builds for `platform=aarch64`, which uses the arm64 SH-2 dynarec for the 32X. PokeMini
+  runs at the Pokemon Mini's 72 Hz unless `pokemini_60hz_mode` is on, which drops every
+  sixth frame and is the core's default; it reaches the core because the frontend now takes
+  the first options interface (see the cores' options below). `FRONTEND_DEFAULTS` sets
+  `pokemini_video_scale` to 1x, so the frontend scales the 96x64 picture and draws its LCD
+  effect and bezel, instead of the core's 4x dot matrix. Beetle VB shows the plain red and
+  black picture by default (anaglyph mode with the preset disabled). Vectrex and Virtual Boy
+  are 50 Hz, so they show some frames twice, as PAL games do. PokeMini aborts on a file of
+  0x2100 bytes or less, which it refuses, but a real cartridge is never that small, and a
+  game runs in its own process.
+
+  Tested by Claude on the device, with free homebrew and test ROMs: Warcraft 32X (black, as
+  it needs the user's Warcraft demo data), the 32X 240p Test Suite (its menu, at 256 fps
+  headless and 59.63 fps playing with 4.2 ms of emulation at 720 MHz), the Capitan Sevilla 3D
+  demo for the Virtual Boy (124 fps headless, 50.41 fps playing, 6.6 ms at 1008 MHz),
+  Catacombs of the Damned for the Arduboy (190 fps headless), Mine Storm on the Vectrex (166
+  fps headless, 50.03 fps), colour bars written for the 2600 (157 fps headless, 59.84 fps after
+  the first seconds), PokeMini's FreeBIOS padded to 16 KiB ("NO CART", 600 fps) and idle
+  loops for the 7800, Supervision and SG-1000 (over 300 fps). The tiles and icons, the Virtual
+  Boy game from the menus with SAVE STATE, CORE OPTIONS, QUIT and a resume at the same
+  screen, and RetroAchievements identifying it, were checked through the screen. The Arduboy
+  plays at about 57 fps, because schedutil keeps the CPU at 720 MHz while it needs 7.6 ms per
+  frame there with uneven frames; at 1512 MHz it played at 59.84 fps. Nobody has heard these
+  consoles, played them on the buttons, or tried a real 7800, Supervision, SG-1000 or Pokemon
+  Mini game
 - With more consoles a full home screen reached four rows, too short for a tile's text, so
   GRID SIZE's NORMAL now shows three rows at a time and pages beyond, as LARGE does
 
@@ -1523,7 +1572,14 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   `SET_CORE_OPTIONS_V2` and `_V2_INTL` (reading `us`; the frontend reports no language, so
   `local` is empty). Cores built with `libretro_core_options.h` send only `_V2_INTL` and
   don't fall back if it is refused. `SET_VARIABLES` is read too, for Tamalib, which
-  declares nothing. `SET_CORE_OPTIONS_DISPLAY` hides options the core says don't apply, and
+  declares nothing. Since 2026-11-13 the first interface, `SET_CORE_OPTIONS` and
+  `SET_CORE_OPTIONS_INTL` (definitions without categories), is read too, for PokeMini and
+  Beetle VB, which send it after a version of 2 and fall back to nothing when it is refused.
+  Answering their options showed that Beetle VB calls its log callback unchecked, so the
+  frontend now answers `GET_LOG_INTERFACE` with `launcher_core_log` from `core_log.c`, in C
+  as it takes variable arguments. It prints warnings and errors to the launcher's log, and
+  stops after 300. Handy's and PrBoom's log patches are older and still harmless. Stella
+  logs one `File open/read error` as it starts, and the game runs. `SET_CORE_OPTIONS_DISPLAY` hides options the core says don't apply, and
   the `UPDATE_DISPLAY_CALLBACK` is called after each change, so the page follows. Options
   with one choice, and mGBA's `mgba_interframe_blending`, which IN GAME > LCD GHOSTING
   sets, are left out. `FRONTEND_DEFAULTS` (SGB borders off, colour correction Auto, FCEUmm's
