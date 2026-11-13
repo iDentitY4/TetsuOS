@@ -1517,6 +1517,41 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   screenshot, each after going through the home screen. The other consoles, including PlayStation's
   wide modes, a ZIP and a full card, are covered by unit tests at most, or not at all
 
+- The screenshot gallery (`library/gallery.rs`). A SCREENSHOTS tile on the home screen,
+  before SETTINGS, opens every picture in `/mnt/data/screenshots`; it is there only while
+  there are any, and HOME SCREEN TILES can hide it like the others (`screenshots` in
+  `hidden_tiles=`). It has no count under it, as the tiles count games. A game's details
+  screen has a SCREENSHOTS row with that game's count, only while it has some, which opens
+  the gallery with just its pictures. The details screen's facts and rows moved closer
+  together (22 and 26 lines) so its five rows and the delete question still fit above the hint.
+
+  The gallery shows thumbnails 4 by 3, newest first by the file's time, a game's own by
+  their number when the times are the same (FAT keeps them to 2 seconds). Each is drawn in
+  its console's shape, as covers are, in a 136x102 cell; a file that can't be read shows
+  its console's icon. Below the grid are the game's icon, its name as the library has it
+  and the number from the file (SUPER MARIO BROS. 001), and the place among them (3 OF 14).
+  A file not named the menu's way shows its own name and a camera icon, and a game no
+  longer on the card its file's name. The arrows move, L1 and R1 go a page; A shows the
+  selected one large, up to 600x322 and enlarged with the same averaging as covers, where
+  Left and Right step through all of them and B goes back to the grid. Y and then A deletes
+  the selected one (PRESS A TO DELETE THIS SCREENSHOT; anything else calls it off); the
+  next one is selected, and deleting the last leaves the gallery. Thumbnails are read when
+  their page shows and kept while the gallery is open. Leaving after a delete reads the
+  folder again and forgets the covers, so a game whose cover was that picture shows its
+  next newest or its icon. The gallery is its own loop, like SET TIME, opened by
+  `run_launcher` because it names the games from the library. Matching a picture to its
+  game only asks games whose file is named like it, as a ZIP's save name means opening it;
+  each game's name is remembered in `Library::screenshot_bases`.
+
+  Claude tested on the device on 2026-11-13 with injected presses and screenshots, with
+  copies (number 900) of the user's two pictures: the tile and its line, the grid with the
+  copies first, the large view of a Game Boy picture, Y with its question and A deleting it,
+  then Super Mario Bros.' details showing 2, its gallery with only its two, deleting one
+  there and the row showing 1 on the way back. The user's pictures were left as they were.
+  Not tried: more than a page of pictures, a broken file, the lid, the German wording on the
+  device (checked in `--preview-gallery` with `LAUNCHER_PREVIEW_LANGUAGE=de`). The previews
+  are `--preview-gallery` and `--preview-gallery-full`.
+
 - Button remapping and turbo. CONTROLS in the in-game menu (`controls.rs`,
   `canvas::controls_screen`) opens a page with a row for each of A, B, X, Y, L1, R1, L2, R2,
   SELECT and START. Left and Right choose what the button presses in the game: any of those,

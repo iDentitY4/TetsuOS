@@ -2,6 +2,7 @@
 //! from running games so they can be tested.
 
 use crate::i18n::tr;
+use crate::ingame::screenshot::{self, Shot};
 use crate::ui::input::Button;
 use crate::library::play_log::Log;
 use crate::settings::{GameSort, GridSize, NoticeKind};
@@ -59,6 +60,11 @@ pub struct Library {
     pub last_played: RefCell<HashMap<usize, Option<LastPlayed>>>,
     /// Play time by day and console, for the statistics screen.
     pub play_log: Log,
+    /// The in-game menu's pictures, newest first, for the gallery.
+    pub screenshots: Vec<Shot>,
+    /// Each game's screenshots' name, found the first time its details ask, as finding it
+    /// opens a ZIP.
+    pub screenshot_bases: RefCell<HashMap<PathBuf, Option<String>>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -75,6 +81,8 @@ pub enum Tile {
     Recent,
     Favorites,
     System(usize),
+    /// The screenshot gallery, while there are screenshots.
+    Screenshots,
     Settings,
 }
 
@@ -102,12 +110,16 @@ pub enum DetailRow {
     Star,
     /// Turns `RetroAchievements` off for this game, or on again. Only for consoles with them.
     Achievements,
+    /// Opens the gallery with this game's screenshots. Only while it has any.
+    Screenshots,
     Delete,
 }
 
 /// Every row there can be, in order. A game whose console has no achievements goes
-/// without `DetailRow::Achievements`.
-pub const DETAIL_ROWS: [DetailRow; 4] = [DetailRow::Play, DetailRow::Star, DetailRow::Achievements, DetailRow::Delete];
+/// without `DetailRow::Achievements`, and one without screenshots without
+/// `DetailRow::Screenshots`.
+pub const DETAIL_ROWS: [DetailRow; 5] =
+    [DetailRow::Play, DetailRow::Star, DetailRow::Achievements, DetailRow::Screenshots, DetailRow::Delete];
 
 /// A tile on the settings grid. Each opens a list of its settings, except Wi-Fi and
 /// Bluetooth, which open their own screens, Cores, which opens the consoles' core
@@ -487,6 +499,8 @@ pub enum Command {
     DeleteGame(PathBuf),
     /// Turns `RetroAchievements` off for the game, or on again.
     ToggleGameAchievements(PathBuf),
+    /// The screenshot gallery: one game's pictures, or all of them.
+    Screenshots(Option<PathBuf>),
     /// Turns `RetroAchievements` off for every game, or on again.
     ToggleAchievements,
     ButtonTest,
@@ -604,6 +618,9 @@ impl Library {
             tiles.push(Tile::Favorites);
         }
         tiles.extend(self.shelves.iter().map(|shelf| Tile::System(shelf.system)));
+        if !self.screenshots.is_empty() {
+            tiles.push(Tile::Screenshots);
+        }
         tiles.push(Tile::Settings);
         tiles.retain(|tile| !self.hidden.contains(tile));
         if tiles.is_empty() {
@@ -617,8 +634,33 @@ impl Library {
     pub fn every_tile(&self) -> Vec<Tile> {
         let mut tiles = vec![Tile::Recent, Tile::Favorites];
         tiles.extend((0..self.systems).map(Tile::System));
+        tiles.push(Tile::Screenshots);
         tiles.push(Tile::Settings);
         tiles
+    }
+
+    /// The name a game's screenshots start with, remembered.
+    pub fn screenshot_base(&self, game: &std::path::Path) -> Option<String> {
+        self.screenshot_bases.borrow_mut().entry(game.to_path_buf()).or_insert_with(|| screenshot::base_for(game)).clone()
+    }
+
+    /// How many screenshots a game has.
+    pub fn screenshot_count(&self, game: &std::path::Path) -> usize {
+        if self.screenshots.is_empty() {
+            return 0;
+        }
+        self.screenshot_base(game).map_or(0, |base| self.screenshots.iter().filter(|shot| shot.base == base).count())
+    }
+
+    /// The game a screenshot was taken in, while it is on the card. Only games whose file
+    /// is named like the picture are asked, as finding a ZIP's save name opens it.
+    pub fn screenshot_game(&self, base: &str) -> Option<&Game> {
+        let stem = std::path::Path::new(base).file_stem();
+        self.shelves.iter().flat_map(|shelf| &shelf.games).find(|game| {
+            let own = game.path.file_stem();
+            (own == Some(std::ffi::OsStr::new(base)) || own == stem)
+                && self.screenshot_base(&game.path).as_deref() == Some(base)
+        })
     }
 
     /// Whether a list is by name, so that jumping by letter makes sense. Search results always
@@ -763,8 +805,17 @@ impl Launcher {
 
     /// The rows on the details screen for its game.
     pub fn detail_rows(&self, library: &Library) -> Vec<DetailRow> {
-        let achievements = self.details_game(library).is_some_and(|game| library.achievement_systems.contains(&game.system));
-        DETAIL_ROWS.into_iter().filter(|&row| row != DetailRow::Achievements || achievements).collect()
+        let game = self.details_game(library);
+        let achievements = game.is_some_and(|game| library.achievement_systems.contains(&game.system));
+        let screenshots = game.is_some_and(|game| library.screenshot_count(&game.path) > 0);
+        DETAIL_ROWS
+            .into_iter()
+            .filter(|&row| match row {
+                DetailRow::Achievements => achievements,
+                DetailRow::Screenshots => screenshots,
+                _ => true,
+            })
+            .collect()
     }
 
     pub fn details_row(&self, library: &Library) -> DetailRow {
@@ -890,6 +941,7 @@ impl Launcher {
                 Tile::Recent => self.screen = Screen::Games(List::Recent),
                 Tile::Favorites => self.screen = Screen::Games(List::Favorites),
                 Tile::System(system) => self.screen = Screen::Games(List::System(system)),
+                Tile::Screenshots => return Command::Screenshots(None),
                 Tile::Settings => self.open_settings(),
             }
         }
@@ -945,6 +997,7 @@ impl Launcher {
                 DetailRow::Play => return Command::Play(path),
                 DetailRow::Star => return Command::ToggleFavorite(path),
                 DetailRow::Achievements => return Command::ToggleGameAchievements(path),
+                DetailRow::Screenshots => return Command::Screenshots(Some(path)),
                 DetailRow::Delete if delete_armed => {
                     self.screen = Screen::Games(list);
                     return Command::DeleteGame(path);
@@ -1183,8 +1236,41 @@ mod tests {
         library.systems = 3;
         assert_eq!(
             library.every_tile(),
-            [Tile::Recent, Tile::Favorites, Tile::System(0), Tile::System(1), Tile::System(2), Tile::Settings]
+            [Tile::Recent, Tile::Favorites, Tile::System(0), Tile::System(1), Tile::System(2), Tile::Screenshots, Tile::Settings]
         );
+    }
+
+    fn shot(base: &str, number: u32) -> Shot {
+        Shot { path: PathBuf::from(format!("/shots/{base} {number:03}.png")), base: base.into(), number: Some(number), modified: None }
+    }
+
+    #[test]
+    fn screenshots_have_a_tile_before_settings_while_there_are_any() {
+        let mut library = library();
+        library.screenshots = vec![shot("Tetris.gb", 1)];
+        assert_eq!(library.tiles().last_chunk(), Some(&[Tile::Screenshots, Tile::Settings]));
+        let mut launcher = Launcher::new();
+        press_all(&mut launcher, &library, &[Button::Right; 4]);
+        assert_eq!(library.tiles()[launcher.home_selected(&library)], Tile::Screenshots);
+        assert_eq!(launcher.press(Button::A, &library), Command::Screenshots(None));
+        assert_eq!(launcher.screen(), Screen::Home);
+        library.hidden = vec![Tile::Screenshots];
+        assert!(!library.tiles().contains(&Tile::Screenshots));
+    }
+
+    #[test]
+    fn a_game_with_screenshots_opens_them_from_its_details() {
+        let tetris = Game { path: PathBuf::from("/roms/GB/Tetris.gb"), name: "Tetris".into(), system: 0 };
+        let mut library = Library { shelves: vec![Shelf { system: 0, games: vec![tetris] }], ..Library::default() };
+        let mut launcher = Launcher::new();
+        press_all(&mut launcher, &library, &[Button::A, Button::Y]);
+        assert!(!launcher.detail_rows(&library).contains(&DetailRow::Screenshots), "none yet");
+        library.screenshots = vec![shot("Tetris.gb", 2), shot("Other.gb", 1), shot("Tetris.gb", 1)];
+        assert_eq!(library.screenshot_count(std::path::Path::new("/roms/GB/Tetris.gb")), 2);
+        assert_eq!(library.screenshot_count(std::path::Path::new("/roms/GB/Gone.gb")), 0);
+        assert_eq!(launcher.detail_rows(&library), [DetailRow::Play, DetailRow::Star, DetailRow::Screenshots, DetailRow::Delete]);
+        press_all(&mut launcher, &library, &[Button::Down, Button::Down]);
+        assert_eq!(launcher.press(Button::A, &library), Command::Screenshots(Some(PathBuf::from("/roms/GB/Tetris.gb"))));
     }
 
     #[test]
@@ -1357,7 +1443,8 @@ mod tests {
         let library = Library { achievement_systems: vec![0], ..details_library() };
         let mut launcher = Launcher::new();
         open_details(&mut launcher, &library);
-        assert_eq!(launcher.detail_rows(&library), DETAIL_ROWS);
+        let without_screenshots: Vec<DetailRow> = DETAIL_ROWS.into_iter().filter(|&row| row != DetailRow::Screenshots).collect();
+        assert_eq!(launcher.detail_rows(&library), without_screenshots);
         press_all(&mut launcher, &library, &[Button::Down, Button::Down]);
         assert_eq!(launcher.details_row(&library), DetailRow::Achievements);
         assert_eq!(launcher.press(Button::A, &library), Command::ToggleGameAchievements(PathBuf::from("banana")));

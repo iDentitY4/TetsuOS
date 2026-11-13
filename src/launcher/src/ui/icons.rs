@@ -1160,6 +1160,34 @@ pub const CORES: Icon = [
     "................................",
 ];
 
+/// Screenshots: a camera.
+pub const SCREENSHOTS: Icon = [
+    "................................",
+    "................................",
+    "................................",
+    "..........KKKKKKKKKK............",
+    ".....RRR..KDDDDDDDDK............",
+    "...KKKKKKKKKKKKKKKKKKKKKKKKKK...",
+    "...KLLLLLLLLLLLLLLLLLLLLLLLLK...",
+    "...KLLLLLLLLKKKKKKLLLLLLLLLLK...",
+    "...KGGGGGGGKKDDDDKKGGGWWWWGGK...",
+    "...KGGGGGGKDDDBBDDDKGGYYYYGGK...",
+    "...KGGGGGKKDBBBBBBDKKGGGGGGGK...",
+    "...KGGGGGKDBWWVVBBBDKGGGGGGGK...",
+    "...KGGGGKKDBWVVVVBBDKKGGGGGGK...",
+    "...KGGGGKKDBBVVVVBBDKKGGGGGGK...",
+    "...KGGGGKKDBBVVVVBBDKKGGGGGGK...",
+    "...KGGGGGKDBBBVVBBBDKGGGGGGGK...",
+    "...KGGGGGKKDBBBBBBDKKGGGGGGGK...",
+    "...KGGGGGGKDDDBBDDDKGGGGGGGGK...",
+    "...KGGGGGGGKKDDDDKKGGGGGGGGGK...",
+    "...KGGGGGGGGKKKKKKGGGGGGGGGGK...",
+    "...KKKKKKKKKKKKKKKKKKKKKKKKKK...",
+    "................................",
+    "................................",
+    "................................",
+];
+
 /// Settings > STATISTICS: a bar chart.
 pub const STATISTICS: Icon = [
     "................................",
@@ -1249,7 +1277,7 @@ pub const LOGO: Icon = [
 mod tests {
     use super::*;
 
-    const ALL: [&Icon; 43] = [
+    const ALL: [&Icon; 44] = [
         &LOGO,
         &ACHIEVEMENTS,
         &CORES,
@@ -1293,6 +1321,7 @@ mod tests {
         &BLUETOOTH,
         &ADVANCED,
         &STATISTICS,
+        &SCREENSHOTS,
     ];
 
     #[test]

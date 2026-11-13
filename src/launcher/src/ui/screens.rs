@@ -413,18 +413,23 @@ pub struct DetailsView<'a> {
     pub starred: bool,
     /// `RetroAchievements` are off for this game.
     pub achievements_off: bool,
+    /// How many screenshots it has, shown on their row.
+    pub screenshots: usize,
     pub art: Option<Art<'a>>,
     pub message: Option<&'a str>,
 }
 
 const DETAILS_NAME_LINES: usize = 3;
-const DETAILS_FACTS_TOP: usize = 150;
-const DETAILS_FACT_ROW: usize = 24;
+const DETAILS_FACTS_TOP: usize = 146;
+const DETAILS_FACT_ROW: usize = 22;
 /// The most facts a game has: the five every game has, and its achievements.
 const DETAILS_MAX_FACTS: usize = 6;
-const DETAILS_ROWS_TOP: usize = 296;
+const DETAILS_ROWS_TOP: usize = 280;
+/// A little lower than a list's, so all five rows fit with the message below them.
+const DETAILS_ROW: usize = 26;
+const _: () = assert!(LIST_TOP + DETAILS_NAME_LINES * 22 <= DETAILS_FACTS_TOP + 4);
 const _: () = assert!(DETAILS_FACTS_TOP + DETAILS_MAX_FACTS * DETAILS_FACT_ROW <= DETAILS_ROWS_TOP);
-const DETAILS_MESSAGE_Y: usize = DETAILS_ROWS_TOP + DETAIL_ROWS.len() * LIST_ROW + 12;
+const DETAILS_MESSAGE_Y: usize = DETAILS_ROWS_TOP + DETAIL_ROWS.len() * DETAILS_ROW + 8;
 /// The rows end before the cover's panel.
 const DETAILS_RIGHT: usize = ART_PANEL.0 - 8;
 
@@ -463,9 +468,9 @@ pub fn details_screen(width: usize, height: usize, view: &DetailsView, frame: &F
         canvas.text_at(value, x, y, TEXT_SCALE, TEXT);
     }
     for (row, &item) in view.rows.iter().enumerate() {
-        let y = DETAILS_ROWS_TOP + row * LIST_ROW;
+        let y = DETAILS_ROWS_TOP + row * DETAILS_ROW;
         let color = if item == view.selected {
-            canvas.rect(0, y, DETAILS_RIGHT, LIST_ROW - 2, canvas.theme.accent);
+            canvas.rect(0, y, DETAILS_RIGHT, DETAILS_ROW - 2, canvas.theme.accent);
             canvas.theme.background
         } else {
             TEXT
@@ -475,10 +480,16 @@ pub fn details_screen(width: usize, height: usize, view: &DetailsView, frame: &F
             DetailRow::Star if view.starred => tr("REMOVE STAR"),
             DetailRow::Star => tr("STAR"),
             DetailRow::Achievements => tr("ACHIEVEMENTS"),
+            DetailRow::Screenshots => tr("SCREENSHOTS"),
             DetailRow::Delete => tr("DELETE GAME AND SAVES"),
         };
-        let text_y = row_text_y(y, LIST_ROW - 2);
+        let text_y = row_text_y(y, DETAILS_ROW - 2);
         canvas.text_at(label, LIST_LEFT, text_y, TEXT_SCALE, color);
+        if item == DetailRow::Screenshots {
+            let count = view.screenshots.to_string();
+            let x = (DETAILS_RIGHT - 8).saturating_sub(text_width(&count, TEXT_SCALE));
+            canvas.text_at(&count, x, text_y, TEXT_SCALE, color);
+        }
         if item == DetailRow::Achievements {
             // As a setting shows it: the state it is in, with arrows while selected.
             let state = if view.achievements_off { tr("OFF") } else { tr("ON") };
@@ -1322,6 +1333,7 @@ pub(crate) mod tests {
             selected: DetailRow::Delete,
             starred: true,
             achievements_off: true,
+            screenshots: 12,
             art: Some(Art::Placeholder(&icons::NES)),
             message: Some("PRESS A AGAIN TO DELETE FOREVER"),
         };

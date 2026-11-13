@@ -60,7 +60,16 @@ pub(crate) fn write_launcher_preview(path: &str, buttons: &[Button]) -> io::Resu
     roms.extend((1..=14).map(|i| PathBuf::from(format!("Game Boy Game {i:02} (USA).gb"))));
     let recent = [&roms[3], &roms[2], &roms[6]].map(PathBuf::clone);
     let favorites = [&roms[1], &roms[3]].map(PathBuf::clone);
-    let library = build_library(&roms, &recent, &favorites, settings::GameNames::Short);
+    let mut library = build_library(&roms, &recent, &favorites, settings::GameNames::Short);
+    // Two of Zelda's, for the SCREENSHOTS tile and its row on the details screen.
+    library.screenshots = (1..=2)
+        .map(|number| crate::ingame::screenshot::Shot {
+            path: PathBuf::from(format!("Legend of Zelda, The (USA) (Rev 1).nes {number:03}.png")),
+            base: "Legend of Zelda, The (USA) (Rev 1).nes".into(),
+            number: Some(number),
+            modified: None,
+        })
+        .collect();
     let mut launcher = Launcher::new();
     for &button in buttons {
         launcher.press(button, &library);
@@ -520,4 +529,50 @@ pub(crate) fn write_boot_animation_preview(path: &str) -> io::Result<()> {
         }
     }
     write_ppm(&sheet, path)
+}
+
+/// The screenshot gallery's thumbnails, or with `full` the selected one large, from made-up
+/// pictures in a few consoles' sizes.
+pub(crate) fn write_gallery_preview(full: bool, path: &str) -> io::Result<()> {
+    use crate::library::gallery::{fit_into, gallery_screen, sized, GalleryView, THUMB_BOUND};
+    use crate::ui::image::Image;
+    let (width, height) = PREVIEW_SIZE;
+    let picture = |w: usize, h: usize, seed: usize| {
+        let pixels = (0..w * h)
+            .map(|index| {
+                let (x, y) = (index % w, index / w);
+                let band = (x / 16 + y / 16 + seed).is_multiple_of(2);
+                let shade = |base: usize| u8::try_from((base + x * 120 / w + seed * 40) % 256).unwrap_or(0);
+                if band { color::Rgb(shade(40), shade(90), 160) } else { color::Rgb(220, shade(120), shade(60)) }
+            })
+            .collect();
+        Image { width: w, height: h, pixels }
+    };
+    let sizes = [(160, 144, None), (240, 160, None), (256, 224, Some((4, 3))), (320, 240, Some((4, 3)))];
+    let icons_for = [&icons::GAME_BOY, &icons::GAME_BOY_ADVANCE, &icons::SNES, &icons::PLAYSTATION];
+    let thumbs: Vec<Image> = (0..14)
+        .map(|index| {
+            let (w, h, aspect) = sizes[index % sizes.len()];
+            sized(&picture(w, h, index), aspect, THUMB_BOUND)
+        })
+        .collect();
+    let mut shown: Vec<(Option<&Image>, &icons::Icon)> =
+        thumbs.iter().take(12).enumerate().map(|(index, image)| (Some(image), icons_for[index % 4])).collect();
+    // A file that can't be read shows its console's icon.
+    shown[7].0 = None;
+    let large = sized(&picture(256, 224, 2), Some((4, 3)), (600, 322));
+    debug_assert_eq!((large.width, large.height), fit_into((298, 224), (600, 322)));
+    let view = GalleryView {
+        count: 14,
+        selected: 2,
+        first: 0,
+        thumbs: &shown,
+        full: full.then_some(Some(&large)),
+        label: "Super Mario World 002",
+        icon: &icons::SNES,
+        armed: false,
+        failed: false,
+    };
+    let frame = screens::Frame { theme: current_theme(), battery: Some(Battery { percent: 80, charging: false }) };
+    write_ppm(&gallery_screen(width, height, &view, &frame), path)
 }

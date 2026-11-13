@@ -67,6 +67,8 @@ fn main() -> ExitCode {
         [flag, path] if flag == "--preview-wifi" => write_wifi_preview(path),
         [flag, path] if flag == "--preview-statistics" => previews::write_statistics_preview(path),
         [flag, path] if flag == "--preview-set-time" => previews::write_set_time_preview(path),
+        [flag, path] if flag == "--preview-gallery" => previews::write_gallery_preview(false, path),
+        [flag, path] if flag == "--preview-gallery-full" => previews::write_gallery_preview(true, path),
         [flag, path] if flag == "--preview-bluetooth" => previews::write_bluetooth_preview(path),
         [flag, path] if flag == "--preview-keyboard" => write_keyboard_preview(path),
         [flag, step, path] if flag == "--preview-setup" => match step.parse() {

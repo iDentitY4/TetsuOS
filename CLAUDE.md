@@ -38,7 +38,7 @@ Fast), Neo Geo Pocket and Color (Beetle NeoPop), WonderSwan and Color (Beetle Cy
 Supervision (Potator), 32X (PicoDrive) and Arduboy (Arduous), and two games that aren't emulated, Doom (PrBoom, with
 Freedoom: Phase 1 and 2) and Cave Story (NXEngine), both copied to TETSU-DATA once and
 saving from their own menus; cartridge games also in ZIP files, with an in-game menu (8 save slots, levels, display
-options, screenshots to PNG, also used as the cover of a game without one, button remapping and turbo per console or game, each core's own options per console or game, cheat codes from `.cht` files, also downloaded on the device, and SWITCH GAME to the other recent games, each resuming, as a list or covers, also on Menu + Select), RetroAchievements (login, unlock notices with badges, a progress page, hardcore, off for every game or one), resume on leaving and after power-off, fast-forward on R2, sharp-bilinear
+options, screenshots to PNG, also used as the cover of a game without one and kept in a gallery to look through and delete, button remapping and turbo per console or game, each core's own options per console or game, cheat codes from `.cht` files, also downloaded on the device, and SWITCH GAME to the other recent games, each resuming, as a list or covers, also on Menu + Select), RetroAchievements (login, unlock notices with badges, a progress page, hardcore, off for every game or one), resume on leaving and after power-off, fast-forward on R2, sharp-bilinear
 scaling with CRT and LCD effects and a border (a drawn bezel on the handhelds by default,
 the theme's colours or black), kept per console, and a volume sign on the volume buttons, also in the menus.
 
@@ -54,6 +54,9 @@ A new install starts with a setup (language, Wi-Fi, time, adding games), which S
 ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Not yet checked by the user
+
+- The screenshot gallery (2026-11-13): its look and feel on the real buttons, the SCREENSHOTS
+  tile and details row, more than a page of pictures, the lid, the German wording
 
 - The nine consoles from 2026-11-13 (SG-1000, Atari 2600 and 7800, Vectrex, Virtual Boy,
   Pokemon Mini, Supervision, 32X, Arduboy): sound, controls, real games for the 7800,
@@ -158,7 +161,7 @@ ADVANCED > RUN SETUP AGAIN repeats.
   `ui/` (canvas, color, font, icons, image, png, fb, screens, signs, corner, keyboard,
   repeat, input), `wifi/` (`mod.rs` is the former `wifi.rs`, with network), `bluetooth/`,
   `transfer/` (with usb_drive and `transfer_page.html`), `library/` (systems, rom_zip,
-  game_files, cards, favorites, recent, names, play_time, play_log, statistics_screen,
+  game_files, cards, favorites, recent, names, play_time, play_log, statistics_screen, gallery,
   boxart*), `ingame/` (pause*, switcher, screenshot, cheats, controls, core_options*,
   achievements, rumble), `device/` (power, profile, sleep, performance, charging, audio_out, sounds,
   boot_animation, boot_partition, ssh, system_info, storage, paths, clock, set_time, http)

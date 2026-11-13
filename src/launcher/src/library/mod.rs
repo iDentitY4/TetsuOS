@@ -11,6 +11,7 @@ pub(crate) mod play_log;
 pub(crate) mod play_time;
 pub(crate) mod recent;
 pub(crate) mod rom_zip;
+pub(crate) mod gallery;
 pub(crate) mod statistics_screen;
 pub(crate) mod systems;
 
@@ -350,6 +351,7 @@ pub(crate) fn tile_key(tile: Tile) -> &'static str {
         Tile::Recent => "recent",
         Tile::Favorites => "favorites",
         Tile::System(system) => SYSTEMS[system].key,
+        Tile::Screenshots => "screenshots",
         Tile::Settings => "settings",
     }
 }
@@ -370,6 +372,7 @@ pub(crate) fn tile_look(tile: Tile) -> (&'static icons::Icon, &'static str) {
         Tile::Recent => (&icons::RECENT, tr("RECENT")),
         Tile::Favorites => (&icons::FAVORITES, tr("FAVORITES")),
         Tile::System(system) => (SYSTEMS[system].icon, SYSTEMS[system].label),
+        Tile::Screenshots => (&icons::SCREENSHOTS, tr("SCREENSHOTS")),
         Tile::Settings => (&icons::SETTINGS, tr("SETTINGS")),
     }
 }
@@ -382,6 +385,7 @@ pub(crate) fn load_library() -> Library {
         settings::get().game_names,
     );
     library.play_log = Log::read(Path::new(play_log::LOG_PATH));
+    library.screenshots = crate::ingame::screenshot::all(Path::new(crate::ingame::screenshot::SCREENSHOT_DIR));
     let started = std::time::Instant::now();
     sort_library(&mut library, settings::get().sort, &game_files::last_played, &game_files::time_played);
     if library.sort != settings::GameSort::Name {

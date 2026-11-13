@@ -1,8 +1,8 @@
 //! The launcher's main loop: drawing its screens and carrying out what presses ask for.
 
-use crate::ingame::{achievements, cheats, controls, core_options, rumble};
+use crate::ingame::{achievements, cheats, controls, core_options, rumble, screenshot};
 use crate::device::{boot_partition, clock, performance, power, sounds, set_time, ssh, storage};
-use crate::library::{boxart, cards, favorites, game_files, play_log, recent, statistics_screen};
+use crate::library::{boxart, cards, favorites, game_files, gallery, play_log, recent, statistics_screen};
 use crate::ui::{canvas, fb, icons, input, keyboard, screens, signs};
 use crate::{launcher, settings};
 use crate::library::boxart_screen::{art_counts, delete_box_art, download_box_art};
@@ -294,6 +294,8 @@ fn home_canvas((width, height): (usize, usize), launcher: &Launcher, library: &L
                 label: SYSTEMS[system].label,
                 count: Some(library.games(List::System(system)).len()),
             },
+            // Without a count, as the tiles count games.
+            Tile::Screenshots => screens::TileView { icon: &icons::SCREENSHOTS, label: tr("SCREENSHOTS"), count: None },
             Tile::Settings => screens::TileView { icon: &icons::SETTINGS, label: tr("SETTINGS"), count: None },
         })
         .collect();
@@ -326,6 +328,7 @@ fn home_detail(library: &Library, tile: Tile) -> (String, Option<String>) {
             (Some(name), ago) => (trf("LAST: {}", &[&name]), ago),
             (None, _) => (tr("NOT PLAYED YET").to_string(), None),
         },
+        Tile::Screenshots => (tr("TAKEN IN THE IN-GAME MENU").to_string(), None),
         Tile::Settings => (tr("THEME, WI-FI, BLUETOOTH AND MORE").to_string(), None),
     }
 }
@@ -440,6 +443,7 @@ fn details_canvas(
         selected: launcher.details_row(library),
         starred,
         achievements_off,
+        screenshots: game.map_or(0, |game| library.screenshot_count(&game.path)),
         art,
         message: launcher.details_confirmation(),
     };
@@ -698,6 +702,8 @@ pub(crate) fn act(
         Action::Search => {}
         // Deleting needs the library, so `run_launcher` does that. The games have changed.
         Action::DeleteGame(_) => return Ok(true),
+        // The gallery names the games from the library, so `run_launcher` opens it.
+        Action::Screenshots(_) => {}
         Action::ButtonTest => button_test(framebuffer, events)?,
         Action::Wifi => wifi_settings(framebuffer, events)?,
         Action::Bluetooth => crate::bluetooth::bluetooth_screen::bluetooth_settings(framebuffer, events)?,
@@ -1436,6 +1442,13 @@ pub(crate) fn run_launcher() -> io::Result<()> {
         }
         if let Action::DeleteGame(rom) = &action {
             delete_game_showing_failure(&mut framebuffer, rom, &library)?;
+        }
+        if let Action::Screenshots(rom) = &action {
+            if gallery::gallery(&mut framebuffer, &events, &library, rom.as_deref())? {
+                // A deleted picture may have been a game's cover, and its tile or row may go.
+                art.clear();
+                library.screenshots = screenshot::all(Path::new(screenshot::SCREENSHOT_DIR));
+            }
         }
         let account_changed = matches!(action, Action::LogInToAchievements | Action::LogOutOfAchievements);
         let played = matches!(action, Action::Play(_));
