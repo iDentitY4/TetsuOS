@@ -1920,6 +1920,101 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   byte, and a reboot with TEXT had `console=tty1 loglevel=7` on the kernel's command
   line, so U-Boot reads the file the device wrote. SAVE LOGS TO CARD and `bootlog.txt`
   reach TETSU-BOOT. `push.sh boot` copied, verified, rebooted and put LOGO back.
+- **Updates over Wi-Fi** (2026-11-13): Settings > SYSTEM > SYSTEM UPDATE (`update/`)
+  installs a new root filesystem, which holds the kernel too, into the root slot that
+  isn't running, and keeps the running one to go back to. U-Boot is not updated this way.
+  - **Making one:** `scripts/make-update.sh` gzips `output/images/rootfs.ext4` (62 MB for
+    the 1 GiB image; zstd would be 50 MB but needs another crate, and gzip is in `flate2`
+    already) into `output/images/update/` with `manifest.txt` (`format`, `device` from
+    the device tree, `build`, `revision`, `file`, `file_size`, `image_size`,
+    `image_sha256`) and `manifest.sig`, the manifest's Ed25519 signature in hex.
+    `post-build.sh` adds `BUILD_ID=YYYYMMDD-HHMMSS` (UTC) to `os-release`, the same as the
+    manifest's `build`; the script checks with `debugfs` that the image is that build. The
+    private key is outside the project (`~/.config/tetsu/update-key.pem`, made once with
+    `make-update.sh --new-key`, or `$TETSU_UPDATE_KEY`); its public half is
+    `src/launcher/update-key.pub`, compiled in, so the launcher must be built after the
+    key exists. `scripts/serve-update.sh` serves the folder on port 8035 with Python;
+    over the cable that is `http://10.35.35.2:8035`.
+  - **The screen:** rows for this system's build, revision, root slot and the source, and
+    two lines of status. A looks for an update (`manifest.txt`, `manifest.sig` next to
+    it), which must have the project's signature, this device's `compatible` and a newer
+    `build` than the running `BUILD_ID` (a system without one is older than any). A again
+    installs it, unless the battery is under 30 % and not charging. X types the source on
+    the keyboard (`update_source=` in the settings; empty brings back the one built in
+    with `TETSU_UPDATE_SOURCE`, none so far). Plain HTTP is allowed, since the signature
+    is what is trusted; redirects are followed, so GitHub release assets would work.
+    During an install a bar shows the download, then the read-back; B twice stops it, and
+    the lid only turns the screen off. At the end A reboots, B leaves it for the next
+    start. SAVE LOGS TO CARD moved from SYSTEM's rows to X on SYSTEM INFO, to make room.
+  - **Installing** (`install.rs`): the boot order first puts the running slot first and
+    the other at 0 tries, so a half-written slot is never booted, even after a power cut.
+    The download is unpacked and written to the other slot's partition (`/dev/mmcblk0p3`
+    or `p2`, found from the root device's disk) in 1 MiB chunks, synced every 64 MiB,
+    with its SHA-256 taken; then the page cache is dropped (`POSIX_FADV_DONTNEED`) and the
+    partition read back and hashed again. Both must match the manifest. The slot is then
+    mounted to check `boot/boot.scr`, `boot/Image` and `extlinux.conf`, and its
+    `extlinux.conf` gets `root=PARTUUID=54455453-03` (or `-02`) and the running system's
+    BOOT MESSAGES. Last, the boot order puts the new slot first with 3 tries and the
+    running one behind it, and `/mnt/data/update-pending.txt` notes the slot and build.
+  - **Booting and falling back:** `uboot.fragment` turns on U-Boot's RAUC bootmeth
+    (`BOOT_ORDER`, `BOOT_A_LEFT`, `BOOT_B_LEFT`, 3 tries, slot A partition 2 and B 3,
+    each its own boot partition) and `bootflow scan; run distro_bootcmd` as the boot
+    command. Without `CONFIG_BOOTSTD_FULL`, `bootflow scan` refuses flags and a device
+    ("Flags not supported") and returns at once, which a first try with `-bG mmc0` did,
+    so the old script booted and nothing was saved; plain, it boots the first bootflow,
+    with the devices in `boot_targets`' order (mmc0 first). On the whole card the RAUC
+    bootmeth comes before the extlinux bootmeth reaches the partitions. U-Boot takes a try off the first slot in
+    `BOOT_ORDER` with any left, saves the environment and runs that slot's
+    `/boot/boot.scr` (`boot.cmd`, made by `mkimage` from `host-uboot-tools` in
+    `post-build.sh`), which `sysboot`s the slot's own `extlinux.conf`, so BOOT MESSAGES
+    still works per slot. A slot whose script fails falls through to the extlinux
+    bootmeth, which boots the bootable partition, slot A. At the launcher's start
+    (`slots::mark_good_in_background`, once per boot through `/run/launcher-slot-marked`,
+    in the charging screen too) the running slot goes first with its 3 tries back, so
+    only boots that never reach the launcher count; after 3 of them U-Boot boots the
+    other slot. `extlinux.conf` now has `panic=10` (was `panic=0`, which waits forever),
+    so a kernel that panics restarts and counts as a failed try; a hang without a panic
+    needs the power button held. If `update-pending.txt` names another slot than the
+    running one, the update failed: SYSTEM UPDATE then says `<build> DID NOT START, THIS
+    SYSTEM WAS KEPT`, and otherwise `UPDATED TO <build>`.
+  - **U-Boot's environment** (`boot_env.rs`) is in two copies on TETSU-BOOT,
+    `uboot.env` and `uboot-redund.env` (`CONFIG_ENV_REDUNDANT`), 64 KiB each: CRC32,
+    a counter byte, then sorted `name=value` entries ending in NUL. The copy with a valid
+    CRC and the higher counter (0 after 255) is current, and a save writes the other one,
+    so a power cut mid-save leaves the current copy. Linux reads and writes them the way
+    U-Boot does, changing only `BOOT_*` and keeping every other entry. The default
+    `CONFIG_ENV_FAT_DEVICE_AND_PART=":auto"` meant the bootable partition, the ext4 root,
+    where saving failed, so nothing was ever saved before; it is now `":1"`. U-Boot saves
+    its whole environment, boot command included, and a saved boot command would outlive
+    a later U-Boot's, so `push.sh uboot` removes both files when running slot A.
+    A U-Boot without A/B never writes `BOOT_ORDER`, and then an install stops before
+    writing anything: THIS CARD NEEDS ONE FLASH FOR UPDATES.
+  - **Tested on the device** (2026-11-13), over the USB cable from `serve-update.sh`
+    (the PC's firewall lets the device reach it there):
+    - With the old U-Boot, the new system booted as before; the launcher logged that
+      U-Boot keeps no boot order, found and verified the signed update, and its install
+      stopped with THIS CARD NEEDS ONE FLASH FOR UPDATES before writing.
+    - With the new U-Boot (`push.sh uboot`), U-Boot saved `BOOT_A_LEFT=2` in
+      `uboot-redund.env` and the launcher wrote `uboot.env` with 3 back and every other
+      entry kept. The launcher drew 6.73 s after power on, against 6.60 before.
+    - Installing a newer build into slot B took about 1 min 45 s for the 62 MB download,
+      writing 1 GiB and reading it back; the copies showed B at 0 tries while writing,
+      then `BOOT_ORDER=B A`. A restarted into slot B (`root=PARTUUID=54455453-03`, the
+      new `BUILD_ID`), marked good, `Updated` logged, drawn at 6.61 s.
+    - Fallback: from B, slot A's `extlinux.conf` got `init=/sbin/tetsu-broken` and the
+      order `A B` with 3 tries and a pending note for A, as an install leaves them. A's
+      kernel panicked and restarted three times, and B was back after 59 s with
+      `BOOT_A_LEFT=0`; the screen said `<build> DID NOT START, THIS SYSTEM WAS KEPT`.
+      A's `extlinux.conf` was put back afterwards, so the card holds the newer build in B,
+      running, and the older one in A.
+    - Not tested: a download over Wi-Fi rather than the cable (the same code), the lid
+      during an install, B to stop one, a low battery, typing a source on the keyboard,
+      a power cut while writing, a U-Boot environment save cut short, and the German
+      wording on the device.
+  - **`push.sh` and slot B:** `push.sh boot` copies `boot.scr` too, and on slot B points
+    the copied `extlinux.conf` at partition 3. `push.sh app` and `rootfs` write the
+    running slot, whichever it is. Flashing writes slot A and a fresh TETSU-BOOT, so the
+    card starts again from A.
 - **Build setup** (2026-11-12): the Buildroot configuration is `configs/common.config`
   (what every device shares: system, packages, cores, ccache) followed by
   `board/<board>/buildroot.config` (CPU, toolchain, kernel, bootloaders, GPU and Wi-Fi

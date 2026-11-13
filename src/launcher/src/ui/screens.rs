@@ -658,7 +658,14 @@ pub fn settings_screen(width: usize, height: usize, view: &SettingsView, frame: 
 }
 
 /// Rows of a label and a value under a title, such as SYSTEM INFO.
-pub fn info_screen(width: usize, height: usize, (icon, title): (&Icon, &str), lines: &[(String, String)], frame: &Frame) -> Canvas {
+pub fn info_screen(
+    width: usize,
+    height: usize,
+    (icon, title): (&Icon, &str),
+    lines: &[(String, String)],
+    hint_text: &str,
+    frame: &Frame,
+) -> Canvas {
     let mut canvas = Canvas::new(width, height, frame.theme);
     // As it is, for a network's name; other titles are capitals already.
     header(&mut canvas, icon, "", frame.battery);
@@ -669,7 +676,7 @@ pub fn info_screen(width: usize, height: usize, (icon, title): (&Icon, &str), li
         canvas.text_at(label, SETTINGS_LEFT, y, TEXT_SCALE, MUTED);
         canvas.text_at(value, right.saturating_sub(text_width(value, TEXT_SCALE)), y, TEXT_SCALE, TEXT);
     }
-    hint(&mut canvas, tr("B BACK"));
+    hint(&mut canvas, hint_text);
     canvas
 }
 

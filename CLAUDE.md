@@ -27,7 +27,9 @@ Bluetooth (Settings > BLUETOOTH, off by default): controllers, checked with a Ba
 and headphones through bluez-alsa, checked with a Bose QC35 II, the sound moving to the
 speaker and back as they go and come. A second card in TF2 (FAT32 or exFAT) adds the
 games in its `roms` folder, mounted at `/mnt/tf2` as it goes in and out, also through
-USB STORAGE (a second drive) and WI-FI TRANSFER (a SEND TO choice). The mini-HDMI port
+USB STORAGE (a second drive) and WI-FI TRANSFER (a SEND TO choice). SYSTEM UPDATE
+installs a signed build over the network into the other root slot (A/B), and U-Boot goes
+back to the old slot after 3 boots that don't reach the launcher. The mini-HDMI port
 mirrors the screen at 640x480 (`video=` in `extlinux.conf`), without sound.
 
 Games: NES (FCEUmm), SNES (Snes9x), Game Boy, Color and Advance (mGBA), PlayStation (PCSX
@@ -54,6 +56,10 @@ A new install starts with a setup (language, Wi-Fi, time, adding games), which S
 ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Not yet checked by the user
+
+- Updates over Wi-Fi (2026-11-13): an update over Wi-Fi rather than the cable, the lid,
+  B and a low battery during one, typing a source, the German wording. The device runs
+  slot B since the test; a flash starts again from A
 
 - RetroAchievements offline (2026-11-13): a real unlock without Wi-Fi, sent later from the
   menus and dated right on the site, the OFFLINE notice, the German wording
@@ -165,7 +171,8 @@ ADVANCED > RUN SETUP AGAIN repeats.
   repeat, input), `wifi/` (`mod.rs` is the former `wifi.rs`, with network), `bluetooth/`,
   `transfer/` (with usb_drive and `transfer_page.html`), `library/` (systems, rom_zip,
   game_files, cards, favorites, recent, names, play_time, play_log, statistics_screen, gallery,
-  boxart*), `ingame/` (pause*, switcher, screenshot, cheats, controls, core_options*,
+  boxart*), `update/` (mod: the SYSTEM UPDATE screen, install, manifest, slots,
+  boot_env: U-Boot's environment), `ingame/` (pause*, switcher, screenshot, cheats, controls, core_options*,
   achievements*, rumble), `device/` (power, profile, sleep, performance, charging, audio_out, sounds,
   boot_animation, boot_partition, ssh, system_info, storage, paths, clock, set_time, http)
   and `libretro/`; `main`, `app`, `launcher`, `game`, `settings`, `i18n`, `setup` and
@@ -254,6 +261,9 @@ In short here; `docs/features.md` has them in full.
   launcher stopped (`/etc/init.d/S90launcher stop`) and open input:
   `sleep 30 | kmscube -D /dev/dri/card1 -c 600`.
 - **The GPU needs `CONFIG_SUN50I_H6_PRCM_PPU`,** or Panfrost fails silently.
+- **U-Boot A/B:** `bootflow scan` takes no flags without `CONFIG_BOOTSTD_FULL`. The boot
+  count is in `uboot.env` and `uboot-redund.env` on TETSU-BOOT; `push.sh uboot` removes
+  them when running slot A, as a saved boot command would outlive a new U-Boot's.
 - **TETSU-DATA starts at a fixed 4 GiB.** Writing the image replaces the partition table, and
   `flash.sh` adds TETSU-DATA back; after a plain `dd`, run `data-partition.sh`.
 - **Bluetooth** shares the RTL8821CS with Wi-Fi: Wi-Fi fails to probe while the Bluetooth
@@ -288,7 +298,8 @@ In short here; `docs/features.md` has them in full.
 - `src/launcher/`: the Rust launcher; `testdata/` has the PNG test images, `lang/` the
   translations, `rcheevos/` the RetroAchievements library that `build.rs` compiles in
 - `src/launcher/src/setup.rs`: the setup on a new install
-- `scripts/`: `flash.sh`, `push.sh`, `press.py`, `screenshot.py`, `boxart.py`,
+- `scripts/`: `flash.sh`, `push.sh`, `make-update.sh` and `serve-update.sh` (signed
+  updates; the private key is `~/.config/tetsu/update-key.pem`), `press.py`, `screenshot.py`, `boxart.py`,
   `data-partition.sh`, and `jingles/`, which makes the boot jingle candidates and
   `src/launcher/sounds/boot-jingle.s16`
 - `docs/features.md`: every feature in detail

@@ -3,7 +3,7 @@
 #
 #   app     the launcher, then restarts it
 #   rootfs  files in the root filesystem that changed, except /boot, then restarts the app
-#   boot    the kernel, device tree and extlinux.conf, then reboots
+#   boot    the kernel, device tree, extlinux.conf and boot.scr, then reboots
 #   all     rootfs, then boot
 #   uboot   U-Boot, into the card's boot area, checked by reading it back
 #   key     adds this PC's SSH public key (or the .pub file given) to the device,
@@ -57,18 +57,23 @@ push_rootfs() {
 }
 
 push_boot() {
-	echo "Copying the kernel, device tree and extlinux.conf"
+	echo "Copying the kernel, device tree, extlinux.conf and boot.scr"
 	# They are in the root filesystem's /boot, which U-Boot reads (genimage.cfg)
 	on_device mkdir -p /tmp/push-boot
-	copy "$TARGET/boot/Image" "$TARGET/boot/$DTB" "$TARGET/boot/extlinux/extlinux.conf" "$DEVICE:/tmp/push-boot/"
+	copy "$TARGET/boot/Image" "$TARGET/boot/$DTB" "$TARGET/boot/boot.scr" "$TARGET/boot/extlinux/extlinux.conf" "$DEVICE:/tmp/push-boot/"
 	on_device sh -es <<-EOF
 		mkdir -p /boot/extlinux
-		cp /tmp/push-boot/Image /tmp/push-boot/$DTB /boot/
+		cp /tmp/push-boot/Image /tmp/push-boot/$DTB /tmp/push-boot/boot.scr /boot/
+		# The build's extlinux.conf boots slot A (partition 2); slot B's boots partition 3.
+		if grep -q 'root=PARTUUID=54455453-03' /proc/cmdline; then
+			sed -i 's/root=PARTUUID=54455453-02/root=PARTUUID=54455453-03/' /tmp/push-boot/extlinux.conf
+		fi
 		cp /tmp/push-boot/extlinux.conf /boot/extlinux/extlinux.conf
 		sync
 		echo 3 > /proc/sys/vm/drop_caches
 		cmp /tmp/push-boot/Image /boot/Image
 		cmp /tmp/push-boot/$DTB /boot/$DTB
+		cmp /tmp/push-boot/boot.scr /boot/boot.scr
 		cmp /tmp/push-boot/extlinux.conf /boot/extlinux/extlinux.conf
 		rm -r /tmp/push-boot
 	EOF
@@ -94,6 +99,20 @@ push_uboot() {
 			| head -c "$size" | cmp - /tmp/u-boot.bin
 		rm /tmp/u-boot.bin
 		echo "Written to $disk at 8 KiB, $size bytes"
+		# U-Boot saves its whole environment with the A/B boot count, boot command too,
+		# and a saved boot command would outlive the new U-Boot's. Running slot A, it is
+		# removed and the new U-Boot starts afresh from A; running slot B, it is kept,
+		# because without it the next boot would go back to A.
+		if grep -q 'root=PARTUUID=54455453-03' /proc/cmdline; then
+			echo "Running slot B: U-Boot's saved environment is kept, with the old boot command" >&2
+		else
+			mkdir -p /tmp/push-env
+			mount -t vfat "$part" /tmp/push-env
+			rm -f /tmp/push-env/uboot.env /tmp/push-env/uboot-redund.env
+			umount /tmp/push-env
+			rmdir /tmp/push-env
+			echo "Removed U-Boot's saved environment"
+		fi
 	EOF
 	echo "Verified. It takes effect at the next boot."
 }

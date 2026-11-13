@@ -230,7 +230,7 @@ impl Group {
                     Setting::WifiTransfer,
                     Setting::IdleSleep,
                     Setting::SleepPowerOff,
-                    Setting::SaveLogs,
+                    Setting::SystemUpdate,
                     Setting::Reboot,
                     Setting::PowerOff,
                 ]
@@ -288,6 +288,8 @@ pub enum Setting {
     SleepPowerOff,
     UsbStorage,
     WifiTransfer,
+    /// Updates over Wi-Fi, into the other root slot.
+    SystemUpdate,
     Reboot,
     PowerOff,
     Ssh,
@@ -299,7 +301,6 @@ pub enum Setting {
     RunSetup,
     ResetSettings,
     UseForAllConsoles,
-    SaveLogs,
     /// `RetroAchievements` for every game, or none.
     AchievementsOn,
     /// Logs in to `RetroAchievements`, or out once logged in.
@@ -349,6 +350,7 @@ impl Setting {
             Self::SleepPowerOff => "POWER OFF AFTER SLEEP",
             Self::UsbStorage => "USB STORAGE",
             Self::WifiTransfer => "WI-FI TRANSFER",
+            Self::SystemUpdate => "SYSTEM UPDATE",
             Self::Reboot => "REBOOT",
             Self::PowerOff => "POWER OFF",
             Self::Ssh => "SSH",
@@ -360,7 +362,6 @@ impl Setting {
             Self::RunSetup => "RUN SETUP AGAIN",
             Self::ResetSettings => "RESET SETTINGS",
             Self::UseForAllConsoles => "USE FOR ALL CONSOLES",
-            Self::SaveLogs => "SAVE LOGS TO CARD",
             Self::AchievementsOn => "ACHIEVEMENTS",
             Self::AchievementsAccount => "ACCOUNT",
             Self::Hardcore => "HARDCORE",
@@ -383,6 +384,7 @@ impl Setting {
                 | Self::SystemInfo
                 | Self::UsbStorage
                 | Self::WifiTransfer
+                | Self::SystemUpdate
                 | Self::RootPassword
                 | Self::RunSetup
         )
@@ -568,6 +570,8 @@ pub enum Command {
     UsbStorage,
     /// A web page for sending games over Wi-Fi, while its screen is open.
     WifiTransfer,
+    /// Updates over Wi-Fi, into the other root slot.
+    SystemUpdate,
     Reboot,
     PowerOff,
 }
@@ -890,12 +894,15 @@ impl Launcher {
             Screen::Details(list) => self.press_details(button, library, list, delete_armed),
             Screen::Settings => self.press_settings_grid(button),
             Screen::SettingsGroup(group) => self.press_group(button, group, confirming),
-            Screen::Info => {
-                if matches!(button, Button::A | Button::B) {
+            Screen::Info => match button {
+                Button::A | Button::B => {
                     self.screen = Screen::SettingsGroup(Group::System);
+                    Command::Nothing
                 }
-                Command::Nothing
-            }
+                // Logs go with the system's details, for a problem report.
+                Button::X => Command::SaveLogs,
+                _ => Command::Nothing,
+            },
             Screen::HomeTiles => self.press_home_tiles(button, library),
             Screen::Statistics => {
                 let last = library.play_log.per_console().len().saturating_sub(STATS_CONSOLE_ROWS);
@@ -1118,6 +1125,7 @@ impl Launcher {
                 Setting::SystemInfo => self.screen = Screen::Info,
                 Setting::UsbStorage => return Command::UsbStorage,
                 Setting::WifiTransfer => return Command::WifiTransfer,
+                Setting::SystemUpdate => return Command::SystemUpdate,
                 Setting::Reboot => return Command::Reboot,
                 Setting::PowerOff => return Command::PowerOff,
                 Setting::RootPassword => return Command::EditRootPassword,
@@ -1125,7 +1133,6 @@ impl Launcher {
                 Setting::RunSetup => return Command::RunSetup,
                 Setting::ResetSettings => return Command::ResetSettings,
                 Setting::UseForAllConsoles => return Command::UseDisplayForAllConsoles,
-                Setting::SaveLogs => return Command::SaveLogs,
                 Setting::Hardcore => return Command::ToggleHardcore,
                 Setting::AchievementsOn => return Command::ToggleAchievements,
                 // Handled above.

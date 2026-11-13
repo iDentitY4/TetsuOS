@@ -172,7 +172,7 @@ fn wifi_canvas(size: (usize, usize), view: &View, menu: &wifi_menu::WifiMenu, li
     let mut canvas = match (view, &menu.keyboard) {
         (View::Network(page), _) => wifi_page_screen(size.0, size.1, (&page.name, true), page, &frame),
         (View::Details(page, details), _) => {
-            screens::info_screen(size.0, size.1, (&icons::WIFI, &page.name), &detail_rows(details), &frame)
+            screens::info_screen(size.0, size.1, (&icons::WIFI, &page.name), &detail_rows(details), tr("B BACK"), &frame)
         }
         (View::Options(options), _) => wifi_page_screen(size.0, size.1, (tr("WI-FI OPTIONS"), false), options, &frame),
         (View::List, Some((ssid, keyboard))) => {

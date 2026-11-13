@@ -21,6 +21,7 @@ mod settings;
 mod setup;
 mod transfer;
 mod ui;
+mod update;
 mod wifi;
 
 use app::run_launcher;
@@ -71,6 +72,8 @@ fn main() -> ExitCode {
         [flag, path] if flag == "--preview-gallery-full" => previews::write_gallery_preview(true, path),
         [flag, path] if flag == "--preview-bluetooth" => previews::write_bluetooth_preview(path),
         [flag, path] if flag == "--preview-keyboard" => write_keyboard_preview(path),
+        [flag, path] if flag == "--preview-update" => write_ppm(&update::preview(false), path),
+        [flag, path] if flag == "--preview-update-installing" => write_ppm(&update::preview(true), path),
         [flag, step, path] if flag == "--preview-setup" => match step.parse() {
             Ok(step) if step < setup::STEPS.len() => write_setup_preview(step, path),
             _ => Err(io::Error::other("the setup's steps are numbered from 0 to 3")),

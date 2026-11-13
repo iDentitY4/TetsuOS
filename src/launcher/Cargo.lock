@@ -542,12 +542,15 @@ name = "launcher"
 version = "0.1.0"
 dependencies = [
  "cc",
+ "crc32fast",
  "evdev",
+ "flate2",
  "jiff",
  "libc",
  "libloading",
  "png",
  "qrcode",
+ "ring",
  "serde",
  "serde_json",
  "signal-hook",

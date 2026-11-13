@@ -522,7 +522,8 @@ pub(crate) fn launcher_canvas(
         Screen::SettingsGroup(group) => settings_group_canvas((width, height), group, launcher, &frame),
         Screen::Info => {
             let games = library.shelves.iter().map(|shelf| shelf.games.len()).sum();
-            screens::info_screen(width, height, (&icons::SETTINGS, tr("SYSTEM INFO")), &system_info(battery, games), &frame)
+            let rows = system_info(battery, games);
+            screens::info_screen(width, height, (&icons::SETTINGS, tr("SYSTEM INFO")), &rows, tr("X SAVES LOGS TO CARD - B BACK"), &frame)
         }
         Screen::HomeTiles => {
             let rows: Vec<screens::TileToggle> = library
@@ -848,6 +849,7 @@ pub(crate) fn act(
         Action::UsbStorage => return usb_drive(framebuffer, events),
         // The browser may have changed the games, saves and covers.
         Action::WifiTransfer => return wifi_transfer(framebuffer, events),
+        Action::SystemUpdate => crate::update::system_update(framebuffer, events)?,
         Action::Reboot => shut_down(framebuffer, tr("REBOOTING"), "reboot")?,
         Action::PowerOff => shut_down(framebuffer, tr("POWERING OFF"), &power::poweroff_command())?,
     }
@@ -1326,6 +1328,8 @@ pub(crate) fn run_launcher() -> io::Result<()> {
     let _console = fb::claim_console()
         .inspect_err(|error| eprintln!("warning: could not claim console: {error}"));
     let events = input::spawn_readers();
+    // This boot got as far as the launcher, so U-Boot needn't fall back to the other slot.
+    crate::update::slots::mark_good_in_background();
     // USB power started the device: the battery first, the rest once the power button is
     // pressed. The charge limit is set by now.
     if crate::device::charging::pending() {

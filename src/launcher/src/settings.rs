@@ -487,6 +487,8 @@ pub struct Settings {
     pub title_hidden: bool,
     /// The home screen's title, if one was typed.
     pub title: Option<String>,
+    /// Where SYSTEM UPDATE looks for updates, if one was typed: a folder's address.
+    pub update_source: Option<String>,
     pub grid: GridSize,
     pub switcher: SwitcherStyle,
     /// Home screen tiles turned off, by key, such as `recent` or `gba`.
@@ -666,6 +668,7 @@ fn parse(text: &str) -> Settings {
             "background" => choose(&mut settings.background, Background::from_key(value)),
             "title_hidden" => settings.title_hidden = value == "yes",
             "title" => settings.title = clean_title(value),
+            "update_source" => settings.update_source = clean_source(value),
             "grid" => choose(&mut settings.grid, GridSize::from_key(value)),
             "switcher" => choose(&mut settings.switcher, SwitcherStyle::from_key(value)),
             "hidden_tiles" => {
@@ -736,6 +739,9 @@ fn format(settings: &Settings) -> String {
     if let Some(title) = &settings.title {
         lines.push(format!("title={title}"));
     }
+    if let Some(source) = &settings.update_source {
+        lines.push(format!("update_source={source}"));
+    }
     lines.push(format!("grid={}", settings.grid.key()));
     lines.push(format!("switcher={}", settings.switcher.key()));
     if !settings.hidden_tiles.is_empty() {
@@ -782,6 +788,34 @@ pub fn clean_title(text: &str) -> Option<String> {
     let kept: String = text.chars().filter(|c| matches!(c, ' '..='~')).take(MAX_TITLE_LENGTH).collect();
     let trimmed = kept.trim();
     (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
+/// The longest update source that can be typed.
+pub const MAX_SOURCE_LENGTH: usize = 160;
+/// Where updates come from until another source is typed: set when the launcher is built,
+/// with `TETSU_UPDATE_SOURCE`, or none.
+pub const DEFAULT_UPDATE_SOURCE: &str = match option_env!("TETSU_UPDATE_SOURCE") {
+    Some(source) => source,
+    None => "",
+};
+
+/// A typed update source as it is kept: an `http://` or `https://` address without spaces.
+/// None for anything else, which brings back the default.
+pub fn clean_source(text: &str) -> Option<String> {
+    let text = text.trim();
+    let lower = text.to_ascii_lowercase();
+    let valid = (lower.starts_with("http://") || lower.starts_with("https://"))
+        && text.len() > "https://".len()
+        && text.len() <= MAX_SOURCE_LENGTH
+        && text.chars().all(|c| c.is_ascii_graphic());
+    valid.then(|| text.to_string())
+}
+
+impl Settings {
+    /// Where SYSTEM UPDATE looks: the typed source, or the built-in one, empty if neither.
+    pub fn update_source(&self) -> &str {
+        self.update_source.as_deref().unwrap_or(DEFAULT_UPDATE_SOURCE)
+    }
 }
 
 /// The settings as last read or changed, read from the file on first use.
@@ -1096,6 +1130,7 @@ mod tests {
             background: Background::Tint,
             title_hidden: true,
             title: Some("Game = Fun & more".into()),
+            update_source: Some("http://10.35.35.2:8035/a=b".into()),
             grid: GridSize::Large,
             switcher: SwitcherStyle::Covers,
             hidden_tiles: vec!["recent".into(), "gba".into()],
@@ -1282,6 +1317,18 @@ mod tests {
         assert_eq!(clean_title("   "), None);
         assert_eq!(clean_title("tab\there é"), Some("tabhere".into()));
         assert_eq!(clean_title(&"X".repeat(40)).map(|t| t.len()), Some(MAX_TITLE_LENGTH));
+    }
+
+    #[test]
+    fn update_sources_are_web_addresses() {
+        assert_eq!(clean_source(" http://10.35.35.2:8035 ").as_deref(), Some("http://10.35.35.2:8035"));
+        assert_eq!(clean_source("HTTPS://example.org/tetsu/").as_deref(), Some("HTTPS://example.org/tetsu/"));
+        assert_eq!(clean_source("ftp://example.org"), None);
+        assert_eq!(clean_source("http://"), None);
+        assert_eq!(clean_source("http://a b"), None);
+        assert_eq!(clean_source(""), None);
+        assert_eq!(clean_source(&format!("http://{}", "x".repeat(MAX_SOURCE_LENGTH))), None);
+        assert_eq!(Settings::default().update_source(), DEFAULT_UPDATE_SOURCE);
     }
 
     #[test]

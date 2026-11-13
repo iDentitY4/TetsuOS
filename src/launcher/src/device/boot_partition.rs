@@ -100,7 +100,7 @@ pub fn with_boot_messages(conf: &str, messages: BootMessages) -> Option<String> 
 }
 
 /// Mounts the partition, runs `action` with its folder, then unmounts it.
-fn with_mounted<T>(action: impl FnOnce(&Path) -> io::Result<T>) -> io::Result<T> {
+pub(crate) fn with_mounted<T>(action: impl FnOnce(&Path) -> io::Result<T>) -> io::Result<T> {
     let output = Command::new("blkid").output()?;
     let device = parse_blkid(&String::from_utf8_lossy(&output.stdout))
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no TETSU-BOOT partition"))?;

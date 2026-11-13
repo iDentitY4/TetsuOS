@@ -41,11 +41,18 @@ done
 # U-Boot boots from the root filesystem's /boot (genimage.cfg), where the kernel and
 # device tree are installed, so each root slot has its own boot configuration.
 install -D -m 644 "$BOARD_DIR/extlinux.conf" boot/extlinux/extlinux.conf
+# U-Boot's RAUC bootmeth runs the slot's boot.scr, which boots its extlinux.conf.
+"$HOST_DIR/bin/mkimage" -A arm64 -O linux -T script -C none -n "Tetsu OS slot" \
+	-d "$BOARD_DIR/boot.cmd" boot/boot.scr >/dev/null
 
 # Name the OS in os-release, which Buildroot writes as its own. VERSION, the git
 # revision that SYSTEM info shows, and VERSION_ID, the Buildroot release, are kept.
 sed -i -e 's/^NAME=.*/NAME="Tetsu OS"/' -e 's/^ID=.*/ID=tetsuos\nID_LIKE=buildroot/' \
 	-e 's/^PRETTY_NAME=.*/PRETTY_NAME="Tetsu OS"/' usr/lib/os-release
+# BUILD_ID, the build's time in UTC, tells an update from the system it replaces
+# (scripts/make-update.sh puts the same in the update's manifest).
+sed -i '/^BUILD_ID=/d' usr/lib/os-release
+echo "BUILD_ID=$(date -u +%Y%m%d-%H%M%S)" >> usr/lib/os-release
 
 # Fail the build if anything links to a library that isn't on the device.
 missing=0

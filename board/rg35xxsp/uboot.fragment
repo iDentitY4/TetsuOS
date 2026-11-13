@@ -19,3 +19,24 @@ CONFIG_DRAM_SUNXI_TPR10=0x402f4489
 CONFIG_DRAM_SUNXI_TPR11=0x10131113
 CONFIG_DRAM_SUNXI_TPR12=0x0f0e0e0f
 CONFIG_AXP_DCDC3_VOLT=1200
+
+# A/B root slots with fallback (docs/features.md, "Updates over Wi-Fi"). RAUC's bootmeth
+# boots the first slot in BOOT_ORDER with tries left, counting each try down in the
+# environment; Linux puts the count back once it has started. After 3 failed tries the
+# other slot boots. Each slot is its own boot partition: slot A is partition 2, B is 3.
+CONFIG_BOOTMETH_RAUC=y
+CONFIG_BOOTMETH_RAUC_BOOT_ORDER="A B"
+CONFIG_BOOTMETH_RAUC_PARTITIONS="2,2 3,3"
+CONFIG_BOOTMETH_RAUC_DEFAULT_TRIES=3
+CONFIG_BOOTMETH_RAUC_RESET_ALL_ZERO_TRIES=y
+# The environment holds the count, in two copies on TETSU-BOOT (partition 1), written in
+# turn, so a power cut while one is written leaves the other. The default ":auto" would
+# be the bootable partition, the ext4 root, where saving fails.
+CONFIG_ENV_FAT_DEVICE_AND_PART=":1"
+CONFIG_ENV_REDUNDANT=y
+# bootstd, where the RAUC bootmeth takes the whole card before the extlinux bootmeth
+# looks at its partitions; if it fails (no slot script), the old script boots the
+# partition with the bootable flag, slot A, as before. Without CONFIG_BOOTSTD_FULL,
+# bootflow scan takes no flags or device (it refuses them) and boots the first bootflow,
+# trying the devices in boot_targets' order, mmc0 first.
+CONFIG_BOOTCOMMAND="bootflow scan; run distro_bootcmd"
