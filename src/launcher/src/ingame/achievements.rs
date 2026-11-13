@@ -17,6 +17,7 @@ use crate::i18n::{tr, trf};
 use crate::ui::image::Image;
 use crate::settings::{NoticeKind, NoticePlace, NoticePlaces, NOTICE_KINDS};
 use crate::device::storage::write_atomic;
+use crate::ingame::achievements_offline as offline;
 use std::io;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -27,6 +28,8 @@ use std::time::{Duration, Instant};
 
 /// The account's name and token. Readable only by root, as the token logs in.
 pub const ACCOUNT_PATH: &str = crate::device::paths::data_path!("/retroachievements.txt");
+/// How often the menus try sending unlocks that wait for a connection.
+pub const WAITING_RETRY: Duration = Duration::from_secs(60);
 /// Achievement badges, downloaded once and kept by their names.
 pub const BADGE_DIR: &str = crate::device::paths::data_path!("/achievements");
 /// How long a login from Settings may take.
@@ -74,12 +77,37 @@ mod ffi {
 
     pub enum rc_client_t {}
 
-    /// Only the fields read here; rcheevos owns the rest.
+    #[repr(C)]
+    pub struct rc_buffer_chunk_t {
+        pub write: *mut u8,
+        pub end: *mut u8,
+        pub start: *mut u8,
+        pub next: *mut c_void,
+    }
+
+    /// Points into itself once rcheevos has used it, so it must not move until destroyed.
+    #[repr(C)]
+    pub struct rc_buffer_t {
+        pub chunk: rc_buffer_chunk_t,
+        pub data: [u8; 256],
+    }
+
     #[repr(C)]
     pub struct rc_api_request_t {
         pub url: *const c_char,
         pub post_data: *const c_char,
         pub content_type: *const c_char,
+        pub buffer: rc_buffer_t,
+    }
+
+    #[repr(C)]
+    pub struct rc_api_award_achievement_request_t {
+        pub username: *const c_char,
+        pub api_token: *const c_char,
+        pub achievement_id: u32,
+        pub hardcore: u32,
+        pub game_hash: *const c_char,
+        pub seconds_since_unlock: u32,
     }
 
     #[repr(C)]
@@ -264,11 +292,15 @@ mod ffi {
     extern "C" {
         pub fn rc_client_create(read_memory: ReadMemory, server_call: ServerCall) -> *mut rc_client_t;
         pub fn rc_client_destroy(client: *mut rc_client_t);
+        pub fn rc_api_init_award_achievement_request(
+            request: *mut rc_api_request_t,
+            params: *const rc_api_award_achievement_request_t,
+        ) -> c_int;
+        pub fn rc_api_destroy_request(request: *mut rc_api_request_t);
         pub fn rc_client_set_hardcore_enabled(client: *mut rc_client_t, enabled: c_int);
         pub fn rc_client_get_hardcore_enabled(client: *const rc_client_t) -> c_int;
         pub fn rc_client_enable_logging(client: *mut rc_client_t, level: c_int, callback: Message);
         pub fn rc_client_set_event_handler(client: *mut rc_client_t, handler: EventHandler);
-        pub fn rc_client_get_user_agent_clause(client: *mut rc_client_t, buffer: *mut c_char, size: usize) -> usize;
         pub fn rc_client_begin_login_with_password(
             client: *mut rc_client_t,
             username: *const c_char,
@@ -379,10 +411,57 @@ impl Account {
 
 /// Forgets the account, which logs out.
 pub fn log_out(path: &Path) -> io::Result<()> {
+    offline::forget_logins(&offline_dir());
     match std::fs::remove_file(path) {
         Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
         _ => Ok(()),
     }
+}
+
+/// An unlock's request as rcheevos makes it, URL and form body, signed with how long ago it
+/// happened, for sending one that waited for a connection.
+pub(super) fn award_request(user: &str, token: &str, id: u32, hardcore: bool, hash: &str, seconds_ago: u32) -> Option<(String, String)> {
+    let (user, token, hash) = (CString::new(user).ok()?, CString::new(token).ok()?, CString::new(hash).ok()?);
+    let params = ffi::rc_api_award_achievement_request_t {
+        username: user.as_ptr(),
+        api_token: token.as_ptr(),
+        achievement_id: id,
+        hardcore: u32::from(hardcore),
+        game_hash: hash.as_ptr(),
+        seconds_since_unlock: seconds_ago,
+    };
+    // SAFETY: all zeros is an empty request, which rcheevos fills in. It stays in place
+    // until destroyed, as its buffer points into itself, and the strings outlive the call.
+    unsafe {
+        let mut request: ffi::rc_api_request_t = std::mem::zeroed();
+        let result = ffi::rc_api_init_award_achievement_request(&raw mut request, &raw const params);
+        let built = (result == 0 && !request.url.is_null() && !request.post_data.is_null())
+            .then(|| (text(request.url), text(request.post_data)));
+        ffi::rc_api_destroy_request(&raw mut request);
+        built
+    }
+}
+
+/// The folder for answers kept for playing offline and unlocks waiting to be sent.
+fn offline_dir() -> PathBuf {
+    #[cfg(test)]
+    return tests::OFFLINE_DIR.with(|dir| dir.borrow().clone()).unwrap_or_else(|| {
+        std::env::temp_dir().join(format!("launcher-ra-offline-{}-{:?}", std::process::id(), std::thread::current().id()))
+    });
+    #[cfg(not(test))]
+    PathBuf::from(offline::OFFLINE_DIR)
+}
+
+/// Sends the unlocks that waited for a connection, for the logged-in account. Returns how
+/// many the server took. Waits for the server, so it runs on a thread of its own.
+pub fn send_waiting_unlocks() -> usize {
+    let dir = offline_dir();
+    if offline::waiting(&dir) == 0 {
+        return 0;
+    }
+    let Some(account) = Account::read(Path::new(ACCOUNT_PATH)) else { return 0 };
+    let user_agent = user_agent();
+    offline::sync(&dir, &account.user, &account.token, &|url, post| send(url, post, "", &user_agent))
 }
 
 /// A finished request, for `Client::pump` to hand to rcheevos.
@@ -392,6 +471,7 @@ struct Response {
     data: usize,
     status: c_int,
     body: Vec<u8>,
+    source: offline::Source,
 }
 
 /// Something rcheevos reported from inside one of its calls, for the game to show.
@@ -421,6 +501,10 @@ struct State {
     load: Option<Outcome>,
     user_agent: String,
     regions: Option<Box<ffi::rc_libretro_memory_regions_t>>,
+    /// Whether an answer came from what was kept, as the server couldn't be reached.
+    offline: bool,
+    /// Whether an unlock has waited for a connection in this session.
+    unlock_waited: bool,
 }
 
 thread_local! {
@@ -535,16 +619,18 @@ unsafe extern "C" fn server_call(
         return;
     };
     let data = data as usize;
+    let dir = offline_dir();
     #[cfg(test)]
     if let Some(fake) = tests::FAKE_SERVER.with(|fake| fake.get()) {
-        let (status, body) = fake(post.as_deref().unwrap_or(&url));
-        let _ = sender.send(Response { callback, data, status, body });
+        let (status, body, source) = offline::answer(&dir, &url, post.as_deref(), &|url, post| fake(post.unwrap_or(url)));
+        let _ = sender.send(Response { callback, data, status, body, source });
         return;
     }
     std::thread::spawn(move || {
-        let (status, body) = send(&url, post.as_deref(), &content_type, &user_agent);
+        let (status, body, source) =
+            offline::answer(&dir, &url, post.as_deref(), &|url, post| send(url, post, &content_type, &user_agent));
         // Fails only once the client is gone, which no longer wants the answer.
-        let _ = sender.send(Response { callback, data, status, body });
+        let _ = sender.send(Response { callback, data, status, body, source });
     });
 }
 
@@ -640,6 +726,17 @@ unsafe extern "C" fn event_handler(event: *const ffi::rc_client_event_t, _: *mut
     }
 }
 
+/// The user agent the server knows this client by, as `TetsuOS/0.1.0 (Linux) rcheevos/12.5.0`:
+/// rcheevos' own clause (`rc_client_get_user_agent_clause`) is its version.
+fn user_agent() -> String {
+    extern "C" {
+        fn rc_version_string() -> *const c_char;
+    }
+    // SAFETY: rcheevos returns a constant string.
+    let version = text(unsafe { rc_version_string() });
+    format!("TetsuOS/{} (Linux) rcheevos/{version}", env!("CARGO_PKG_VERSION"))
+}
+
 /// An rcheevos client, on the thread that made it.
 struct Client {
     raw: *mut ffi::rc_client_t,
@@ -653,15 +750,13 @@ impl Client {
         if raw.is_null() {
             return Err("rcheevos could not start".into());
         }
-        let mut clause = [0 as c_char; 64];
-        // SAFETY: the buffer has the size given, and the client was just made.
+        // SAFETY: the client was just made.
         unsafe {
-            ffi::rc_client_get_user_agent_clause(raw, clause.as_mut_ptr(), clause.len());
             ffi::rc_client_enable_logging(raw, ffi::LOG_LEVEL_INFO, log_message);
             ffi::rc_client_set_event_handler(raw, event_handler);
         }
         let (sender, responses) = channel();
-        let user_agent = format!("TetsuOS/{} (Linux) {}", env!("CARGO_PKG_VERSION"), field_text(&clause));
+        let user_agent = user_agent();
         STATE.with(|state| {
             *state.borrow_mut() = Some(State {
                 sender,
@@ -671,6 +766,8 @@ impl Client {
                 load: None,
                 user_agent,
                 regions: None,
+                offline: false,
+                unlock_waited: false,
             });
         });
         Ok(Self { raw, responses })
@@ -679,7 +776,21 @@ impl Client {
     /// Hands rcheevos the answers that have arrived.
     fn pump(&self) {
         for response in self.responses.try_iter() {
-            with_state(|state| state.in_flight = state.in_flight.saturating_sub(1));
+            with_state(|state| {
+                state.in_flight = state.in_flight.saturating_sub(1);
+                match response.source {
+                    offline::Source::Server => {}
+                    offline::Source::ServerAfterWaiting => state.happenings.push(Happening::Reconnected),
+                    offline::Source::Kept => state.offline = true,
+                    // Shown once, and not at all when the game started offline.
+                    offline::Source::Waiting => {
+                        if !state.offline && !state.unlock_waited {
+                            state.happenings.push(Happening::Disconnected);
+                        }
+                        state.unlock_waited = true;
+                    }
+                }
+            });
             let answer = ffi::rc_api_server_response_t {
                 body: response.body.as_ptr().cast::<c_char>(),
                 body_length: response.body.len(),
@@ -1135,6 +1246,10 @@ impl Session {
         let mut notices = Vec::new();
         if let Some(outcome) = with_state(|state| state.load.take()).flatten() {
             notices.push(self.loaded(outcome));
+            if self.status == Status::Ready && with_state(|state| state.offline).unwrap_or(false) {
+                println!("achievements: playing offline");
+                notices.push(Notice::new(tr("RETROACHIEVEMENTS"), tr("OFFLINE - UNLOCKS WAIT FOR A CONNECTION")));
+            }
         }
         if let Some(Err((code, message))) = with_state(|state| state.login.take()).flatten() {
             eprintln!("achievements: login failed ({code}): {message}");
@@ -1548,6 +1663,8 @@ mod tests {
 
     thread_local! {
         pub(super) static FAKE_SERVER: std::cell::Cell<Option<FakeServer>> = const { std::cell::Cell::new(None) };
+        /// Where a test's session keeps its offline answers, in place of the card's folder.
+        pub(super) static OFFLINE_DIR: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
     }
 
     /// Answers as the server would, with a game of two achievements like rcheevos' own tests.
@@ -1620,6 +1737,99 @@ mod tests {
         assert!(lines.iter().any(|line| matches!(line, Line::Achievement(entry) if entry.title == "Ach2" && !entry.unlocked)));
         session.finish();
         FAKE_SERVER.with(|fake| fake.set(None));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// The RAM for the offline test, which runs beside the one above.
+    static mut OFFLINE_RAM: [u8; 2048] = [0; 2048];
+
+    unsafe extern "C" fn offline_ram_data(id: u32) -> *mut c_void {
+        if id == 2 { std::ptr::addr_of_mut!(OFFLINE_RAM).cast::<c_void>() } else { std::ptr::null_mut() }
+    }
+
+    fn offline_server(_: &str) -> (c_int, Vec<u8>) {
+        (ffi::RETRYABLE_CLIENT_ERROR, Vec::new())
+    }
+
+    /// Runs a session until the game has loaded, and returns its notices.
+    fn load(session: &mut Session) -> Vec<Notice> {
+        let mut notices = Vec::new();
+        for _ in 0..10 {
+            notices.extend(session.pump());
+            session.do_frame();
+        }
+        notices
+    }
+
+    #[test]
+    fn a_game_played_before_unlocks_offline_and_sends_it_later() {
+        let dir = std::env::temp_dir().join(format!("launcher-ra-offline-session-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        OFFLINE_DIR.with(|offline| *offline.borrow_mut() = Some(dir.join("offline")));
+        let rom = dir.join("Sample.nes");
+        std::fs::write(&rom, vec![0x55u8; 16 * 1024]).unwrap();
+        let save = dir.join("Sample.nes.srm");
+        let account = Account { user: "Tester".into(), token: "ApiToken".into() };
+        let memory = CoreMemory { data: offline_ram_data, size: ram_size };
+        // SAFETY: only this test's thread touches the RAM, between frames.
+        unsafe { OFFLINE_RAM = [0; 2048] };
+
+        // Never played: offline, the game has no achievements.
+        FAKE_SERVER.with(|fake| fake.set(Some(offline_server)));
+        let mut session = Session::start(&account, 7, &rom, &save, false, memory).unwrap();
+        load(&mut session);
+        assert!(matches!(session.status(), Status::Failed(_)), "{:?}", session.status());
+        session.finish();
+
+        // Once online, its answers are kept.
+        FAKE_SERVER.with(|fake| fake.set(Some(fake_server)));
+        let mut session = Session::start(&account, 7, &rom, &save, false, memory).unwrap();
+        load(&mut session);
+        assert_eq!(session.status(), &Status::Ready);
+        session.finish();
+
+        // Then offline it loads from them, and an unlock waits.
+        FAKE_SERVER.with(|fake| fake.set(Some(offline_server)));
+        let mut session = Session::start(&account, 7, &rom, &save, false, memory).unwrap();
+        let notices = load(&mut session);
+        assert_eq!(session.status(), &Status::Ready);
+        assert_eq!(notices[0].heading, "0 OF 2 ACHIEVEMENTS UNLOCKED");
+        assert_eq!(notices[1].title, "OFFLINE - UNLOCKS WAIT FOR A CONNECTION");
+        // SAFETY: as above.
+        unsafe {
+            OFFLINE_RAM[1] = 3;
+            OFFLINE_RAM[2] = 7;
+        }
+        let mut notices = Vec::new();
+        for _ in 0..10 {
+            session.do_frame();
+            notices.extend(session.pump());
+        }
+        assert!(notices.iter().any(|notice| notice.title == "Ach1"), "{notices:?}");
+        assert!(!notices.iter().any(|notice| notice.title == "UNLOCKS WAIT FOR A CONNECTION"), "said at the start");
+        assert_eq!(Summary::read(&summary_path(&save)).map(|summary| summary.unlocked), Some(1));
+        session.finish();
+        assert_eq!(offline::waiting(&dir.join("offline")), 1);
+
+        // The next start offline has it unlocked already.
+        // SAFETY: as above.
+        unsafe { OFFLINE_RAM = [0; 2048] };
+        let mut session = Session::start(&account, 7, &rom, &save, false, memory).unwrap();
+        load(&mut session);
+        assert_eq!(session.summary().unlocked, 1);
+        session.finish();
+
+        // Online again, the session sends it first.
+        FAKE_SERVER.with(|fake| fake.set(Some(fake_server)));
+        let mut session = Session::start(&account, 7, &rom, &save, false, memory).unwrap();
+        let notices = load(&mut session);
+        assert!(notices.iter().any(|notice| notice.title == "WAITING UNLOCKS SENT"), "{notices:?}");
+        assert_eq!(offline::waiting(&dir.join("offline")), 0);
+        session.finish();
+
+        FAKE_SERVER.with(|fake| fake.set(None));
+        OFFLINE_DIR.with(|offline| *offline.borrow_mut() = None);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -1872,8 +2082,8 @@ mod tests {
     }
 
     /// The structs declared by hand in `ffi` have the sizes the C compiler gives them. A
-    /// field added or dropped by a newer rcheevos shows here. Two are only ever read through
-    /// a pointer from rcheevos and declare just their first fields, so they may be shorter.
+    /// field added or dropped by a newer rcheevos shows here. One is only ever read through
+    /// a pointer from rcheevos and declares just its first fields, so it may be shorter.
     #[test]
     fn the_declared_structs_have_the_c_sizes() {
         macro_rules! c_size {
@@ -1897,7 +2107,8 @@ mod tests {
             rc_client_achievement_bucket_t rc_client_achievement_list_t rc_client_leaderboard_t
             rc_client_server_error_t rc_client_event_t rc_libretro_memory_regions_t
             rc_libretro_core_memory_info_t retro_memory_descriptor retro_memory_map
+            rc_api_request_t rc_api_award_achievement_request_t
         );
-        start_of!(rc_api_request_t rc_client_user_t);
+        start_of!(rc_client_user_t);
     }
 }

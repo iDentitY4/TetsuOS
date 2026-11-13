@@ -1405,6 +1405,14 @@ pub(crate) fn run_launcher() -> io::Result<()> {
             if settings::get().bluetooth {
                 std::thread::spawn(|| crate::bluetooth::set_service(true));
             }
+            // Unlocks earned offline go to RetroAchievements once there is a connection.
+            std::thread::spawn(|| loop {
+                let sent = achievements::send_waiting_unlocks();
+                if sent > 0 {
+                    println!("achievements: sent {sent} unlocks that waited for a connection");
+                }
+                std::thread::sleep(achievements::WAITING_RETRY);
+            });
         }
 
         let Some(wake) = wait_for_wake(&framebuffer, &events, &mut repeater, &launcher, &mut watch, scrolling.is_some())

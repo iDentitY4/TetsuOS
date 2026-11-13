@@ -38,7 +38,7 @@ Fast), Neo Geo Pocket and Color (Beetle NeoPop), WonderSwan and Color (Beetle Cy
 Supervision (Potator), 32X (PicoDrive) and Arduboy (Arduous), and two games that aren't emulated, Doom (PrBoom, with
 Freedoom: Phase 1 and 2) and Cave Story (NXEngine), both copied to TETSU-DATA once and
 saving from their own menus; cartridge games also in ZIP files, with an in-game menu (8 save slots, levels, display
-options, screenshots to PNG, also used as the cover of a game without one and kept in a gallery to look through and delete, button remapping and turbo per console or game, each core's own options per console or game, cheat codes from `.cht` files, also downloaded on the device, and SWITCH GAME to the other recent games, each resuming, as a list or covers, also on Menu + Select), RetroAchievements (login, unlock notices with badges, a progress page, hardcore, off for every game or one), resume on leaving and after power-off, fast-forward on R2, sharp-bilinear
+options, screenshots to PNG, also used as the cover of a game without one and kept in a gallery to look through and delete, button remapping and turbo per console or game, each core's own options per console or game, cheat codes from `.cht` files, also downloaded on the device, and SWITCH GAME to the other recent games, each resuming, as a list or covers, also on Menu + Select), RetroAchievements (login, unlock notices with badges, a progress page, hardcore, off for every game or one, offline for a game played online before, with unlocks sent on the next connection), resume on leaving and after power-off, fast-forward on R2, sharp-bilinear
 scaling with CRT and LCD effects and a border (a drawn bezel on the handhelds by default,
 the theme's colours or black), kept per console, and a volume sign on the volume buttons, also in the menus.
 
@@ -54,6 +54,9 @@ A new install starts with a setup (language, Wi-Fi, time, adding games), which S
 ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Not yet checked by the user
+
+- RetroAchievements offline (2026-11-13): a real unlock without Wi-Fi, sent later from the
+  menus and dated right on the site, the OFFLINE notice, the German wording
 
 - The screenshot gallery (2026-11-13): its look and feel on the real buttons, the SCREENSHOTS
   tile and details row, more than a page of pictures, the lid, the German wording
@@ -163,7 +166,7 @@ ADVANCED > RUN SETUP AGAIN repeats.
   `transfer/` (with usb_drive and `transfer_page.html`), `library/` (systems, rom_zip,
   game_files, cards, favorites, recent, names, play_time, play_log, statistics_screen, gallery,
   boxart*), `ingame/` (pause*, switcher, screenshot, cheats, controls, core_options*,
-  achievements, rumble), `device/` (power, profile, sleep, performance, charging, audio_out, sounds,
+  achievements*, rumble), `device/` (power, profile, sleep, performance, charging, audio_out, sounds,
   boot_animation, boot_partition, ssh, system_info, storage, paths, clock, set_time, http)
   and `libretro/`; `main`, `app`, `launcher`, `game`, `settings`, `i18n`, `setup` and
   `previews` stay at the top. A new module goes in its folder's `mod.rs`.
@@ -172,7 +175,7 @@ ADVANCED > RUN SETUP AGAIN repeats.
   `rom_zip.rs` games in ZIPs, `cards.rs` the second card slot, `bluetooth.rs` (BlueZ over `zbus`), `bluetooth_menu.rs` and `bluetooth_screen.rs`
   the Bluetooth screen, `audio_out.rs` where sound goes (Bluetooth headphones or the speaker), `wifi.rs` (wpa_supplicant), `wifi_menu.rs`, `wifi_pages.rs` and `wifi_screen.rs` the Wi-Fi
   screen, `network.rs` addresses, hostnames and countries, `transfer.rs` and `transfer_server.rs` the Wi-Fi transfer
-  screen and web page (`transfer_page.html`), `controls.rs` button layouts and turbo, `switcher.rs` SWITCH GAME, `core_options.rs` cores' own options, `cheats.rs` cheat files and the CHEATS page, `achievements.rs` RetroAchievements through rcheevos, `game_files.rs` which files are a game's, `play_time.rs` each game's time, `play_log.rs`
+  screen and web page (`transfer_page.html`), `controls.rs` button layouts and turbo, `switcher.rs` SWITCH GAME, `core_options.rs` cores' own options, `cheats.rs` cheat files and the CHEATS page, `achievements.rs` RetroAchievements through rcheevos, `achievements_offline.rs` its kept answers and waiting unlocks, `game_files.rs` which files are a game's, `play_time.rs` each game's time, `play_log.rs`
   the dated log behind STATISTICS, `screenshot.rs` the in-game menu's pictures, `sleep.rs`, `corner.rs` (clock and battery), `set_time.rs` the time set by hand, `sounds.rs` the menu sounds and boot jingle, `boot_animation.rs` the animation drawn with it, `launcher.rs` the button logic,
   `charging.rs` the charging screen, `screens.rs` and `canvas.rs` the drawing (the main menus' screens and what screens share; each other screen is drawn in its own module), `signs.rs` the volume, fast-forward and notice signs, `statistics_screen.rs` the STATISTICS page, `pause_screens.rs` the in-game menu's, `paths.rs`
   the device's paths and the macros a module builds its own from. Imports are by name, and

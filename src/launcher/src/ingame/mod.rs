@@ -1,6 +1,7 @@
 //! What a running game has besides the core: its menu, options, cheats, controls and achievements.
 
 pub(crate) mod achievements;
+pub(crate) mod achievements_offline;
 pub(crate) mod cheats;
 pub(crate) mod controls;
 pub(crate) mod core_options;

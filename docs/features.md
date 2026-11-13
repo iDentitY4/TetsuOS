@@ -1781,6 +1781,36 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   answers `RC_API_SERVER_RESPONSE_RETRYABLE_CLIENT_ERROR`, so rcheevos retries unlocks
   itself. Leaving the game waits up to 5 s for requests still on their way.
 
+  Offline (2026-11-13, `achievements_offline.rs`): every request goes through
+  `offline::answer`. The answers a game needs to start, the token login (`login2` with a
+  token, never a password), the game's achievements (`achievementsets`, and `gameid` for
+  a disc change) and the session with the user's unlocks (`startsession`), are kept as
+  `/mnt/data/achievements/offline/<user>-<request>-<game hash>.json` whenever the server
+  gives them. When the server can't be reached (no answer, or a 5xx), the kept answer is
+  given to rcheevos instead, so a game played once online has its achievements offline,
+  with OFFLINE - UNLOCKS WAIT FOR A CONNECTION after the loaded notice. A game never
+  played online still fails with NO CONNECTION TO RETROACHIEVEMENTS.
+  An unlock that can't reach the server is added to `waiting.txt` there (user, ID,
+  hardcore, game hash, Unix time; no token) and rcheevos is told it went through, so it
+  doesn't retry it; it is added to the kept session too, so the game starts with it
+  unlocked next time offline, and an unlock that reaches the server is added there as well. The
+  notice UNLOCKS WAIT FOR A CONNECTION shows once, for a connection lost during a game.
+  `sync` sends the waiting unlocks, rebuilt with rcheevos' own
+  `rc_api_init_award_achievement_request` and the token of the account logged in, with
+  `o=` the seconds since the unlock (signed into `v=`), so the server dates them when
+  they happened: before each `startsession` (WAITING UNLOCKS SENT then shows), and every
+  minute from a thread in the launcher's menus (`WAITING_RETRY`). Taken, or `User
+  already has`, removes one; no connection, 401 or 403 stops and keeps the rest; any
+  other refusal drops that one with a log line. `waiting.lock` (`flock`) keeps the
+  launcher and a game from writing the file at once. Unlocks of another account wait
+  until it logs in again; logging out removes the kept logins, which hold the token.
+  Not offline: GAME COMPLETED and MASTERED (rcheevos takes them from the server's
+  `AchievementsRemaining`), leaderboard entries (retried only while the game runs), and
+  the player's score, which reads 0 after an unlock offline. An unlock dated by a wrong
+  clock (no network time yet) is sent with that age. Tests:
+  `a_game_played_before_unlocks_offline_and_sends_it_later` (a whole session online,
+  offline with an unlock, offline again, online) and `achievements_offline`'s own.
+
   Notices show at the bottom of the screen, centred, for 4 to 6 s, through the
   framebuffer's sign, like the volume, and one after another: the game loaded (`3 OF 40
   ACHIEVEMENTS UNLOCKED - HARDCORE` over its title), an unlock with its badge and points,

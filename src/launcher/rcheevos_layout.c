@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include "rc_client.h"
 #include "rc_api_request.h"
+#include "rc_api_runtime.h"
 #include "rcheevos/src/rc_libretro.h"
 
 const size_t launcher_sizeof_rc_api_request_t = sizeof(rc_api_request_t);
@@ -21,3 +22,4 @@ const size_t launcher_sizeof_rc_libretro_memory_regions_t = sizeof(rc_libretro_m
 const size_t launcher_sizeof_rc_libretro_core_memory_info_t = sizeof(rc_libretro_core_memory_info_t);
 const size_t launcher_sizeof_retro_memory_descriptor = sizeof(struct retro_memory_descriptor);
 const size_t launcher_sizeof_retro_memory_map = sizeof(struct retro_memory_map);
+const size_t launcher_sizeof_rc_api_award_achievement_request_t = sizeof(rc_api_award_achievement_request_t);
