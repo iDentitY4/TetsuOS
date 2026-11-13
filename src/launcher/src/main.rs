@@ -72,6 +72,7 @@ fn main() -> ExitCode {
         [flag, path] if flag == "--preview-transfer" => write_transfer_preview(path),
         [flag, path] if flag == "--preview-wifi" => write_wifi_preview(path),
         [flag, path] if flag == "--preview-statistics" => previews::write_statistics_preview(path),
+        [flag, page, path] if flag == "--preview-battery" => previews::write_battery_preview(page, path),
         [flag, path] if flag == "--preview-set-time" => previews::write_set_time_preview(path),
         [flag, path] if flag == "--preview-gallery" => previews::write_gallery_preview(false, path),
         [flag, path] if flag == "--preview-gallery-full" => previews::write_gallery_preview(true, path),
@@ -102,7 +103,7 @@ fn main() -> ExitCode {
             write_ppm(&ui::screens::shutdown_screen(640, 480, i18n::tr("POWERING OFF"), current_theme()), path)
         }
         [flag, path] if flag == "--preview-charging" => {
-            let battery = ui::canvas::Battery { percent: 64, charging: true };
+            let battery = ui::canvas::Battery { percent: 64, charging: true, minutes_left: None };
             write_ppm(&crate::device::charging::charging_screen(640, 480, Some(battery), current_theme()), path)
         }
         [flag, path] if flag == "--preview-volume" => write_ppm(&ui::signs::volume_sign(80, current_theme()), path),
@@ -144,6 +145,7 @@ fn main() -> ExitCode {
                  \x20              | --preview-splash FILE.ppm | --core-options CORE\n\
                  \x20              | --preview-boot-animation FILE.ppm\n\
                  \x20              | --preview-volume | --preview-charging FILE.ppm | --preview-setup STEP FILE.ppm\n\
+                 \x20              | --preview-battery day|week|health FILE.ppm\n\
                  \x20              | --play CORE ROM SAVE battery|state\n\
                  \x20              | --render CORE ROM SAVE battery|state FRAMES FILE.ppm]"
             );

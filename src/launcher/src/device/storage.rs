@@ -36,6 +36,20 @@ pub fn data_read_only() -> bool {
     read_only_at(&std::fs::read_to_string(MOUNTS).unwrap_or_default(), DATA_DIR)
 }
 
+/// Whether TETSU-DATA is mounted and writable. It isn't while USB STORAGE has it, and then
+/// a file written to its folder would land in the root filesystem.
+pub fn data_writable() -> bool {
+    writable_at(&std::fs::read_to_string(MOUNTS).unwrap_or_default(), DATA_DIR)
+}
+
+/// Whether `mounts` has `folder` mounted read-write.
+fn writable_at(mounts: &str, folder: &str) -> bool {
+    mounts.lines().any(|line| {
+        let fields: Vec<&str> = line.split(' ').collect();
+        fields.get(1) == Some(&folder) && fields.get(3).is_some_and(|options| options.split(',').any(|option| option == "rw"))
+    })
+}
+
 /// Whether `mounts`, in the form of `/proc/mounts`, has `folder` mounted read-only.
 fn read_only_at(mounts: &str, folder: &str) -> bool {
     mounts.lines().any(|line| {
@@ -58,6 +72,10 @@ mod tests {
         assert!(!read_only_at(mounts, "/mnt/other"));
         // errors=remount-ro is an option of a writable mount, not a sign of a read-only one
         assert!(!read_only_at(&mounts.replace("vfat ro,", "vfat rw,"), "/mnt/data"));
+        assert!(!writable_at(mounts, "/mnt/data"));
+        assert!(writable_at(mounts, "/mnt/tf2"));
+        assert!(writable_at(&mounts.replace("vfat ro,", "vfat rw,"), "/mnt/data"));
+        assert!(!writable_at(mounts, "/mnt/other"), "not mounted");
     }
 
     #[test]

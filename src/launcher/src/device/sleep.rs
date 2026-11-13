@@ -59,7 +59,7 @@ pub(crate) fn sleep_until_woken(events: &Receiver<Event>) {
                 return;
             }
             timer.arm();
-            if let Err(error) = std::fs::write(SLEEP_CONTROL, "freeze") {
+            if let Err(error) = freeze() {
                 eprintln!("warning: could not sleep: {error}");
                 break;
             }
@@ -92,7 +92,7 @@ fn sleep_with_lid_closed(events: &Receiver<Event>, mut timer: PowerOffTimer) {
             return;
         }
         timer.arm();
-        if let Err(error) = std::fs::write(SLEEP_CONTROL, "freeze") {
+        if let Err(error) = freeze() {
             eprintln!("warning: could not sleep: {error}");
             set_alarm(None);
             return;
@@ -102,6 +102,15 @@ fn sleep_with_lid_closed(events: &Receiver<Event>, mut timer: PowerOffTimer) {
             return;
         }
     }
+}
+
+/// Sleeps until something wakes the device, with the battery log told either side, so the
+/// time asleep is logged as sleep.
+fn freeze() -> std::io::Result<()> {
+    crate::device::battery_log::before_sleep();
+    let slept = std::fs::write(SLEEP_CONTROL, "freeze");
+    crate::device::battery_log::after_wake();
+    slept
 }
 
 /// After a wake, waits briefly for the lid to open: true if it did, or the input is gone.
@@ -215,6 +224,7 @@ fn power_off(events: &Receiver<Event>, ends: impl Fn(&Event) -> bool) {
     set_alarm(None);
     println!("sleep: powering off after {} s asleep", long_sleep().unwrap_or_default().as_secs());
     let command = crate::device::power::poweroff_command();
+    crate::device::battery_log::flush_now();
     if let Err(error) = std::process::Command::new(&command).status() {
         eprintln!("warning: could not run {command}: {error}");
         return;

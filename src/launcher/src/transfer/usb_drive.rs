@@ -104,8 +104,10 @@ pub(crate) fn usb_drive(framebuffer: &mut fb::Framebuffer, events: &Receiver<Eve
     framebuffer.draw(&screens::message_screen(width, height, tr("STARTING USB STORAGE"), current_theme()))?;
     // Syncthing keeps files on TETSU-DATA open, which would keep it from being unmounted.
     let syncthing = crate::backup::syncthing::stop_for_card();
+    crate::device::battery_log::hold(true);
     let status = Command::new(GADGET).arg("storage").status()?;
     if !status.success() {
+        crate::device::battery_log::hold(false);
         if syncthing {
             crate::backup::syncthing::start_if_on();
         }
@@ -191,6 +193,7 @@ pub(crate) fn usb_drive(framebuffer: &mut fb::Framebuffer, events: &Receiver<Eve
         eprintln!("usb storage: {GADGET} network failed: {status}");
     }
     println!("usb storage: finished {}", boot_time());
+    crate::device::battery_log::hold(false);
     // The PC may have changed them.
     settings::reload();
     if syncthing {

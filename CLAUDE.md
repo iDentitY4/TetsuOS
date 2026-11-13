@@ -50,9 +50,11 @@ the theme's colours or black), kept per console, and a volume sign on the volume
 Launcher: a tile grid with RECENT and FAVORITES, lists with covers and scrolling names,
 sorting by name or how recently or long a game was played, jumping by letter on L1 and R1, search on X, a game's details, play time and deleting it on Y,
 box art downloaded on the device, play statistics (time per console and per week, from
-2026-11-11 on), and a settings grid (GENERAL, IN GAME, WI-FI, BLUETOOTH,
-BOX ART, THEME, DATA, SYSTEM, ADVANCED, CORES, TROPHIES, STATISTICS, regrouped by topic on
-2026-11-13, with DATA where TIME was) with colours, background, title, grid size,
+2026-11-11 on), a battery log behind Settings > BATTERY (the level over a day or week,
+time left and to full, capacity measured while charging, charge cycles, drain per console
+and asleep, a TIME LEFT corner, the low level and a CHARGED notice), and a settings grid
+(GENERAL, IN GAME with DISPLAY and ACHIEVEMENTS pages, WI-FI, BLUETOOTH, BOX ART, THEME,
+DATA, SYSTEM, ADVANCED, CORES, BATTERY, STATISTICS, regrouped by topic on 2026-11-13) with colours, background, title, grid size,
 the game switcher's look, hidden tiles, start screen, game names, battery display, menu sounds, the boot jingle, sleep when idle
 and power-off after sleep.
 The launcher and in-game menu are in English or German (Settings > GENERAL > LANGUAGE).
@@ -60,6 +62,12 @@ A new install starts with a setup (language, Wi-Fi, time, adding games), which S
 ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Not yet checked by the user
+
+- BATTERY (2026-11-13): everything on battery and through a real charge: the chart, time
+  left and to full, drain per console, whether the capacity measured while charging is near
+  the truth (it assumes the 1024 mA set current and a linear gauge), sleep in the log, the
+  CHARGED sign, TIME LEFT in the corner, the German wording. The moved rows: DISPLAY and
+  ACHIEVEMENTS inside IN GAME, SHOW IN CORNER and CHARGE TO in BATTERY, the BATTERY icon
 
 - SAVE BACKUP (2026-11-13): pairing a real PC or phone over Wi-Fi, a real new card restored
   from it, a game's end sending its save, USB STORAGE with it on, the lid during a restore,
@@ -186,7 +194,7 @@ ADVANCED > RUN SETUP AGAIN repeats.
   game_files, cards, favorites, recent, names, play_time, play_log, statistics_screen, gallery,
   boxart*), `update/` (mod: the SYSTEM UPDATE screen, install, manifest, slots,
   boot_env: U-Boot's environment), `ingame/` (pause*, switcher, screenshot, cheats, controls, core_options*,
-  achievements*, rumble), `device/` (power, profile, sleep, performance, charging, audio_out, sounds,
+  achievements*, rumble), `device/` (power, battery_log, battery_estimates, battery_screen, profile, sleep, performance, charging, audio_out, sounds,
   boot_animation, boot_partition, ssh, system_info, storage, paths, clock, set_time, http)
   and `libretro/`; `main`, `app`, `launcher`, `game`, `settings`, `i18n`, `setup` and
   `previews` stay at the top. A new module goes in its folder's `mod.rs`.

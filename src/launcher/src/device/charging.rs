@@ -146,7 +146,7 @@ mod tests {
     fn the_charging_battery_fills_to_the_charge_level() {
         let theme = Theme::default();
         let filled_width = |percent| {
-            let canvas = charging_screen(640, 480, Some(Battery { percent, charging: true }), theme);
+            let canvas = charging_screen(640, 480, Some(Battery { percent, charging: true, minutes_left: None }), theme);
             // Along the battery's middle row, where the fill is.
             let (x, y) = ((640 - CHARGE_BODY.0 - CHARGE_TIP.0) / 2, 240 - 64);
             (x..x + CHARGE_BODY.0).filter(|&x| pixel(&canvas, x, y) == theme.accent).count()

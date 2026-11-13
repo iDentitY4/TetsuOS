@@ -1,7 +1,7 @@
 //! The launcher's main loop: drawing its screens and carrying out what presses ask for.
 
 use crate::ingame::{achievements, cheats, controls, core_options, rumble, screenshot};
-use crate::device::{boot_partition, clock, performance, power, sounds, set_time, ssh, storage};
+use crate::device::{battery_log, battery_screen, boot_partition, clock, performance, power, sounds, set_time, ssh, storage};
 use crate::library::{boxart, cards, favorites, game_files, gallery, play_log, recent, statistics_screen};
 use crate::ui::{canvas, fb, icons, input, keyboard, screens, signs};
 use crate::{launcher, settings};
@@ -51,6 +51,9 @@ const VOLUME_SIGN_TIME: Duration = Duration::from_millis(1500);
 
 /// How long a card going in or out of TF2 is on screen.
 const CARD_SIGN_TIME: Duration = Duration::from_millis(3000);
+
+/// How long BATTERY CHARGED is on screen.
+const CHARGED_SIGN_TIME: Duration = Duration::from_millis(4000);
 
 pub(crate) fn open_framebuffer() -> io::Result<fb::Framebuffer> {
     let mut remaining = FB_WAIT_SECONDS;
@@ -179,6 +182,7 @@ fn warn_read_only(framebuffer: &mut fb::Framebuffer, events: &Receiver<Event>, m
 pub(crate) fn shut_down(framebuffer: &mut fb::Framebuffer, message: &str, program: &str) -> io::Result<()> {
     let (width, height) = framebuffer.size();
     framebuffer.draw_last(&screens::shutdown_screen(width, height, message, current_theme()))?;
+    battery_log::flush_now();
     Command::new(program).status()?;
     Ok(())
 }
@@ -206,6 +210,7 @@ pub(crate) fn show_shutdown_on_signal() {
         }
         POWERING_OFF.store(true, Ordering::Relaxed);
         println!("powering off from the power button");
+        battery_log::flush_now();
         let shown = fb::Framebuffer::open(FB_PATH).and_then(|mut framebuffer| {
             let (width, height) = framebuffer.size();
             framebuffer.draw_last(&screens::shutdown_screen(width, height, tr("POWERING OFF"), current_theme()))
@@ -471,7 +476,8 @@ fn settings_group_canvas((width, height): (usize, usize), group: Group, launcher
         Group::InGame if launcher.setting_selected(group) == Some(launcher::Setting::Vibration) => {
             Some(tr("THE SAME FOR EVERY CONSOLE AND GAME").into())
         }
-        Group::InGame => Some(game_screen_note(&current)),
+        Group::Display => Some(game_screen_note(&current)),
+        Group::Battery => Some(battery_note(launcher.setting_selected(group))),
         Group::System if current.idle_minutes > 0 => Some(tr("THE POWER BUTTON WAKES IT FROM SLEEP").into()),
         Group::Advanced => advanced_note(current.ssh, login),
         Group::Achievements => Some(achievements_note(&current, account.is_some())),
@@ -537,9 +543,42 @@ pub(crate) fn launcher_canvas(
             screens::home_tiles_screen(width, height, &rows, launcher.home_tiles_selected(library), &frame)
         }
         Screen::Statistics => statistics_screen::statistics_screen(width, height, &statistics(&library.play_log, launcher.stats_first()), &frame),
+        Screen::BatteryHistory => {
+            let now = battery_log::unix_now();
+            let range = launcher.chart_range();
+            let samples = battery_log::samples_since(now - range.seconds());
+            let summary = battery_log::summary();
+            let history = battery_screen::history(&samples, summary.as_ref(), range, now);
+            battery_screen::history_screen(width, height, &history, &frame)
+        }
+        Screen::BatteryHealth => {
+            let health = battery_screen::health(battery_log::summary().as_ref(), launcher.battery_first(), battery_log::unix_now());
+            battery_screen::health_screen(width, height, &health, &frame)
+        }
     };
     add_corner(&mut canvas, battery);
     (canvas, scrolling)
+}
+
+/// Under the BATTERY settings: the time left, and what the selected row does.
+fn battery_note(selected: Option<launcher::Setting>) -> String {
+    use launcher::Setting;
+    let summary = battery_log::summary();
+    let mut lines = vec![battery_screen::status_text(summary.as_ref().and_then(|summary| summary.latest.as_ref()))];
+    if let Some(estimate) = summary.map(|summary| battery_screen::estimate_text(&summary, battery_log::unix_now())) {
+        lines.extend((!estimate.is_empty()).then_some(estimate));
+    }
+    let about = match selected {
+        Some(Setting::LowBattery) => Some(tr("A GAME WARNS AND THE CORNER TURNS RED AT THIS LEVEL")),
+        Some(Setting::ChargedNotice) => Some(tr("SHOWN IN THE MENUS AND GAMES WHEN CHARGING ENDS")),
+        Some(Setting::ChargeLimit) => Some(tr("BATTERIES LAST LONGER KEPT BELOW FULL")),
+        Some(Setting::Battery) if settings::get().battery == settings::BatteryDisplay::TimeLeft => {
+            Some(tr("THE TIME LEFT SHOWS ONCE THERE IS ENOUGH OF THE LOG"))
+        }
+        _ => None,
+    };
+    lines.extend(about.map(str::to_string));
+    lines.join("\n")
 }
 
 /// Under the IN GAME display settings: that they are a default, and how many consoles differ.
@@ -817,6 +856,8 @@ pub(crate) fn act(
             change_settings(|s| s.charge = s.charge.cycle(steps));
             power::apply_charge_limit(settings::get().charge);
         }
+        Action::LowBattery(steps) => change_settings(|s| s.low_battery = s.low_battery.cycle(steps)),
+        Action::ToggleChargedNotice => change_settings(|s| s.charged_notice_off = !s.charged_notice_off),
         Action::Vibration(steps) => {
             change_settings(|s| s.vibration = s.vibration.cycle(steps));
             rumble::test_buzz(settings::get().vibration);
@@ -1331,6 +1372,8 @@ pub(crate) fn run_launcher() -> io::Result<()> {
     settings::restore_levels();
     performance::apply(settings::get().performance);
     power::apply_charge_limit(settings::get().charge);
+    // Before the charging screen, so the charge it shows is logged too.
+    battery_log::start();
     let mut framebuffer = open_framebuffer()?;
     // Non-fatal: at worst, console text could appear over the screen.
     let _console = fb::claim_console()
@@ -1352,6 +1395,7 @@ pub(crate) fn run_launcher() -> io::Result<()> {
     let mut library = load_library();
     launcher.achievements_logged_in = achievements::Account::read(Path::new(achievements::ACCOUNT_PATH)).is_some();
     let mut monitor = power::Monitor::new();
+    let mut charge_watch = power::ChargeWatch::default();
     let mut art = boxart::BoxArt::new();
     // Nothing has been drawn yet, so the boot logo is still up. A game resumed below also
     // needs the sound card free.
@@ -1403,6 +1447,14 @@ pub(crate) fn run_launcher() -> io::Result<()> {
         }
         let size = framebuffer.size();
         watch.shown_clock = clock_minute(&launcher);
+        if launcher.screen() == Screen::BatteryHealth {
+            launcher.battery_rows = battery_log::summary().map_or(0, |summary| summary.uses.len());
+        }
+        if charge_watch.check() && !settings::get().charged_notice_off {
+            println!("battery: charged");
+            let sign = signs::text_sign(tr("BATTERY CHARGED"), current_theme());
+            framebuffer.show_sign(&sign, signs::VOLUME_SIGN_TOP, CHARGED_SIGN_TIME)?;
+        }
         let (canvas, scrolling) =
             launcher_canvas(size, &launcher, &library, &mut art, watch.battery, scroll_start.elapsed());
         match scrolling {
@@ -1479,6 +1531,8 @@ pub(crate) fn run_launcher() -> io::Result<()> {
             library = reload_library(&library);
             launcher.select_path(&library, selected.as_deref());
             if played {
+                // The game showed it if charging ended meanwhile.
+                charge_watch.check();
                 // A game's progress is lost too, so the warning shows again after each.
                 watch.read_only_warned = false;
                 // SWITCH GAME may have ended on another game: it, if this list has it.

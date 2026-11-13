@@ -543,7 +543,7 @@ pub fn preview() -> Canvas {
         my_id: Some(&snapshot.my_id),
         hint: hint_for(&menu, None),
     };
-    let battery = Some(Battery { percent: 64, charging: false });
+    let battery = Some(Battery { percent: 64, charging: false, minutes_left: None });
     let mut canvas = backup_screen(640, 480, &view, &screen_frame(battery));
     add_corner(&mut canvas, battery);
     canvas

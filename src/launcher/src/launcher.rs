@@ -17,6 +17,8 @@ pub const COLUMNS: usize = 4;
 pub const PAGE: usize = 12;
 /// Consoles in view at once on the statistics screen.
 pub const STATS_CONSOLE_ROWS: usize = 5;
+/// Rows of battery use in view at once.
+pub const BATTERY_USE_ROWS: usize = 6;
 
 #[derive(Clone)]
 pub struct Game {
@@ -101,6 +103,33 @@ pub enum Screen {
     HomeTiles,
     /// Play time per console and per week, from the play log.
     Statistics,
+    /// The charge level over a day or a week, and the time left.
+    BatteryHistory,
+    /// Capacity, charge cycles, and how fast each console drains the battery.
+    BatteryHealth,
+}
+
+/// How much the battery chart shows.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ChartRange {
+    Day,
+    Week,
+}
+
+impl ChartRange {
+    pub fn seconds(self) -> i64 {
+        match self {
+            Self::Day => 86_400,
+            Self::Week => 7 * 86_400,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Day => tr("24 HOURS"),
+            Self::Week => tr("7 DAYS"),
+        }
+    }
 }
 
 /// What can be done from a game's details.
@@ -123,7 +152,8 @@ pub const DETAIL_ROWS: [DetailRow; 5] =
 
 /// A tile on the settings grid. Each opens a list of its settings, except Wi-Fi and
 /// Bluetooth, which open their own screens, Cores, which opens the consoles' core
-/// options, and Statistics, which opens the play statistics.
+/// options, and Statistics, which opens the play statistics. Display and Achievements
+/// aren't on the grid: they are pages of IN GAME (`SUBGROUPS`).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Group {
     General,
@@ -137,10 +167,15 @@ pub enum Group {
     System,
     Advanced,
     Cores,
+    /// The in-game display settings, a page of IN GAME.
+    Display,
+    /// `RetroAchievements`, a page of IN GAME.
     Achievements,
+    Battery,
     Statistics,
 }
 
+/// The tiles of the settings grid.
 pub const GROUPS: [Group; 12] = [
     Group::General,
     Group::InGame,
@@ -152,9 +187,12 @@ pub const GROUPS: [Group; 12] = [
     Group::System,
     Group::Advanced,
     Group::Cores,
-    Group::Achievements,
+    Group::Battery,
     Group::Statistics,
 ];
+
+/// Groups opened from a row of another, which B goes back to.
+pub const SUBGROUPS: [Group; 2] = [Group::Display, Group::Achievements];
 
 /// The most settings a group has, which the settings screen makes room for. Only THEME
 /// has this many, which leaves no room for a note.
@@ -173,9 +211,16 @@ impl Group {
             Self::System => "SYSTEM",
             Self::Advanced => "ADVANCED",
             Self::Cores => "CORES",
+            Self::Display => "DISPLAY",
             Self::Achievements => "ACHIEVEMENTS",
+            Self::Battery => "BATTERY",
             Self::Statistics => "STATISTICS",
         })
+    }
+
+    /// The group whose row opens this one, for a page of another group.
+    pub fn parent(self) -> Option<Group> {
+        SUBGROUPS.contains(&self).then_some(Self::InGame)
     }
 
     /// The name on its tile in the settings grid, which fits 11 characters.
@@ -199,14 +244,15 @@ impl Group {
                     Setting::ClockFormat,
                     Setting::SetTime,
                 ],
-            Self::InGame => &[
-                Setting::Scaling,
-                Setting::Effect,
-                Setting::Ghosting,
-                Setting::Border,
-                Setting::UseForAllConsoles,
-                Setting::Vibration,
-                Setting::Switcher,
+            Self::InGame => &[Setting::DisplayPage, Setting::Vibration, Setting::Switcher, Setting::AchievementsPage],
+            Self::Display => &[Setting::Scaling, Setting::Effect, Setting::Ghosting, Setting::Border, Setting::UseForAllConsoles],
+            Self::Battery => &[
+                Setting::BatteryHistory,
+                Setting::BatteryHealth,
+                Setting::Battery,
+                Setting::LowBattery,
+                Setting::ChargedNotice,
+                Setting::ChargeLimit,
             ],
             Self::Wifi | Self::Bluetooth | Self::Cores | Self::Statistics => &[],
             Self::BoxArt => &[Setting::ShowCovers, Setting::ScreenshotCovers, Setting::DownloadMissingArt, Setting::DownloadAllArt, Setting::DeleteArt],
@@ -236,7 +282,6 @@ impl Group {
                 &[
                     Setting::SystemInfo,
                     Setting::ButtonTest,
-                    Setting::Battery,
                     Setting::IdleSleep,
                     Setting::SleepPowerOff,
                     Setting::SystemUpdate,
@@ -249,7 +294,6 @@ impl Group {
                 Setting::RootPassword,
                 Setting::SshKeys,
                 Setting::Performance,
-                Setting::ChargeLimit,
                 Setting::BootMessages,
                 Setting::RunSetup,
                 Setting::ResetSettings,
@@ -312,6 +356,14 @@ pub enum Setting {
     RunSetup,
     ResetSettings,
     UseForAllConsoles,
+    /// IN GAME's rows that open its pages.
+    DisplayPage,
+    AchievementsPage,
+    BatteryHistory,
+    BatteryHealth,
+    LowBattery,
+    /// Whether finishing a charge shows CHARGED.
+    ChargedNotice,
     /// `RetroAchievements` for every game, or none.
     AchievementsOn,
     /// Logs in to `RetroAchievements`, or out once logged in.
@@ -333,7 +385,7 @@ impl Setting {
             Self::GameNames => "GAME NAMES",
             Self::Switcher => "GAME SWITCHER",
             Self::SortGames => "SORT GAMES BY",
-            Self::Battery => "BATTERY",
+            Self::Battery => "SHOW IN CORNER",
             Self::MenuSounds => "MENU SOUNDS",
             Self::BootJingle => "BOOT JINGLE",
             Self::Language => "LANGUAGE",
@@ -374,6 +426,12 @@ impl Setting {
             Self::RunSetup => "RUN SETUP AGAIN",
             Self::ResetSettings => "RESET SETTINGS",
             Self::UseForAllConsoles => "USE FOR ALL CONSOLES",
+            Self::DisplayPage => "DISPLAY",
+            Self::AchievementsPage => "ACHIEVEMENTS",
+            Self::BatteryHistory => "CHARGE HISTORY",
+            Self::BatteryHealth => "HEALTH AND USE",
+            Self::LowBattery => "LOW BATTERY AT",
+            Self::ChargedNotice => "CHARGED NOTICE",
             Self::AchievementsOn => "ACHIEVEMENTS",
             Self::AchievementsAccount => "ACCOUNT",
             Self::Hardcore => "HARDCORE",
@@ -400,6 +458,10 @@ impl Setting {
                 | Self::SystemUpdate
                 | Self::RootPassword
                 | Self::RunSetup
+                | Self::DisplayPage
+                | Self::AchievementsPage
+                | Self::BatteryHistory
+                | Self::BatteryHealth
         )
     }
 
@@ -435,6 +497,8 @@ impl Setting {
                 | Self::Ssh
                 | Self::Performance
                 | Self::ChargeLimit
+                | Self::LowBattery
+                | Self::ChargedNotice
                 | Self::BootMessages
                 | Self::Hardcore
                 | Self::AchievementsOn
@@ -564,6 +628,9 @@ pub enum Command {
     RemoveSshKeys,
     Performance(i32),
     ChargeLimit(i32),
+    LowBattery(i32),
+    /// Turns the CHARGED notice off if it is on, or on.
+    ToggleChargedNotice,
     Vibration(i32),
     /// Switches the boot between the logo alone and the kernel's messages.
     ToggleBootMessages,
@@ -622,6 +689,12 @@ pub struct Launcher {
     pub achievements_logged_in: bool,
     /// The first console in view on the statistics screen, which Up and Down scroll.
     stats_first: usize,
+    /// What the battery chart shows.
+    chart_range: ChartRange,
+    /// The first row in view of the battery's use, which Up and Down scroll.
+    battery_first: usize,
+    /// How many rows of battery use there are, set as they are drawn, for scrolling.
+    pub battery_rows: usize,
 }
 
 impl Library {
@@ -732,6 +805,9 @@ impl Launcher {
             confirming: None,
             achievements_logged_in: false,
             stats_first: 0,
+            chart_range: ChartRange::Day,
+            battery_first: 0,
+            battery_rows: 0,
         }
     }
 
@@ -879,7 +955,16 @@ impl Launcher {
     }
 
     fn in_settings(&self) -> bool {
-        matches!(self.screen, Screen::Settings | Screen::SettingsGroup(_) | Screen::Info | Screen::HomeTiles | Screen::Statistics)
+        matches!(
+            self.screen,
+            Screen::Settings
+                | Screen::SettingsGroup(_)
+                | Screen::Info
+                | Screen::HomeTiles
+                | Screen::Statistics
+                | Screen::BatteryHistory
+                | Screen::BatteryHealth
+        )
     }
 
     fn open_settings(&mut self) {
@@ -929,12 +1014,44 @@ impl Launcher {
                 }
                 Command::Nothing
             }
+            Screen::BatteryHistory => {
+                match button {
+                    Button::A | Button::B => self.screen = Screen::SettingsGroup(Group::Battery),
+                    Button::Left | Button::Right => {
+                        self.chart_range = match self.chart_range {
+                            ChartRange::Day => ChartRange::Week,
+                            ChartRange::Week => ChartRange::Day,
+                        };
+                    }
+                    _ => {}
+                }
+                Command::Nothing
+            }
+            Screen::BatteryHealth => {
+                let last = self.battery_rows.saturating_sub(BATTERY_USE_ROWS);
+                match button {
+                    Button::A | Button::B => self.screen = Screen::SettingsGroup(Group::Battery),
+                    Button::Up => self.battery_first = self.battery_first.saturating_sub(1),
+                    Button::Down => self.battery_first = (self.battery_first + 1).min(last),
+                    _ => {}
+                }
+                Command::Nothing
+            }
         }
     }
 
     /// The first console shown on the statistics screen.
     pub fn stats_first(&self) -> usize {
         self.stats_first
+    }
+
+    pub fn chart_range(&self) -> ChartRange {
+        self.chart_range
+    }
+
+    /// The first row of battery use shown.
+    pub fn battery_first(&self) -> usize {
+        self.battery_first.min(self.battery_rows.saturating_sub(BATTERY_USE_ROWS))
     }
 
     fn press_home_tiles(&mut self, button: Button, library: &Library) -> Command {
@@ -1081,6 +1198,8 @@ impl Launcher {
             Setting::Ssh => Command::SshAccess(step),
             Setting::Performance => Command::Performance(step),
             Setting::ChargeLimit => Command::ChargeLimit(step),
+            Setting::LowBattery => Command::LowBattery(step),
+            Setting::ChargedNotice => Command::ToggleChargedNotice,
             Setting::BootMessages => Command::ToggleBootMessages,
             Setting::Hardcore => Command::ToggleHardcore,
             Setting::AchievementsOn => Command::ToggleAchievements,
@@ -1115,7 +1234,7 @@ impl Launcher {
                     return command;
                 }
             }
-            Button::B => self.screen = Screen::Settings,
+            Button::B => self.screen = group.parent().map_or(Screen::Settings, Screen::SettingsGroup),
             Button::A if setting.needs_confirming() && confirming != Some(setting) => {
                 self.confirming = Some(setting);
             }
@@ -1151,6 +1270,14 @@ impl Launcher {
                 Setting::UseForAllConsoles => return Command::UseDisplayForAllConsoles,
                 Setting::Hardcore => return Command::ToggleHardcore,
                 Setting::AchievementsOn => return Command::ToggleAchievements,
+                Setting::DisplayPage => self.screen = Screen::SettingsGroup(Group::Display),
+                Setting::AchievementsPage => self.screen = Screen::SettingsGroup(Group::Achievements),
+                Setting::BatteryHistory => self.screen = Screen::BatteryHistory,
+                Setting::BatteryHealth => {
+                    self.battery_first = 0;
+                    self.screen = Screen::BatteryHealth;
+                }
+                Setting::ChargedNotice => return Command::ToggleChargedNotice,
                 // Handled above.
                 Setting::AchievementsAccount => {}
                 Setting::Volume
@@ -1181,6 +1308,7 @@ impl Launcher {
                 | Setting::Ssh
                 | Setting::Performance
                 | Setting::ChargeLimit
+                | Setting::LowBattery
                 | Setting::BootMessages
                 | Setting::UnlockNotices
                 | Setting::ProgressNotices
@@ -1651,11 +1779,21 @@ mod tests {
         assert_eq!(launcher.screen(), Screen::Home);
     }
 
+    /// Opens a group from the grid, or a page of a group from its row there.
     fn open_group(launcher: &mut Launcher, library: &Library, group: Group) {
-        launcher.press(Button::Start, library);
-        let index = GROUPS.iter().position(|&other| other == group).unwrap();
-        for _ in 0..index {
-            launcher.press(Button::Right, library);
+        if let Some(parent) = group.parent() {
+            open_group(launcher, library, parent);
+            let row = if group == Group::Display { Setting::DisplayPage } else { Setting::AchievementsPage };
+            let index = parent.settings().iter().position(|&setting| setting == row).unwrap();
+            for _ in 0..index {
+                launcher.press(Button::Down, library);
+            }
+        } else {
+            launcher.press(Button::Start, library);
+            let index = GROUPS.iter().position(|&other| other == group).unwrap();
+            for _ in 0..index {
+                launcher.press(Button::Right, library);
+            }
         }
         launcher.press(Button::A, library);
         assert_eq!(launcher.screen(), Screen::SettingsGroup(group));
@@ -1701,21 +1839,24 @@ mod tests {
         assert_eq!(launcher.press(Button::Left, &library), Command::ToggleSounds);
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Right, &library), Command::ToggleJingle);
-        press_all(&mut launcher, &library, &[Button::B, Button::Right, Button::A]);
+        // IN GAME's first row opens DISPLAY, and B goes back to IN GAME.
+        press_all(&mut launcher, &library, &[Button::B, Button::Right, Button::A, Button::A]);
+        assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::Display));
         assert_eq!(launcher.press(Button::Right, &library), Command::Scaling(1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Left, &library), Command::Effect(-1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Right, &library), Command::Ghosting(1));
-        press_all(&mut launcher, &library, &[Button::Up, Button::Up, Button::Up]);
-        assert_eq!(launcher.setting_selected(Group::InGame), Some(Setting::Switcher), "IN GAME ends with the game switcher");
+        press_all(&mut launcher, &library, &[Button::B, Button::Down, Button::Down]);
+        assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::InGame));
+        assert_eq!(launcher.setting_selected(Group::InGame), Some(Setting::Switcher));
         assert_eq!(launcher.press(Button::Left, &library), Command::Switcher(-1));
         // Wi-Fi opens its own screen straight from the grid.
         assert_eq!(press_all(&mut launcher, &library, &[Button::B, Button::Right, Button::A]), Command::Wifi);
         assert_eq!(launcher.screen(), Screen::Settings);
-        // So does CORES, on the last row, left of ACHIEVEMENTS, where Down goes from there.
+        // So does CORES, on the last row, left of BATTERY, where Down goes from there.
         press_all(&mut launcher, &library, &[Button::Down, Button::Down]);
-        assert_eq!(launcher.group_selected(), Group::Achievements);
+        assert_eq!(launcher.group_selected(), Group::Battery);
         assert_eq!(press_all(&mut launcher, &library, &[Button::Left, Button::A]), Command::CoreOptions);
         assert_eq!((launcher.screen(), launcher.group_selected()), (Screen::Settings, Group::Cores));
         press_all(&mut launcher, &library, &[Button::Up, Button::Up, Button::Right]);
@@ -1740,14 +1881,12 @@ mod tests {
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::A, &library), Command::ButtonTest);
         launcher.press(Button::Down, &library);
-        assert_eq!(launcher.press(Button::Right, &library), Command::BatteryDisplay(1));
-        launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Left, &library), Command::IdleSleep(-1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Right, &library), Command::SleepPowerOff(1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::A, &library), Command::SystemUpdate);
-        press_all(&mut launcher, &library, &[Button::Up, Button::Up, Button::Up, Button::Up, Button::Up]);
+        press_all(&mut launcher, &library, &[Button::Up, Button::Up, Button::Up, Button::Up]);
         launcher.press(Button::A, &library);
         launcher.press(Button::B, &library);
         assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::System));
@@ -1826,7 +1965,7 @@ mod tests {
         press_all(&mut launcher, &library, &[Button::Down, Button::B]);
         assert_eq!(launcher.group_selected(), Group::InGame);
         launcher.press(Button::A, &library);
-        assert_eq!(launcher.setting_selected(Group::InGame), Some(Setting::Effect));
+        assert_eq!(launcher.setting_selected(Group::InGame), Some(Setting::Vibration));
         launcher.press(Button::Start, &library);
         assert_eq!(launcher.screen(), Screen::Games(List::Recent));
         // Opening settings again starts from the first tile.
@@ -1835,8 +1974,60 @@ mod tests {
     }
 
     #[test]
+    fn achievements_are_a_page_of_in_game_that_b_goes_back_from() {
+        let library = library();
+        let mut launcher = Launcher::new();
+        open_group(&mut launcher, &library, Group::Achievements);
+        launcher.press(Button::B, &library);
+        assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::InGame));
+        assert_eq!(launcher.setting_selected(Group::InGame), Some(Setting::AchievementsPage));
+        launcher.press(Button::B, &library);
+        assert_eq!((launcher.screen(), launcher.group_selected()), (Screen::Settings, Group::InGame));
+        assert!(!GROUPS.contains(&Group::Achievements) && !GROUPS.contains(&Group::Display));
+    }
+
+    #[test]
+    fn battery_opens_its_pages_and_changes_its_settings() {
+        let library = library();
+        let mut launcher = Launcher::new();
+        open_group(&mut launcher, &library, Group::Battery);
+        launcher.press(Button::A, &library);
+        assert_eq!(launcher.screen(), Screen::BatteryHistory);
+        assert_eq!(launcher.chart_range(), ChartRange::Day);
+        launcher.press(Button::Right, &library);
+        assert_eq!(launcher.chart_range(), ChartRange::Week);
+        launcher.press(Button::Left, &library);
+        assert_eq!(launcher.chart_range(), ChartRange::Day);
+        launcher.press(Button::B, &library);
+        assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::Battery));
+        // HEALTH AND USE scrolls as far as its rows go.
+        launcher.press(Button::Down, &library);
+        launcher.press(Button::A, &library);
+        assert_eq!(launcher.screen(), Screen::BatteryHealth);
+        launcher.battery_rows = BATTERY_USE_ROWS + 2;
+        press_all(&mut launcher, &library, &[Button::Down; 5]);
+        assert_eq!(launcher.battery_first(), 2);
+        launcher.battery_rows = 3;
+        assert_eq!(launcher.battery_first(), 0, "fewer rows than fit");
+        launcher.press(Button::B, &library);
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::Right, &library), Command::BatteryDisplay(1));
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::Left, &library), Command::LowBattery(-1));
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::A, &library), Command::ToggleChargedNotice);
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::Right, &library), Command::ChargeLimit(1));
+        // Start closes settings from a battery page too.
+        press_all(&mut launcher, &library, &[Button::Up, Button::Up, Button::Up, Button::Up, Button::Up, Button::A]);
+        assert_eq!(launcher.screen(), Screen::BatteryHistory);
+        launcher.press(Button::Start, &library);
+        assert_eq!(launcher.screen(), Screen::Home);
+    }
+
+    #[test]
     fn every_group_fits_the_settings_screen() {
-        for group in GROUPS {
+        for group in GROUPS.into_iter().chain(SUBGROUPS) {
             assert!(group.settings().len() <= MAX_GROUP_SETTINGS, "{group:?}");
             assert_eq!(group.settings().is_empty(), matches!(group, Group::Wifi | Group::Bluetooth | Group::Cores | Group::Statistics));
             // The other groups have notes, which a full group would have no room for.
@@ -1859,8 +2050,6 @@ mod tests {
         assert_eq!(launcher.press(Button::A, &library), Command::RemoveSshKeys);
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Left, &library), Command::Performance(-1));
-        launcher.press(Button::Down, &library);
-        assert_eq!(launcher.press(Button::Right, &library), Command::ChargeLimit(1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Left, &library), Command::ToggleBootMessages);
         launcher.press(Button::Down, &library);

@@ -98,7 +98,8 @@ use crate::ingame::pause;
         }
         let mut keys = Vec::new();
         keys.extend(labels(&launcher::GROUPS, launcher::Group::label));
-        for group in launcher::GROUPS {
+        keys.extend(labels(&launcher::SUBGROUPS, launcher::Group::label));
+        for group in launcher::GROUPS.into_iter().chain(launcher::SUBGROUPS) {
             keys.extend(labels(group.settings(), launcher::Setting::label));
         }
         keys.extend(labels(&pause::ITEMS, pause::Item::label));

@@ -119,6 +119,9 @@ pub(super) fn draw_whole_screen(framebuffer: &mut Framebuffer) -> io::Result<()>
     framebuffer.blit(&pixels, width, height, 0, 0)
 }
 
+/// How long BATTERY CHARGED is over the game.
+const CHARGED_SIGN_TIME: Duration = Duration::from_secs(4);
+
 /// Shows the charge level in the corner while the battery is low.
 fn draw_battery_warning(framebuffer: &mut Framebuffer, percent: u32) -> io::Result<()> {
     let (x, y) = WARNING_POSITION;
@@ -453,6 +456,7 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
     let mut trigger = MenuTrigger::new();
     let mut release_at = None;
     let mut battery = power::Monitor::new();
+    let mut charge_watch = power::ChargeWatch::default();
     let mut fast_forwarding = false;
     let mut ending = Ending::Quit;
     // QUIT's START OVER drops the place, so the next start begins from the game's save.
@@ -501,6 +505,11 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
                 break;
             }
             Some(Level::Low(percent)) => draw_battery_warning(framebuffer, percent)?,
+            // Read as often as the level, and shown like the volume, over the border.
+            Some(Level::Fine) if charge_watch.check() && !settings::get().charged_notice_off => {
+                let sign = signs::text_sign(tr("BATTERY CHARGED"), crate::ui::corner::current_theme());
+                framebuffer.show_sign(&sign, signs::VOLUME_SIGN_TOP, CHARGED_SIGN_TIME)?;
+            }
             Some(Level::Fine) | None => {}
         }
         update_volume_sign(framebuffer, &levels)?;

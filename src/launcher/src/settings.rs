@@ -326,9 +326,33 @@ choices! {
     /// when the battery runs low, whichever is chosen.
     pub enum BatteryDisplay (default Percent) {
         Percent => "percent", "PERCENT";
+        /// The level and the estimated time left, while on the battery.
+        TimeLeft => "time", "TIME LEFT";
         /// Only once it is low and not charging, when it shows in red.
         WhenLow => "low", "WHEN LOW";
         Hidden => "hidden", "HIDDEN";
+    }
+}
+
+choices! {
+    /// The charge level the battery counts as low at: the corner shows it in red, WHEN LOW
+    /// shows it at all, and a game shows the warning.
+    pub enum LowBattery (default Percent15) {
+        Percent5 => "5", "5%";
+        Percent10 => "10", "10%";
+        Percent15 => "15", "15%";
+        Percent20 => "20", "20%";
+    }
+}
+
+impl LowBattery {
+    pub fn percent(self) -> u32 {
+        match self {
+            Self::Percent5 => 5,
+            Self::Percent10 => 10,
+            Self::Percent15 => 15,
+            Self::Percent20 => 20,
+        }
     }
 }
 
@@ -502,6 +526,9 @@ pub struct Settings {
     /// A game without a cover shows its console's icon, not its newest screenshot.
     pub screenshot_covers_off: bool,
     pub battery: BatteryDisplay,
+    pub low_battery: LowBattery,
+    /// No CHARGED notice in the menus and games when charging reaches the limit.
+    pub charged_notice_off: bool,
     /// Minutes without a press in the menus before sleeping, one of `IDLE_SLEEP_MINUTES`.
     pub idle_minutes: u32,
     pub sleep_power_off: SleepPowerOff,
@@ -685,6 +712,8 @@ fn parse(text: &str) -> Settings {
             "covers" => settings.covers_hidden = value == "off",
             "screenshot_covers" => settings.screenshot_covers_off = value == "off",
             "battery" => choose(&mut settings.battery, BatteryDisplay::from_key(value)),
+            "low_battery" => choose(&mut settings.low_battery, LowBattery::from_key(value)),
+            "charged_notice" => settings.charged_notice_off = value == "off",
             "idle" => choose(&mut settings.idle_minutes, IDLE_SLEEP_MINUTES.into_iter().find(|&m| value.parse() == Ok(m))),
             "sleep_power_off" => choose(&mut settings.sleep_power_off, SleepPowerOff::from_key(value)),
             "sounds" => settings.menu_sounds = value == "on",
@@ -758,6 +787,8 @@ fn format(settings: &Settings) -> String {
     lines.push(format!("covers={}", on_off(!settings.covers_hidden)));
     lines.push(format!("screenshot_covers={}", on_off(!settings.screenshot_covers_off)));
     lines.push(format!("battery={}", settings.battery.key()));
+    lines.push(format!("low_battery={}", settings.low_battery.key()));
+    lines.push(format!("charged_notice={}", on_off(!settings.charged_notice_off)));
     lines.push(format!("idle={}", settings.idle_minutes));
     lines.push(format!("sleep_power_off={}", settings.sleep_power_off.key()));
     lines.push(format!("sounds={}", on_off(settings.menu_sounds)));
@@ -1146,6 +1177,8 @@ mod tests {
             covers_hidden: true,
             screenshot_covers_off: true,
             battery: BatteryDisplay::WhenLow,
+            low_battery: LowBattery::Percent5,
+            charged_notice_off: true,
             idle_minutes: 10,
             sleep_power_off: SleepPowerOff::Hours8,
             menu_sounds: true,

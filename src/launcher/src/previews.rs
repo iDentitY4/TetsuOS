@@ -74,7 +74,7 @@ pub(crate) fn write_launcher_preview(path: &str, buttons: &[Button]) -> io::Resu
     for &button in buttons {
         launcher.press(button, &library);
     }
-    let battery = Some(Battery { percent: 95, charging: true });
+    let battery = Some(Battery { percent: 95, charging: true, minutes_left: None });
     let mut art = boxart::BoxArt::new();
     let (canvas, _) = launcher_canvas(PREVIEW_SIZE, &launcher, &library, &mut art, battery, Duration::ZERO);
     write_ppm(&canvas, path)
@@ -300,7 +300,7 @@ pub(crate) fn write_wifi_preview(path: &str) -> io::Result<()> {
         message: Some(i18n::tr("SCANNING")),
     };
     let (width, height) = PREVIEW_SIZE;
-    let battery = Some(Battery { percent: 95, charging: true });
+    let battery = Some(Battery { percent: 95, charging: true, minutes_left: None });
     write_ppm(&crate::wifi::wifi_screen::wifi_screen(width, height, &view, &screen_frame(battery)), path)
 }
 
@@ -338,7 +338,7 @@ pub(crate) fn write_bluetooth_preview(path: &str) -> io::Result<()> {
         message: None,
     };
     let (width, height) = PREVIEW_SIZE;
-    let battery = Some(Battery { percent: 95, charging: true });
+    let battery = Some(Battery { percent: 95, charging: true, minutes_left: None });
     write_ppm(&crate::bluetooth::bluetooth_screen::bluetooth_screen(width, height, &view, &screen_frame(battery)), path)
 }
 
@@ -349,7 +349,7 @@ pub(crate) fn write_keyboard_preview(path: &str) -> io::Result<()> {
     keyboard.press(Button::Down);
     keyboard.press(Button::Right);
     let (width, height) = PREVIEW_SIZE;
-    let battery = Some(Battery { percent: 95, charging: true });
+    let battery = Some(Battery { percent: 95, charging: true, minutes_left: None });
     let view = screens::KeyboardView {
         icon: &icons::WIFI,
         title: i18n::tr("PASSWORD"),
@@ -370,7 +370,7 @@ pub(crate) fn write_setup_preview(step: usize, path: &str) -> io::Result<()> {
         setup::Step::Games => i18n::trf("GAMES ON THE CARD: {}", &[&0]),
     };
     let view = setup::setup_view(&setup, &settings::get(), status);
-    let battery = Some(Battery { percent: 95, charging: true });
+    let battery = Some(Battery { percent: 95, charging: true, minutes_left: None });
     write_ppm(&crate::setup::setup_screen(width, height, &view, &screen_frame(battery)), path)
 }
 
@@ -380,7 +380,7 @@ pub(crate) fn write_setup_preview(step: usize, path: &str) -> io::Result<()> {
 pub(crate) fn write_usb_drive_preview(path: &str) -> io::Result<()> {
     let (width, height) = PREVIEW_SIZE;
     let view = usb_drive_view(UsbLink::Connected, false, true);
-    let frame = screens::Frame { theme: current_theme(), battery: Some(Battery { percent: 80, charging: true }) };
+    let frame = screens::Frame { theme: current_theme(), battery: Some(Battery { percent: 80, charging: true, minutes_left: None }) };
     write_ppm(&crate::transfer::usb_drive::usb_drive_screen(width, height, &view, &frame), path)
 }
 
@@ -395,7 +395,7 @@ pub(crate) fn write_statistics_preview(path: &str) -> io::Result<()> {
         let console = consoles[usize::try_from(back).unwrap_or(0) * 5 % consoles.len()];
         log.add(day, console, u64::try_from((back * 37 + 11) % 97).unwrap_or(0) * 60);
     }
-    let frame = screens::Frame { theme: current_theme(), battery: Some(Battery { percent: 80, charging: false }) };
+    let frame = screens::Frame { theme: current_theme(), battery: Some(Battery { percent: 80, charging: false, minutes_left: None }) };
     write_ppm(&crate::library::statistics_screen::statistics_screen(width, height, &crate::app::statistics(&log, 0), &frame), path)
 }
 
@@ -407,7 +407,7 @@ pub(crate) fn write_set_time_preview(path: &str) -> io::Result<()> {
     let values = crate::device::set_time::field_values(time, settings.clock);
     let date = crate::device::clock::date_text(&crate::device::clock::zoned(time, settings.time_zone()), settings.clock);
     let view = crate::device::set_time::SetTimeView { values: &values, selected: 3, date: &date, failed: false };
-    let frame = screens::Frame { theme: current_theme(), battery: Some(Battery { percent: 80, charging: false }) };
+    let frame = screens::Frame { theme: current_theme(), battery: Some(Battery { percent: 80, charging: false, minutes_left: None }) };
     write_ppm(&crate::device::set_time::set_time_screen(width, height, &view, &frame), path)
 }
 
@@ -420,7 +420,7 @@ pub(crate) fn write_transfer_preview(path: &str) -> io::Result<()> {
         ..Activity::default()
     };
     let view = transfer_view(Some("192.168.178.123"), "482913", &activity, false);
-    let frame = screens::Frame { theme: current_theme(), battery: Some(Battery { percent: 80, charging: false }) };
+    let frame = screens::Frame { theme: current_theme(), battery: Some(Battery { percent: 80, charging: false, minutes_left: None }) };
     write_ppm(&crate::transfer::transfer_screen(width, height, &view, &frame), path)
 }
 
@@ -573,6 +573,74 @@ pub(crate) fn write_gallery_preview(full: bool, path: &str) -> io::Result<()> {
         armed: false,
         failed: false,
     };
-    let frame = screens::Frame { theme: current_theme(), battery: Some(Battery { percent: 80, charging: false }) };
+    let frame = screens::Frame { theme: current_theme(), battery: Some(Battery { percent: 80, charging: false, minutes_left: None }) };
     write_ppm(&gallery_screen(width, height, &view, &frame), path)
+}
+
+/// A made-up battery log, written a minute at a time.
+struct PreviewLog {
+    samples: Vec<crate::device::battery_log::Sample>,
+    time: i64,
+    percent: f64,
+}
+
+impl PreviewLog {
+    fn add(&mut self, state: crate::device::battery_log::State, activity: crate::device::battery_log::Activity) {
+        let percent = self.percent.round() as u8;
+        let millivolts = 3600 + (self.percent * 6.0) as u16;
+        self.samples.push(crate::device::battery_log::Sample { time: self.time, percent, millivolts, state, activity });
+    }
+
+    fn run(&mut self, minutes: i64, per_hour: f64, state: crate::device::battery_log::State, activity: crate::device::battery_log::Activity) {
+        for _ in 0..minutes {
+            self.time += 60;
+            self.percent = (self.percent + per_hour / 60.0).clamp(0.0, 100.0);
+            self.add(state, activity);
+        }
+    }
+}
+
+/// A day and a half of the menus, games, a night asleep and a charge, ending on the
+/// battery now.
+fn preview_battery_log(now: i64) -> Vec<crate::device::battery_log::Sample> {
+    use crate::device::battery_log::{Activity, State};
+    let mut log = PreviewLog { samples: Vec::new(), time: now - 26 * 3600, percent: 95.0 };
+    log.run(50, -8.0, State::Discharging, Activity::Menu);
+    log.run(120, -12.0, State::Discharging, Activity::Game("gba"));
+    log.run(30, -8.0, State::Discharging, Activity::Menu);
+    log.run(60, -18.0, State::Discharging, Activity::Game("ps1"));
+    // A night asleep: one sample on waking.
+    log.time += 9 * 3600;
+    log.percent -= 4.0;
+    log.add(State::Discharging, Activity::Sleep);
+    log.run(60, -11.0, State::Discharging, Activity::Game("snes"));
+    log.run(80, 40.0, State::ConstantCurrent, Activity::Menu);
+    log.run(60, 18.0, State::Charging, Activity::Menu);
+    log.run(30, 0.0, State::Full, Activity::Menu);
+    // Off for an hour.
+    log.time += 3600;
+    log.add(State::Discharging, Activity::Off);
+    let left = (now - log.time) / 60;
+    log.run(left / 2, -10.0, State::Discharging, Activity::Game("md"));
+    log.run(left - left / 2, -6.0, State::Discharging, Activity::Menu);
+    log.samples
+}
+
+/// Settings > BATTERY > CHARGE HISTORY or HEALTH AND USE, from a made-up log.
+pub(crate) fn write_battery_preview(page: &str, path: &str) -> io::Result<()> {
+    use crate::device::{battery_estimates, battery_log, battery_screen};
+    let (width, height) = PREVIEW_SIZE;
+    let now = battery_log::unix_now();
+    let samples = preview_battery_log(now);
+    let stats = battery_log::Stats { since: Some(now - 40 * 86_400), charged: 1840, capacities: vec![(now - 20 * 86_400, 3180)] };
+    let summary = battery_estimates::summary(&samples, &stats, battery_log::Activity::Menu, 1024, now);
+    let percent = u32::from(summary.latest.map_or(0, |latest| latest.percent));
+    let battery = Some(Battery { percent, charging: false, minutes_left: summary.minutes_left });
+    let frame = screens::Frame { theme: current_theme(), battery };
+    let canvas = match page {
+        "week" => battery_screen::history_screen(width, height, &battery_screen::history(&samples, Some(&summary), crate::launcher::ChartRange::Week, now), &frame),
+        "health" => battery_screen::health_screen(width, height, &battery_screen::health(Some(&summary), 0, now), &frame),
+        _ => battery_screen::history_screen(width, height, &battery_screen::history(&samples, Some(&summary), crate::launcher::ChartRange::Day, now), &frame),
+    };
+    write_ppm(&canvas, path)
 }

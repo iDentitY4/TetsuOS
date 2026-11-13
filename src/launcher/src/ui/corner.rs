@@ -17,6 +17,7 @@ pub(crate) fn read_battery(directory: &Path) -> Option<Battery> {
     Some(Battery {
         percent: read("capacity")?.trim().parse().ok()?,
         charging: read("status")?.trim() == "Charging",
+        minutes_left: crate::device::battery_log::minutes_left(),
     })
 }
 
@@ -90,10 +91,10 @@ mod tests {
 
         std::fs::write(dir.join("capacity"), "95\n").unwrap();
         std::fs::write(dir.join("status"), "Charging\n").unwrap();
-        assert_eq!(read_battery(&dir), Some(Battery { percent: 95, charging: true }));
+        assert_eq!(read_battery(&dir), Some(Battery { percent: 95, charging: true, minutes_left: None }));
 
         std::fs::write(dir.join("status"), "Discharging\n").unwrap();
-        assert_eq!(read_battery(&dir), Some(Battery { percent: 95, charging: false }));
+        assert_eq!(read_battery(&dir), Some(Battery { percent: 95, charging: false, minutes_left: None }));
 
         std::fs::write(dir.join("capacity"), "not a number\n").unwrap();
         assert_eq!(read_battery(&dir), None);

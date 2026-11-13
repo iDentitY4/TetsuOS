@@ -1039,7 +1039,8 @@ Built but not yet tested on the device:
   centred on the 7-row text, since at 7 it reads as an asterisk. The home header's
   `CORNER_W` leaves room for both. Checked on the device: Wi-Fi connected, Bluetooth on
   with nothing connected, and turned off; a connected device wasn't tried
-- Battery display: Settings > SYSTEM > BATTERY: PERCENT, WHEN LOW (only at 15% or below
+- Battery display: Settings > BATTERY > SHOW IN CORNER (in SYSTEM until 2026-11-13):
+  PERCENT, TIME LEFT (see BATTERY below), WHEN LOW (only at LOW BATTERY AT or below
   while not charging, in red) or HIDDEN, for the menus' top-right corner; the clock takes
   its place. Games' low-battery warning and shutdown don't change. Like the accent, it is
   part of the `Theme`. Saved as `battery=`.
@@ -1136,13 +1137,18 @@ Built but not yet tested on the device:
 - Settings is a grid of group tiles, like the home screen (`settings_grid`). Since
   2026-11-13 each group is one topic, so a setting is found where a user would look:
   GENERAL (volume, brightness, language, menu sounds, boot jingle, time zone, clock, set
-  time), IN GAME (scaling, effect, ghosting, border, vibration, game switcher), WI-FI and
+  time), IN GAME (a DISPLAY page with scaling, effect, ghosting and border, vibration, the
+  game switcher, and an ACHIEVEMENTS page), WI-FI and
   BLUETOOTH (their own screens), BOX ART, THEME (the menus' and home screen's look: colour,
   background, title, grid, tiles, start screen, game names, sorting), DATA (USB STORAGE,
   WI-FI TRANSFER, SAVE BACKUP: getting things on and off the device), SYSTEM (system info,
-  button test, battery display, sleep, power-off after sleep, system update, reboot, power
-  off), ADVANCED (SSH, root password, SSH keys, performance, charge limit, boot messages,
-  setup, reset), CORES, TROPHIES and STATISTICS. Before, START SCREEN, GAME NAMES and
+  button test, sleep, power-off after sleep, system update, reboot, power
+  off), ADVANCED (SSH, root password, SSH keys, performance, boot messages,
+  setup, reset), CORES, BATTERY and STATISTICS. Later on 2026-11-13 the TROPHIES tile
+  became IN GAME's ACHIEVEMENTS page, the display rows IN GAME's DISPLAY page (`SUBGROUPS`
+  in `launcher.rs`, whose B goes back to the row they came from, `Group::parent`), and
+  BATTERY took its tile, with the battery display from SYSTEM and CHARGE TO from ADVANCED.
+  Before, START SCREEN, GAME NAMES and
   BATTERY were in GENERAL, GAME SWITCHER in THEME, the sleep rows, USB STORAGE and WI-FI
   TRANSFER in SYSTEM, and the time rows in a TIME tile, where DATA is now. A opens a group's
   list, B goes back to its tile, and Start closes settings from anywhere
@@ -1189,7 +1195,7 @@ Built but not yet tested on the device:
     and removing the password then fell back to USB ONLY with the empty password working
     again; each PERFORMANCE level set the governor and cap. Not checked: a game at
     BATTERY or PERFORMANCE, and how either feels or lasts
-  - CHARGE TO (`charge=`): FULL (4.2 V), ABOUT 85% (4.1 V) or ABOUT 70% (4.0 V), the
+  - CHARGE TO (`charge=`, in BATTERY since 2026-11-13): FULL (4.2 V), ABOUT 85% (4.1 V) or ABOUT 70% (4.0 V), the
     voltage the AXP717 stops charging at, written to the battery's `voltage_max`
     (`power::apply_charge_limit`). The driver takes only these three. The PMIC keeps the
     value until the battery is disconnected, so the launcher writes it at every start;
@@ -1303,7 +1309,8 @@ Built but not yet tested on the device:
   game came back by itself. The user confirmed it works with the power button
 
 - Low-battery protection (`power.rs`). Running on battery, a game shows the charge in red
-  in the top-left corner, which is border for every system, at 10% or below. At 3% or
+  in the top-left corner, which is border for every system, at Settings > BATTERY > LOW
+  BATTERY AT or below (10% until 2026-11-13, now 15% by default). At 3% or
   below, or under 3.35 V, read twice 5 seconds apart, the game saves as when quitting,
   shows BATTERY EMPTY and exits with code 3, and the launcher powers off. The launcher
   also powers off when it reads empty. Closing the lid in a game saves its resume state,
@@ -1311,6 +1318,61 @@ Built but not yet tested on the device:
   `LAUNCHER_POWEROFF` point the battery reading at test files and replace `poweroff`.
   Claude tested the warning, the empty path and the lid save on the device with those;
   a real empty battery hasn't been tried
+
+- Settings > BATTERY (2026-11-13): CHARGE HISTORY, HEALTH AND USE, SHOW IN CORNER, LOW
+  BATTERY AT, CHARGED NOTICE and CHARGE TO. The AXP717 driver gives the level, voltage
+  and status, but no capacity, cycle count or temperature, and its `current_now` has an
+  offset the driver itself calls unknown (it read 429 mA at 100% not charging), so all of
+  this comes from a log of the level over time.
+  - The log (`device/battery_log.rs`): the menus' process, which stays up through games and
+    puts the device to sleep, samples every 60 s, and at once on plugging in, unplugging or
+    charging ending (a thread looks every 10 s). A line is `time percent mV state activity`
+    in `/mnt/data/battery-log.txt`: state `D` discharging, `C` charging, `K` charging at
+    constant current with a good supply, `F` on USB power and not charging; the activity
+    is what the device did since the sample before: `menu`, `sleep`, a console's key, or
+    `off` (powered off, or the launcher not running). `K` reads the charge phase in REG
+    0x01 bits 0-2 (2 constant current, 3 constant voltage, 4 done) from the regmap's
+    debugfs listing, only while charging, and needs USB at 4.5 V or more. Samples stay in
+    memory and are appended every 15 minutes, at a game's start and end, before sleep and
+    at shutdown (also the power button's and the sleep timer's), only while TETSU-DATA is
+    mounted read-write (`storage::data_writable`) and not while USB STORAGE has it
+    (`battery_log::hold`). `sleep::freeze` wraps every sleep, so the time asleep is one
+    `sleep` sample taken on waking. Samples older than 30 days go at start, once a day
+    past that, into `/mnt/data/battery-stats.txt` (`since`, `charged` percentage points,
+    `capacity` measurements), so cycles and capacity outlast the log. The log isn't part
+    of SAVE BACKUP: it belongs to this battery
+  - Estimates (`device/battery_estimates.rs`): each activity's drain is the percentage
+    points lost over the time between discharging samples (gaps over 3 minutes awake and
+    `off` count for nothing; a sleep counts whole), given once there is half an hour and 2
+    points (2 hours for sleep). Time left is the level above 3% over the current
+    activity's rate, or all awake time's; the corner's TIME LEFT shows it in the menus
+    ("80% 4H05"), and only the percentage until there is enough. Time to full adds each
+    remaining point at the speed earlier charges had in that tenth of the range. Charge
+    cycles add every rise while on USB power, 100 points a cycle. Capacity: a run of `K`
+    samples of at least 20 minutes and 20 points gives the set charge current
+    (`constant_charge_current_max`, 1024 mA) times its time over the points gained; the
+    capacity shown is the median of the newest 5, against the profile's rated 3300 mAh.
+    This assumes the gauge's percentage follows the charge linearly and the charger
+    really delivers its set current in that phase; neither is checked yet
+  - CHARGE HISTORY (`device/battery_screen.rs`): the status line (level, state, voltage),
+    the time left or to full, and the level over 24 hours or 7 days (Left and Right), in
+    the accent on the battery, green plugged in, grey asleep, and a gap while off, with
+    ticks every 6 hours or each midnight in local time. HEALTH AND USE: capacity, cycles
+    since the log began, when charging last ended, and BATTERY USE: the menus, each console
+    and sleep, with points per hour and how long a full charge lasts at it (Up and Down
+    scroll). `launcher --preview-battery day|week|health FILE.ppm` renders them from a
+    made-up log
+  - LOW BATTERY AT (`low_battery=`): 5, 10, 15 (default) or 20%, where the corner turns
+    red, WHEN LOW shows, and a game warns (`power::level`)
+  - CHARGED NOTICE (`charged_notice=`, on by default): BATTERY CHARGED as a sign at the top
+    in the menus and in a game when the status goes from Charging to anything but
+    Discharging (`power::ChargeWatch`)
+  - Checked by Claude on the device: the log starting and sampling, its first write to the
+    card, the BATTERY tile, its group and both pages (with only minutes of log), IN GAME's
+    DISPLAY and ACHIEVEMENTS pages and B from them. Not checked: anything on battery
+    (time left, drain rates), a real charge (time to full, `K` samples, the capacity
+    measurement and whether it is near the truth), sleep samples, the CHARGED sign, the
+    30-day trim, USB STORAGE with the log, the German wording
 
 - The menu checks the battery every second and redraws when it changes. Before, charging
   status only showed after moving in the menu, or after 30 seconds

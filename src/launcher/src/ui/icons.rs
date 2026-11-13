@@ -1216,6 +1216,34 @@ pub const SCREENSHOTS: Icon = [
     "................................",
 ];
 
+/// Settings > BATTERY: a battery two-thirds charged, with a bolt.
+pub const BATTERY: Icon = [
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "...KKKKKKKKKKKKKKKKKKKKKKKK.....",
+    "...KLLLLLLLLLLLLLLLLLLLLLLK.....",
+    "...KLNNNNNNNNNNNNNDDDDDDDLK.....",
+    "...KLNNNNNNNNNNYYNDDDDDDDLK.....",
+    "...KLNNNNNNNNNYYNNDDDDDDDLKKK...",
+    "...KLNNNNNNNNYYNNNDDDDDDDLKLK...",
+    "...KLNNNNNNNYYYYYNDDDDDDDLKLK...",
+    "...KLNNNNNNNNNYYNNDDDDDDDLKLK...",
+    "...KLNNNNNNNNYYNNNDDDDDDDLKLK...",
+    "...KLNNNNNNNYYNNNNDDDDDDDLKKK...",
+    "...KLNNNNNNYYNNNNNDDDDDDDLK.....",
+    "...KLNNNNNNNNNNNNNDDDDDDDLK.....",
+    "...KLLLLLLLLLLLLLLLLLLLLLLK.....",
+    "...KKKKKKKKKKKKKKKKKKKKKKKK.....",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+];
+
 /// Settings > STATISTICS: a bar chart.
 pub const STATISTICS: Icon = [
     "................................",
@@ -1305,7 +1333,7 @@ pub const LOGO: Icon = [
 mod tests {
     use super::*;
 
-    const ALL: [&Icon; 44] = [
+    const ALL: [&Icon; 45] = [
         &LOGO,
         &ACHIEVEMENTS,
         &CORES,
@@ -1349,6 +1377,7 @@ mod tests {
         &BLUETOOTH,
         &ADVANCED,
         &STATISTICS,
+        &BATTERY,
         &SCREENSHOTS,
     ];
 

@@ -235,7 +235,9 @@ pub fn group_icon(group: Group) -> &'static Icon {
         Group::System => &icons::SYSTEM,
         Group::Advanced => &icons::ADVANCED,
         Group::Cores => &icons::CORES,
+        Group::Display => &icons::GAME_SCREEN,
         Group::Achievements => &icons::ACHIEVEMENTS,
+        Group::Battery => &icons::BATTERY,
         Group::Statistics => &icons::STATISTICS,
     }
 }
@@ -579,6 +581,8 @@ pub(crate) fn setting_value(setting: Setting, settings: &Settings) -> Option<Str
         Setting::Ssh => settings.ssh.label(),
         Setting::Performance => settings.performance.label(),
         Setting::ChargeLimit => settings.charge.label(),
+        Setting::LowBattery => settings.low_battery.label(),
+        Setting::ChargedNotice => on_off(!settings.charged_notice_off),
         Setting::Hardcore => on_off(settings.hardcore),
         Setting::AchievementsOn => on_off(!settings.achievements_off),
         Setting::UnlockNotices => settings.notices.unlocks.label(),
@@ -1424,8 +1428,8 @@ pub(crate) mod tests {
 
     #[test]
     fn every_setting_that_changes_shows_a_value() {
-        use crate::launcher::GROUPS;
-        for setting in GROUPS.iter().flat_map(|group| group.settings()) {
+        use crate::launcher::{GROUPS, SUBGROUPS};
+        for setting in GROUPS.iter().chain(&SUBGROUPS).flat_map(|group| group.settings()) {
             // Bars, and a value read from the card instead of the settings.
             let drawn_apart = matches!(setting, Setting::Volume | Setting::Brightness | Setting::BootMessages);
             let changes = setting.changes_with_left_right() && !drawn_apart;
@@ -1443,7 +1447,7 @@ pub(crate) mod tests {
 
     #[test]
     fn every_group_and_its_longest_label_fit() {
-        use crate::launcher::GROUPS;
+        use crate::launcher::{GROUPS, SUBGROUPS};
         // Long values everywhere: the longest zone name, a full title.
         let longest = Settings {
             zone: Some("America/Argentina/Buenos_Aires"),
@@ -1454,7 +1458,7 @@ pub(crate) mod tests {
             battery: crate::settings::BatteryDisplay::WhenLow,
             ..Settings::default()
         };
-        for group in GROUPS {
+        for group in GROUPS.into_iter().chain(SUBGROUPS) {
             assert!(text_width(group.tile_label(), TEXT_SCALE) + 2 * TILE_BORDER <= TILE_W, "{group:?}");
             for setting in group.settings() {
                 // The label and a value or bar on the right don't meet.
@@ -1465,10 +1469,12 @@ pub(crate) mod tests {
                 assert!(SETTINGS_LEFT + text_width("TIME ZONE", TEXT_SCALE) + 16 + text_width(&value, TEXT_SCALE) <= 640 - SETTINGS_RIGHT);
             }
             // Two note lines and a message fit above the hint; SYSTEM's note is the single
-            // line about waking from sleep, and THEME has none.
+            // line about waking from sleep, THEME has none, and BATTERY's has the status, the
+            // estimate and what the selected row does.
             let note_lines = match group {
                 crate::launcher::Group::Theme => 0,
                 crate::launcher::Group::System => 1,
+                crate::launcher::Group::Battery => 3,
                 _ => 2,
             };
             assert!(SETTINGS_TOP + group.settings().len() * SETTINGS_ROW + 12 + (note_lines + 1) * SETTINGS_ROW <= HINT_Y, "{group:?}");

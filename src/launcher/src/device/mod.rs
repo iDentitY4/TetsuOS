@@ -1,6 +1,9 @@
 //! The device and its system: power, sleep, sound, files, the clock and the network's plumbing.
 
 pub(crate) mod audio_out;
+pub(crate) mod battery_estimates;
+pub(crate) mod battery_log;
+pub(crate) mod battery_screen;
 pub(crate) mod boot_animation;
 pub(crate) mod boot_partition;
 pub(crate) mod charging;

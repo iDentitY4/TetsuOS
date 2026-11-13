@@ -376,7 +376,7 @@ pub fn preview(installing: bool) -> Canvas {
         Status::Available(update)
     };
     let view = update_view(rows, &status, None, false, false);
-    let battery = Some(Battery { percent: 64, charging: false });
+    let battery = Some(Battery { percent: 64, charging: false, minutes_left: None });
     let mut canvas = update_screen(640, 480, &view, &screen_frame(battery));
     add_corner(&mut canvas, battery);
     canvas
@@ -420,9 +420,9 @@ mod tests {
     #[test]
     fn a_low_battery_stops_an_install_unless_charging() {
         assert!(battery_allows_install(None));
-        assert!(battery_allows_install(Some(Battery { percent: 30, charging: false })));
-        assert!(!battery_allows_install(Some(Battery { percent: 29, charging: false })));
-        assert!(battery_allows_install(Some(Battery { percent: 5, charging: true })));
+        assert!(battery_allows_install(Some(Battery { percent: 30, charging: false, minutes_left: None })));
+        assert!(!battery_allows_install(Some(Battery { percent: 29, charging: false, minutes_left: None })));
+        assert!(battery_allows_install(Some(Battery { percent: 5, charging: true, minutes_left: None })));
     }
 
     #[test]

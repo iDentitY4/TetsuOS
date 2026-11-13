@@ -1,5 +1,6 @@
 //! Running a game in its own process, and resuming one at boot.
 
+use crate::device::battery_log;
 use crate::ingame::cheats;
 use crate::ui::{fb, screens};
 use crate::{libretro, settings};
@@ -79,6 +80,7 @@ pub(crate) fn play_game(rom: &Path, events: &Receiver<Event>) -> io::Result<Endi
             return Err(error);
         }
     };
+    battery_log::set_activity(battery_log::Activity::Game(system.key));
     // The game draws the screen, so it shows the volume. This process changes it, as it
     // can run `amixer` without holding up a frame, and tells the game the new level.
     let mut game_input = game.stdin.take();
@@ -105,6 +107,7 @@ pub(crate) fn play_game(rom: &Path, events: &Receiver<Event>) -> io::Result<Endi
             }
         }
     };
+    battery_log::set_activity(battery_log::Activity::Menu);
     crate::backup::syncthing::resume_after_game();
     // In case the game ended while it held the CPU speed for its menu.
     libretro::release_cpu_speed();

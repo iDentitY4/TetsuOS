@@ -8,8 +8,6 @@ const BATTERY_DIR_VARIABLE: &str = "LAUNCHER_BATTERY_DIR";
 /// Overrides the power-off command, to test the empty battery path without powering off.
 const POWEROFF_VARIABLE: &str = "LAUNCHER_POWEROFF";
 
-/// At or below this, a game shows the charge level as a warning.
-const LOW_PERCENT: u32 = 10;
 /// At or below this, the game saves and the device powers off.
 const CRITICAL_PERCENT: u32 = 3;
 /// Below this, the battery is nearly empty whatever the fuel gauge says.
@@ -61,14 +59,15 @@ pub enum Level {
     Critical,
 }
 
-pub fn level(reading: &Reading) -> Level {
+/// How low the battery is, with Settings > BATTERY > LOW BATTERY AT's `low_percent`.
+pub fn level(reading: &Reading, low_percent: u32) -> Level {
     if !reading.discharging {
         return Level::Fine;
     }
     let empty_voltage = reading.microvolts.is_some_and(|microvolts| microvolts < CRITICAL_MICROVOLTS);
     if reading.percent <= CRITICAL_PERCENT || empty_voltage {
         Level::Critical
-    } else if reading.percent <= LOW_PERCENT {
+    } else if reading.percent <= low_percent {
         Level::Low(reading.percent)
     } else {
         Level::Fine
@@ -94,7 +93,8 @@ impl Monitor {
             return None;
         }
         self.next_check = now + CHECK_INTERVAL;
-        let level = read(&self.directory).map_or(Level::Fine, |reading| level(&reading));
+        let low_percent = crate::settings::get().low_battery.percent();
+        let level = read(&self.directory).map_or(Level::Fine, |reading| level(&reading, low_percent));
         Some(self.confirm(level))
     }
 
@@ -113,6 +113,29 @@ impl Monitor {
     }
 }
 
+/// Notices charging ending at the limit with the cable still in, for the CHARGED notice.
+#[derive(Default)]
+pub struct ChargeWatch {
+    status: Option<String>,
+}
+
+impl ChargeWatch {
+    /// Whether the battery's `status` shows charging just finished, at most once per charge.
+    /// Unplugging the cable while charging isn't finishing.
+    pub fn finished(&mut self, status: &str) -> bool {
+        let before = self.status.replace(status.to_string());
+        before.as_deref() == Some("Charging") && !matches!(status, "Charging" | "Discharging" | "Unknown")
+    }
+
+    /// Reads the battery's status, and whether charging just finished.
+    pub fn check(&mut self) -> bool {
+        match std::fs::read_to_string(battery_dir().join("status")) {
+            Ok(status) => self.finished(status.trim()),
+            Err(_) => false,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -123,15 +146,30 @@ mod tests {
 
     #[test]
     fn levels_follow_the_charge_while_discharging() {
-        assert_eq!(level(&reading(50, 3_900_000, true)), Level::Fine);
-        assert_eq!(level(&reading(10, 3_700_000, true)), Level::Low(10));
-        assert_eq!(level(&reading(3, 3_600_000, true)), Level::Critical);
-        assert_eq!(level(&reading(40, 3_300_000, true)), Level::Critical, "low voltage");
+        assert_eq!(level(&reading(50, 3_900_000, true), 10), Level::Fine);
+        assert_eq!(level(&reading(10, 3_700_000, true), 10), Level::Low(10));
+        assert_eq!(level(&reading(12, 3_700_000, true), 10), Level::Fine);
+        assert_eq!(level(&reading(12, 3_700_000, true), 15), Level::Low(12), "the setting moves it");
+        assert_eq!(level(&reading(3, 3_600_000, true), 10), Level::Critical);
+        assert_eq!(level(&reading(40, 3_300_000, true), 10), Level::Critical, "low voltage");
+    }
+
+    #[test]
+    fn charging_finishes_once_at_the_limit_but_not_when_unplugged() {
+        let mut watch = ChargeWatch::default();
+        assert!(!watch.finished("Not charging"), "nothing to compare with yet");
+        assert!(!watch.finished("Charging"));
+        assert!(watch.finished("Not charging"));
+        assert!(!watch.finished("Not charging"));
+        assert!(!watch.finished("Charging"));
+        assert!(!watch.finished("Discharging"), "unplugged");
+        assert!(!watch.finished("Charging"));
+        assert!(watch.finished("Full"));
     }
 
     #[test]
     fn nothing_is_low_on_external_power() {
-        assert_eq!(level(&reading(2, 3_300_000, false)), Level::Fine);
+        assert_eq!(level(&reading(2, 3_300_000, false), 10), Level::Fine);
     }
 
     #[test]

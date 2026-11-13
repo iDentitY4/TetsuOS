@@ -113,7 +113,7 @@ pub(crate) fn system_info(battery: Option<Battery>, games: usize) -> Vec<(String
     let volts = read_number(&format!("{}/voltage_now", power::battery_dir().display()))
         .map(|microvolts| format!(" - {:.2} V", microvolts as f64 / 1_000_000.0))
         .unwrap_or_default();
-    let battery = battery.map_or_else(unknown, |Battery { percent, charging }| {
+    let battery = battery.map_or_else(unknown, |Battery { percent, charging, .. }| {
         format!("{percent}%{}{volts}", if charging { format!(" {}", tr("CHARGING")) } else { String::new() })
     });
     let free_on = |folder: &str| parse_df(&command_output("df", &["-k", folder]));

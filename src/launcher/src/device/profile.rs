@@ -19,6 +19,8 @@ pub struct Profile {
     pub usb_power: &'static str,
     /// The screen backlight's folder in `/sys/class/backlight`.
     pub backlight: &'static str,
+    /// The battery's rated capacity, which HEALTH AND USE compares the measured one with.
+    pub battery_mah: u32,
 }
 
 pub const RG35XX_SP: Profile = Profile {
@@ -27,6 +29,7 @@ pub const RG35XX_SP: Profile = Profile {
     battery: "/sys/class/power_supply/axp20x-battery",
     usb_power: "/sys/class/power_supply/axp20x-usb",
     backlight: "/sys/class/backlight/backlight",
+    battery_mah: 3300,
 };
 
 const PROFILES: &[Profile] = &[RG35XX_SP];

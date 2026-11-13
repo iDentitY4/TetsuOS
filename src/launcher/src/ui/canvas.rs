@@ -19,12 +19,19 @@ pub struct Theme {
     pub background: Rgb,
     /// When the corner shows the battery level.
     pub battery: BatteryDisplay,
+    /// At or below this, the level is low: in red, and shown WHEN LOW.
+    pub low_percent: u32,
 }
 
 impl Theme {
     pub fn from_settings(settings: &Settings) -> Self {
         let accent = settings.accent.rgb();
-        Self { accent, background: settings.background.rgb(accent), battery: settings.battery }
+        Self {
+            accent,
+            background: settings.background.rgb(accent),
+            battery: settings.battery,
+            low_percent: settings.low_battery.percent(),
+        }
     }
 }
 
@@ -36,19 +43,28 @@ impl Default for Theme {
 }
 
 /// Whether a battery reading is low enough to show in red.
-fn is_low(Battery { percent, charging }: Battery) -> bool {
-    percent <= LOW_BATTERY_PERCENT && !charging
+fn is_low(Battery { percent, charging, .. }: Battery, low_percent: u32) -> bool {
+    percent <= low_percent && !charging
+}
+
+/// A time left in the corner's few characters: "4H05", or "45M" under an hour.
+pub(crate) fn short_duration(minutes: u32) -> String {
+    if minutes < 60 { format!("{minutes}M") } else { format!("{}H{:02}", minutes / 60, minutes % 60) }
 }
 
 /// The battery level's text, if the setting shows it for this reading.
-fn battery_label(battery: Option<Battery>, display: BatteryDisplay) -> Option<String> {
+fn battery_label(battery: Option<Battery>, theme: &Theme) -> Option<String> {
     let battery = battery?;
-    let shown = match display {
-        BatteryDisplay::Percent => true,
-        BatteryDisplay::WhenLow => is_low(battery),
+    let shown = match theme.battery {
+        BatteryDisplay::Percent | BatteryDisplay::TimeLeft => true,
+        BatteryDisplay::WhenLow => is_low(battery, theme.low_percent),
         BatteryDisplay::Hidden => false,
     };
-    shown.then(|| format!("{}%{}", battery.percent, if battery.charging { "+" } else { "" }))
+    let left = match (theme.battery, battery.minutes_left) {
+        (BatteryDisplay::TimeLeft, Some(minutes)) if !battery.charging => format!(" {}", short_duration(minutes)),
+        _ => String::new(),
+    };
+    shown.then(|| format!("{}%{}{left}", battery.percent, if battery.charging { "+" } else { "" }))
 }
 pub(crate) const TEXT: Rgb = Rgb(0xF2, 0xF4, 0xF8);
 pub(crate) const MUTED: Rgb = Rgb(0x8A, 0x92, 0xA6);
@@ -192,8 +208,8 @@ impl Canvas {
 
     /// The charge level in the top right corner, in red when low and not charging.
     pub(crate) fn battery(&mut self, battery: Option<Battery>) {
-        let Some(label) = battery_label(battery, self.theme.battery) else { return };
-        let color = if battery.is_some_and(is_low) { LOW } else { MUTED };
+        let Some(label) = battery_label(battery, &self.theme) else { return };
+        let color = if battery.is_some_and(|battery| is_low(battery, self.theme.low_percent)) { LOW } else { MUTED };
         let x = self.width.saturating_sub(text_width(&label, BATTERY_TEXT_SCALE) + BATTERY_RIGHT);
         self.text_at(&label, x, BATTERY_TOP, BATTERY_TEXT_SCALE, color);
     }
@@ -231,7 +247,7 @@ impl Canvas {
     /// Where the corner's items so far begin, with the gap before the next: the battery
     /// level, then the clock if given.
     fn corner_left(&self, clock: Option<&str>, battery: Option<Battery>) -> usize {
-        let battery_w = battery_label(battery, self.theme.battery)
+        let battery_w = battery_label(battery, &self.theme)
             .map_or(0, |label| text_width(&label, BATTERY_TEXT_SCALE) + CLOCK_GAP);
         let clock_w = clock.map_or(0, |text| text_width(text, BATTERY_TEXT_SCALE) + CLOCK_GAP);
         self.width.saturating_sub(battery_w + clock_w + BATTERY_RIGHT)
@@ -319,6 +335,8 @@ pub fn button_screen(width: usize, height: usize, controls: &Controls, theme: Th
 pub struct Battery {
     pub percent: u32,
     pub charging: bool,
+    /// The battery log's estimate, for TIME LEFT. Only the menus' process has one.
+    pub minutes_left: Option<u32>,
 }
 
 /// What the corner shows of the connections.
@@ -358,7 +376,6 @@ const LINK_GAP: usize = 10;
 pub(crate) const LINKS_W: usize = (WIFI[0].len() + BLUETOOTH[0].len()) * BATTERY_TEXT_SCALE + 2 * LINK_GAP;
 
 /// At or below this level, while not charging, the level is shown as a warning.
-const LOW_BATTERY_PERCENT: u32 = 15;
 const BATTERY_TOP: usize = 8;
 const BATTERY_RIGHT: usize = 16;
 /// Between the clock and the battery level.
@@ -371,7 +388,7 @@ mod tests {
     #[test]
     fn the_links_sit_left_of_the_clock_without_touching_it() {
         let theme = Theme::default();
-        let battery = Some(Battery { percent: 80, charging: false });
+        let battery = Some(Battery { percent: 80, charging: false, minutes_left: None });
         let mut canvas = Canvas::new(640, 480, theme);
         canvas.clock("18:35", battery);
         let clock_left = (0..640).find(|&x| (0..40).any(|y| canvas.pixels[y * 640 + x] == MUTED)).unwrap();
@@ -397,16 +414,29 @@ mod tests {
 
     #[test]
     fn the_battery_shows_as_chosen() {
-        let full = Some(Battery { percent: 80, charging: false });
-        let low = Some(Battery { percent: 9, charging: false });
-        let charging = Some(Battery { percent: 9, charging: true });
-        assert_eq!(battery_label(full, BatteryDisplay::Percent).as_deref(), Some("80%"));
-        assert_eq!(battery_label(charging, BatteryDisplay::Percent).as_deref(), Some("9%+"));
-        assert_eq!(battery_label(full, BatteryDisplay::WhenLow), None);
-        assert_eq!(battery_label(low, BatteryDisplay::WhenLow).as_deref(), Some("9%"));
-        assert_eq!(battery_label(charging, BatteryDisplay::WhenLow), None, "charging isn't a warning");
-        assert_eq!(battery_label(low, BatteryDisplay::Hidden), None);
-        assert_eq!(battery_label(None, BatteryDisplay::Percent), None);
+        let full = Some(Battery { percent: 80, charging: false, minutes_left: None });
+        let low = Some(Battery { percent: 9, charging: false, minutes_left: None });
+        let charging = Some(Battery { percent: 9, charging: true, minutes_left: None });
+        let shown = |display| Theme { battery: display, ..Theme::default() };
+        let (percent, when_low, hidden, time_left) =
+            (shown(BatteryDisplay::Percent), shown(BatteryDisplay::WhenLow), shown(BatteryDisplay::Hidden), shown(BatteryDisplay::TimeLeft));
+        assert_eq!(battery_label(full, &percent).as_deref(), Some("80%"));
+        assert_eq!(battery_label(charging, &percent).as_deref(), Some("9%+"));
+        assert_eq!(battery_label(full, &when_low), None);
+        assert_eq!(battery_label(low, &when_low).as_deref(), Some("9%"));
+        assert_eq!(battery_label(charging, &when_low), None, "charging isn't a warning");
+        assert_eq!(battery_label(low, &hidden), None);
+        assert_eq!(battery_label(None, &percent), None);
+        // Low is where the setting puts it.
+        let at_five = Theme { low_percent: 5, ..when_low };
+        assert_eq!(battery_label(low, &at_five), None);
+        // The time left, once the log has an estimate, and not while charging.
+        let estimated = |percent, charging, minutes| Some(Battery { percent, charging, minutes_left: Some(minutes) });
+        assert_eq!(battery_label(full, &time_left).as_deref(), Some("80%"));
+        assert_eq!(battery_label(estimated(80, false, 245), &time_left).as_deref(), Some("80% 4H05"));
+        assert_eq!(battery_label(estimated(9, false, 45), &time_left).as_deref(), Some("9% 45M"));
+        assert_eq!(battery_label(estimated(9, true, 45), &time_left).as_deref(), Some("9%+"));
+        assert_eq!(battery_label(estimated(80, false, 245), &percent).as_deref(), Some("80%"));
     }
 
     use super::*;
