@@ -335,6 +335,9 @@ In short here; `docs/features.md` has them in full.
   `data-partition.sh`, and `jingles/`, which makes the boot jingle candidates and
   `src/launcher/sounds/boot-jingle.s16`
 - `docs/features.md`: every feature in detail
+- `docs/`: also the VitePress documentation site (user guide, reference, developer guide;
+  `docs/.vitepress/config.mts` has the sidebar, `docs/public/screenshots/` the `--preview*`
+  renders), published by `.github/workflows/docs.yml`
 - Git-ignored: `buildroot-2026.08.1/`, `dl/`, `output/`, `output-toolchain/`, `ccache/`
 
 ## Commands
@@ -417,4 +420,5 @@ before power-off in seconds and `LAUNCHER_PREVIEW_LANGUAGE=de` renders
 - After a build, inspect the image to confirm a change landed, and say clearly what hasn't
   been tested on the device. Put back any setting a test changed.
 - Downloaded reference material goes in the session scratchpad, not the project.
-- When a feature is done, add its details to `docs/features.md` and keep this file short.
+- When a feature is done, add its details to `docs/features.md`, update the guide pages in
+  `docs/` that it changes, and keep this file short.

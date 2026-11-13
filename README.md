@@ -6,6 +6,10 @@ Tetsu OS is a Linux distribution for retro handhelds. It currently runs on the
 Anbernic RG35XX SP (Allwinner H700) and boots to its own game launcher, written in
 Rust: *tetsu* (鉄) is Japanese for iron.
 
+**Documentation:** [identity4.github.io/TetsuOS](https://identity4.github.io/TetsuOS/), built
+from [`docs/`](docs/) with VitePress (`npm install && npm run docs:dev`): installation,
+upgrading, every feature, and a developer guide.
+
 **Status: boots to the launcher on an LPDDR3 RG35XX SP (first confirmed
 2026-11-06). The power button and USB-C console also work on that unit. USB host
 mode is disabled, so USB accessories don't work yet.**
