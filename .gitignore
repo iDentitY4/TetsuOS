@@ -1,6 +1,8 @@
 /buildroot-*/
 /dl/
 /output/
+/output-toolchain/
+/ccache/
 /launcher-preview.ppm
 /src/launcher/target/
 /muos-boot0.bin

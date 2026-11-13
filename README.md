@@ -31,8 +31,10 @@ make            # full build; the image is output/images/sdcard.img
 make preview    # renders the screen to launcher-preview.ppm on this PC
 ```
 
-The first build compiles a cross-toolchain, so it takes a while. To run the app
-tests, use `cargo test` in `src/launcher/`.
+The first build compiles a cross-toolchain into `output-toolchain/`, so it takes a
+while; `make clean` keeps it, and `ccache/` keeps compiled C code. The configuration is
+`configs/common.config` plus `board/rg35xxsp/buildroot.config`: run `make config`
+after changing either. To run the app tests, use `cargo test` in `src/launcher/`.
 
 ## Flash and boot
 

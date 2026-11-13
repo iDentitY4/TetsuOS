@@ -2,8 +2,8 @@
 //! bezel), or the theme's colours. It is made for the whole screen once for each picture
 //! size, and drawn wherever the picture isn't.
 
-use crate::canvas::Theme;
-use crate::color::Rgb;
+use crate::ui::canvas::Theme;
+use crate::ui::color::Rgb;
 use crate::settings::Border;
 
 /// The colours of a console's bezel: its body, and the glass around its screen.
@@ -205,7 +205,7 @@ mod tests {
 
     #[test]
     fn every_handheld_has_a_body() {
-        for system in &crate::systems::SYSTEMS {
+        for system in &crate::library::systems::SYSTEMS {
             let handheld = handheld_body(system.key).is_some();
             let expected = matches!(system.key, "gb" | "gbc" | "gba" | "gg" | "ngp" | "ngpc" | "ws" | "wsc" | "lynx");
             assert_eq!(handheld, expected, "{}", system.key);

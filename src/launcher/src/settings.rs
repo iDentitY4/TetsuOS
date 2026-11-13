@@ -7,24 +7,23 @@
 //! The file is lines of `key=value`; unknown lines are ignored, and missing ones keep their
 //! defaults, so files from older versions still load.
 
-use crate::color::Rgb;
-use crate::clock::{self, Zone};
-use crate::controls::Layout;
-use crate::storage::write_atomic;
+use crate::ui::color::Rgb;
+use crate::device::clock::{self, Zone};
+use crate::ingame::controls::Layout;
+use crate::device::storage::write_atomic;
 use std::io;
 use std::path::Path;
 use std::process::Command;
 use std::sync::Mutex;
 
-const SETTINGS_PATH: &str = crate::paths::SETTINGS;
-const BACKUP_PATH: &str = crate::paths::SETTINGS_BACKUP;
+const SETTINGS_PATH: &str = crate::device::paths::SETTINGS;
+const BACKUP_PATH: &str = crate::device::paths::SETTINGS_BACKUP;
 const VOLUME_CONTROL: &str = "name=Line Out Playback Volume";
 /// The control's raw range. 0 and 1 both mute.
 const VOLUME_MAX: u32 = 31;
 /// In percent. The hardware's 32 levels can't all be shown as round numbers, so the volume
 /// only stops at the level nearest each step.
 pub const VOLUME_STEP: i32 = 5;
-const BACKLIGHT: &str = "/sys/class/backlight/backlight";
 /// Brightness changes in tenths of the range, and never goes below one tenth, so the
 /// screen can't be turned fully dark from a menu that needs the screen to undo it.
 const BRIGHTNESS_STEPS: u32 = 10;
@@ -687,8 +686,8 @@ fn parse(text: &str) -> Settings {
             "vibration" => choose(&mut settings.vibration, Vibration::from_key(value)),
             "bluetooth" => settings.bluetooth = value == "on",
             "wifi" => settings.wifi_off = value == "off",
-            "hostname" => settings.hostname = Some(value.to_string()).filter(|name| crate::network::valid_hostname(name)),
-            "wifi_country" => settings.wifi_country = crate::network::country(value).map(|country| country.code),
+            "hostname" => settings.hostname = Some(value.to_string()).filter(|name| crate::wifi::network::valid_hostname(name)),
+            "wifi_country" => settings.wifi_country = crate::wifi::network::country(value).map(|country| country.code),
             "wifi_power_save" => settings.wifi_power_save_off = value == "off",
             "ssh" => choose(&mut settings.ssh, SshAccess::from_key(value)),
             "performance" => choose(&mut settings.performance, CpuLevel::from_key(value)),
@@ -919,8 +918,8 @@ fn percent_level(percent: u32) -> u32 {
 /// The volume of whatever plays the sound: Bluetooth headphones while connected, which
 /// keep their own level, or the sound card.
 pub fn volume_percent() -> Option<u32> {
-    if crate::audio_out::headphones() {
-        return Some(headphone_percent(crate::audio_out::headphone_volume()?));
+    if crate::device::audio_out::headphones() {
+        return Some(headphone_percent(crate::device::audio_out::headphone_volume()?));
     }
     Some(level_percent(volume()?))
 }
@@ -928,8 +927,8 @@ pub fn volume_percent() -> Option<u32> {
 /// Moves the volume by `change` percent, and returns the new percentage, if it could be read.
 pub fn change_volume(change: i32) -> Option<u32> {
     let percent = step(volume_percent()?, change, 1, 0, 100);
-    if crate::audio_out::headphones() {
-        crate::audio_out::set_headphone_volume(headphone_level(percent));
+    if crate::device::audio_out::headphones() {
+        crate::device::audio_out::set_headphone_volume(headphone_level(percent));
     } else {
         set_volume(percent_level(percent));
     }
@@ -938,13 +937,13 @@ pub fn change_volume(change: i32) -> Option<u32> {
 
 /// The step of `VOLUME_STEP` percent nearest a headphone level.
 fn headphone_percent(level: u32) -> u32 {
-    let max = crate::audio_out::VOLUME_MAX;
+    let max = crate::device::audio_out::VOLUME_MAX;
     let step = VOLUME_STEP as u32;
     (level.min(max) * 100 + max * step / 2) / (max * step) * step
 }
 
 fn headphone_level(percent: u32) -> u32 {
-    (percent.min(100) * crate::audio_out::VOLUME_MAX + 50) / 100
+    (percent.min(100) * crate::device::audio_out::VOLUME_MAX + 50) / 100
 }
 
 fn read_number(path: &Path) -> Option<u32> {
@@ -953,7 +952,7 @@ fn read_number(path: &Path) -> Option<u32> {
 
 /// The backlight level and its maximum.
 fn brightness() -> Option<(u32, u32)> {
-    let directory = Path::new(BACKLIGHT);
+    let directory = Path::new(crate::device::profile::get().backlight);
     let max = read_number(&directory.join("max_brightness"))?;
     Some((read_number(&directory.join("brightness"))?, max))
 }
@@ -961,7 +960,7 @@ fn brightness() -> Option<(u32, u32)> {
 fn set_brightness(value: u32) {
     let Some((_, max)) = brightness() else { return };
     let value = value.clamp(max / BRIGHTNESS_STEPS, max);
-    if let Err(error) = std::fs::write(Path::new(BACKLIGHT).join("brightness"), value.to_string()) {
+    if let Err(error) = std::fs::write(Path::new(crate::device::profile::get().backlight).join("brightness"), value.to_string()) {
         eprintln!("warning: could not set the brightness: {error}");
     }
 }

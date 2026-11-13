@@ -1,9 +1,9 @@
 //! A loaded core and the calls into it.
 
-use crate::achievements;
-use crate::controls::Layout;
-use crate::core_options::Declarations;
-use crate::systems::{CoreSetup, Persistence};
+use crate::ingame::achievements;
+use crate::ingame::controls::Layout;
+use crate::ingame::core_options::Declarations;
+use crate::library::systems::{CoreSetup, Persistence};
 use std::io;
 use std::ffi::{c_char, c_uint, c_void, CString};
 use std::io::Write;

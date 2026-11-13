@@ -1153,10 +1153,10 @@ Built but not yet tested on the device:
     No harm was seen. `current_now` has an unknown offset, so about 425 mA here isn't real
   - BOOT MESSAGES (`boot_partition.rs`): LOGO is `console=ttynull loglevel=5`, as before;
     TEXT is `console=tty1 loglevel=7`, so kernel and init messages show until the
-    launcher draws. The launcher mounts TETSU-BOOT at `/run/launcher-boot`, changes only
-    those arguments on the `APPEND` line of `extlinux/extlinux.conf`, writes it as
-    `extlinux.new`, reads it back and renames it over the old one. The value is read from
-    the card the first time ADVANCED opens, then kept. `push.sh boot` and flashing put
+    launcher draws. The launcher changes only those arguments on the `APPEND` line of
+    `/boot/extlinux/extlinux.conf` in the root filesystem (on TETSU-BOOT until
+    2026-11-12), writes it as `extlinux.new`, reads it back and renames it over the old
+    one. The value is read when ADVANCED is drawn. `push.sh boot` and flashing put
     back LOGO. Claude checked that TEXT and back gave the original file byte for byte,
     and that the device boots with TEXT (launcher drawn 1.48 s after the kernel started,
     against 1.38 s); the user saw the logo with the messages below it, as it should be
@@ -1773,6 +1773,54 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   page with an unlock, hardcore, the Neo Geo Pocket, WonderSwan and Lynx cores (no
   games on the card), a ZIP, a multi-disc game, the German wording on the device (the
   previews were), and anything over a real connection to the server
+- **Card layout for A/B updates** (2026-11-12): `genimage.cfg` has TETSU-BOOT (FAT,
+  128 MiB at 1 MiB), root slot A (`TETSU-ROOT`, 1 GiB, partition 2, bootable flag), an
+  empty 1 GiB root slot B (partition 3) and, added by `flash.sh`, TETSU-DATA at 4 GiB as
+  partition 4, which uses up MBR's four. The kernel and device tree are in each root
+  slot's `/boot` (`BR2_LINUX_KERNEL_INSTALL_TARGET`), with `extlinux.conf` in
+  `/boot/extlinux/` (installed by `post-build.sh`). U-Boot's bootstd scans only the
+  partitions with the bootable flag when any has it, and reads `extlinux.conf` from
+  `/` or `/boot/`, so the flag picks the slot; `extlinux.conf` paths are absolute
+  (`/boot/Image`), which U-Boot's extlinux bootmeth allows. TETSU-BOOT keeps
+  `README.txt`, `bootlog.txt` and `logs/`. Slot B has no filesystem and isn't in
+  `sdcard.img` (genimage stops the file at slot A's end), so flashing takes as long as
+  before. For updates later: U-Boot 2026.10 has `CONFIG_BOOTMETH_RAUC` (off), which keeps
+  `BOOT_ORDER` and tries per slot in its environment (`CONFIG_ENV_IS_IN_FAT`, on
+  TETSU-BOOT) and runs a `boot.scr` from each slot's boot partition, which can be the
+  root partition itself (`CONFIG_BOOTMETH_RAUC_PARTITIONS="2,2 3,3"`); an update writing
+  slot B must change `root=PARTUUID=54455453-02` in its `extlinux.conf` or script to
+  `-03`. Checked in the image: the partition table, `/boot` in the root filesystem, the
+  FAT's contents, and `data-partition.sh` on an 8 GiB card image (TETSU-DATA created as
+  partition 4, then kept on a second run). On the device (2026-11-13), after the user
+  flashed over the old layout: it boots from slot A (`root=PARTUUID=54455453-02`),
+  TETSU-DATA mounts as `mmcblk0p4` with its games and settings kept, and the kernel
+  starts 2.59 to 2.66 s after power on, as before (2.53); the launcher drew at 6.58 and
+  6.60 s with the jingle. BOOT MESSAGES TEXT and back gave the original file byte for
+  byte, and a reboot with TEXT had `console=tty1 loglevel=7` on the kernel's command
+  line, so U-Boot reads the file the device wrote. SAVE LOGS TO CARD and `bootlog.txt`
+  reach TETSU-BOOT. `push.sh boot` copied, verified, rebooted and put LOGO back.
+- **Build setup** (2026-11-12): the Buildroot configuration is `configs/common.config`
+  (what every device shares: system, packages, cores, ccache) followed by
+  `board/<board>/buildroot.config` (CPU, toolchain, kernel, bootloaders, GPU and Wi-Fi
+  firmware, the board's paths); `make config` concatenates them into
+  `output/tetsu_defconfig` and runs `defconfig` with it, and `BOARD=` picks the board
+  (only `rg35xxsp`). The cross toolchain is built once by `make toolchain` (also run by
+  `make` when missing) in `output-toolchain/` from `configs/toolchain_a53_defconfig`
+  (GCC 15, binutils 2.45, glibc, headers 7.1), and boards use its `host/` as a
+  preinstalled external toolchain, so `make clean` keeps it. glibc has no RPC, so
+  `BR2_TOOLCHAIN_EXTERNAL_INET_RPC` is off. `ccache/` holds the compiler cache
+  (`BR2_CCACHE`); Rust doesn't use it. Compared with the old single defconfig, the
+  merged configuration differed only in toolchain and ccache options. On this PC (16
+  threads) the toolchain took 11 minutes and the clean image build after it 80, with an
+  empty cache (1 GiB filled); `output-toolchain/` takes 7.5 GiB, mostly its build folder.
+- **Device profile** (2026-11-12): `device/profile.rs` picks a `Profile` from
+  `/proc/device-tree/compatible` (the device's own name, not the chip's): its name, and
+  the battery, USB power and backlight folders that `power.rs`, `charging.rs`,
+  `settings.rs` and `sleep.rs` used as constants. An unknown device logs a warning and
+  gets the RG35XX SP's; a PC, with no device tree, too. The log has `device:` after
+  `launcher started`, and SAVE LOGS TO CARD a `device` line. Features some devices lack
+  (lid, vibration motor, second slot, Wi-Fi, an analog stick) join it with the first such
+  device, as nothing would read them yet.
 
 ## Hardware facts in full
 
@@ -1851,7 +1899,8 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
 - **The GPU needs `CONFIG_SUN50I_H6_PRCM_PPU`.** It has no default, and without it
   Panfrost fails silently, with only `ignoring dependency` in the log.
 - **TETSU-DATA starts at a fixed 4 GiB,** past the image, so writing the image can't reach it.
-  Writing the image does replace the partition table, so `flash.sh` adds the entry back.
+  Writing the image does replace the partition table, so `flash.sh` adds the entry back,
+  as partition 4 since 2026-11-12 (3 before); the system finds it by its label.
   A plain `dd` of the image leaves TETSU-DATA unreachable until `data-partition.sh` is run.
 - **Panels:** ROCKNIX has a separate v2 panel device tree for the SP. This unit
   works with the mainline NV3052C driver, but another unit may not.

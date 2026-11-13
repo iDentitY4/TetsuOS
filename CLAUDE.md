@@ -147,6 +147,16 @@ ADVANCED > RUN SETUP AGAIN repeats.
 
 - **Modules:** `main.rs` declares them and picks the mode from the arguments (no arguments:
   the menus; `--play`: one game in its own process; `--preview*`: PC screenshots).
+  They are in folders (since 2026-11-12), so a file named below is `crate::<folder>::<name>`:
+  `ui/` (canvas, color, font, icons, image, png, fb, screens, signs, corner, keyboard,
+  repeat, input), `wifi/` (`mod.rs` is the former `wifi.rs`, with network), `bluetooth/`,
+  `transfer/` (with usb_drive and `transfer_page.html`), `library/` (systems, rom_zip,
+  game_files, cards, favorites, recent, names, play_time, play_log, statistics_screen,
+  boxart*), `ingame/` (pause*, switcher, screenshot, cheats, controls, core_options*,
+  achievements, rumble), `device/` (power, profile, sleep, performance, charging, audio_out, sounds,
+  boot_animation, boot_partition, ssh, system_info, storage, paths, clock, set_time, http)
+  and `libretro/`; `main`, `app`, `launcher`, `game`, `settings`, `i18n`, `setup` and
+  `previews` stay at the top. A new module goes in its folder's `mod.rs`.
   `app.rs` has the menus' loop and actions, `systems.rs` the consoles, `library.rs` the
   games and tiles, `game.rs` running and resuming games, `libretro/` the frontend (`ffi`, `host`, `core`, `scale`, `border`, `save`, `audio`, `menu`, `play`),
   `rom_zip.rs` games in ZIPs, `cards.rs` the second card slot, `bluetooth.rs` (BlueZ over `zbus`), `bluetooth_menu.rs` and `bluetooth_screen.rs`
@@ -252,8 +262,10 @@ In short here; `docs/features.md` has them in full.
 
 ## Layout
 
-- `configs/rg35xxsp_defconfig`: Buildroot config, with all version pins
-- `board/rg35xxsp/`: `linux.defconfig`, the `*.fragment` config changes, kernel `patches/`
+- `configs/common.config` and `board/<board>/buildroot.config`: the Buildroot config,
+  with all version pins, which `make config` joins; `configs/toolchain_a53_defconfig`
+  the cross toolchain, built once in `output-toolchain/`
+- `board/rg35xxsp/`: `buildroot.config`, `linux.defconfig`, the `*.fragment` config changes, kernel `patches/`
   (origins in `patches/README.md`), `rootfs-overlay/` (init scripts), `extlinux.conf`,
   `genimage.cfg`, `post-image.sh`, `post-build.sh` (drops unused Mesa dependencies),
   `logo.ppm`
@@ -267,7 +279,7 @@ In short here; `docs/features.md` has them in full.
   `data-partition.sh`, and `jingles/`, which makes the boot jingle candidates and
   `src/launcher/sounds/boot-jingle.s16`
 - `docs/features.md`: every feature in detail
-- Git-ignored: `buildroot-2026.08.1/`, `dl/`, `output/`
+- Git-ignored: `buildroot-2026.08.1/`, `dl/`, `output/`, `output-toolchain/`, `ccache/`
 
 ## Commands
 
@@ -275,7 +287,8 @@ Use `command make`, because `make` is a shell alias on this machine.
 
 ```sh
 command make                # full build: output/images/sdcard.img
-command make config         # required after changing configs/rg35xxsp_defconfig
+command make toolchain      # the cross toolchain, once (make runs it when missing)
+command make config         # required after changing configs/common.config or buildroot.config
 command make preview        # renders launcher-preview.ppm on the PC
 cd src/launcher && cargo test
 P=$PWD; command make -C buildroot-2026.08.1 O=$P/output BR2_EXTERNAL=$P BR2_DL_DIR=$P/dl launcher-rebuild
@@ -301,7 +314,10 @@ physical like the lid.
   `10.35.35.2` (`ip -br addr`) and that the device is awake with the cable in.
 - **Commands:** `ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
   root@10.35.35.1 '<command>'`. The launcher logs to `/var/log/launcher.log`.
-- **The boot partition:** TETSU-BOOT isn't mounted while the device runs; mount it at a
+- **Boot files:** the kernel, device tree and `extlinux.conf` are in the root
+  filesystem's `/boot` (root slot A, partition 2, with the bootable flag); slot B
+  (partition 3) is empty, kept for A/B updates, and TETSU-DATA is partition 4.
+- **The boot partition:** TETSU-BOOT holds only logs and a README. It isn't mounted while the device runs; mount it at a
   folder of your own under `/tmp` (`blkid` finds it) and unmount it after.
 - **Claude logs in with root's empty password,** which only SSH USB ONLY with no root
   password allows: the PC's `id_rsa` has a passphrase and no agent. USB + WI-FI or a

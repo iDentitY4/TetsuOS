@@ -7,80 +7,24 @@
 #[cfg(not(target_os = "linux"))]
 compile_error!("the launcher needs Linux: it uses evdev, the framebuffer, /sys and /proc");
 
-mod achievements;
 mod app;
-mod audio_out;
 mod bluetooth;
-mod bluetooth_menu;
-mod bluetooth_screen;
-mod boot_animation;
-mod boot_partition;
-mod boxart;
-mod boxart_fetch;
-mod boxart_screen;
-mod canvas;
-mod cards;
-mod charging;
-mod cheats;
-mod clock;
-mod color;
-mod controls;
-mod core_options;
-mod core_options_screen;
-mod corner;
-mod favorites;
-mod fb;
-mod font;
+mod device;
 mod game;
-mod game_files;
-mod http;
 mod i18n;
-mod icons;
-mod image;
-mod input;
-mod keyboard;
+mod ingame;
 mod launcher;
 mod library;
 mod libretro;
-mod names;
-mod network;
-mod paths;
-mod pause;
-mod pause_screens;
-mod performance;
-mod play_log;
-mod play_time;
-mod png;
-mod power;
 mod previews;
-mod recent;
-mod repeat;
-mod rom_zip;
-mod rumble;
-mod screens;
-mod screenshot;
-mod set_time;
 mod settings;
 mod setup;
-mod signs;
-mod sleep;
-mod sounds;
-mod ssh;
-mod statistics_screen;
-mod storage;
-mod system_info;
-mod switcher;
-mod systems;
 mod transfer;
-mod transfer_server;
-mod usb_drive;
+mod ui;
 mod wifi;
-mod wifi_menu;
-mod wifi_pages;
-mod wifi_screen;
 
 use app::run_launcher;
-use corner::current_theme;
+use ui::corner::current_theme;
 use game::{BATTERY_EMPTY_EXIT, run_game};
 use previews::{
     write_achievements_preview, write_boot_animation_preview, write_button_preview, write_cheats_preview, write_controls_preview,
@@ -88,9 +32,9 @@ use previews::{
     write_notice_preview, write_pause_preview, write_plain_ppm, write_ppm, write_setup_preview,
     write_transfer_preview, write_usb_drive_preview, write_wifi_preview,
 };
-use systems::{parse_persistence, system_for};
+use library::systems::{parse_persistence, system_for};
 
-use input::Button;
+use ui::input::Button;
 use libretro::Ending;
 
 use std::io;
@@ -105,7 +49,7 @@ fn main() -> ExitCode {
     }
     let result = match args.as_slice() {
         [] => run_launcher(),
-        [flag] if flag == "--jingle" => sounds::boot_jingle(),
+        [flag] if flag == "--jingle" => device::sounds::boot_jingle(),
         [flag, path] if flag == "--preview" => write_launcher_preview(path, &[Button::Right]),
         [flag, path] if flag == "--preview-list" => {
             write_launcher_preview(path, &[Button::Right, Button::Right, Button::A, Button::Down])
@@ -141,18 +85,18 @@ fn main() -> ExitCode {
         [flag, path] if flag == "--preview-notice" => write_notice_preview(path),
         [flag, path] if flag == "--preview-borders" => previews::write_borders_preview(path),
         [flag, core] if flag == "--core-options" => libretro::print_core_options(Path::new(core)),
-        [flag, path] if flag == "--preview-splash" => write_plain_ppm(&screens::splash(), path),
+        [flag, path] if flag == "--preview-splash" => write_plain_ppm(&ui::screens::splash(), path),
         [flag, path] if flag == "--preview-boot-animation" => write_boot_animation_preview(path),
         [flag, path] if flag == "--preview-shutdown" => {
-            write_ppm(&screens::shutdown_screen(640, 480, i18n::tr("POWERING OFF"), current_theme()), path)
+            write_ppm(&ui::screens::shutdown_screen(640, 480, i18n::tr("POWERING OFF"), current_theme()), path)
         }
         [flag, path] if flag == "--preview-charging" => {
-            let battery = canvas::Battery { percent: 64, charging: true };
-            write_ppm(&crate::charging::charging_screen(640, 480, Some(battery), current_theme()), path)
+            let battery = ui::canvas::Battery { percent: 64, charging: true };
+            write_ppm(&crate::device::charging::charging_screen(640, 480, Some(battery), current_theme()), path)
         }
-        [flag, path] if flag == "--preview-volume" => write_ppm(&signs::volume_sign(80, current_theme()), path),
+        [flag, path] if flag == "--preview-volume" => write_ppm(&ui::signs::volume_sign(80, current_theme()), path),
         [flag, path] if flag == "--preview-card" => {
-            write_ppm(&signs::text_sign(&i18n::trf("TF2: {} GAMES", &[&128]), current_theme()), path)
+            write_ppm(&ui::signs::text_sign(&i18n::trf("TF2: {} GAMES", &[&128]), current_theme()), path)
         }
         [flag, core, rom, save, persistence] if flag == "--play" => {
             app::show_shutdown_on_signal();

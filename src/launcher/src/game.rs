@@ -1,15 +1,19 @@
 //! Running a game in its own process, and resuming one at boot.
 
-use crate::{cheats, fb, libretro, recent, rom_zip, screens, settings, sounds, storage};
+use crate::ingame::cheats;
+use crate::ui::{fb, screens};
+use crate::{libretro, settings};
+use crate::library::{recent, rom_zip};
+use crate::device::{sounds, storage};
 use crate::app::{change_volume, open_framebuffer};
-use crate::corner::current_theme;
-use crate::input::{Button, Event};
+use crate::ui::corner::current_theme;
+use crate::ui::input::{Button, Event};
 use crate::launcher::{Game, Library};
 use crate::library::{is_m3u, read_m3u};
 use crate::libretro::Ending;
-use crate::sleep::sleep_until_lid_opens;
-use crate::switcher::SWITCH_EXIT;
-use crate::systems::{Persistence, persistence_arg, SAVE_DIR, save_path, system_for, SYSTEMS};
+use crate::device::sleep::sleep_until_lid_opens;
+use crate::ingame::switcher::SWITCH_EXIT;
+use crate::library::systems::{Persistence, persistence_arg, SAVE_DIR, save_path, system_for, SYSTEMS};
 use std::io;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -23,7 +27,7 @@ pub(crate) const BATTERY_EMPTY_EXIT: u8 = 3;
 
 /// Names the game that is running. Quitting removes it, but powering off during a game
 /// doesn't, so the next start knows to resume that game.
-pub(crate) const PLAYING_PATH: &str = crate::paths::data_path!("/playing.txt");
+pub(crate) const PLAYING_PATH: &str = crate::device::paths::data_path!("/playing.txt");
 
 /// How long the launcher shows the game it is about to resume, for B to cancel.
 pub(crate) const RESUME_WAIT: Duration = Duration::from_millis(1500);

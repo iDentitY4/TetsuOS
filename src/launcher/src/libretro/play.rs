@@ -1,21 +1,22 @@
 //! Running one game: the frame loop, and rendering frames without a screen.
 
-use crate::{
-    achievements, cheats, controls, core_options, input, power, screens, settings, signs,
-};
-use crate::achievements::{GameNotices, Notice, Session};
-use crate::cheats::CheatSource;
-use crate::controls::Layout;
-use crate::fb::Framebuffer;
+use crate::ingame::{achievements, cheats, controls, core_options};
+use crate::ui::{input, screens, signs};
+use crate::device::power;
+use crate::settings;
+use crate::ingame::achievements::{GameNotices, Notice, Session};
+use crate::ingame::cheats::CheatSource;
+use crate::ingame::controls::Layout;
+use crate::ui::fb::Framebuffer;
 use crate::i18n::tr;
-use crate::input::{Button, Controls};
+use crate::ui::input::{Button, Controls};
 use crate::settings::{NoticePlace, NoticePlaces};
-use crate::pause::{MenuTrigger, Opening, PauseMenu};
-use crate::play_log;
-use crate::play_time::PlayClock;
-use crate::power::Level;
-use crate::rumble::Rumble;
-use crate::systems::{CoreSetup, Persistence};
+use crate::ingame::pause::{MenuTrigger, Opening, PauseMenu};
+use crate::library::play_log;
+use crate::library::play_time::PlayClock;
+use crate::device::power::Level;
+use crate::ingame::rumble::Rumble;
+use crate::library::systems::{CoreSetup, Persistence};
 use std::io;
 use std::collections::VecDeque;
 use std::io::{Read, Write};
@@ -37,11 +38,11 @@ pub(super) static TERMINATING: LazyLock<Arc<AtomicBool>> = LazyLock::new(|| Arc:
 
 const STATS_FRAMES: u64 = 600;
 
-const CPU_SPEED_PATH: &str = crate::paths::CPU_SPEED;
+const CPU_SPEED_PATH: &str = crate::device::paths::CPU_SPEED;
 
-const CPU_MIN_SPEED_PATH: &str = crate::paths::cpufreq_path!("/scaling_min_freq");
+const CPU_MIN_SPEED_PATH: &str = crate::device::paths::cpufreq_path!("/scaling_min_freq");
 
-const CPU_LOWEST_SPEED_PATH: &str = crate::paths::cpufreq_path!("/cpuinfo_min_freq");
+const CPU_LOWEST_SPEED_PATH: &str = crate::device::paths::cpufreq_path!("/cpuinfo_min_freq");
 
 /// The speed games normally run at, in kHz.
 const CPU_GAME_SPEED: &str = "1008000";
@@ -94,7 +95,7 @@ const FAST_FORWARD_MAX: u32 = 8;
 /// Shows or clears the fast-forward sign in the top right corner, which is border for
 /// every system's picture, like the battery warning's corner.
 fn draw_fast_forward(framebuffer: &mut Framebuffer, on: bool) -> io::Result<()> {
-    let canvas = signs::fast_forward_sign(on, crate::corner::current_theme());
+    let canvas = signs::fast_forward_sign(on, crate::ui::corner::current_theme());
     let (width, _) = framebuffer.size();
     let x = width.saturating_sub(canvas.width + WARNING_POSITION.0);
     if on {
@@ -105,7 +106,7 @@ fn draw_fast_forward(framebuffer: &mut Framebuffer, on: bool) -> io::Result<()> 
 }
 
 /// Draws the game's picture and border again over an area something else covered.
-fn restore_area(framebuffer: &mut Framebuffer, area: crate::fb::Area) -> io::Result<()> {
+fn restore_area(framebuffer: &mut Framebuffer, area: crate::ui::fb::Area) -> io::Result<()> {
     let size = framebuffer.size();
     let pixels = with_host(|host| picture_in_area(&host.frame, host.frame_size, &host.border, size, area));
     framebuffer.blit(&pixels, area.2, area.3, area.0, area.1)
@@ -166,7 +167,7 @@ fn save_play_time(clock: &mut PlayClock, console: Option<&str>) {
         }
     };
     let Some(console) = console.filter(|_| added > 0) else { return };
-    let today = crate::clock::local(jiff::Timestamp::now(), settings::get().time_zone()).date();
+    let today = crate::device::clock::local(jiff::Timestamp::now(), settings::get().time_zone()).date();
     if let Err(error) = play_log::record(Path::new(play_log::LOG_PATH), today, console, added) {
         eprintln!("warning: could not add to the play log: {error}");
     }
@@ -218,7 +219,7 @@ fn show_next_notice(framebuffer: &mut Framebuffer, notices: &mut VecDeque<Notice
         (Some(session), Some(name)) => session.badges().get(name, achievements::NOTICE_BADGE, false),
         _ => None,
     };
-    let canvas = signs::achievement_notice(&notice, badge.as_ref(), crate::corner::current_theme());
+    let canvas = signs::achievement_notice(&notice, badge.as_ref(), crate::ui::corner::current_theme());
     let top = match places.get(notice.kind) {
         NoticePlace::Top => NOTICE_MARGIN,
         _ => framebuffer.size().1.saturating_sub(canvas.height + NOTICE_MARGIN),
@@ -342,7 +343,7 @@ fn start_probed_audio(sample_rate: f64, fps: f64) {
     let samples_per_frame = measured.max(sample_rate / fps);
     let rate = playback_rate(sample_rate, samples_per_frame);
     println!("{samples_per_frame:.1} samples per frame: playing sound at {rate:.0} Hz");
-    let device = crate::audio_out::device();
+    let device = crate::device::audio_out::device();
     match start_audio(rate) {
         Ok(audio) => with_host(|host| {
             host.audio = Some(audio);
@@ -364,13 +365,13 @@ fn follow_audio_device() {
         // Not while the game's menu writes silence into it.
         audio.stdin.as_ref()?;
         let ended = matches!(audio.try_wait(), Ok(Some(_)));
-        (ended || host.audio_device != crate::audio_out::device()).then(|| host.audio.take()).flatten()
+        (ended || host.audio_device != crate::device::audio_out::device()).then(|| host.audio.take()).flatten()
     });
     let Some(mut old) = old else { return };
     drop(old.stdin.take());
     let _ = old.kill();
     let _ = old.wait();
-    let (rate, device) = (with_host(|host| host.audio_rate), crate::audio_out::device());
+    let (rate, device) = (with_host(|host| host.audio_rate), crate::device::audio_out::device());
     println!("audio: playing on {device}");
     match start_audio(rate) {
         Ok(audio) => with_host(|host| {
@@ -403,7 +404,7 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
     if let Err(error) = signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&TERMINATING)) {
         eprintln!("warning: a power-off may not save the game: {error}");
     }
-    crate::audio_out::watch();
+    crate::device::audio_out::watch();
     let directory = save.parent().unwrap_or(Path::new("."));
     set_host(directory, framebuffer.size(), setup, console, layout_for(save, console))?;
     with_host(|host| {
@@ -443,7 +444,7 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
     let mut frames = 0u64;
     let discs = with_host(|host| host.disk_control).map_or(0, |control| control.count());
     let ghosting = with_host(|host| host.has_ghosting());
-    let switch_to = crate::switcher::others(listed);
+    let switch_to = crate::ingame::switcher::others(listed);
     let mut menu = PauseMenu::with(discs, cheat_source.is_some() && !restricted, session.is_some())
         .with_ghosting(ghosting)
         .with_switching(!switch_to.is_empty())
@@ -495,7 +496,7 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
             Some(Level::Critical) => {
                 eprintln!("the battery is empty: saving and powering off");
                 let (width, height) = framebuffer.size();
-                framebuffer.draw(&screens::message_screen(width, height, tr("BATTERY EMPTY"), crate::corner::current_theme()))?;
+                framebuffer.draw(&screens::message_screen(width, height, tr("BATTERY EMPTY"), crate::ui::corner::current_theme()))?;
                 ending = Ending::BatteryEmpty;
                 break;
             }
@@ -642,7 +643,7 @@ pub fn render(
 ) -> io::Result<()> {
     set_host(save.parent().unwrap_or(Path::new(".")), (640, 480), setup, None, Layout::default())?;
     let mut core = Core::load(core_path, rom)?;
-    let console = crate::systems::system_for(rom).and_then(|system| achievements::console_id(system.key));
+    let console = crate::library::systems::system_for(rom).and_then(|system| achievements::console_id(system.key));
     // At load, where a session first looks, and after the frames, as some cores, such as
     // mGBA, give their memory map only in their first frame.
     if let Some(console) = console {

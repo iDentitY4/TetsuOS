@@ -402,7 +402,7 @@ pub(super) fn picture_in_area(
     (frame_w, frame_h): (usize, usize),
     border: &[u32],
     (screen_w, screen_h): (usize, usize),
-    (x, y, w, h): crate::fb::Area,
+    (x, y, w, h): crate::ui::fb::Area,
 ) -> Vec<u32> {
     let (left, top) = (screen_w.saturating_sub(frame_w) / 2, screen_h.saturating_sub(frame_h) / 2);
     let mut pixels = vec![0; w * h];

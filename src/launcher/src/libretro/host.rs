@@ -1,16 +1,15 @@
 //! What the core calls back into: the environment, video, audio and input callbacks and their state.
 
-use crate::{
-    achievements, core_options, settings,
-};
-use crate::controls::{Layout, Pad};
-use crate::core_options::{
+use crate::ingame::{achievements, core_options};
+use crate::settings;
+use crate::ingame::controls::{Layout, Pad};
+use crate::ingame::core_options::{
     Choices, current, Declarations, default_value,
 };
-use crate::input::{Button, Controls};
-use crate::rumble::Rumble;
+use crate::ui::input::{Button, Controls};
+use crate::ingame::rumble::Rumble;
 use crate::settings::{Border, GameDisplay, Ghosting, Vibration};
-use crate::systems::CoreSetup;
+use crate::library::systems::CoreSetup;
 use std::io;
 use std::cell::RefCell;
 use std::ffi::{c_char, c_int, c_uint, c_void, CStr, CString, OsStr};
@@ -190,7 +189,7 @@ impl Host {
             return false;
         }
         let border = super::border::resolve(self.display.border, self.console);
-        self.border = super::border::draw(self.target, self.frame_size, border, self.console, crate::corner::current_theme());
+        self.border = super::border::draw(self.target, self.frame_size, border, self.console, crate::ui::corner::current_theme());
         self.border_for = Some(made_for);
         true
     }

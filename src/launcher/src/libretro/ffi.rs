@@ -1,6 +1,6 @@
 //! The libretro API as the cores see it: commands, ids and the C structs.
 
-use crate::core_options::{
+use crate::ingame::core_options::{
     Category, Choice, Declarations, Declared,
 };
 use std::ffi::{c_char, c_uint, c_void, CStr};

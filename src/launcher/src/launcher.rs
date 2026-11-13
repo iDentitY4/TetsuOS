@@ -2,8 +2,8 @@
 //! from running games so they can be tested.
 
 use crate::i18n::tr;
-use crate::input::Button;
-use crate::play_log::Log;
+use crate::ui::input::Button;
+use crate::library::play_log::Log;
 use crate::settings::{GameSort, GridSize, NoticeKind};
 use std::cell::RefCell;
 use std::collections::HashMap;

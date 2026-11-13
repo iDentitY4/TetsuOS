@@ -3,24 +3,26 @@
 //! Settings > ADVANCED. Each choice is saved as it is made, and all of them are also in
 //! Settings, so Start can leave at any step. Powering off partway starts it over next time.
 
-use crate::{clock, fb, icons, power, screens, settings, sounds, wifi};
+use crate::device::{clock, power, sounds};
+use crate::ui::{fb, icons, screens};
+use crate::{settings, wifi};
 use crate::app::{button_sound, change_settings, press_volume, shut_down};
-use crate::canvas::{text_width, Canvas, MUTED, TEXT};
-use crate::corner::{read_battery, screen_frame, time_note};
+use crate::ui::canvas::{text_width, Canvas, MUTED, TEXT};
+use crate::ui::corner::{read_battery, screen_frame, time_note};
 use crate::i18n::{tr, trf};
-use crate::icons::Icon;
-use crate::input::{Button, Event};
+use crate::ui::icons::Icon;
+use crate::ui::input::{Button, Event};
 use crate::launcher::Setting;
 use crate::library::load_library;
-use crate::repeat::Repeater;
-use crate::screens::{
+use crate::ui::repeat::Repeater;
+use crate::ui::screens::{
     header, hint, row_text_y, Frame, HINT_Y, LIST_LEFT, LIST_ROW, SETTINGS_LEFT, SETTINGS_RIGHT, SETTINGS_ROW, TEXT_SCALE,
 };
-use crate::sleep::sleep_until_lid_opens;
-use crate::system_info::boot_time;
+use crate::device::sleep::sleep_until_lid_opens;
+use crate::device::system_info::boot_time;
 use crate::transfer::wifi_transfer;
-use crate::usb_drive::usb_drive;
-use crate::wifi_screen::{wifi_settings, wifi_status_line};
+use crate::transfer::usb_drive::usb_drive;
+use crate::wifi::wifi_screen::{wifi_settings, wifi_status_line};
 use std::io;
 use std::path::Path;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};

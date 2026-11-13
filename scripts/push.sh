@@ -2,7 +2,7 @@
 # Copies build output to the running device over the USB cable, instead of reflashing.
 #
 #   app     the launcher, then restarts it
-#   rootfs  files in the root filesystem that changed, then restarts the app
+#   rootfs  files in the root filesystem that changed, except /boot, then restarts the app
 #   boot    the kernel, device tree and extlinux.conf, then reboots
 #   all     rootfs, then boot
 #   uboot   U-Boot, into the card's boot area, checked by reading it back
@@ -45,7 +45,7 @@ push_rootfs() {
 		--exclude=/THIS_IS_NOT_YOUR_ROOT_FILESYSTEM \
 		--exclude=/dev/ --exclude=/proc/ --exclude=/sys/ --exclude=/run/ \
 		--exclude=/tmp/ --exclude=/mnt/ --exclude=/media/ --exclude=/root/ \
-		--exclude=/var/ --exclude=/etc/dropbear \
+		--exclude=/var/ --exclude=/boot/ --exclude=/etc/dropbear \
 		--exclude=/etc/passwd --exclude=/etc/group --exclude=/etc/shadow \
 		"$TARGET/" "$DEVICE:/"
 	# The user files are the device's own: Buildroot adds its packages' users, such as
@@ -58,20 +58,18 @@ push_rootfs() {
 
 push_boot() {
 	echo "Copying the kernel, device tree and extlinux.conf"
+	# They are in the root filesystem's /boot, which U-Boot reads (genimage.cfg)
 	on_device mkdir -p /tmp/push-boot
-	copy "$IMAGES/Image" "$IMAGES/$DTB" "$IMAGES/extlinux.conf" "$DEVICE:/tmp/push-boot/"
+	copy "$TARGET/boot/Image" "$TARGET/boot/$DTB" "$TARGET/boot/extlinux/extlinux.conf" "$DEVICE:/tmp/push-boot/"
 	on_device sh -es <<-EOF
-		dev="\$(blkid | grep 'LABEL="TETSU-BOOT"' | head -n 1 | cut -d: -f1)"
-		[ -n "\$dev" ] || { echo "No TETSU-BOOT partition found" >&2; exit 1; }
-		mkdir -p /tmp/tetsu-boot
-		mount -t vfat "\$dev" /tmp/tetsu-boot
-		cp /tmp/push-boot/Image /tmp/push-boot/$DTB /tmp/tetsu-boot/
-		cp /tmp/push-boot/extlinux.conf /tmp/tetsu-boot/extlinux/extlinux.conf
+		mkdir -p /boot/extlinux
+		cp /tmp/push-boot/Image /tmp/push-boot/$DTB /boot/
+		cp /tmp/push-boot/extlinux.conf /boot/extlinux/extlinux.conf
 		sync
-		cmp /tmp/push-boot/Image /tmp/tetsu-boot/Image
-		cmp /tmp/push-boot/$DTB /tmp/tetsu-boot/$DTB
-		cmp /tmp/push-boot/extlinux.conf /tmp/tetsu-boot/extlinux/extlinux.conf
-		umount /tmp/tetsu-boot
+		echo 3 > /proc/sys/vm/drop_caches
+		cmp /tmp/push-boot/Image /boot/Image
+		cmp /tmp/push-boot/$DTB /boot/$DTB
+		cmp /tmp/push-boot/extlinux.conf /boot/extlinux/extlinux.conf
 		rm -r /tmp/push-boot
 	EOF
 	echo "Verified. Rebooting the device."

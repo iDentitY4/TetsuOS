@@ -1,23 +1,22 @@
 //! The in-game menu's loop and what its pages change.
 
-use crate::{
-    achievements, cheats, controls, core_options, pause_screens, png,
-    screenshot, settings,
-};
-use crate::achievements::{GameNotices, Notice, Session};
-use crate::cheats::{CheatAction, CheatSource, CheatsPage, Downloaded};
-use crate::controls::{ControlsMenu, Layout, PageAction, Scope};
-use crate::core_options::{
+use crate::ingame::{achievements, cheats, controls, core_options, pause_screens, screenshot};
+use crate::ui::png;
+use crate::settings;
+use crate::ingame::achievements::{GameNotices, Notice, Session};
+use crate::ingame::cheats::{CheatAction, CheatSource, CheatsPage, Downloaded};
+use crate::ingame::controls::{ControlsMenu, Layout, PageAction, Scope};
+use crate::ingame::core_options::{
     Choices, current, OptionsPage,
 };
-use crate::fb::Framebuffer;
+use crate::ui::fb::Framebuffer;
 use crate::i18n::{tr, trf};
-use crate::input::{Button, Event};
-use crate::pause::{Action, Opening, PauseMenu};
-use crate::pause_screens::PauseView;
+use crate::ui::input::{Button, Event};
+use crate::ingame::pause::{Action, Opening, PauseMenu};
+use crate::ingame::pause_screens::PauseView;
 use crate::settings::GameDisplay;
-use crate::storage::write_atomic;
-use crate::switcher::{SwitchAction, SwitchGame, SwitchPage};
+use crate::device::storage::write_atomic;
+use crate::ingame::switcher::{SwitchAction, SwitchGame, SwitchPage};
 use std::io;
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -227,7 +226,7 @@ fn draw_menu(
 ) -> io::Result<()> {
     let (width, height) = framebuffer.size();
     let frame_size = *frame_size;
-    let theme = crate::corner::current_theme();
+    let theme = crate::ui::corner::current_theme();
     if let Some(page) = &pages.switcher {
         return framebuffer.draw(&pause_screens::switch_screen(width, height, frame, frame_size, page, theme));
     }
@@ -550,8 +549,8 @@ pub(super) fn pause(
     if let AfterMenu::Switch(next) = &after {
         // Saving and loading the next game take a moment, so the screen says what comes.
         let (width, height) = framebuffer.size();
-        let icon = crate::systems::SYSTEMS[next.system].icon;
-        framebuffer.draw(&crate::screens::switching_screen(width, height, icon, &next.name, crate::corner::current_theme()))?;
+        let icon = crate::library::systems::SYSTEMS[next.system].icon;
+        framebuffer.draw(&crate::ui::screens::switching_screen(width, height, icon, &next.name, crate::ui::corner::current_theme()))?;
     }
     if after == AfterMenu::Resume {
         wait_for_release(events);

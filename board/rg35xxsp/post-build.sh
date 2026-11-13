@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Removes files that Buildroot installs for Mesa's build but that nothing on the
-# device uses, then checks that every shared library still has what it links to.
+# Installs the boot configuration, removes files that Buildroot installs for Mesa's
+# build but that nothing on the device uses, then checks that every shared library still has what it links to.
 set -euo pipefail
 
 TARGET="$1"
+BOARD_DIR="$(dirname "$(readlink -f "$0")")"
 READELF="$(ls "$HOST_DIR"/bin/*-buildroot-linux-gnu-readelf | head -n 1)"
 
 # Panfrost forces Mesa's OpenCL option, which brings Clang and libclc, and Mesa
@@ -36,6 +37,10 @@ find lib/firmware/rtw88 -type f ! -name rtw8821c_fw.bin -delete 2>/dev/null || t
 for script in S30dbus-daemon S40bluetoothd; do
 	[ -e "etc/init.d/$script" ] && mv "etc/init.d/$script" "etc/init.d/${script#S??}"
 done
+
+# U-Boot boots from the root filesystem's /boot (genimage.cfg), where the kernel and
+# device tree are installed, so each root slot has its own boot configuration.
+install -D -m 644 "$BOARD_DIR/extlinux.conf" boot/extlinux/extlinux.conf
 
 # Name the OS in os-release, which Buildroot writes as its own. VERSION, the git
 # revision that SYSTEM info shows, and VERSION_ID, the Buildroot release, are kept.

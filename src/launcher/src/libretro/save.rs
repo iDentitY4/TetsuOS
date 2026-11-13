@@ -1,7 +1,7 @@
 //! Save files, state slots and the resume point.
 
-use crate::storage::write_atomic;
-use crate::systems::Persistence;
+use crate::device::storage::write_atomic;
+use crate::library::systems::Persistence;
 use std::io;
 use std::path::{Path, PathBuf};
 use super::core::Core;
@@ -155,7 +155,7 @@ mod tests {
         progress[0] = 2;
         save.update(&progress).unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), progress);
-        assert!(!crate::storage::temporary_for(&path).exists());
+        assert!(!crate::device::storage::temporary_for(&path).exists());
 
         progress[0] = 3;
         save.update(&progress).unwrap();

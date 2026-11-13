@@ -32,7 +32,7 @@ pub(super) fn playback_rate(sample_rate: f64, samples_per_frame: f64) -> f64 {
 /// headphones while they are connected (`audio_out`).
 pub(super) fn start_audio(sample_rate: f64) -> io::Result<Child> {
     let child = Command::new("aplay")
-        .args(["-q", "-D", crate::audio_out::device()])
+        .args(["-q", "-D", crate::device::audio_out::device()])
         .args(["-t", "raw", "-f", "S16_LE", "-c", "2"])
         .args(["-r", &format!("{}", sample_rate.round() as u32)])
         .args(["--buffer-time=100000", "--period-time=25000"])

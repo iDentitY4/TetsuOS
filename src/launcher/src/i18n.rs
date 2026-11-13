@@ -55,7 +55,10 @@ pub fn trf(template: &'static str, values: &[&dyn Display]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{clock, font, launcher, pause, settings as s};
+    use crate::device::clock;
+use crate::ui::font;
+use crate::{launcher, settings as s};
+use crate::ingame::pause;
     use std::collections::HashSet;
 
     const GERMAN: &str = include_str!("../lang/de.txt");
@@ -101,9 +104,9 @@ mod tests {
         keys.extend(labels(&pause::ITEMS, pause::Item::label));
         keys.extend(labels(&pause::LISTS, pause::List::title));
         keys.extend(clock::ZONES.iter().map(|zone| zone.label));
-        keys.extend(labels(&crate::set_time::FIELDS, crate::set_time::Field::label));
-        keys.extend(crate::network::COUNTRIES.iter().map(|country| country.name));
-        keys.extend(labels(&crate::network::MacMode::ALL, crate::network::MacMode::label));
+        keys.extend(labels(&crate::device::set_time::FIELDS, crate::device::set_time::Field::label));
+        keys.extend(crate::wifi::network::COUNTRIES.iter().map(|country| country.name));
+        keys.extend(labels(&crate::wifi::network::MacMode::ALL, crate::wifi::network::MacMode::label));
         keys.extend(clock::WEEKDAYS);
         keys.extend(clock::MONTHS);
         keys.extend(labels(s::Scaling::ALL, s::Scaling::label));

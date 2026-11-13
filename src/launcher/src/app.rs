@@ -1,33 +1,33 @@
 //! The launcher's main loop: drawing its screens and carrying out what presses ask for.
 
-use crate::{
-    achievements, boot_partition, boxart, canvas, cards, cheats, clock, controls, core_options, favorites,
-    fb, game_files, icons, input, keyboard, launcher, performance, play_log, power, recent, rumble, screens, settings, sounds,
-    set_time, signs, ssh, statistics_screen, storage,
-};
-use crate::boxart_screen::{art_counts, delete_box_art, download_box_art};
-use crate::canvas::Battery;
-use crate::core_options_screen::core_options_settings;
-use crate::corner::{
+use crate::ingame::{achievements, cheats, controls, core_options, rumble};
+use crate::device::{boot_partition, clock, performance, power, sounds, set_time, ssh, storage};
+use crate::library::{boxart, cards, favorites, game_files, play_log, recent, statistics_screen};
+use crate::ui::{canvas, fb, icons, input, keyboard, screens, signs};
+use crate::{launcher, settings};
+use crate::library::boxart_screen::{art_counts, delete_box_art, download_box_art};
+use crate::ui::canvas::Battery;
+use crate::ingame::core_options_screen::core_options_settings;
+use crate::ui::corner::{
     add_corner, BATTERY_REFRESH, read_links, corner_clock, current_theme, read_battery, screen_frame, time_note,
 };
 use crate::game::{confirm_resume, forget_running_game, interrupted_game, play_game, PLAYING_PATH};
 use crate::i18n::{tr, trf};
-use crate::input::{Button, Controls, Event};
+use crate::ui::input::{Button, Controls, Event};
 use crate::launcher::{Command as Action, Group, GROUPS, Launcher, Library, List, Screen, Tile};
 use crate::library::{
     find_games, game_title, last_played_game, load_library, open_start_screen, reload_library, set_search, tile_key,
     tile_look,
 };
 use crate::libretro::Ending;
-use crate::repeat::Repeater;
+use crate::ui::repeat::Repeater;
 use crate::setup::run_setup;
-use crate::sleep::{sleep_until_lid_opens, sleep_until_woken};
-use crate::system_info::{boot_time, command_output, parse_ifconfig, system_info};
-use crate::systems::{SAVE_DIR, save_path, system_for, SYSTEMS};
+use crate::device::sleep::{sleep_until_lid_opens, sleep_until_woken};
+use crate::device::system_info::{boot_time, command_output, parse_ifconfig, system_info};
+use crate::library::systems::{SAVE_DIR, save_path, system_for, SYSTEMS};
 use crate::transfer::wifi_transfer;
-use crate::usb_drive::usb_drive;
-use crate::wifi_screen::wifi_settings;
+use crate::transfer::usb_drive::usb_drive;
+use crate::wifi::wifi_screen::wifi_settings;
 use std::io;
 use std::path::Path;
 use std::process::Command;
@@ -482,7 +482,7 @@ fn settings_group_canvas((width, height): (usize, usize), group: Group, launcher
         message: launcher.confirmation(),
         note: note.as_deref(),
         login,
-        // Read from the card the first time the group opens, then kept.
+        // A small file in the root filesystem, so reading it at each draw costs nothing.
         boot_messages: if group == Group::Advanced { boot_partition::boot_messages() } else { None },
         achievements_user: account.as_ref().map(|account| account.user.as_str()),
     };
@@ -700,7 +700,7 @@ pub(crate) fn act(
         Action::DeleteGame(_) => return Ok(true),
         Action::ButtonTest => button_test(framebuffer, events)?,
         Action::Wifi => wifi_settings(framebuffer, events)?,
-        Action::Bluetooth => crate::bluetooth_screen::bluetooth_settings(framebuffer, events)?,
+        Action::Bluetooth => crate::bluetooth::bluetooth_screen::bluetooth_settings(framebuffer, events)?,
         Action::CoreOptions => core_options_settings(framebuffer, events)?,
         Action::DownloadBoxArt(mode) => {
             download_box_art(framebuffer, events, mode)?;
@@ -1311,6 +1311,7 @@ fn action_for(
 pub(crate) fn run_launcher() -> io::Result<()> {
     show_shutdown_on_signal();
     println!("launcher started {}", boot_time());
+    println!("device: {}", crate::device::profile::get().name);
     settings::restore_levels();
     performance::apply(settings::get().performance);
     power::apply_charge_limit(settings::get().charge);
@@ -1321,10 +1322,10 @@ pub(crate) fn run_launcher() -> io::Result<()> {
     let events = input::spawn_readers();
     // USB power started the device: the battery first, the rest once the power button is
     // pressed. The charge limit is set by now.
-    if crate::charging::pending() {
-        crate::charging::show(&mut framebuffer, &events)?;
+    if crate::device::charging::pending() {
+        crate::device::charging::show(&mut framebuffer, &events)?;
     }
-    crate::audio_out::watch();
+    crate::device::audio_out::watch();
     let mut launcher = Launcher::new();
     let mut repeater = Repeater::new();
     // Mounts a card that went in after S15data looked, before the games are read.

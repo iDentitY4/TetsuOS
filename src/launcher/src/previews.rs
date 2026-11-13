@@ -1,19 +1,20 @@
 //! Images of the screens, rendered on the PC without the device.
 
-use crate::{
-    achievements, boxart, canvas, cheats, color, controls, core_options, i18n, icons, keyboard,
-    pause, pause_screens, png, screens, settings, setup, wifi, wifi_menu,
-};
+use crate::ingame::{achievements, cheats, controls, core_options, pause, pause_screens};
+use crate::library::boxart;
+use crate::ui::{canvas, color, icons, keyboard, png, screens};
+use crate::{i18n, settings, setup, wifi};
+use crate::wifi::wifi_menu;
 use crate::app::launcher_canvas;
-use crate::canvas::Battery;
-use crate::corner::{current_theme, screen_frame, time_note};
-use crate::input::{Button, Controls, Event};
+use crate::ui::canvas::Battery;
+use crate::ui::corner::{current_theme, screen_frame, time_note};
+use crate::ui::input::{Button, Controls, Event};
 use crate::launcher::Launcher;
 use crate::library::build_library;
 use crate::transfer::transfer_view;
-use crate::transfer_server::{Activity, Receiving};
-use crate::usb_drive::{usb_drive_view, UsbLink};
-use crate::wifi_screen::{password_note, wifi_status_line};
+use crate::transfer::transfer_server::{Activity, Receiving};
+use crate::transfer::usb_drive::{usb_drive_view, UsbLink};
+use crate::wifi::wifi_screen::{password_note, wifi_status_line};
 use std::io;
 use std::io::Write;
 use std::path::PathBuf;
@@ -87,7 +88,7 @@ fn paused_frame() -> (Vec<u32>, (usize, usize)) {
 /// Renders the in-game menu's SWITCH GAME page, as a list or as covers: seven games, of
 /// which some have covers, and the second selected.
 pub(crate) fn write_switch_preview(style: settings::SwitcherStyle, path: &str) -> io::Result<()> {
-    use crate::switcher::{Cover, SwitchGame, SwitchPage, LARGE_COVER, SMALL_COVER};
+    use crate::ingame::switcher::{Cover, SwitchGame, SwitchPage, LARGE_COVER, SMALL_COVER};
     let (width, height) = PREVIEW_SIZE;
     let (frame, frame_size) = paused_frame();
     let names = [
@@ -103,7 +104,7 @@ pub(crate) fn write_switch_preview(style: settings::SwitcherStyle, path: &str) -
         .iter()
         .map(|(file, name)| {
             let path = PathBuf::from("/r").join(file);
-            SwitchGame { system: crate::systems::system_index(&path).unwrap_or(0), path, name: (*name).to_string() }
+            SwitchGame { system: crate::library::systems::system_index(&path).unwrap_or(0), path, name: (*name).to_string() }
         })
         .collect();
     let covers = (0..games.len())
@@ -111,8 +112,8 @@ pub(crate) fn write_switch_preview(style: settings::SwitcherStyle, path: &str) -
             (index % 3 != 2).then(|| {
                 let shade = (index * 37 % 200) as u8;
                 let pixels = (0..200 * 280).map(|i| color::Rgb(shade + 40, (i / 200 % 256) as u8, 160 - shade / 2)).collect();
-                let image = crate::image::Image { width: 200, height: 280, pixels };
-                Cover { large: crate::boxart_fetch::shrink(&image, LARGE_COVER), small: crate::boxart_fetch::shrink(&image, SMALL_COVER) }
+                let image = crate::ui::image::Image { width: 200, height: 280, pixels };
+                Cover { large: crate::library::boxart_fetch::shrink(&image, LARGE_COVER), small: crate::library::boxart_fetch::shrink(&image, SMALL_COVER) }
             })
         })
         .collect();
@@ -281,7 +282,7 @@ pub(crate) fn write_wifi_preview(path: &str) -> io::Result<()> {
     menu.press(Button::Down);
     menu.press(Button::Down);
     let line = wifi_status_line(true, &status, None);
-    let view = crate::wifi_screen::WifiView {
+    let view = crate::wifi::wifi_screen::WifiView {
         on: true,
         entries: &menu.entries,
         selected: menu.selected(),
@@ -291,13 +292,13 @@ pub(crate) fn write_wifi_preview(path: &str) -> io::Result<()> {
     };
     let (width, height) = PREVIEW_SIZE;
     let battery = Some(Battery { percent: 95, charging: true });
-    write_ppm(&crate::wifi_screen::wifi_screen(width, height, &view, &screen_frame(battery)), path)
+    write_ppm(&crate::wifi::wifi_screen::wifi_screen(width, height, &view, &screen_frame(battery)), path)
 }
 
 /// Renders the Bluetooth screen with a controller connected and one being paired.
 pub(crate) fn write_bluetooth_preview(path: &str) -> io::Result<()> {
     use crate::bluetooth::{Device, Kind};
-    use crate::bluetooth_menu::{self, BluetoothMenu};
+    use crate::bluetooth::bluetooth_menu::{self, BluetoothMenu};
     let device = |name: Option<&str>, kind, paired, connected, rssi| Device {
         path: format!("/org/bluez/hci0/dev_{}", name.unwrap_or("none").replace(' ', "_")),
         address: "A0:5A:5D:01:02:03".into(),
@@ -318,8 +319,8 @@ pub(crate) fn write_bluetooth_preview(path: &str) -> io::Result<()> {
     menu.set_entries(bluetooth_menu::entries(&devices, Some("/org/bluez/hci0/dev_Pro_Controller")));
     menu.press(Button::Down);
     menu.press(Button::Down);
-    let line = crate::bluetooth_screen::status_line(true, true, Some((crate::bluetooth_screen::Doing::Pairing, "Pro Controller")));
-    let view = crate::bluetooth_screen::BluetoothView {
+    let line = crate::bluetooth::bluetooth_screen::status_line(true, true, Some((crate::bluetooth::bluetooth_screen::Doing::Pairing, "Pro Controller")));
+    let view = crate::bluetooth::bluetooth_screen::BluetoothView {
         on: true,
         entries: &menu.entries,
         selected: menu.selected(),
@@ -329,7 +330,7 @@ pub(crate) fn write_bluetooth_preview(path: &str) -> io::Result<()> {
     };
     let (width, height) = PREVIEW_SIZE;
     let battery = Some(Battery { percent: 95, charging: true });
-    write_ppm(&crate::bluetooth_screen::bluetooth_screen(width, height, &view, &screen_frame(battery)), path)
+    write_ppm(&crate::bluetooth::bluetooth_screen::bluetooth_screen(width, height, &view, &screen_frame(battery)), path)
 }
 
 /// Renders the password keyboard partway through typing.
@@ -371,14 +372,14 @@ pub(crate) fn write_usb_drive_preview(path: &str) -> io::Result<()> {
     let (width, height) = PREVIEW_SIZE;
     let view = usb_drive_view(UsbLink::Connected, false, true);
     let frame = screens::Frame { theme: current_theme(), battery: Some(Battery { percent: 80, charging: true }) };
-    write_ppm(&crate::usb_drive::usb_drive_screen(width, height, &view, &frame), path)
+    write_ppm(&crate::transfer::usb_drive::usb_drive_screen(width, height, &view, &frame), path)
 }
 
 /// Settings > STATISTICS, with some weeks of play on several consoles up to today.
 pub(crate) fn write_statistics_preview(path: &str) -> io::Result<()> {
     let (width, height) = PREVIEW_SIZE;
-    let today = crate::clock::local(jiff::Timestamp::now(), crate::settings::get().time_zone()).date();
-    let mut log = crate::play_log::Log::default();
+    let today = crate::device::clock::local(jiff::Timestamp::now(), crate::settings::get().time_zone()).date();
+    let mut log = crate::library::play_log::Log::default();
     let consoles = ["gba", "snes", "ps1", "gb", "md", "nes", "ngpc"];
     for back in 0..45_i64 {
         let Ok(day) = today.checked_sub(jiff::ToSpan::days(back)) else { continue };
@@ -386,7 +387,7 @@ pub(crate) fn write_statistics_preview(path: &str) -> io::Result<()> {
         log.add(day, console, u64::try_from((back * 37 + 11) % 97).unwrap_or(0) * 60);
     }
     let frame = screens::Frame { theme: current_theme(), battery: Some(Battery { percent: 80, charging: false }) };
-    write_ppm(&crate::statistics_screen::statistics_screen(width, height, &crate::app::statistics(&log, 0), &frame), path)
+    write_ppm(&crate::library::statistics_screen::statistics_screen(width, height, &crate::app::statistics(&log, 0), &frame), path)
 }
 
 /// Settings > TIME > SET TIME, on the hour.
@@ -394,11 +395,11 @@ pub(crate) fn write_set_time_preview(path: &str) -> io::Result<()> {
     let (width, height) = PREVIEW_SIZE;
     let settings = crate::settings::get();
     let time: jiff::civil::DateTime = "2026-11-12T16:05".parse().map_err(io::Error::other)?;
-    let values = crate::set_time::field_values(time, settings.clock);
-    let date = crate::clock::date_text(&crate::clock::zoned(time, settings.time_zone()), settings.clock);
-    let view = crate::set_time::SetTimeView { values: &values, selected: 3, date: &date, failed: false };
+    let values = crate::device::set_time::field_values(time, settings.clock);
+    let date = crate::device::clock::date_text(&crate::device::clock::zoned(time, settings.time_zone()), settings.clock);
+    let view = crate::device::set_time::SetTimeView { values: &values, selected: 3, date: &date, failed: false };
     let frame = screens::Frame { theme: current_theme(), battery: Some(Battery { percent: 80, charging: false }) };
-    write_ppm(&crate::set_time::set_time_screen(width, height, &view, &frame), path)
+    write_ppm(&crate::device::set_time::set_time_screen(width, height, &view, &frame), path)
 }
 
 /// Settings > SYSTEM > WI-FI TRANSFER, while a game arrives.
@@ -489,7 +490,7 @@ pub(crate) fn write_notice_preview(path: &str) -> io::Result<()> {
         ..achievements::Notice::new(i18n::trf("ACHIEVEMENT UNLOCKED - {} POINTS", &[&10]), "First Steps")
     };
     let badge = preview_badges()?.get("5", achievements::NOTICE_BADGE, false);
-    let sign = crate::signs::achievement_notice(&notice, badge.as_ref(), current_theme());
+    let sign = crate::ui::signs::achievement_notice(&notice, badge.as_ref(), current_theme());
     let mut canvas = canvas::Canvas::new(width, height, current_theme());
     for (index, pixel) in canvas.pixels.iter_mut().enumerate() {
         let (x, y) = (index % width, index / width);
@@ -506,8 +507,8 @@ pub(crate) fn write_notice_preview(path: &str) -> io::Result<()> {
 /// it without the device.
 pub(crate) fn write_boot_animation_preview(path: &str) -> io::Result<()> {
     let (width, height) = PREVIEW_SIZE;
-    let mut animation = crate::boot_animation::Animation::new(width, height);
-    let moments = [0.25, 0.45, 0.52, 0.66, 0.78, 0.9, 1.1, crate::boot_animation::SECONDS];
+    let mut animation = crate::device::boot_animation::Animation::new(width, height);
+    let moments = [0.25, 0.45, 0.52, 0.66, 0.78, 0.9, 1.1, crate::device::boot_animation::SECONDS];
     let mut sheet = canvas::Canvas::new(width * 2, height, current_theme());
     for (index, t) in moments.into_iter().enumerate() {
         let frame = animation.frame(t);
