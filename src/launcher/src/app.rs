@@ -16,8 +16,8 @@ use crate::i18n::{tr, trf};
 use crate::ui::input::{Button, Controls, Event};
 use crate::launcher::{Command as Action, Group, GROUPS, Launcher, Library, List, Screen, Tile};
 use crate::library::{
-    find_games, game_title, last_played_game, load_library, open_start_screen, reload_library, set_search, tile_key,
-    tile_look,
+    collections_menu, find_games, game_title, last_played_game, load_library, open_start_screen, reload_library,
+    set_search, tile_key, tile_look,
 };
 use crate::libretro::Ending;
 use crate::ui::repeat::Repeater;
@@ -294,6 +294,11 @@ fn home_canvas((width, height): (usize, usize), launcher: &Launcher, library: &L
                 label: tr("FAVORITES"),
                 count: Some(library.favorites.len()),
             },
+            Tile::Collection(index) => screens::TileView {
+                icon: &icons::COLLECTION,
+                label: &library.collections[index].name,
+                count: Some(library.collections[index].games.len()),
+            },
             Tile::System(system) => screens::TileView {
                 icon: SYSTEMS[system].icon,
                 label: SYSTEMS[system].label,
@@ -329,6 +334,9 @@ fn home_detail(library: &Library, tile: Tile) -> (String, Option<String>) {
             None => (String::new(), None),
         },
         Tile::Favorites => (library.favorites.iter().map(|game| game.name.as_str()).collect::<Vec<_>>().join(", "), None),
+        Tile::Collection(index) => {
+            (library.games(List::Collection(index)).iter().map(|game| game.name.as_str()).collect::<Vec<_>>().join(", "), None)
+        }
         Tile::System(system) => match played(system) {
             (Some(name), ago) => (trf("LAST: {}", &[&name]), ago),
             (None, _) => (tr("NOT PLAYED YET").to_string(), None),
@@ -351,6 +359,7 @@ fn games_canvas(
     let (icon, title) = match list {
         List::Recent => (&icons::RECENT, tr("RECENT")),
         List::Favorites => (&icons::FAVORITES, tr("FAVORITES")),
+        List::Collection(index) => (&icons::COLLECTION, library.collections.get(index).map_or("", |c| c.name.as_str())),
         List::Search => (&icons::SEARCH, tr("SEARCH")),
         List::System(system) => (SYSTEMS[system].icon, SYSTEMS[system].console),
     };
@@ -360,7 +369,8 @@ fn games_canvas(
         .map(|game| screens::RowView {
             name: &game.name,
             // Lists of games from several consoles show each one's console.
-            icon: matches!(list, List::Recent | List::Favorites | List::Search).then_some(SYSTEMS[game.system].icon),
+            icon: matches!(list, List::Recent | List::Favorites | List::Collection(_) | List::Search)
+                .then_some(SYSTEMS[game.system].icon),
             starred: library.is_favorite(game),
         })
         .collect();
@@ -395,7 +405,7 @@ fn details_canvas(
     frame: &screens::Frame,
 ) -> canvas::Canvas {
     let game = launcher.details_game(library);
-    let (icon, name, facts, starred) = match game {
+    let (icon, name, facts, collections) = match game {
         Some(game) => {
             let files = game_files::GameFiles::of(&game.path);
             let settings = settings::get();
@@ -424,10 +434,12 @@ fn details_canvas(
             if let Some(summary) = summary {
                 facts.push((tr("ACHIEVEMENTS"), trf("{} OF {}", &[&summary.unlocked, &summary.total])));
             }
-            (SYSTEMS[game.system].icon, game_title(&game.path), facts, library.is_favorite(game))
+            let collections = usize::from(library.is_favorite(game))
+                + library.collections.iter().filter(|c| c.games.iter().any(|other| other.path == game.path)).count();
+            (SYSTEMS[game.system].icon, game_title(&game.path), facts, collections)
         }
         // Only for the moment before the launcher goes back to the list.
-        None => (&icons::RECENT, String::new(), Vec::new(), false),
+        None => (&icons::RECENT, String::new(), Vec::new(), 0),
     };
     let shown = !settings::get().covers_hidden;
     let cover = game.filter(|_| shown).and_then(|game| art.get(&game.path));
@@ -446,7 +458,7 @@ fn details_canvas(
         facts: &facts,
         rows: &rows,
         selected: launcher.details_row(library),
-        starred,
+        collections,
         achievements_off,
         screenshots: game.map_or(0, |game| library.screenshot_count(&game.path)),
         art,
@@ -521,6 +533,9 @@ pub(crate) fn launcher_canvas(
             canvas
         }
         Screen::Details(_) => details_canvas((width, height), launcher, library, art, &frame),
+        Screen::GameCollections(_) => collections_menu::game_collections_canvas((width, height), launcher, library, &frame),
+        Screen::Collections => collections_menu::collections_canvas((width, height), launcher, library, &frame),
+        Screen::HiddenGames => collections_menu::hidden_games_canvas((width, height), launcher, library, &frame),
         Screen::Settings => {
             let selected = GROUPS.iter().position(|&group| group == launcher.group_selected()).unwrap_or(0);
             screens::settings_grid(width, height, &GROUPS, selected, &frame)
@@ -536,7 +551,7 @@ pub(crate) fn launcher_canvas(
                 .every_tile()
                 .into_iter()
                 .map(|tile| {
-                    let (icon, label) = tile_look(tile);
+                    let (icon, label) = tile_look(library, tile);
                     screens::TileToggle { icon, label, shown: !library.hidden.contains(&tile) }
                 })
                 .collect();
@@ -826,9 +841,27 @@ pub(crate) fn act(
         }
         Action::ToggleTitle => change_settings(|s| s.title_hidden = !s.title_hidden),
         Action::EditTitle => edit_title(framebuffer, events)?,
-        Action::ToggleTile(tile) => {
-            change_settings(|s| s.toggle_tile(tile_key(tile)));
-            // The home screen's tiles are read again.
+        // `run_launcher` changes it, as a collection's tile is named from the library. The
+        // home screen's tiles are read again.
+        Action::ToggleTile(_) => return Ok(true),
+        Action::ToggleCollection(name, rom) => {
+            collections_menu::toggle_collection(&name, &rom);
+            return Ok(true);
+        }
+        Action::NewCollection(rom) => {
+            collections_menu::new_collection(framebuffer, events, &rom)?;
+            return Ok(true);
+        }
+        Action::RenameCollection(name) => {
+            collections_menu::rename_collection(framebuffer, events, &name)?;
+            return Ok(true);
+        }
+        Action::DeleteCollection(name) => {
+            collections_menu::delete_collection(&name);
+            return Ok(true);
+        }
+        Action::ToggleHidden(rom) => {
+            collections_menu::toggle_hidden(&rom);
             return Ok(true);
         }
         Action::TimeZone(steps) => {
@@ -1512,6 +1545,9 @@ pub(crate) fn run_launcher() -> io::Result<()> {
         }
         if action == Action::Search {
             search_games(&mut framebuffer, &events, &mut launcher, &mut library)?;
+        }
+        if let Action::ToggleTile(tile) = action {
+            change_settings(|s| s.toggle_tile(&tile_key(&library, tile)));
         }
         if let Action::DeleteGame(rom) = &action {
             delete_game_showing_failure(&mut framebuffer, rom, &library)?;

@@ -306,8 +306,10 @@ fn tile_grid(
         canvas.icon(tile.icon, x + (tile_w - icons::WIDTH * scale) / 2, icon_y, scale);
         let label_y = icon_y + icons::HEIGHT * scale + gap;
         let label_color = if index == selected { canvas.theme.accent } else { TEXT };
-        let label_x = x + tile_w.saturating_sub(text_width(tile.label, TEXT_SCALE)) / 2;
-        canvas.text_at(tile.label, label_x, label_y, TEXT_SCALE, label_color);
+        // A collection's name, typed by the user, is cut to the tile.
+        let label = cut(tile.label, (tile_w + TEXT_SCALE) / ((font::WIDTH + 1) * TEXT_SCALE));
+        let label_x = x + tile_w.saturating_sub(text_width(&label, TEXT_SCALE)) / 2;
+        canvas.text_at(&label, label_x, label_y, TEXT_SCALE, label_color);
         if let Some(count) = tile.count {
             let text = format!("{count} {}", if count == 1 { tr("GAME") } else { tr("GAMES") });
             let count_x = x + tile_w.saturating_sub(text_width(&text, TEXT_SCALE)) / 2;
@@ -412,7 +414,8 @@ pub struct DetailsView<'a> {
     /// The rows this game has, from `Launcher::detail_rows`.
     pub rows: &'a [DetailRow],
     pub selected: DetailRow,
-    pub starred: bool,
+    /// How many of the favorites and collections it is in, shown on their row.
+    pub collections: usize,
     /// `RetroAchievements` are off for this game.
     pub achievements_off: bool,
     /// How many screenshots it has, shown on their row.
@@ -431,11 +434,11 @@ const DETAILS_ROWS_TOP: usize = 280;
 const DETAILS_ROW: usize = 26;
 const _: () = assert!(LIST_TOP + DETAILS_NAME_LINES * 22 <= DETAILS_FACTS_TOP + 4);
 const _: () = assert!(DETAILS_FACTS_TOP + DETAILS_MAX_FACTS * DETAILS_FACT_ROW <= DETAILS_ROWS_TOP);
-const DETAILS_MESSAGE_Y: usize = DETAILS_ROWS_TOP + DETAIL_ROWS.len() * DETAILS_ROW + 8;
 /// The rows end before the cover's panel.
 const DETAILS_RIGHT: usize = ART_PANEL.0 - 8;
 
-const _: () = assert!(DETAILS_MESSAGE_Y + 20 <= HINT_Y);
+// A question waiting for a second press takes the hint's place.
+const _: () = assert!(DETAILS_ROWS_TOP + DETAIL_ROWS.len() * DETAILS_ROW <= HINT_Y - 8);
 
 /// Breaks a name at spaces into at most `lines` lines of `columns` characters. What doesn't
 /// fit is left out, and a word longer than a line is cut.
@@ -479,16 +482,20 @@ pub fn details_screen(width: usize, height: usize, view: &DetailsView, frame: &F
         };
         let label = match item {
             DetailRow::Play => tr("PLAY"),
-            DetailRow::Star if view.starred => tr("REMOVE STAR"),
-            DetailRow::Star => tr("STAR"),
+            DetailRow::Collections => tr("COLLECTIONS"),
             DetailRow::Achievements => tr("ACHIEVEMENTS"),
             DetailRow::Screenshots => tr("SCREENSHOTS"),
+            DetailRow::Hide => tr("HIDE GAME"),
             DetailRow::Delete => tr("DELETE GAME AND SAVES"),
         };
         let text_y = row_text_y(y, DETAILS_ROW - 2);
         canvas.text_at(label, LIST_LEFT, text_y, TEXT_SCALE, color);
-        if item == DetailRow::Screenshots {
-            let count = view.screenshots.to_string();
+        if let Some(count) = match item {
+            DetailRow::Screenshots => Some(view.screenshots),
+            DetailRow::Collections => Some(view.collections),
+            _ => None,
+        } {
+            let count = count.to_string();
             let x = (DETAILS_RIGHT - 8).saturating_sub(text_width(&count, TEXT_SCALE));
             canvas.text_at(&count, x, text_y, TEXT_SCALE, color);
         }
@@ -500,12 +507,13 @@ pub fn details_screen(width: usize, height: usize, view: &DetailsView, frame: &F
             canvas.text_at(&value, x, text_y, TEXT_SCALE, color);
         }
     }
-    if let Some(message) = view.message {
-        canvas.text_at(message, LIST_LEFT, DETAILS_MESSAGE_Y, TEXT_SCALE, canvas.theme.accent);
-    }
     draw_art(&mut canvas, view.art.as_ref());
-    let changes = view.rows.contains(&DetailRow::Achievements);
-    hint(&mut canvas, if changes { tr("A SELECTS - LEFT RIGHT CHANGES - B BACK") } else { tr("A SELECTS - B BACK") });
+    if let Some(message) = view.message {
+        canvas.text(message, HINT_Y, TEXT_SCALE, canvas.theme.accent);
+    } else {
+        let changes = view.rows.contains(&DetailRow::Achievements);
+        hint(&mut canvas, if changes { tr("A SELECTS - LEFT RIGHT CHANGES - B BACK") } else { tr("A SELECTS - B BACK") });
+    }
     canvas
 }
 
@@ -699,31 +707,97 @@ pub fn home_tiles_screen(
     selected: usize,
     frame: &Frame,
 ) -> Canvas {
+    let rows: Vec<IconRow> = rows
+        .iter()
+        .map(|row| IconRow {
+            icon: Some(row.icon),
+            label: row.label,
+            value: if row.shown { tr("SHOWN") } else { tr("HIDDEN") },
+            dim: !row.shown,
+        })
+        .collect();
+    // Hiding the settings tile is fine, but worth a reminder of the way back.
+    let settings_hidden = rows.last().is_some_and(|settings| settings.dim);
+    let view = IconList {
+        icon: &icons::THEME,
+        title: tr("HOME SCREEN TILES"),
+        rows: &rows,
+        selected,
+        below: settings_hidden.then(|| tr("START OPENS SETTINGS FROM ANYWHERE")),
+        question: None,
+        hint: tr("A SHOWS OR HIDES - B BACK"),
+    };
+    icon_list_screen(width, height, &view, frame)
+}
+
+/// A row of `icon_list_screen`: a pictogram if it has one, a name, and a value at the right.
+pub struct IconRow<'a> {
+    pub icon: Option<&'a Icon>,
+    pub label: &'a str,
+    pub value: &'a str,
+    /// Shown dimmer, for something turned off or left out.
+    pub dim: bool,
+}
+
+/// A page of rows, a screen of them at a time, with a line under them and the hint.
+pub struct IconList<'a> {
+    pub icon: &'a Icon,
+    pub title: &'a str,
+    pub rows: &'a [IconRow<'a>],
+    pub selected: usize,
+    /// Under the rows, such as why the list is empty, or a question waiting for a press.
+    pub below: Option<&'a str>,
+    /// A question waiting for a second press, in the hint's place.
+    pub question: Option<&'a str>,
+    pub hint: &'a str,
+}
+
+/// Lists such as the home screen tiles, the collections and the hidden games.
+pub fn icon_list_screen(width: usize, height: usize, view: &IconList, frame: &Frame) -> Canvas {
     let mut canvas = Canvas::new(width, height, frame.theme);
-    header(&mut canvas, &icons::THEME, tr("HOME SCREEN TILES"), frame.battery);
+    header(&mut canvas, view.icon, view.title, frame.battery);
     let right = width.saturating_sub(SETTINGS_RIGHT);
+    let advance = (font::WIDTH + 1) * TEXT_SCALE;
+    let selected = view.selected;
     let first = first_visible(selected);
-    for (line, (index, row)) in rows.iter().enumerate().skip(first).take(PAGE).enumerate() {
+    if view.rows.len() > PAGE {
+        let position = trf("{} OF {}", &[&(selected + 1), &view.rows.len()]);
+        let x = width.saturating_sub(text_width(&position, TEXT_SCALE) + 16);
+        canvas.text_at(&position, x, 40, TEXT_SCALE, MUTED);
+    }
+    for (line, (index, row)) in view.rows.iter().enumerate().skip(first).take(PAGE).enumerate() {
         let y = LIST_TOP + line * LIST_ROW;
         let (label_color, value_color) = if index == selected {
             canvas.rect(0, y, width, LIST_ROW - 2, canvas.theme.accent);
             (canvas.theme.background, canvas.theme.background)
-        } else if row.shown {
-            (TEXT, TEXT)
-        } else {
+        } else if row.dim {
             (MUTED, MUTED)
+        } else {
+            (TEXT, TEXT)
         };
-        canvas.icon(row.icon, LIST_ICON_LEFT, y + (LIST_ROW - 2 - icons::HEIGHT) / 2, 1);
+        let left = if let Some(icon) = row.icon {
+            canvas.icon(icon, LIST_ICON_LEFT, y + (LIST_ROW - 2 - icons::HEIGHT) / 2, 1);
+            LIST_ICON_TEXT_LEFT
+        } else {
+            SETTINGS_LEFT
+        };
         let text_y = row_text_y(y, LIST_ROW - 2);
-        canvas.text_at(row.label, LIST_ICON_TEXT_LEFT, text_y, TEXT_SCALE, label_color);
-        let value = if row.shown { tr("SHOWN") } else { tr("HIDDEN") };
-        canvas.text_at(value, right.saturating_sub(text_width(value, TEXT_SCALE)), text_y, TEXT_SCALE, value_color);
+        let value_x = right.saturating_sub(text_width(row.value, TEXT_SCALE));
+        // Two characters between the name and its value.
+        let value_w = if row.value.is_empty() { 0 } else { text_width(row.value, TEXT_SCALE) + 2 * advance };
+        let label = cut(row.label, right.saturating_sub(left + value_w) / advance);
+        canvas.text_at(&label, left, text_y, TEXT_SCALE, label_color);
+        canvas.text_at(row.value, value_x, text_y, TEXT_SCALE, value_color);
     }
-    // Hiding the settings tile is fine, but worth a reminder of the way back.
-    if rows.last().is_some_and(|settings| !settings.shown) {
-        canvas.text(tr("START OPENS SETTINGS FROM ANYWHERE"), LIST_TOP + rows.len().min(PAGE) * LIST_ROW + 10, TEXT_SCALE, MUTED);
+    if let Some(below) = view.below {
+        let y = LIST_TOP + view.rows.len().min(PAGE) * LIST_ROW + 10;
+        let color = if view.rows.is_empty() { TEXT } else { MUTED };
+        canvas.text(below, y, TEXT_SCALE, color);
     }
-    hint(&mut canvas, tr("A SHOWS OR HIDES - B BACK"));
+    match view.question {
+        Some(question) => canvas.text(question, HINT_Y, TEXT_SCALE, canvas.theme.accent),
+        None => hint(&mut canvas, view.hint),
+    }
     canvas
 }
 
@@ -1229,6 +1303,36 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn icon_lists_page_cut_long_names_and_ask_in_the_hint() {
+        let long = "A VERY LONG GAME NAME THAT GOES ON AND ON PAST THE VALUE";
+        let rows: Vec<IconRow> =
+            (0..20).map(|n| IconRow { icon: (n % 2 == 0).then_some(&icons::NES), label: long, value: "12 GAMES", dim: n == 3 }).collect();
+        let view = IconList {
+            icon: &icons::COLLECTION,
+            title: "COLLECTIONS",
+            rows: &rows,
+            selected: 14,
+            below: None,
+            question: Some("PRESS X AGAIN TO DELETE THE COLLECTION"),
+            hint: "",
+        };
+        let canvas = icon_list_screen(640, 480, &view, &frame());
+        // Row 14 is the third of the second page.
+        assert_eq!(pixel(&canvas, 639, LIST_TOP + 2 * LIST_ROW + 2), Theme::default().accent);
+        icon_list_screen(60, 40, &view, &frame());
+        let empty = IconList { rows: &[], selected: 0, below: Some("NONE YET: A GAME'S DETAILS (Y) MAKE ONE"), question: None, ..view };
+        icon_list_screen(640, 480, &empty, &frame());
+    }
+
+    #[test]
+    fn tile_labels_are_cut_to_the_tile() {
+        let tiles = [TileView { icon: &icons::COLLECTION, label: "WWWWWWWWWWWWWWWWWWWWWWWW", count: Some(3) }];
+        for grid in [GridSize::Normal, GridSize::Large] {
+            home_screen(640, 480, None, grid, &tiles, 0, &frame());
+        }
+    }
+
+    #[test]
     fn long_names_and_small_screens_are_safe() {
         let long = "X".repeat(500);
         let rows = [RowView { name: &long, icon: Some(&icons::SNES), starred: true }];
@@ -1342,7 +1446,7 @@ pub(crate) mod tests {
             facts: &facts,
             rows: &DETAIL_ROWS,
             selected: DetailRow::Delete,
-            starred: true,
+            collections: 3,
             achievements_off: true,
             screenshots: 12,
             art: Some(Art::Placeholder(&icons::NES)),

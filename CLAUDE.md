@@ -47,7 +47,9 @@ options, screenshots to PNG, also used as the cover of a game without one and ke
 scaling with CRT and LCD effects and a border (a drawn bezel on the handhelds by default,
 the theme's colours or black), kept per console, and a volume sign on the volume buttons, also in the menus.
 
-Launcher: a tile grid with RECENT and FAVORITES, lists with covers and scrolling names,
+Launcher: a tile grid with RECENT, FAVORITES and the user's own collections (made, renamed and
+deleted from a game's details and Settings > DATA > COLLECTIONS), games hidden from every list
+(HIDE GAME, shown again in Settings > DATA > HIDDEN GAMES), lists with covers and scrolling names,
 sorting by name or how recently or long a game was played, jumping by letter on L1 and R1, search on X, a game's details, play time and deleting it on Y,
 box art downloaded on the device, play statistics (time per console and per week, from
 2026-11-11 on), a battery log behind Settings > BATTERY (the level over a day or week,
@@ -62,6 +64,12 @@ A new install starts with a setup (language, Wi-Fi, time, adding games), which S
 ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Not yet checked by the user
+
+- COLLECTIONS and HIDDEN GAMES (2026-11-13): their feel on the real buttons, the COLLECTIONS
+  row in place of STAR on the details, a collection's icon and tile, more than a page of
+  them or of hidden games, a collection's tile hidden in HOME SCREEN TILES, the German
+  wording. Checked by Claude on the device: making, adding, the tile and list, hiding,
+  showing again, renaming and deleting
 
 - BATTERY (2026-11-13): everything on battery and through a real charge: the chart, time
   left and to full, drain per console, whether the capacity measured while charging is near
@@ -191,7 +199,7 @@ ADVANCED > RUN SETUP AGAIN repeats.
   `transfer/` (with usb_drive and `transfer_page.html`), `backup/` (mod: the backup's
   files, its ZIP and restore; syncthing: the service and REST API; backup_menu,
   backup_screen: SAVE BACKUP), `library/` (systems, rom_zip,
-  game_files, cards, favorites, recent, names, play_time, play_log, statistics_screen, gallery,
+  game_files, cards, favorites, collections, collections_menu, hidden, recent, names, play_time, play_log, statistics_screen, gallery,
   boxart*), `update/` (mod: the SYSTEM UPDATE screen, install, manifest, slots,
   boot_env: U-Boot's environment), `ingame/` (pause*, switcher, screenshot, cheats, controls, core_options*,
   achievements*, rumble), `device/` (power, battery_log, battery_estimates, battery_screen, profile, sleep, performance, charging, audio_out, sounds,

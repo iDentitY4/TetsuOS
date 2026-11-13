@@ -46,6 +46,16 @@ pub(crate) fn write_plain_ppm(canvas: &canvas::Canvas, path: &str) -> io::Result
 /// The screen is the one reached by pressing `buttons` from the start, with a sample
 /// set of games.
 pub(crate) fn write_launcher_preview(path: &str, buttons: &[Button]) -> io::Result<()> {
+    write_preview_with(path, buttons, false)
+}
+
+/// Like `write_launcher_preview`, with two collections, one of them hidden on the home
+/// screen, and two hidden games.
+pub(crate) fn write_collections_preview(path: &str, buttons: &[Button]) -> io::Result<()> {
+    write_preview_with(path, buttons, true)
+}
+
+fn write_preview_with(path: &str, buttons: &[Button], with_lists: bool) -> io::Result<()> {
     let mut roms: Vec<PathBuf> = [
         "Super Mario Bros. (World).nes",
         "Legend of Zelda, The (USA) (Rev 1).nes",
@@ -60,7 +70,21 @@ pub(crate) fn write_launcher_preview(path: &str, buttons: &[Button]) -> io::Resu
     roms.extend((1..=14).map(|i| PathBuf::from(format!("Game Boy Game {i:02} (USA).gb"))));
     let recent = [&roms[3], &roms[2], &roms[6]].map(PathBuf::clone);
     let favorites = [&roms[1], &roms[3]].map(PathBuf::clone);
-    let mut library = build_library(&roms, &recent, &favorites, settings::GameNames::Short);
+    let mut library = if with_lists {
+        use crate::library::collections::Saved;
+        let lists = crate::library::Lists {
+            recent: recent.to_vec(),
+            favorites: favorites.to_vec(),
+            collections: vec![
+                Saved { name: "Mario".into(), games: vec![roms[0].clone(), roms[3].clone()] },
+                Saved { name: "Puzzle games".into(), games: vec![roms[2].clone(), roms[5].clone(), roms[4].clone()] },
+            ],
+            hidden: vec![roms[7].clone(), roms[8].clone()],
+        };
+        crate::library::build_library_with(&roms, &lists, settings::GameNames::Short)
+    } else {
+        build_library(&roms, &recent, &favorites, settings::GameNames::Short)
+    };
     // Two of Zelda's, for the SCREENSHOTS tile and its row on the details screen.
     library.screenshots = (1..=2)
         .map(|number| crate::ingame::screenshot::Shot {

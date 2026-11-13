@@ -37,12 +37,24 @@ pub struct Shelf {
     pub games: Vec<Game>,
 }
 
+/// One of the user's own lists of games, beside the favorites.
+pub struct Collection {
+    pub name: String,
+    /// Its games on the card, in the order the favorites are in.
+    pub games: Vec<Game>,
+}
+
 /// Everything the launcher can show, read from the card.
 #[derive(Default)]
 pub struct Library {
     pub recent: Vec<Game>,
     /// Starred games, sorted by name.
     pub favorites: Vec<Game>,
+    /// The user's own lists, in the order they were made, including one whose games are
+    /// all on a card that is out.
+    pub collections: Vec<Collection>,
+    /// Games hidden from every list, by name, for Settings > DATA > HIDDEN GAMES.
+    pub hidden_games: Vec<Game>,
     /// The last search's results, by name, and what was typed for them.
     pub search: Vec<Game>,
     pub search_text: String,
@@ -73,6 +85,8 @@ pub struct Library {
 pub enum List {
     Recent,
     Favorites,
+    /// A collection, by its index in `Library::collections`.
+    Collection(usize),
     /// A system's games, by system index, so it survives games being added.
     System(usize),
     Search,
@@ -82,6 +96,8 @@ pub enum List {
 pub enum Tile {
     Recent,
     Favorites,
+    /// A collection with games, by its index in `Library::collections`.
+    Collection(usize),
     System(usize),
     /// The screenshot gallery, while there are screenshots.
     Screenshots,
@@ -94,6 +110,12 @@ pub enum Screen {
     Games(List),
     /// One game's details, opened from a list, which is where it goes back to.
     Details(List),
+    /// The favorites and collections, to put the details' game in or take it out of.
+    GameCollections(List),
+    /// Settings > DATA > COLLECTIONS, to rename and delete them.
+    Collections,
+    /// Settings > DATA > HIDDEN GAMES, to show them again.
+    HiddenGames,
     /// The grid of settings groups.
     Settings,
     /// One group's settings.
@@ -136,19 +158,28 @@ impl ChartRange {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum DetailRow {
     Play,
-    Star,
+    /// Opens the favorites and collections the game is in.
+    Collections,
     /// Turns `RetroAchievements` off for this game, or on again. Only for consoles with them.
     Achievements,
     /// Opens the gallery with this game's screenshots. Only while it has any.
     Screenshots,
+    /// Hides it from every list.
+    Hide,
     Delete,
 }
 
 /// Every row there can be, in order. A game whose console has no achievements goes
 /// without `DetailRow::Achievements`, and one without screenshots without
 /// `DetailRow::Screenshots`.
-pub const DETAIL_ROWS: [DetailRow; 5] =
-    [DetailRow::Play, DetailRow::Star, DetailRow::Achievements, DetailRow::Screenshots, DetailRow::Delete];
+pub const DETAIL_ROWS: [DetailRow; 6] = [
+    DetailRow::Play,
+    DetailRow::Collections,
+    DetailRow::Achievements,
+    DetailRow::Screenshots,
+    DetailRow::Hide,
+    DetailRow::Delete,
+];
 
 /// A tile on the settings grid. Each opens a list of its settings, except Wi-Fi and
 /// Bluetooth, which open their own screens, Cores, which opens the consoles' core
@@ -269,7 +300,7 @@ impl Group {
                     Setting::SortGames,
                 ]
             }
-            Self::Data => &[Setting::UsbStorage, Setting::WifiTransfer, Setting::SaveBackup],
+            Self::Data => &[Setting::UsbStorage, Setting::WifiTransfer, Setting::SaveBackup, Setting::Collections, Setting::HiddenGames],
             Self::Achievements => &[
                 Setting::AchievementsOn,
                 Setting::AchievementsAccount,
@@ -345,6 +376,10 @@ pub enum Setting {
     SaveBackup,
     /// Updates over Wi-Fi, into the other root slot.
     SystemUpdate,
+    /// The user's own lists of games, to rename and delete.
+    Collections,
+    /// The games hidden from the lists, to show again.
+    HiddenGames,
     Reboot,
     PowerOff,
     Ssh,
@@ -415,6 +450,8 @@ impl Setting {
             Self::WifiTransfer => "WI-FI TRANSFER",
             Self::SaveBackup => "SAVE BACKUP",
             Self::SystemUpdate => "SYSTEM UPDATE",
+            Self::Collections => "COLLECTIONS",
+            Self::HiddenGames => "HIDDEN GAMES",
             Self::Reboot => "REBOOT",
             Self::PowerOff => "POWER OFF",
             Self::Ssh => "SSH",
@@ -456,6 +493,8 @@ impl Setting {
                 | Self::WifiTransfer
                 | Self::SaveBackup
                 | Self::SystemUpdate
+                | Self::Collections
+                | Self::HiddenGames
                 | Self::RootPassword
                 | Self::RunSetup
                 | Self::DisplayPage
@@ -578,6 +617,16 @@ pub enum Command {
     DeleteGame(PathBuf),
     /// Turns `RetroAchievements` off for the game, or on again.
     ToggleGameAchievements(PathBuf),
+    /// Puts the game in the collection of that name, or takes it out.
+    ToggleCollection(String, PathBuf),
+    /// Names a new collection on the keyboard, with the game in it.
+    NewCollection(PathBuf),
+    /// Types a new name for the collection of that name.
+    RenameCollection(String),
+    /// Deletes the collection of that name, after a second press. Its games stay.
+    DeleteCollection(String),
+    /// Hides the game from every list, or shows it again.
+    ToggleHidden(PathBuf),
     /// The screenshot gallery: one game's pictures, or all of them.
     Screenshots(Option<PathBuf>),
     /// Turns `RetroAchievements` off for every game, or on again.
@@ -681,7 +730,12 @@ pub struct Launcher {
     /// remove it from the list it was opened from.
     details_game: Option<PathBuf>,
     details_row: usize,
-    /// Set by the first press of A on delete, until the next press.
+    /// The selected row of the favorites and collections for the details' game.
+    game_collections_row: usize,
+    /// The selected rows of Settings > DATA > COLLECTIONS and HIDDEN GAMES.
+    collections_row: usize,
+    hidden_row: usize,
+    /// Set by the first press of A on delete, or of X on a collection, until the next press.
     delete_armed: bool,
     /// A setting that can't be undone, waiting for a second press of A.
     confirming: Option<Setting>,
@@ -709,6 +763,13 @@ impl Library {
         if !self.favorites.is_empty() {
             tiles.push(Tile::Favorites);
         }
+        tiles.extend(
+            self.collections
+                .iter()
+                .enumerate()
+                .filter(|(_, collection)| !collection.games.is_empty())
+                .map(|(index, _)| Tile::Collection(index)),
+        );
         tiles.extend(self.shelves.iter().map(|shelf| Tile::System(shelf.system)));
         if !self.screenshots.is_empty() {
             tiles.push(Tile::Screenshots);
@@ -725,6 +786,7 @@ impl Library {
     /// Settings that turns them on and off.
     pub fn every_tile(&self) -> Vec<Tile> {
         let mut tiles = vec![Tile::Recent, Tile::Favorites];
+        tiles.extend((0..self.collections.len()).map(Tile::Collection));
         tiles.extend((0..self.systems).map(Tile::System));
         tiles.push(Tile::Screenshots);
         tiles.push(Tile::Settings);
@@ -761,7 +823,7 @@ impl Library {
         match list {
             List::Recent => false,
             List::Search => true,
-            List::Favorites | List::System(_) => self.sort == GameSort::Name,
+            List::Favorites | List::Collection(_) | List::System(_) => self.sort == GameSort::Name,
         }
     }
 
@@ -777,6 +839,7 @@ impl Library {
         match list {
             List::Recent => &self.recent,
             List::Favorites => &self.favorites,
+            List::Collection(index) => self.collections.get(index).map_or(&[], |collection| &collection.games),
             List::Search => &self.search,
             List::System(system) => self
                 .shelves
@@ -801,6 +864,9 @@ impl Launcher {
             before_search: Screen::Home,
             details_game: None,
             details_row: 0,
+            game_collections_row: 0,
+            collections_row: 0,
+            hidden_row: 0,
             delete_armed: false,
             confirming: None,
             achievements_logged_in: false,
@@ -818,7 +884,7 @@ impl Launcher {
     /// Goes home from a list that has no games any more, such as favorites after the last
     /// one is unstarred.
     pub fn leave_empty_list(&mut self, library: &Library) {
-        if let Screen::Details(list) = self.screen {
+        if let Screen::Details(list) | Screen::GameCollections(list) = self.screen {
             if self.details_game(library).is_none() {
                 self.screen = Screen::Games(list);
             }
@@ -849,7 +915,7 @@ impl Launcher {
     /// games have been read again and may be in a new order.
     pub fn selected_path(&self, library: &Library) -> Option<PathBuf> {
         match self.screen {
-            Screen::Games(list) | Screen::Details(list) => {
+            Screen::Games(list) | Screen::Details(list) | Screen::GameCollections(list) => {
                 library.games(list).get(self.list_selected(library, list)).map(|game| game.path.clone())
             }
             _ => None,
@@ -858,7 +924,7 @@ impl Launcher {
 
     /// Selects that game again. If it has left the list, the selection stays where it was.
     pub fn select_path(&mut self, library: &Library, path: Option<&std::path::Path>) {
-        if let (Screen::Games(list) | Screen::Details(list), Some(path)) = (self.screen, path) {
+        if let (Screen::Games(list) | Screen::Details(list) | Screen::GameCollections(list), Some(path)) = (self.screen, path) {
             if let Some(index) = library.games(list).iter().position(|game| game.path == path) {
                 self.lists.insert(list, index);
             }
@@ -877,6 +943,7 @@ impl Launcher {
         self.home = match list {
             List::Recent => Some(Tile::Recent),
             List::Favorites => Some(Tile::Favorites),
+            List::Collection(index) => Some(Tile::Collection(index)),
             List::System(system) => Some(Tile::System(system)),
             List::Search => self.home,
         };
@@ -923,6 +990,31 @@ impl Launcher {
         self.delete_armed.then(|| tr("PRESS A AGAIN TO DELETE FOREVER"))
     }
 
+    /// The rows of the favorites and collections for the details' game: FAVORITES, each
+    /// collection, then NEW COLLECTION.
+    pub fn game_collections_rows(library: &Library) -> usize {
+        library.collections.len() + 2
+    }
+
+    pub fn game_collections_selected(&self, library: &Library) -> usize {
+        self.game_collections_row.min(Self::game_collections_rows(library) - 1)
+    }
+
+    /// The selected collection in Settings > DATA > COLLECTIONS.
+    pub fn collections_selected(&self, library: &Library) -> usize {
+        self.collections_row.min(library.collections.len().saturating_sub(1))
+    }
+
+    /// The selected game in Settings > DATA > HIDDEN GAMES.
+    pub fn hidden_selected(&self, library: &Library) -> usize {
+        self.hidden_row.min(library.hidden_games.len().saturating_sub(1))
+    }
+
+    /// The question to show while deleting a collection waits for its second press.
+    pub fn collections_confirmation(&self) -> Option<&'static str> {
+        self.delete_armed.then(|| tr("PRESS X AGAIN TO DELETE THE COLLECTION"))
+    }
+
     /// The selected tile on the settings grid.
     pub fn group_selected(&self) -> Group {
         GROUPS[self.group]
@@ -961,6 +1053,8 @@ impl Launcher {
                 | Screen::SettingsGroup(_)
                 | Screen::Info
                 | Screen::HomeTiles
+                | Screen::Collections
+                | Screen::HiddenGames
                 | Screen::Statistics
                 | Screen::BatteryHistory
                 | Screen::BatteryHealth
@@ -992,6 +1086,9 @@ impl Launcher {
             Screen::Home => self.press_home(button, library),
             Screen::Games(list) => self.press_list(button, library, list),
             Screen::Details(list) => self.press_details(button, library, list, delete_armed),
+            Screen::GameCollections(list) => self.press_game_collections(button, library, list),
+            Screen::Collections => self.press_collections(button, library, delete_armed),
+            Screen::HiddenGames => self.press_hidden(button, library),
             Screen::Settings => self.press_settings_grid(button),
             Screen::SettingsGroup(group) => self.press_group(button, group, confirming),
             Screen::Info => match button {
@@ -1079,6 +1176,7 @@ impl Launcher {
             match tiles[selected] {
                 Tile::Recent => self.screen = Screen::Games(List::Recent),
                 Tile::Favorites => self.screen = Screen::Games(List::Favorites),
+                Tile::Collection(index) => self.screen = Screen::Games(List::Collection(index)),
                 Tile::System(system) => self.screen = Screen::Games(List::System(system)),
                 Tile::Screenshots => return Command::Screenshots(None),
                 Tile::Settings => self.open_settings(),
@@ -1134,7 +1232,14 @@ impl Launcher {
             }
             Button::A => match self.details_row(library) {
                 DetailRow::Play => return Command::Play(path),
-                DetailRow::Star => return Command::ToggleFavorite(path),
+                DetailRow::Collections => {
+                    self.game_collections_row = 0;
+                    self.screen = Screen::GameCollections(list);
+                }
+                DetailRow::Hide => {
+                    self.screen = Screen::Games(list);
+                    return Command::ToggleHidden(path);
+                }
                 DetailRow::Achievements => return Command::ToggleGameAchievements(path),
                 DetailRow::Screenshots => return Command::Screenshots(Some(path)),
                 DetailRow::Delete if delete_armed => {
@@ -1143,6 +1248,78 @@ impl Launcher {
                 }
                 DetailRow::Delete => self.delete_armed = true,
             },
+            _ => {}
+        }
+        Command::Nothing
+    }
+
+    fn press_game_collections(&mut self, button: Button, library: &Library, list: List) -> Command {
+        let Some(game) = self.details_game(library) else {
+            self.screen = Screen::Games(list);
+            return Command::Nothing;
+        };
+        let path = game.path.clone();
+        let count = Self::game_collections_rows(library);
+        let selected = self.game_collections_selected(library);
+        // The row's collection, between FAVORITES and NEW COLLECTION.
+        let collection = selected.checked_sub(1).and_then(|index| library.collections.get(index));
+        match button {
+            Button::Up => self.game_collections_row = (selected + count - 1) % count,
+            Button::Down => self.game_collections_row = (selected + 1) % count,
+            Button::B => self.screen = Screen::Details(list),
+            Button::Select => return Command::ToggleFavorite(path),
+            Button::Y => {
+                if let Some(collection) = collection {
+                    return Command::RenameCollection(collection.name.clone());
+                }
+            }
+            Button::A => {
+                return match collection {
+                    _ if selected == 0 => Command::ToggleFavorite(path),
+                    Some(collection) => Command::ToggleCollection(collection.name.clone(), path),
+                    None => Command::NewCollection(path),
+                };
+            }
+            _ => {}
+        }
+        Command::Nothing
+    }
+
+    fn press_collections(&mut self, button: Button, library: &Library, delete_armed: bool) -> Command {
+        let count = library.collections.len();
+        let selected = self.collections_selected(library);
+        match button {
+            Button::B => self.screen = Screen::SettingsGroup(Group::Data),
+            _ if count == 0 => {
+                if button == Button::A {
+                    self.screen = Screen::SettingsGroup(Group::Data);
+                }
+            }
+            Button::Up => self.collections_row = (selected + count - 1) % count,
+            Button::Down => self.collections_row = (selected + 1) % count,
+            Button::A => return Command::RenameCollection(library.collections[selected].name.clone()),
+            Button::X if delete_armed => return Command::DeleteCollection(library.collections[selected].name.clone()),
+            Button::X => self.delete_armed = true,
+            _ => {}
+        }
+        Command::Nothing
+    }
+
+    fn press_hidden(&mut self, button: Button, library: &Library) -> Command {
+        let count = library.hidden_games.len();
+        let selected = self.hidden_selected(library);
+        match button {
+            Button::B => self.screen = Screen::SettingsGroup(Group::Data),
+            _ if count == 0 => {
+                if button == Button::A {
+                    self.screen = Screen::SettingsGroup(Group::Data);
+                }
+            }
+            Button::Up => self.hidden_row = (selected + count - 1) % count,
+            Button::Down => self.hidden_row = (selected + 1) % count,
+            Button::Left => self.hidden_row = selected.saturating_sub(PAGE),
+            Button::Right => self.hidden_row = (selected + PAGE).min(count - 1),
+            Button::A => return Command::ToggleHidden(library.hidden_games[selected].path.clone()),
             _ => {}
         }
         Command::Nothing
@@ -1261,6 +1438,14 @@ impl Launcher {
                 Setting::WifiTransfer => return Command::WifiTransfer,
                 Setting::SaveBackup => return Command::SaveBackup,
                 Setting::SystemUpdate => return Command::SystemUpdate,
+                Setting::Collections => {
+                    self.collections_row = 0;
+                    self.screen = Screen::Collections;
+                }
+                Setting::HiddenGames => {
+                    self.hidden_row = 0;
+                    self.screen = Screen::HiddenGames;
+                }
                 Setting::Reboot => return Command::Reboot,
                 Setting::PowerOff => return Command::PowerOff,
                 Setting::RootPassword => return Command::EditRootPassword,
@@ -1419,7 +1604,7 @@ mod tests {
         library.screenshots = vec![shot("Tetris.gb", 2), shot("Other.gb", 1), shot("Tetris.gb", 1)];
         assert_eq!(library.screenshot_count(std::path::Path::new("/roms/GB/Tetris.gb")), 2);
         assert_eq!(library.screenshot_count(std::path::Path::new("/roms/GB/Gone.gb")), 0);
-        assert_eq!(launcher.detail_rows(&library), [DetailRow::Play, DetailRow::Star, DetailRow::Screenshots, DetailRow::Delete]);
+        assert_eq!(launcher.detail_rows(&library), [DetailRow::Play, DetailRow::Collections, DetailRow::Screenshots, DetailRow::Hide, DetailRow::Delete]);
         press_all(&mut launcher, &library, &[Button::Down, Button::Down]);
         assert_eq!(launcher.press(Button::A, &library), Command::Screenshots(Some(PathBuf::from("/roms/GB/Tetris.gb"))));
     }
@@ -1584,10 +1769,118 @@ mod tests {
         assert_eq!(launcher.press(Button::A, &library), Command::Play(PathBuf::from("banana")));
         assert_eq!(launcher.press(Button::Select, &library), Command::ToggleFavorite(PathBuf::from("banana")));
         launcher.press(Button::Down, &library);
-        assert_eq!(launcher.press(Button::A, &library), Command::ToggleFavorite(PathBuf::from("banana")));
+        assert_eq!(launcher.details_row(&library), DetailRow::Collections);
+        launcher.press(Button::A, &library);
+        assert_eq!(launcher.screen(), Screen::GameCollections(list));
+        launcher.press(Button::B, &library);
         launcher.press(Button::B, &library);
         assert_eq!(launcher.screen(), Screen::Games(list));
         assert_eq!(launcher.list_selected(&library, list), 1);
+    }
+
+    fn collection(name: &str, games: &[Game]) -> Collection {
+        Collection { name: name.into(), games: games.to_vec() }
+    }
+
+    #[test]
+    fn the_details_put_a_game_in_the_favorites_and_collections() {
+        let mut library = details_library();
+        library.collections = vec![collection("Racing", &[]), collection("Puzzle", &[])];
+        let mut launcher = Launcher::new();
+        let list = open_details(&mut launcher, &library);
+        let banana = || PathBuf::from("banana");
+        press_all(&mut launcher, &library, &[Button::Down, Button::A]);
+        assert_eq!(launcher.screen(), Screen::GameCollections(list));
+        // FAVORITES, each collection, then NEW COLLECTION, wrapping round.
+        assert_eq!(launcher.press(Button::A, &library), Command::ToggleFavorite(banana()));
+        assert_eq!(launcher.press(Button::Y, &library), Command::Nothing, "the favorites keep their name");
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::A, &library), Command::ToggleCollection("Racing".into(), banana()));
+        assert_eq!(launcher.press(Button::Y, &library), Command::RenameCollection("Racing".into()));
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::A, &library), Command::ToggleCollection("Puzzle".into(), banana()));
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::A, &library), Command::NewCollection(banana()));
+        assert_eq!(launcher.press(Button::Select, &library), Command::ToggleFavorite(banana()));
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.game_collections_selected(&library), 0);
+        // A collection gone since keeps the row within the rest.
+        launcher.press(Button::Up, &library);
+        library.collections.pop();
+        assert_eq!(launcher.game_collections_selected(&library), 2);
+        launcher.press(Button::B, &library);
+        assert_eq!(launcher.screen(), Screen::Details(list));
+    }
+
+    #[test]
+    fn collections_get_tiles_after_the_favorites_while_they_have_games() {
+        let mut library = library();
+        library.favorites.push(game("f", 0));
+        library.collections = vec![collection("Empty", &[]), collection("Racing", &[game("r", 1)])];
+        assert_eq!(&library.tiles()[..3], [Tile::Recent, Tile::Favorites, Tile::Collection(1)]);
+        assert_eq!(&library.every_tile()[..4], [Tile::Recent, Tile::Favorites, Tile::Collection(0), Tile::Collection(1)]);
+        library.hidden.push(Tile::Collection(1));
+        assert_eq!(&library.tiles()[..3], [Tile::Recent, Tile::Favorites, Tile::System(0)]);
+        library.hidden.clear();
+        let mut launcher = Launcher::new();
+        press_all(&mut launcher, &library, &[Button::Right, Button::Right, Button::A]);
+        assert_eq!(launcher.screen(), Screen::Games(List::Collection(1)));
+        assert_eq!(library.games(List::Collection(1))[0].name, "r");
+        assert!(library.games(List::Collection(5)).is_empty());
+        assert_eq!(launcher.press(Button::A, &library), Command::Play(PathBuf::from("/roms/r")));
+        library.collections[1].games.clear();
+        launcher.leave_empty_list(&library);
+        assert_eq!(launcher.screen(), Screen::Home);
+    }
+
+    #[test]
+    fn hiding_from_the_details_goes_back_to_the_list() {
+        let library = details_library();
+        let mut launcher = Launcher::new();
+        let list = open_details(&mut launcher, &library);
+        let rows = launcher.detail_rows(&library);
+        let hide = rows.iter().position(|&row| row == DetailRow::Hide).unwrap();
+        for _ in 0..hide {
+            launcher.press(Button::Down, &library);
+        }
+        assert_eq!(launcher.press(Button::A, &library), Command::ToggleHidden(PathBuf::from("banana")));
+        assert_eq!(launcher.screen(), Screen::Games(list));
+    }
+
+    #[test]
+    fn data_lists_the_collections_and_hidden_games() {
+        let mut library = library();
+        let mut launcher = Launcher::new();
+        open_group(&mut launcher, &library, Group::Data);
+        press_all(&mut launcher, &library, &[Button::Up, Button::Up]);
+        assert_eq!(launcher.setting_selected(Group::Data), Some(Setting::Collections));
+        launcher.press(Button::A, &library);
+        assert_eq!(launcher.screen(), Screen::Collections);
+        // Without any, A goes back as B does.
+        launcher.press(Button::A, &library);
+        assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::Data));
+        library.collections = vec![collection("Racing", &[]), collection("Puzzle", &[])];
+        launcher.press(Button::A, &library);
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::A, &library), Command::RenameCollection("Puzzle".into()));
+        assert_eq!(launcher.press(Button::X, &library), Command::Nothing);
+        assert!(launcher.collections_confirmation().is_some());
+        assert_eq!(launcher.press(Button::X, &library), Command::DeleteCollection("Puzzle".into()));
+        // Any other press in between asks again.
+        launcher.press(Button::X, &library);
+        launcher.press(Button::Up, &library);
+        assert_eq!(launcher.press(Button::X, &library), Command::Nothing);
+        launcher.press(Button::B, &library);
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.setting_selected(Group::Data), Some(Setting::HiddenGames));
+        launcher.press(Button::A, &library);
+        assert_eq!(launcher.screen(), Screen::HiddenGames);
+        library.hidden_games = vec![game("h1", 0), game("h2", 1)];
+        launcher.press(Button::Up, &library);
+        assert_eq!(launcher.press(Button::A, &library), Command::ToggleHidden(PathBuf::from("/roms/h2")));
+        // Start leaves the settings from here too.
+        launcher.press(Button::Start, &library);
+        assert!(!launcher.in_settings());
     }
 
     #[test]
@@ -1605,7 +1898,7 @@ mod tests {
         // A console without them goes without the row.
         let without = details_library();
         assert!(!launcher.detail_rows(&without).contains(&DetailRow::Achievements));
-        assert_eq!(launcher.details_row(&without), DetailRow::Delete, "kept within the rows");
+        assert_eq!(launcher.details_row(&without), DetailRow::Hide, "the same place in fewer rows");
     }
 
     #[test]

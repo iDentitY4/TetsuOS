@@ -17,13 +17,13 @@ use crate::library::boxart::{parse_ppm, ART_DIR};
 use crate::library::boxart_fetch::{art_path, MAX_SIZE};
 use crate::library::game_files::{delete_game, GameFiles};
 use crate::library::cards::{self, TF2_ROM_DIR};
-use crate::library::{build_library, find_all_roms, find_roms, game_title, rom_label};
+use crate::library::{build_library_with, find_all_roms, find_roms, game_title, rom_label, Lists};
 use crate::libretro::resume_path;
 use crate::ingame::screenshot::SCREENSHOT_DIR;
 use crate::device::storage::write_atomic;
 use crate::library::systems::{save_path, system_for, system_for_extension, system_index, System, ROM_DIR, SAVE_DIR, SYSTEMS};
 use crate::ui::color::Rgb;
-use crate::library::{favorites, recent, rom_zip};
+use crate::library::rom_zip;
 use crate::ui::icons;
 use crate::settings;
 use serde::Serialize;
@@ -643,12 +643,7 @@ fn upload_cover(request: &mut Request, rom: &Path, shared: &Shared) -> Result<Re
 
 fn remove_game(rom: &Path, shared: &Shared) -> Result<ResponseBox, Refused> {
     let roms = find_all_roms();
-    let library = build_library(
-        &roms,
-        &recent::load(Path::new(recent::RECENT_PATH)),
-        &favorites::load(Path::new(favorites::FAVORITES_PATH)),
-        settings::get().game_names,
-    );
+    let library = build_library_with(&roms, &Lists::read(), settings::get().game_names);
     if let Err(error) = delete_game(rom, &library) {
         eprintln!("transfer: could not delete {}: {error}", rom.display());
         return Err(NOT_WRITTEN);

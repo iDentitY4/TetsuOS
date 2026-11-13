@@ -936,6 +936,34 @@ pub const FAVORITES: Icon = [
     "................................",
 ];
 
+/// The user's own collections: three game boxes in a stack.
+pub const COLLECTION: Icon = [
+    "................................",
+    "................................",
+    ".............KKKKKKKKKKKKKKK....",
+    ".............KPPPPPPPPPPPPPK....",
+    ".............KPPPPPPPPPPPPPK....",
+    ".........KKKKKKKKKKKKKKKPPPK....",
+    ".........KBBBBBBBBBBBBBKPPPK....",
+    ".........KBBBBBBBBBBBBBKPPPK....",
+    ".....KKKKKKKKKKKKKKKBBBKPPPK....",
+    ".....KTTTTTTTTTTTTTKBBBKPPPK....",
+    ".....KTTTTTTTTTTTTTKBBBKPPPK....",
+    ".....KTTWWWWWWWWWTTKBBBKPPPK....",
+    ".....KTTWWWWWWWWWTTKBBBKPPPK....",
+    ".....KTTWWWWWWWWWTTKBBBKPPPK....",
+    ".....KTTWWWWWWWWWTTKBBBKPPPK....",
+    ".....KTTTTTTTTTTTTTKBBBKKKKK....",
+    ".....KTTTTTTTTTTTTTKBBBK........",
+    ".....KTTLLLLLLLLLTTKBBBK........",
+    ".....KTTTTTTTTTTTTTKKKKK........",
+    ".....KTTTTTTTTTTTTTK............",
+    ".....KTTTTTTTTTTTTTK............",
+    ".....KKKKKKKKKKKKKKK............",
+    "................................",
+    "................................",
+];
+
 /// Volume and brightness: a speaker.
 pub const GENERAL: Icon = [
     "................................",
@@ -1333,7 +1361,7 @@ pub const LOGO: Icon = [
 mod tests {
     use super::*;
 
-    const ALL: [&Icon; 45] = [
+    const ALL: [&Icon; 46] = [
         &LOGO,
         &ACHIEVEMENTS,
         &CORES,
@@ -1372,6 +1400,7 @@ mod tests {
         &CAVE_STORY,
         &RECENT,
         &FAVORITES,
+        &COLLECTION,
         &SETTINGS,
         &WIFI,
         &BLUETOOTH,

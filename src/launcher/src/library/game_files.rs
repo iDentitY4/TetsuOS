@@ -1,7 +1,7 @@
 //! Which files on the card belong to a game, for its details screen and for deleting it.
 
 use crate::ingame::{achievements, cheats, controls, core_options};
-use crate::library::{cards, favorites, play_time, recent};
+use crate::library::{cards, collections, favorites, hidden, play_time, recent};
 use crate::library::boxart::ART_DIR;
 use crate::library::boxart_fetch::art_path;
 use crate::i18n::{tr, trf};
@@ -212,7 +212,7 @@ fn remove_empty_folders(files: &[PathBuf], root: &Path) {
 pub(crate) fn delete_game(rom: &Path, library: &Library) -> io::Result<()> {
     let files = GameFiles::of(rom);
     let mut keep = HashSet::new();
-    for other in library.shelves.iter().flat_map(|shelf| &shelf.games).filter(|game| game.path != rom) {
+    for other in library.shelves.iter().flat_map(|shelf| &shelf.games).chain(&library.hidden_games).filter(|game| game.path != rom) {
         let other = GameFiles::of(&other.path);
         keep.extend(other.game.iter().chain(&other.saves).chain(&other.cover).map(|file| path_key(file)));
     }
@@ -226,6 +226,12 @@ pub(crate) fn delete_game(rom: &Path, library: &Library) -> io::Result<()> {
     }
     if let Err(error) = favorites::forget(Path::new(favorites::FAVORITES_PATH), rom) {
         eprintln!("warning: could not remove the game from the favorites: {error}");
+    }
+    if let Err(error) = collections::forget(Path::new(collections::COLLECTIONS_PATH), rom) {
+        eprintln!("warning: could not remove the game from the collections: {error}");
+    }
+    if let Err(error) = hidden::forget(Path::new(hidden::HIDDEN_PATH), rom) {
+        eprintln!("warning: could not remove the game from the hidden games: {error}");
     }
     Ok(())
 }

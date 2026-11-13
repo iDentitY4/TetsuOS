@@ -178,7 +178,8 @@ pub(crate) fn forget_running_game() {
 /// The game that was running when the device last powered off, if it is still there.
 pub(crate) fn interrupted_game<'a>(library: &'a Library, noted: &str) -> Option<&'a Game> {
     let path = Path::new(noted.trim());
-    library.shelves.iter().flat_map(|shelf| &shelf.games).find(|game| game.path == path)
+    // A hidden game too, as it was playing.
+    library.shelves.iter().flat_map(|shelf| &shelf.games).chain(&library.hidden_games).find(|game| game.path == path)
 }
 
 /// Shows the game about to resume, and waits for B to cancel. Returns whether to resume.

@@ -51,7 +51,9 @@ fn candidates(recent: &[PathBuf], playing: &Path, names: GameNames, exists: impl
 
 /// The games SWITCH GAME offers while `playing` runs: its path as the lists have it.
 pub fn others(playing: &Path) -> Vec<SwitchGame> {
-    let recent = recent::load(Path::new(recent::RECENT_PATH));
+    let hidden = crate::library::hidden::load(Path::new(crate::library::hidden::HIDDEN_PATH));
+    let mut recent = recent::load(Path::new(recent::RECENT_PATH));
+    recent.retain(|game| !hidden.contains(game));
     candidates(&recent, playing, settings::get().game_names, Path::exists)
 }
 

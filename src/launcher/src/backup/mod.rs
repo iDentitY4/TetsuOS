@@ -27,7 +27,8 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 /// The folders a backup holds whole, under TETSU-DATA.
 pub(crate) const FOLDERS: &[&str] = &["saves", "core-options", "cheats", "screenshots"];
 /// The files of TETSU-DATA's top level it holds.
-pub(crate) const FILES: &[&str] = &["settings.txt", "favorites.txt", "recent.txt", "play-log.txt"];
+pub(crate) const FILES: &[&str] =
+    &["settings.txt", "favorites.txt", "collections.txt", "hidden-games.txt", "recent.txt", "play-log.txt"];
 /// The largest file a restore takes, far more than any save, state or screenshot.
 const LARGEST_FILE: u64 = 256 << 20;
 

@@ -4,8 +4,11 @@ pub(crate) mod boxart;
 pub(crate) mod boxart_fetch;
 pub(crate) mod boxart_screen;
 pub(crate) mod cards;
+pub(crate) mod collections;
+pub(crate) mod collections_menu;
 pub(crate) mod favorites;
 pub(crate) mod game_files;
+pub(crate) mod hidden;
 pub(crate) mod names;
 pub(crate) mod play_log;
 pub(crate) mod play_time;
@@ -21,7 +24,7 @@ use crate::settings;
 use crate::device::storage;
 use crate::library::play_log::Log;
 use crate::i18n::tr;
-use crate::launcher::{Game, LastPlayed, Launcher, Library, List, Shelf, Tile};
+use crate::launcher::{Collection, Game, LastPlayed, Launcher, Library, List, Shelf, Tile};
 use crate::library::systems::{system_for, system_index, SYSTEMS};
 use std::collections::{BTreeMap, HashSet};
 use std::ffi::OsStr;
@@ -220,10 +223,38 @@ pub(crate) fn game_title(rom: &Path) -> String {
     system_for(rom).and_then(|system| system.title_of(rom)).map_or_else(|| rom_label(rom), str::to_string)
 }
 
+/// The lists kept on TETSU-DATA, as paths: what the library picks its lists' games from.
+#[derive(Default)]
+pub(crate) struct Lists {
+    pub recent: Vec<PathBuf>,
+    pub favorites: Vec<PathBuf>,
+    pub collections: Vec<collections::Saved>,
+    pub hidden: Vec<PathBuf>,
+}
+
+impl Lists {
+    pub(crate) fn read() -> Self {
+        Self {
+            recent: recent::load(Path::new(recent::RECENT_PATH)),
+            favorites: favorites::load(Path::new(favorites::FAVORITES_PATH)),
+            collections: collections::load(Path::new(collections::COLLECTIONS_PATH)),
+            hidden: hidden::load(Path::new(hidden::HIDDEN_PATH)),
+        }
+    }
+}
+
 /// Sorts games into a shelf per system, in the order of `SYSTEMS`, with readable names.
 /// Recent games only count while they are still among the games.
 pub(crate) fn build_library(roms: &[PathBuf], recent: &[PathBuf], favorites: &[PathBuf], names: settings::GameNames) -> Library {
+    let lists = Lists { recent: recent.to_vec(), favorites: favorites.to_vec(), ..Lists::default() };
+    build_library_with(roms, &lists, names)
+}
+
+/// Like `build_library`, with every list. Hidden games leave the shelves, and so every
+/// list, for `Library::hidden_games`; a console with only hidden games has no shelf.
+pub(crate) fn build_library_with(roms: &[PathBuf], lists: &Lists, names: settings::GameNames) -> Library {
     let mut shelves = Vec::new();
+    let mut hidden_games = Vec::new();
     for (system, info) in SYSTEMS.iter().enumerate() {
         let paths: Vec<&PathBuf> = roms.iter().filter(|rom| system_index(rom) == Some(system)).collect();
         if paths.is_empty() {
@@ -244,8 +275,14 @@ pub(crate) fn build_library(roms: &[PathBuf], recent: &[PathBuf], favorites: &[P
             })
             .collect();
         games.sort_by_key(|game| game.name.to_ascii_lowercase());
-        shelves.push(Shelf { system, games });
+        // Named among all of the console's games, so hiding one doesn't change the others.
+        let (hidden, games): (Vec<Game>, Vec<Game>) = games.into_iter().partition(|game| lists.hidden.contains(&game.path));
+        hidden_games.extend(hidden);
+        if !games.is_empty() {
+            shelves.push(Shelf { system, games });
+        }
     }
+    hidden_games.sort_by_key(|game| game.name.to_ascii_lowercase());
     // Games from the shelves, in the order of `paths`, for those still on the card.
     let pick = |paths: &[PathBuf]| -> Vec<Game> {
         paths
@@ -259,21 +296,35 @@ pub(crate) fn build_library(roms: &[PathBuf], recent: &[PathBuf], favorites: &[P
             })
             .collect()
     };
-    let recent = pick(recent);
-    let mut favorites = pick(favorites);
-    favorites.sort_by_key(|game| game.name.to_ascii_lowercase());
+    let recent = pick(&lists.recent);
+    let by_name = |paths: &[PathBuf]| {
+        let mut games = pick(paths);
+        games.sort_by_key(|game| game.name.to_ascii_lowercase());
+        games
+    };
+    let favorites = by_name(&lists.favorites);
+    // Every collection, even one whose games are all on a card that is out, so it can
+    // still be renamed or added to.
+    let collections = lists
+        .collections
+        .iter()
+        .map(|saved| Collection { name: saved.name.clone(), games: by_name(&saved.games) })
+        .collect();
     let achievement_systems =
         (0..SYSTEMS.len()).filter(|&index| achievements::console_id(SYSTEMS[index].key).is_some()).collect();
-    Library {
+    let mut library = Library {
         recent,
         favorites,
+        collections,
+        hidden_games,
         shelves,
         systems: SYSTEMS.len(),
-        hidden: hidden_tiles(),
         grid: settings::get().grid,
         achievement_systems,
         ..Library::default()
-    }
+    };
+    library.hidden = hidden_tiles(&library);
+    library
 }
 
 /// For comparing names: lower case and without accents, as the keyboard has none.
@@ -345,32 +396,36 @@ pub(crate) fn open_start_screen(launcher: &mut Launcher, library: &Library) {
     }
 }
 
-/// A home screen tile's name in the settings file.
-pub(crate) fn tile_key(tile: Tile) -> &'static str {
+/// A home screen tile's name in the settings file. A collection's is its name after
+/// `collection:`, so it stays hidden when others come and go.
+pub(crate) fn tile_key(library: &Library, tile: Tile) -> String {
     match tile {
-        Tile::Recent => "recent",
-        Tile::Favorites => "favorites",
-        Tile::System(system) => SYSTEMS[system].key,
-        Tile::Screenshots => "screenshots",
-        Tile::Settings => "settings",
+        Tile::Recent => "recent".into(),
+        Tile::Favorites => "favorites".into(),
+        Tile::Collection(index) => format!("collection:{}", library.collections.get(index).map_or("", |c| c.name.as_str())),
+        Tile::System(system) => SYSTEMS[system].key.into(),
+        Tile::Screenshots => "screenshots".into(),
+        Tile::Settings => "settings".into(),
     }
 }
 
-/// The tiles turned off in the settings.
-pub(crate) fn hidden_tiles() -> Vec<Tile> {
+/// The settings file's name for a collection's tile.
+pub(crate) fn collection_tile_key(name: &str) -> String {
+    format!("collection:{name}")
+}
+
+/// The tiles turned off in the settings, among those `library` can have.
+pub(crate) fn hidden_tiles(library: &Library) -> Vec<Tile> {
     let settings = settings::get();
-    Library { systems: SYSTEMS.len(), ..Library::default() }
-        .every_tile()
-        .into_iter()
-        .filter(|&tile| settings.tile_hidden(tile_key(tile)))
-        .collect()
+    library.every_tile().into_iter().filter(|&tile| settings.tile_hidden(&tile_key(library, tile))).collect()
 }
 
 /// A tile's pictogram and name, as the home screen shows it.
-pub(crate) fn tile_look(tile: Tile) -> (&'static icons::Icon, &'static str) {
+pub(crate) fn tile_look(library: &Library, tile: Tile) -> (&'static icons::Icon, &str) {
     match tile {
         Tile::Recent => (&icons::RECENT, tr("RECENT")),
         Tile::Favorites => (&icons::FAVORITES, tr("FAVORITES")),
+        Tile::Collection(index) => (&icons::COLLECTION, library.collections.get(index).map_or("", |c| c.name.as_str())),
         Tile::System(system) => (SYSTEMS[system].icon, SYSTEMS[system].label),
         Tile::Screenshots => (&icons::SCREENSHOTS, tr("SCREENSHOTS")),
         Tile::Settings => (&icons::SETTINGS, tr("SETTINGS")),
@@ -378,12 +433,7 @@ pub(crate) fn tile_look(tile: Tile) -> (&'static icons::Icon, &'static str) {
 }
 
 pub(crate) fn load_library() -> Library {
-    let mut library = build_library(
-        &find_all_roms(),
-        &recent::load(Path::new(recent::RECENT_PATH)),
-        &favorites::load(Path::new(favorites::FAVORITES_PATH)),
-        settings::get().game_names,
-    );
+    let mut library = build_library_with(&find_all_roms(), &Lists::read(), settings::get().game_names);
     library.play_log = Log::read(Path::new(play_log::LOG_PATH));
     library.screenshots = crate::ingame::screenshot::all(Path::new(crate::ingame::screenshot::SCREENSHOT_DIR));
     let started = std::time::Instant::now();
@@ -419,7 +469,7 @@ pub(crate) fn last_played_game(
     found
 }
 
-/// Puts consoles' lists and favorites in the chosen order. They arrive by name, and sorting
+/// Puts consoles' lists, favorites and collections in the chosen order. They arrive by name, and sorting
 /// keeps that order among games that tie, so games never played are by name at the end.
 fn sort_library(
     library: &mut Library,
@@ -429,7 +479,12 @@ fn sort_library(
 ) {
     use std::cmp::Reverse;
     library.sort = sort;
-    let lists = library.shelves.iter_mut().map(|shelf| &mut shelf.games).chain([&mut library.favorites]);
+    let lists = library
+        .shelves
+        .iter_mut()
+        .map(|shelf| &mut shelf.games)
+        .chain([&mut library.favorites])
+        .chain(library.collections.iter_mut().map(|collection| &mut collection.games));
     for games in lists {
         match sort {
             settings::GameSort::Name => {}
@@ -592,6 +647,35 @@ mod tests {
         let library = build_library(&roms, &[], &favorites, settings::GameNames::Short);
         let names: Vec<&str> = library.favorites.iter().map(|game| game.name.as_str()).collect();
         assert_eq!(names, ["a", "b"]);
+    }
+
+    #[test]
+    fn hidden_games_leave_every_list_and_collections_keep_their_order() {
+        let paths = |names: &[&str]| -> Vec<PathBuf> { names.iter().map(PathBuf::from).collect() };
+        let roms = paths(&["/r/a.gb", "/r/b.gb", "/r/c.nes", "/r/d.sfc"]);
+        let lists = Lists {
+            recent: paths(&["/r/c.nes", "/r/a.gb"]),
+            favorites: paths(&["/r/c.nes", "/r/b.gb"]),
+            collections: vec![
+                collections::Saved { name: "Later".into(), games: paths(&["/r/b.gb", "/r/a.gb", "/r/c.nes"]) },
+                collections::Saved { name: "Out".into(), games: paths(&["/r/gone.gba"]) },
+            ],
+            hidden: paths(&["/r/c.nes", "/r/d.sfc", "/r/gone.gba"]),
+        };
+        let library = build_library_with(&roms, &lists, settings::GameNames::Short);
+        let names = |games: &[Game]| games.iter().map(|game| game.name.clone()).collect::<Vec<_>>();
+        // The NES and SNES have only hidden games, so no shelf.
+        assert_eq!(library.shelves.len(), 1);
+        assert_eq!(names(&library.shelves[0].games), ["a", "b"]);
+        assert_eq!(names(&library.hidden_games), ["c", "d"]);
+        assert_eq!(names(&library.recent), ["a"]);
+        assert_eq!(names(&library.favorites), ["b"]);
+        assert_eq!(library.collections.len(), 2, "one whose games are out stays");
+        assert_eq!(names(&library.collections[0].games), ["a", "b"]);
+        assert!(library.collections[1].games.is_empty());
+        assert!(find_games(&library, "c").is_empty());
+        assert_eq!(tile_key(&library, Tile::Collection(0)), "collection:Later");
+        assert_eq!(tile_look(&library, Tile::Collection(1)).1, "Out");
     }
 
     #[test]

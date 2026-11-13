@@ -30,7 +30,7 @@ use ui::corner::current_theme;
 use game::{BATTERY_EMPTY_EXIT, run_game};
 use previews::{
     write_achievements_preview, write_boot_animation_preview, write_button_preview, write_cheats_preview, write_controls_preview,
-    write_core_options_preview, write_keyboard_preview, write_launcher_preview,
+    write_core_options_preview, write_keyboard_preview, write_collections_preview, write_launcher_preview,
     write_notice_preview, write_pause_preview, write_plain_ppm, write_ppm, write_setup_preview,
     write_transfer_preview, write_usb_drive_preview, write_wifi_preview,
 };
@@ -60,6 +60,27 @@ fn main() -> ExitCode {
             write_launcher_preview(path, &[Button::Right, Button::Right, Button::A, Button::Down, Button::Y])
         }
         [flag, path] if flag == "--preview-recent" => write_launcher_preview(path, &[Button::A]),
+        // The home screen with collections, and a collection's list.
+        [flag, path] if flag == "--preview-collection-tiles" => write_collections_preview(path, &[Button::Right, Button::Right]),
+        [flag, path] if flag == "--preview-collection" => {
+            write_collections_preview(path, &[Button::Right, Button::Right, Button::Right, Button::A])
+        }
+        // A game's details, and its favorites and collections.
+        [flag, path] if flag == "--preview-collections-details" => {
+            write_collections_preview(path, &[Button::Right, Button::Right, Button::Right, Button::A, Button::Y])
+        }
+        [flag, path] if flag == "--preview-game-collections" => write_collections_preview(
+            path,
+            &[Button::Right, Button::Right, Button::Right, Button::A, Button::Y, Button::Down, Button::A, Button::Down, Button::Down],
+        ),
+        // Settings > DATA > COLLECTIONS and HIDDEN GAMES.
+        [flag, path] if flag == "--preview-collections" => write_collections_preview(
+            path,
+            &[Button::Start, Button::Down, Button::Right, Button::Right, Button::A, Button::Up, Button::Up, Button::A, Button::X],
+        ),
+        [flag, path] if flag == "--preview-hidden" => {
+            write_collections_preview(path, &[Button::Start, Button::Down, Button::Right, Button::Right, Button::A, Button::Up, Button::A])
+        }
         [flag, path] if flag == "--preview-settings" => {
             write_launcher_preview(path, &[Button::Start, Button::Up, Button::A])
         }

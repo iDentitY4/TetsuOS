@@ -512,7 +512,7 @@ Working on the test unit, confirmed by the user:
 
 - A game's details. Y in a game list opens them (`Screen::Details`, `screens::details_screen`):
   the file's full name, console, size, last played, how many save files, and the cover, with
-  PLAY, STAR or REMOVE STAR, and DELETE GAME AND SAVES. The screen holds the game's path, not
+  PLAY, STAR or REMOVE STAR (COLLECTIONS since 2026-11-13), and DELETE GAME AND SAVES. The screen holds the game's path, not
   its place in the list, as playing or starring can move it. `--preview-details` renders it.
   The size is what the game takes on the card, so a ZIP counts as zipped, and a `.cue` or
   `.m3u` counts all its tracks and discs (`game_files::GameFiles`). Last played is the date of
@@ -921,6 +921,49 @@ Built but not yet tested on the device:
   listing them by name with their console's icon. A list that empties, as favorites do
   when the last is unstarred, goes home at once. Claude tested starring, the tile, the
   list and unstarring on the device
+- **Collections and hidden games** (2026-11-13): the user's own lists beside FAVORITES,
+  and games kept out of every list.
+  - A game's details (Y) have a COLLECTIONS row, which replaced STAR (the screen has room
+    for six rows), with how many of the favorites and collections the game is in. It
+    opens a checklist (`Screen::GameCollections`, `library::collections_menu`):
+    FAVORITES, each collection, then NEW COLLECTION, with ADDED on those the game is in.
+    A puts it in or takes it out; NEW COLLECTION types a name on the keyboard and puts the
+    game in it; Y on a collection renames it. Select still stars a game anywhere.
+  - Kept in `/mnt/data/collections.txt` (`library::collections`): each name in brackets on
+    its own line, then its games' paths in the order added. A collection goes once its last
+    game leaves it, so none is ever empty in the file. Names are at most 11 characters,
+    which fit a NORMAL tile (longer labels are cut with `..`), without `[`, `]` or `,`
+    (the settings' hidden tiles are a comma list), and two can't differ only in case, as
+    the screen shows capitals. A name already taken isn't accepted, and the keyboard's line
+    says so.
+  - Each collection with games has a tile after FAVORITES (`Tile::Collection`, the stacked
+    boxes of `icons::COLLECTION`), with its count, and its games joined on the home
+    screen's header line. Its list is like FAVORITES: by name or the chosen sort, with each
+    console's icon, letter jumps when by name. One whose games are all on a TF2 card that is
+    out keeps no tile but stays in the checklist and the settings list. HOME SCREEN TILES
+    lists every collection, saved as `collection:<name>` in `hidden_tiles=`; a rename
+    carries that along and a delete removes it.
+  - Settings > DATA > COLLECTIONS lists them with their game counts: A renames, X twice
+    deletes (any other press calls it off). Games stay on the card. They are in DATA, not
+    GENERAL, as GENERAL has 8 rows and the settings screen fits 9 with no note.
+  - HIDE GAME on the details hides a game (`/mnt/data/hidden-games.txt`, one path per
+    line, `library::hidden`) and goes back to the list. A hidden game leaves its console's
+    shelf before every other list is picked from it, so it is out of the console lists,
+    RECENT, FAVORITES, collections, search, the tiles' counts and SWITCH GAME
+    (`switcher::others`); a console with only hidden games has no tile. Names are made
+    before hiding, so the others' short names don't change. Its files, saves and play time
+    stay; it still counts when deleting another game's shared files, a power cut during it
+    still resumes it, and the transfer page still lists and deletes it. Settings > DATA >
+    HIDDEN GAMES lists them with their console's icon, and A shows one again.
+  - Deleting a game takes it out of the collections and the hidden list too. A backup
+    includes `collections.txt` and `hidden-games.txt`.
+  - Previews: `--preview-collection-tiles`, `--preview-collection`,
+    `--preview-collections-details`, `--preview-game-collections`, `--preview-collections`
+    and `--preview-hidden`, with sample collections and hidden games
+  - Claude checked on the device: a collection made from the details with the keyboard,
+    a second game added, its tile and list, a game hidden from that list and shown again
+    in HIDDEN GAMES, a rename and a delete with X twice; the files were removed after.
+    Unit tests cover the file, the lists built from it, the presses and the screens
 
 - Box art. `scripts/boxart.py` lists the games on the device over SSH, fetches covers
   from the libretro-thumbnails collections on GitHub (following their symlink stubs, and
@@ -2110,7 +2153,8 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
 - **Save backup** (2026-11-13): the saves kept off the card, so a dead card loses nothing.
   A backup is the same set both ways (`backup::FOLDERS` and `FILES`): `saves` (saves,
   states, resume points, play time, per-game settings), `core-options`, `cheats`,
-  `screenshots`, and `settings.txt`, `favorites.txt`, `recent.txt` and `play-log.txt`.
+  `screenshots`, and `settings.txt`, `favorites.txt`, `collections.txt`,
+  `hidden-games.txt`, `recent.txt` and `play-log.txt`.
   Hidden files and the `.tmp` files of a write under way are left out, and so are games,
   covers, `wpa_supplicant.conf` and `retroachievements.txt` (passwords and a token).
   - **Syncthing**, Settings > DATA > SAVE BACKUP (`backup/`, `save_backup=`, off by
