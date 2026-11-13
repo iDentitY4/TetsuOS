@@ -1,0 +1,4 @@
+# From sha256sum.txt.asc of the v2.1.7 release (its signature not checked here)
+sha256  48e456690cd2b97e7d26b02b5ac35f62a3b36172267b144cfeaf02c993ab955c  syncthing-linux-arm64-v2.1.7.tar.gz
+# Locally computed
+sha256  3f3d9e0024b1921b067d6f7f88deb4a60cbe7a78e76c64e3f1d7fc3b779b9d04  LICENSE.txt

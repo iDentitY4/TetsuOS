@@ -1,0 +1,56 @@
+#!/bin/sh
+# Syncthing, for Settings > DATA > SAVE BACKUP (the launcher's backup/syncthing.rs).
+# Its keys, settings and database are in /mnt/data/.syncthing, so the device keeps its
+# Syncthing ID through updates. The launcher starts it while SAVE BACKUP is on, holds
+# it still during games (pause, resume), and stops it for USB STORAGE, which unmounts
+# TETSU-DATA. S44syncthing stops it at power-off.
+#
+# Syncthing runs as two processes, a monitor and the one that syncs, so signals go
+# to both by name. Its web page and API listen on 127.0.0.1 only.
+HOME_DIR=/mnt/data/.syncthing
+LOG=/var/log/syncthing.log
+
+running() {
+	pidof syncthing > /dev/null
+}
+
+case "$1" in
+start)
+	running && exit 0
+	mkdir -p "$HOME_DIR"
+	# HOME keeps anything it writes there off the root file system, and GOMEMLIMIT
+	# keeps Go's heap small beside a game.
+	HOME="$HOME_DIR" GOMEMLIMIT=96MiB \
+		setsid nice -n 10 /usr/bin/syncthing serve --home="$HOME_DIR" \
+		--no-browser --no-restart --no-upgrade --gui-address=127.0.0.1:8384 \
+		--log-file="$LOG" --log-max-size=1000000 --log-max-old-files=1 \
+		< /dev/null > /dev/null 2>&1 &
+	;;
+stop)
+	running || exit 0
+	# A process held still by pause gets TERM only once it runs again.
+	killall -CONT syncthing 2> /dev/null
+	killall syncthing 2> /dev/null
+	for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 \
+		21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40; do
+		running || exit 0
+		sleep 0.25
+	done
+	killall -KILL syncthing 2> /dev/null
+	;;
+pause)
+	killall -STOP syncthing 2> /dev/null
+	exit 0
+	;;
+resume)
+	killall -CONT syncthing 2> /dev/null
+	exit 0
+	;;
+status)
+	if running; then echo on; else echo off; fi
+	;;
+*)
+	echo "Usage: $0 {start|stop|pause|resume|status}"
+	exit 1
+	;;
+esac

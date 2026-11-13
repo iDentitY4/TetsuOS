@@ -77,6 +77,7 @@ pub(crate) fn transfer_view(address: Option<&str>, code: &str, activity: &Activi
         (None, Some(Done::SaveReplaced(name))) => [tr("SAVE REPLACED FOR").to_string(), name.clone()],
         (None, Some(Done::CoverSaved(name))) => [tr("COVER SAVED FOR").to_string(), name.clone()],
         (None, Some(Done::Deleted(name))) => [tr("DELETED").to_string(), name.clone()],
+        (None, Some(Done::Restored(files))) => [tr("BACKUP RESTORED").to_string(), trf("{} FILES - THE MENUS START AGAIN AFTER B", &[files])],
         (None, None) if activity.browser => [tr("A BROWSER IS CONNECTED").to_string(), String::new()],
         (None, None) => [tr("WAITING FOR A BROWSER").to_string(), String::new()],
     };
@@ -174,11 +175,15 @@ pub(crate) fn wifi_transfer(framebuffer: &mut fb::Framebuffer, events: &Receiver
     if screen_off {
         set_screen(true);
     }
+    let restored = server.activity().restored;
     let changed = server.stop();
     println!("transfer: finished {}{}", boot_time(), if changed { ", the card changed" } else { "" });
     events.try_iter().for_each(drop);
     if battery_empty {
         shut_down(framebuffer, tr("BATTERY EMPTY"), &power::poweroff_command())?;
+    } else if restored {
+        // The settings and lists in memory are the old ones.
+        return Err(crate::backup::restart_launcher());
     }
     Ok(changed)
 }

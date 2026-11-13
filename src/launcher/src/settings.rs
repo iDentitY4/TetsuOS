@@ -512,6 +512,9 @@ pub struct Settings {
     /// Bluetooth's services run and paired devices may connect. Off by default, so D-Bus
     /// and bluetoothd don't run for those who never use it.
     pub bluetooth: bool,
+    /// SAVE BACKUP: Syncthing runs in the menus and sends the saves to the paired devices.
+    /// Off by default.
+    pub save_backup: bool,
     /// Wi-Fi is off: `S42wifi` doesn't start it, and the radio is down.
     pub wifi_off: bool,
     /// The name on the network, if one was typed (`network::valid_hostname`).
@@ -688,6 +691,7 @@ fn parse(text: &str) -> Settings {
             "jingle" => settings.jingle_off = value == "off",
             "vibration" => choose(&mut settings.vibration, Vibration::from_key(value)),
             "bluetooth" => settings.bluetooth = value == "on",
+            "save_backup" => settings.save_backup = value == "on",
             "wifi" => settings.wifi_off = value == "off",
             "hostname" => settings.hostname = Some(value.to_string()).filter(|name| crate::wifi::network::valid_hostname(name)),
             "wifi_country" => settings.wifi_country = crate::wifi::network::country(value).map(|country| country.code),
@@ -760,6 +764,7 @@ fn format(settings: &Settings) -> String {
     lines.push(format!("jingle={}", on_off(!settings.jingle_off)));
     lines.push(format!("vibration={}", settings.vibration.key()));
     lines.push(format!("bluetooth={}", on_off(settings.bluetooth)));
+    lines.push(format!("save_backup={}", on_off(settings.save_backup)));
     lines.push(format!("wifi={}", on_off(!settings.wifi_off)));
     if let Some(name) = &settings.hostname {
         lines.push(format!("hostname={name}"));
@@ -1147,6 +1152,7 @@ mod tests {
             jingle_off: true,
             vibration: Vibration::Low,
             bluetooth: true,
+            save_backup: true,
             wifi_off: true,
             hostname: Some("my-handheld".into()),
             wifi_country: Some("DE"),

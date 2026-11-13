@@ -82,7 +82,7 @@ Working on the test unit, confirmed by the user:
   PC `10.35.35.2` with no router option. Over USB, dropbear allows root's empty
   password (`-B`); Settings > ADVANCED > SSH chooses where it listens (see below).
   `scripts/push.sh {app|rootfs|boot|all}` copies output over SSH with rsync
-- USB STORAGE, in Settings > SYSTEM, shows the card's TETSU-DATA partition to the PC as
+- USB STORAGE, in Settings > DATA, shows the card's TETSU-DATA partition to the PC as
   a USB drive, so games can be copied without taking the card out. A drive is built in
   on Windows, macOS and Linux, unlike MTP, and needs no program on the device.
   `usb-gadget storage` syncs and unmounts `/mnt/data`, gives the partition to the
@@ -208,7 +208,7 @@ Working on the test unit, confirmed by the user:
   showed `crtc-1` at 640x480 with `plane-4` on the panel's framebuffer, and no kernel errors;
   `detect` put it back. A boot with `video=HDMI-A-1:640x480@60e` (forced on) kept `fb0` at
   640x480 with both CRTCs on it, and the launcher drew at 3.95 s, as before
-- WI-FI TRANSFER, in Settings > SYSTEM and as SEND GAMES OVER WI-FI in the setup's games
+- WI-FI TRANSFER, in Settings > DATA and as SEND GAMES OVER WI-FI in the setup's games
   step (2026-11-10): a web page for a phone or PC browser on the same network, for
   getting games on without a cable or card reader. Off unless its screen is open:
   `transfer::wifi_transfer` starts `transfer_server::Server` (the `tiny_http` crate) on
@@ -312,7 +312,7 @@ Working on the test unit, confirmed by the user:
   boot, and a chosen game that can't start is forgotten there. After the last game quits,
   the list selects the game played last, if it is in that list. The menu passes the game's
   path as the lists have it (`GameSpec::listed`), which a ZIP's unpacked file isn't.
-  Settings > THEME > GAME SWITCHER (`switcher=`, `settings::SwitcherStyle`) chooses how
+  Settings > IN GAME > GAME SWITCHER (`switcher=`, `settings::SwitcherStyle`) chooses how
   it looks: LIST (the default), rows like the menu's with the console on the right, Up
   and Down wrapping; or COVERS, the selected cover large in a frame of the theme's colour
   (fit to 200x230) with two smaller ones (88x116) each side, the name, console and place
@@ -1039,7 +1039,7 @@ Built but not yet tested on the device:
   centred on the 7-row text, since at 7 it reads as an asterisk. The home header's
   `CORNER_W` leaves room for both. Checked on the device: Wi-Fi connected, Bluetooth on
   with nothing connected, and turned off; a connected device wasn't tried
-- Battery display: Settings > GENERAL > BATTERY: PERCENT, WHEN LOW (only at 15% or below
+- Battery display: Settings > SYSTEM > BATTERY: PERCENT, WHEN LOW (only at 15% or below
   while not charging, in red) or HIDDEN, for the menus' top-right corner; the clock takes
   its place. Games' low-battery warning and shutdown don't change. Like the accent, it is
   part of the `Theme`. Saved as `battery=`.
@@ -1049,11 +1049,11 @@ Built but not yet tested on the device:
 - Covers in lists: Settings > BOX ART > COVERS IN LISTS, ON or OFF. Off leaves out the
   art panel, so names have the whole width, about 49 characters instead of 31. Saved as
   `covers=`. Claude checked the GBA list both ways; the test unit is back on ON
-- Game names: Settings > GENERAL > GAME NAMES: SHORT (`names::display_names`, as before)
+- Game names: Settings > THEME > GAME NAMES: SHORT (`names::display_names`, as before)
   or FULL, the file name without the extension, with its tags. Saved as `names=`;
   `build_library` takes the choice. Claude checked a list in FULL on the device; the test
   unit is back on SHORT
-- Start screen: Settings > GENERAL > START SCREEN: HOME, RECENT, FAVORITES or LAST GAME,
+- Start screen: Settings > THEME > START SCREEN: HOME, RECENT, FAVORITES or LAST GAME,
   the list of the last game's console with that game selected, from the first line of
   `recent.txt` (`Launcher::start_in`, `open_start_screen` in `library.rs`). An empty list
   stays home, and a game resumed at boot returns to it. Saved as `start=`. Claude checked
@@ -1079,9 +1079,9 @@ Built but not yet tested on the device:
   hidden, SETTINGS shows anyway; hiding it shows a reminder that Start opens settings.
   Fewer tiles can mean fewer rows, which makes the tiles larger. Claude hid and showed
   tiles on the device; the test unit has none hidden
-- Time settings, a TIME tile in Settings: TIME ZONE (58 cities, west to east, Left and
+- Time settings, in Settings > GENERAL (a TIME tile until 2026-11-13): TIME ZONE (58 cities, west to east, Left and
   Right) and CLOCK (24 HOUR, 12 HOUR or OFF) for a clock left of the battery level on
-  every screen that shows it. The group's note shows the date and when the network last
+  every screen that shows it. The note under them shows the date and when the network last
   set the clock (from `/var/log/ntp.log`). Saved as `timezone=<IANA name>` and `clock=`
   in `settings.txt`; UTC until chosen. `clock.rs` holds each zone as a POSIX TZ rule,
   taken from the PC's tzdata file footers, so the device needs no zoneinfo: the launcher
@@ -1091,7 +1091,7 @@ Built but not yet tested on the device:
   the PC for all 58, in winter and summer. Claude checked the screens, the corner clock
   in both formats and off, and `TZ` in a game's environment. The zone is set to Berlin
   on the test unit. A game's clock was not checked inside a game
-- Setting the time by hand (2026-11-12), Settings > TIME > SET TIME (`set_time.rs`), for a
+- Setting the time by hand (2026-11-12), Settings > GENERAL > SET TIME (`set_time.rs`), for a
   device without Wi-Fi. Day, month, year, hour and minute in boxes, Left and Right moving
   between them and Up and Down changing one, wrapping within it like a watch (a minute
   past 59 stays in the hour), the day kept within the month and the year between 2025
@@ -1133,15 +1133,22 @@ Built but not yet tested on the device:
   Metal Slug X took no input at all, while the plain pad works. So PlayStation games keep
   the plain pad and don't rumble. The user felt the setting's buzzes and told the levels
   apart. Adding the motor renumbered `/dev/input`, so `press.py` finds devices by name
-- Settings is a grid of group tiles, like the home screen (`settings_grid`): GENERAL
-  (volume, brightness), IN GAME (scaling, effect, ghosting, vibration), WI-FI (opens the Wi-Fi
-  screen directly), BOX ART, THEME, TIME, SYSTEM (button test, system info, sleep when
-  idle, save logs, reboot, power off) and ADVANCED (SSH, root password, SSH keys,
-  performance, charge limit, boot messages, reset). A opens a group's
+- Settings is a grid of group tiles, like the home screen (`settings_grid`). Since
+  2026-11-13 each group is one topic, so a setting is found where a user would look:
+  GENERAL (volume, brightness, language, menu sounds, boot jingle, time zone, clock, set
+  time), IN GAME (scaling, effect, ghosting, border, vibration, game switcher), WI-FI and
+  BLUETOOTH (their own screens), BOX ART, THEME (the menus' and home screen's look: colour,
+  background, title, grid, tiles, start screen, game names, sorting), DATA (USB STORAGE,
+  WI-FI TRANSFER, SAVE BACKUP: getting things on and off the device), SYSTEM (system info,
+  button test, battery display, sleep, power-off after sleep, system update, reboot, power
+  off), ADVANCED (SSH, root password, SSH keys, performance, charge limit, boot messages,
+  setup, reset), CORES, TROPHIES and STATISTICS. Before, START SCREEN, GAME NAMES and
+  BATTERY were in GENERAL, GAME SWITCHER in THEME, the sleep rows, USB STORAGE and WI-FI
+  TRANSFER in SYSTEM, and the time rows in a TIME tile, where DATA is now. A opens a group's
   list, B goes back to its tile, and Start closes settings from anywhere
   in them. Groups and their settings are `GROUPS` and `Group::settings` in `launcher.rs`,
-  so a new option is one more entry; `MAX_GROUP_SETTINGS` (7) is what the screen has
-  room for. Settings that can't be undone (delete covers, reboot, power off) need A
+  so a new option is one more entry; `MAX_GROUP_SETTINGS` (9) is what the screen has
+  room for, with no note; a group with a note has at most 8. Settings that can't be undone (delete covers, reboot, power off) need A
   twice. Group icons are in `icons.rs`. Claude checked each screen on the device; not yet
   seen by the user
 - Settings > ADVANCED (2026-11-08):
@@ -2037,6 +2044,74 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   `launcher started`, and SAVE LOGS TO CARD a `device` line. Features some devices lack
   (lid, vibration motor, second slot, Wi-Fi, an analog stick) join it with the first such
   device, as nothing would read them yet.
+
+- **Save backup** (2026-11-13): the saves kept off the card, so a dead card loses nothing.
+  A backup is the same set both ways (`backup::FOLDERS` and `FILES`): `saves` (saves,
+  states, resume points, play time, per-game settings), `core-options`, `cheats`,
+  `screenshots`, and `settings.txt`, `favorites.txt`, `recent.txt` and `play-log.txt`.
+  Hidden files and the `.tmp` files of a write under way are left out, and so are games,
+  covers, `wpa_supplicant.conf` and `retroachievements.txt` (passwords and a token).
+  - **Syncthing**, Settings > DATA > SAVE BACKUP (`backup/`, `save_backup=`, off by
+    default). The official static arm64 build of Syncthing 2.1.7 (`package/syncthing`,
+    32 MB in `/usr/bin`) runs from `/usr/sbin/syncthing-service`, with its keys, config and
+    database in `/mnt/data/.syncthing`, so the device ID outlives updates. Its web page and
+    REST API listen on 127.0.0.1:8384 only; the launcher reads the API key from
+    `config.xml`. Each start sets it up (`syncthing::Api::configure`): one folder,
+    `tetsu-data`, which is TETSU-DATA itself with `.stignore` taking in only the backup,
+    send-only, `ignorePerms` and a 2 s time window for FAT32; no `default` folder, usage
+    reports or upgrades; the device named by its hostname. The launcher starts it after
+    the first frame while SAVE BACKUP is on, holds it with SIGSTOP during each game (it
+    then takes no time from frames) and asks it to look for changes once the game ends, and
+    stops it for USB STORAGE, which unmounts TETSU-DATA. `S44syncthing` stops it at power
+    off, before `S15data`.
+  - **Pairing:** the screen shows this device's ID at the bottom. Adding it in Syncthing on
+    a PC, phone or server makes that device ask to pair, and it shows here as WANTS TO PAIR.
+    A, then A again, pairs and shares the folder with it, which the other device then
+    accepts (FOLDER NOT ACCEPTED until then; then SENDING n% and UP TO DATE). X dismisses a
+    request; X twice unpairs. BACK UP NOW looks for changes at once. On the other device,
+    file versioning on the folder keeps what the handheld deletes (a deleted game's saves),
+    as send-only passes deletions on.
+  - **Restoring** is A, then X, on a device asking to pair, as on a new card after the old
+    one died: the new card has a new ID, which is added on the PC to the same folder. The
+    card's own backup files are moved to `.restore-set-aside` and the folder made again,
+    receive-only, with that device, so Syncthing knows nothing of the new card's files
+    (whose newer times would otherwise win over the backup's). Once the device has accepted
+    the folder and everything has come, local changes are reverted and the folder turns
+    send-only; the launcher then starts again (it `exec`s itself), as its settings and lists
+    changed under it. A device with no files, 15 minutes without progress, or B twice
+    stop it: the device is unpaired again and the files set aside are put back. A restore a
+    power cut stopped goes on when the screen opens (the folder is still receive-only).
+  - **WI-FI TRANSFER's page** has a Backup card: Download backup streams the set as one ZIP
+    (`tetsu-backup-<hostname>-<date>.zip`, `GET /api/backup`, written into a pipe as it is
+    sent, PNGs stored, the rest deflated, file times kept in UTC), and Restore from a backup
+    takes such a ZIP (`PUT /api/restore`): received into a hidden file on TETSU-DATA, then
+    each backup file in it replaces the one on the card, with its time; other entries,
+    paths outside the set and files over 256 MB are skipped, and files the ZIP lacks stay.
+    The screen says BACKUP RESTORED, and leaving it starts the launcher again.
+  - Tested on the PC: `cargo test` covers the set, the ZIP both ways, refused entries,
+    setting files aside and back, the ignore lines, the API key, reading devices and
+    completion, the menu and the screen's lines; `--preview-backup` renders the screen and
+    `--preview-settings-grid` the grid with DATA.
+  - Checked by Claude on the device (2026-11-13), with a second Syncthing on the handheld
+    itself (`/tmp`, API on 8386 through an SSH tunnel) standing in for the PC: turning it
+    on set up the folder and `.stignore` and showed the ID; the stand-in's request showed
+    as WANTS TO PAIR, A A paired, and once the folder was accepted it held exactly the set
+    (69 files, 12.9 MB, no games) and the screen said UP TO DATE. Syncthing used about
+    80 MB of RAM at most for the whole system. `pause` stopped both processes (state T); a
+    save written meanwhile went out within 20 s of `resume`. X X unpaired, the stand-in
+    asked again, and A X restored: the card's files were set aside, a file only on the
+    stand-in arrived, settings and saves came back byte for byte with their times, the
+    launcher started again, and the folder was send-only and paired after. The page's
+    ZIP (72 files, 3.3 MB, 1.6 s over USB) unpacked without errors; a non-ZIP was
+    refused (415), a restore put 73 files in place and left out a `roms` entry, and B
+    restarted the launcher. Turning it off stopped Syncthing within 4 s. Changing a
+    folder blocks Syncthing's API until its rescan ends (over 10 s on the device), so calls
+    wait up to a minute and the screen keeps its last state for up to 5 failed readings.
+    Not checked: a real PC or phone, Wi-Fi rather than the USB link, a real new card,
+    USB STORAGE with Syncthing running, a game's end sending its save, the lid during a
+    restore, global discovery and relays (the image has no CA certificates, so the relay
+    pool's HTTPS may fail; on a home network local discovery is enough), and the German
+    wording on the device.
 
 ## Hardware facts in full
 

@@ -231,7 +231,7 @@ pub fn group_icon(group: Group) -> &'static Icon {
         Group::Bluetooth => &icons::BLUETOOTH,
         Group::BoxArt => &icons::BOX_ART,
         Group::Theme => &icons::THEME,
-        Group::Time => &icons::TIME,
+        Group::Data => &icons::DATA,
         Group::System => &icons::SYSTEM,
         Group::Advanced => &icons::ADVANCED,
         Group::Cores => &icons::CORES,
@@ -1464,9 +1464,13 @@ pub(crate) mod tests {
                 let value = format!("< {} >", zone.label);
                 assert!(SETTINGS_LEFT + text_width("TIME ZONE", TEXT_SCALE) + 16 + text_width(&value, TEXT_SCALE) <= 640 - SETTINGS_RIGHT);
             }
-            // Two note lines and a message fit above the hint, or one note line for SYSTEM,
-            // whose note is the single line about waking from sleep.
-            let note_lines = if group == crate::launcher::Group::System { 1 } else { 2 };
+            // Two note lines and a message fit above the hint; SYSTEM's note is the single
+            // line about waking from sleep, and THEME has none.
+            let note_lines = match group {
+                crate::launcher::Group::Theme => 0,
+                crate::launcher::Group::System => 1,
+                _ => 2,
+            };
             assert!(SETTINGS_TOP + group.settings().len() * SETTINGS_ROW + 12 + (note_lines + 1) * SETTINGS_ROW <= HINT_Y, "{group:?}");
             let view = SettingsView {
                 group,

@@ -132,7 +132,8 @@ pub enum Group {
     Bluetooth,
     BoxArt,
     Theme,
-    Time,
+    /// Getting games, saves and backups on and off the device.
+    Data,
     System,
     Advanced,
     Cores,
@@ -147,7 +148,7 @@ pub const GROUPS: [Group; 12] = [
     Group::Bluetooth,
     Group::BoxArt,
     Group::Theme,
-    Group::Time,
+    Group::Data,
     Group::System,
     Group::Advanced,
     Group::Cores,
@@ -155,8 +156,8 @@ pub const GROUPS: [Group; 12] = [
     Group::Statistics,
 ];
 
-/// The most settings a group has, which the settings screen makes room for. Only SYSTEM
-/// has this many, which leaves room for a single note line.
+/// The most settings a group has, which the settings screen makes room for. Only THEME
+/// has this many, which leaves no room for a note.
 pub const MAX_GROUP_SETTINGS: usize = 9;
 
 impl Group {
@@ -168,7 +169,7 @@ impl Group {
             Self::Bluetooth => "BLUETOOTH",
             Self::BoxArt => "BOX ART",
             Self::Theme => "THEME",
-            Self::Time => "TIME",
+            Self::Data => "DATA",
             Self::System => "SYSTEM",
             Self::Advanced => "ADVANCED",
             Self::Cores => "CORES",
@@ -191,14 +192,22 @@ impl Group {
                 &[
                     Setting::Volume,
                     Setting::Brightness,
-                    Setting::StartScreen,
-                    Setting::GameNames,
-                    Setting::Battery,
+                    Setting::Language,
                     Setting::MenuSounds,
                     Setting::BootJingle,
-                    Setting::Language,
+                    Setting::TimeZone,
+                    Setting::ClockFormat,
+                    Setting::SetTime,
                 ],
-            Self::InGame => &[Setting::Scaling, Setting::Effect, Setting::Ghosting, Setting::Border, Setting::UseForAllConsoles, Setting::Vibration],
+            Self::InGame => &[
+                Setting::Scaling,
+                Setting::Effect,
+                Setting::Ghosting,
+                Setting::Border,
+                Setting::UseForAllConsoles,
+                Setting::Vibration,
+                Setting::Switcher,
+            ],
             Self::Wifi | Self::Bluetooth | Self::Cores | Self::Statistics => &[],
             Self::BoxArt => &[Setting::ShowCovers, Setting::ScreenshotCovers, Setting::DownloadMissingArt, Setting::DownloadAllArt, Setting::DeleteArt],
             Self::Theme => {
@@ -209,11 +218,12 @@ impl Group {
                     Setting::TitleText,
                     Setting::GridSize,
                     Setting::HomeTiles,
+                    Setting::StartScreen,
+                    Setting::GameNames,
                     Setting::SortGames,
-                    Setting::Switcher,
                 ]
             }
-            Self::Time => &[Setting::TimeZone, Setting::ClockFormat, Setting::SetTime],
+            Self::Data => &[Setting::UsbStorage, Setting::WifiTransfer, Setting::SaveBackup],
             Self::Achievements => &[
                 Setting::AchievementsOn,
                 Setting::AchievementsAccount,
@@ -224,10 +234,9 @@ impl Group {
             ],
             Self::System => {
                 &[
-                    Setting::ButtonTest,
                     Setting::SystemInfo,
-                    Setting::UsbStorage,
-                    Setting::WifiTransfer,
+                    Setting::ButtonTest,
+                    Setting::Battery,
                     Setting::IdleSleep,
                     Setting::SleepPowerOff,
                     Setting::SystemUpdate,
@@ -288,6 +297,8 @@ pub enum Setting {
     SleepPowerOff,
     UsbStorage,
     WifiTransfer,
+    /// Saves to other devices through Syncthing.
+    SaveBackup,
     /// Updates over Wi-Fi, into the other root slot.
     SystemUpdate,
     Reboot,
@@ -350,6 +361,7 @@ impl Setting {
             Self::SleepPowerOff => "POWER OFF AFTER SLEEP",
             Self::UsbStorage => "USB STORAGE",
             Self::WifiTransfer => "WI-FI TRANSFER",
+            Self::SaveBackup => "SAVE BACKUP",
             Self::SystemUpdate => "SYSTEM UPDATE",
             Self::Reboot => "REBOOT",
             Self::PowerOff => "POWER OFF",
@@ -384,6 +396,7 @@ impl Setting {
                 | Self::SystemInfo
                 | Self::UsbStorage
                 | Self::WifiTransfer
+                | Self::SaveBackup
                 | Self::SystemUpdate
                 | Self::RootPassword
                 | Self::RunSetup
@@ -570,6 +583,8 @@ pub enum Command {
     UsbStorage,
     /// A web page for sending games over Wi-Fi, while its screen is open.
     WifiTransfer,
+    /// Settings > SYSTEM > SAVE BACKUP, through Syncthing.
+    SaveBackup,
     /// Updates over Wi-Fi, into the other root slot.
     SystemUpdate,
     Reboot,
@@ -1125,6 +1140,7 @@ impl Launcher {
                 Setting::SystemInfo => self.screen = Screen::Info,
                 Setting::UsbStorage => return Command::UsbStorage,
                 Setting::WifiTransfer => return Command::WifiTransfer,
+                Setting::SaveBackup => return Command::SaveBackup,
                 Setting::SystemUpdate => return Command::SystemUpdate,
                 Setting::Reboot => return Command::Reboot,
                 Setting::PowerOff => return Command::PowerOff,
@@ -1287,11 +1303,12 @@ mod tests {
         let mut launcher = Launcher::new();
         open_group(&mut launcher, &library, Group::Theme);
         launcher.press(Button::Up, &library);
-        assert_eq!(launcher.setting_selected(Group::Theme), Some(Setting::Switcher));
-        assert_eq!(launcher.press(Button::Left, &library), Command::Switcher(-1));
-        launcher.press(Button::Up, &library);
         assert_eq!(launcher.setting_selected(Group::Theme), Some(Setting::SortGames));
         assert_eq!(launcher.press(Button::Right, &library), Command::SortGames(1));
+        launcher.press(Button::Up, &library);
+        assert_eq!(launcher.press(Button::Left, &library), Command::GameNames(-1));
+        launcher.press(Button::Up, &library);
+        assert_eq!(launcher.press(Button::Right, &library), Command::StartScreen(1));
         launcher.press(Button::Up, &library);
         assert_eq!(launcher.setting_selected(Group::Theme), Some(Setting::HomeTiles));
         launcher.press(Button::A, &library);
@@ -1679,23 +1696,20 @@ mod tests {
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Left, &library), Command::Brightness(-1));
         launcher.press(Button::Down, &library);
-        assert_eq!(launcher.press(Button::Right, &library), Command::StartScreen(1));
-        launcher.press(Button::Down, &library);
-        assert_eq!(launcher.press(Button::Left, &library), Command::GameNames(-1));
-        launcher.press(Button::Down, &library);
-        assert_eq!(launcher.press(Button::Right, &library), Command::BatteryDisplay(1));
+        assert_eq!(launcher.press(Button::Left, &library), Command::Language(-1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Left, &library), Command::ToggleSounds);
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Right, &library), Command::ToggleJingle);
-        launcher.press(Button::Down, &library);
-        assert_eq!(launcher.press(Button::Left, &library), Command::Language(-1));
         press_all(&mut launcher, &library, &[Button::B, Button::Right, Button::A]);
         assert_eq!(launcher.press(Button::Right, &library), Command::Scaling(1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Left, &library), Command::Effect(-1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Right, &library), Command::Ghosting(1));
+        press_all(&mut launcher, &library, &[Button::Up, Button::Up, Button::Up]);
+        assert_eq!(launcher.setting_selected(Group::InGame), Some(Setting::Switcher), "IN GAME ends with the game switcher");
+        assert_eq!(launcher.press(Button::Left, &library), Command::Switcher(-1));
         // Wi-Fi opens its own screen straight from the grid.
         assert_eq!(press_all(&mut launcher, &library, &[Button::B, Button::Right, Button::A]), Command::Wifi);
         assert_eq!(launcher.screen(), Screen::Settings);
@@ -1720,19 +1734,20 @@ mod tests {
         // System ends the second row, which Box Art begins.
         press_all(&mut launcher, &library, &[Button::B, Button::Right, Button::Right, Button::Right, Button::A]);
         assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::System));
-        assert_eq!(launcher.press(Button::A, &library), Command::ButtonTest);
-        press_all(&mut launcher, &library, &[Button::Down, Button::A]);
+        launcher.press(Button::A, &library);
         assert_eq!(launcher.screen(), Screen::Info);
         launcher.press(Button::B, &library);
         launcher.press(Button::Down, &library);
-        assert_eq!(launcher.press(Button::A, &library), Command::UsbStorage);
+        assert_eq!(launcher.press(Button::A, &library), Command::ButtonTest);
         launcher.press(Button::Down, &library);
-        assert_eq!(launcher.press(Button::A, &library), Command::WifiTransfer);
+        assert_eq!(launcher.press(Button::Right, &library), Command::BatteryDisplay(1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Left, &library), Command::IdleSleep(-1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Right, &library), Command::SleepPowerOff(1));
-        press_all(&mut launcher, &library, &[Button::Up, Button::Up, Button::Up, Button::Up]);
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::A, &library), Command::SystemUpdate);
+        press_all(&mut launcher, &library, &[Button::Up, Button::Up, Button::Up, Button::Up, Button::Up]);
         launcher.press(Button::A, &library);
         launcher.press(Button::B, &library);
         assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::System));
@@ -1740,12 +1755,27 @@ mod tests {
     }
 
     #[test]
-    fn time_settings_change_with_left_and_right() {
+    fn data_opens_the_transfers_and_the_backup() {
         let library = library();
         let mut launcher = Launcher::new();
-        // Time is the third tile of the second row.
+        // Data is the third tile of the second row.
         press_all(&mut launcher, &library, &[Button::Start, Button::Down, Button::Right, Button::Right, Button::A]);
-        assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::Time));
+        assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::Data));
+        assert_eq!(launcher.press(Button::A, &library), Command::UsbStorage);
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::A, &library), Command::WifiTransfer);
+        launcher.press(Button::Down, &library);
+        assert_eq!(launcher.press(Button::A, &library), Command::SaveBackup);
+    }
+
+    #[test]
+    fn time_settings_in_general_change_with_left_and_right() {
+        let library = library();
+        let mut launcher = Launcher::new();
+        open_group(&mut launcher, &library, Group::General);
+        for _ in 0..5 {
+            launcher.press(Button::Down, &library);
+        }
         assert_eq!(launcher.press(Button::Right, &library), Command::TimeZone(1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Left, &library), Command::ClockFormat(-1));
@@ -1809,6 +1839,8 @@ mod tests {
         for group in GROUPS {
             assert!(group.settings().len() <= MAX_GROUP_SETTINGS, "{group:?}");
             assert_eq!(group.settings().is_empty(), matches!(group, Group::Wifi | Group::Bluetooth | Group::Cores | Group::Statistics));
+            // The other groups have notes, which a full group would have no room for.
+            assert!(group.settings().len() < MAX_GROUP_SETTINGS || group == Group::Theme, "{group:?}");
         }
     }
 

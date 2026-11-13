@@ -62,14 +62,23 @@ pub(crate) fn play_game(rom: &Path, events: &Receiver<Event>) -> io::Result<Endi
     }
     // The sound card takes one stream, so a menu sound must end before the game's starts.
     sounds::wait();
-    let mut game = Command::new(std::env::current_exe()?)
+    // Syncthing takes no time from the game's frames, and sends its saves once it ends.
+    crate::backup::syncthing::pause_for_game();
+    let game = Command::new(std::env::current_exe()?)
         .arg("--play")
         .args([Path::new(system.core), rom, &save_path(rom, system)])
         .arg(persistence_arg(system.persistence))
         // Cores read local time for games' clocks, such as Pokemon's, through glibc.
         .env("TZ", settings::get().time_zone().posix)
         .stdin(Stdio::piped())
-        .spawn()?;
+        .spawn();
+    let mut game = match game {
+        Ok(game) => game,
+        Err(error) => {
+            crate::backup::syncthing::resume_after_game();
+            return Err(error);
+        }
+    };
     // The game draws the screen, so it shows the volume. This process changes it, as it
     // can run `amixer` without holding up a frame, and tells the game the new level.
     let mut game_input = game.stdin.take();
@@ -96,6 +105,7 @@ pub(crate) fn play_game(rom: &Path, events: &Receiver<Event>) -> io::Result<Endi
             }
         }
     };
+    crate::backup::syncthing::resume_after_game();
     // In case the game ended while it held the CPU speed for its menu.
     libretro::release_cpu_speed();
     // The game's menu may have changed the display settings or the levels.

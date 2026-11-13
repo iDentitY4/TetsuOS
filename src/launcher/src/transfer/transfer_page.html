@@ -35,7 +35,7 @@ main { max-width: 860px; margin: 0 auto; padding: 0 16px 48px; }
 .small { font-size: 14px; }
 button, .button {
   font: inherit; font-size: 15px; border: 1px solid var(--line); background: var(--card); color: var(--text);
-  border-radius: 8px; padding: 6px 12px; cursor: pointer; display: inline-block;
+  border-radius: 8px; padding: 6px 12px; cursor: pointer; display: inline-block; text-decoration: none;
 }
 button.primary, .button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 button.danger { color: var(--danger); }
@@ -116,6 +116,13 @@ summary { cursor: pointer; font-weight: 600; padding: 8px 0; }
     <h2 data-t="Screenshots"></h2>
     <div class="shots" id="shots"></div>
   </section>
+  <section class="card">
+    <h2 data-t="Backup"></h2>
+    <p class="muted small" data-t="All saves, save states, settings, lists, cheats, core options and screenshots in one ZIP. Games and covers aren't in it."></p>
+    <a class="button primary" href="/api/backup" data-t="Download backup"></a>
+    <label class="button"><input type="file" id="restore" accept=".zip,application/zip" hidden><span data-t="Restore from a backup"></span></label>
+    <p class="muted small" id="restore-status"></p>
+  </section>
 </main>
 
 <div id="notice" hidden></div>
@@ -170,6 +177,15 @@ const GERMAN = {
   "The game is no longer on the card": "Das Spiel ist nicht mehr auf der Karte",
   "No connection to the device": "Keine Verbindung zum Gerät",
   "Something went wrong": "Etwas ist schiefgegangen",
+  "Backup": "Sicherung",
+  "All saves, save states, settings, lists, cheats, core options and screenshots in one ZIP. Games and covers aren't in it.": "Alle Spielstände, Speicherzustände, Einstellungen, Listen, Cheats, Core-Optionen und Screenshots in einem ZIP. Spiele und Cover sind nicht dabei.",
+  "Download backup": "Sicherung herunterladen",
+  "Restore from a backup": "Aus Sicherung wiederherstellen",
+  "This replaces the saves, settings and lists on the device with the ones in {0}. Files that aren't in it stay. The device's menus start again when you leave WI-FI TRANSFER on it.": "Das ersetzt die Spielstände, Einstellungen und Listen auf dem Gerät durch die aus {0}. Dateien, die nicht darin sind, bleiben. Die Menüs des Geräts starten neu, wenn du dort WLAN-ÜBERTRAGUNG verlässt.",
+  "Restoring {0}%": "Stelle wieder her: {0} %",
+  "Restored {0} files. Press B on the device to start its menus again.": "{0} Dateien wiederhergestellt. Drücke B am Gerät, um seine Menüs neu zu starten.",
+  "Not restored: {0}": "Nicht wiederhergestellt: {0}",
+  "This is not a backup ZIP from Tetsu OS": "Das ist kein Sicherungs-ZIP von Tetsu OS",
 };
 let language = "en";
 const t = (text, ...values) => {
@@ -187,6 +203,7 @@ const REASONS = {
   "no-game": "The game is no longer on the card",
   "no-card": "The card in TF2 is no longer there",
   "network": "No connection to the device",
+  "not-a-backup": "This is not a backup ZIP from Tetsu OS",
 };
 const reason = (code) => t(REASONS[code] || "Something went wrong");
 const $ = (id) => document.getElementById(id);
@@ -478,6 +495,19 @@ for (const button of $("target").querySelectorAll("button")) {
     render();
   });
 }
+$("restore").addEventListener("change", async (event) => {
+  const file = event.target.files[0];
+  event.target.value = "";
+  if (!file || !confirm(t("This replaces the saves, settings and lists on the device with the ones in {0}. Files that aren't in it stay. The device's menus start again when you leave WI-FI TRANSFER on it.", file.name))) return;
+  const status = $("restore-status");
+  try {
+    const answer = await send("PUT", "/api/restore", file, (part) => { status.textContent = t("Restoring {0}%", Math.floor(part * 100)); });
+    status.textContent = t("Restored {0} files. Press B on the device to start its menus again.", answer.files);
+    refresh();
+  } catch (error) {
+    if (error !== "login") status.textContent = t("Not restored: {0}", reason(error));
+  }
+});
 refresh();
 </script>
 </body>

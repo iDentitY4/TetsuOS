@@ -1,0 +1,8 @@
+config BR2_PACKAGE_SYNCTHING
+	bool "syncthing"
+	depends on BR2_aarch64
+	help
+	  Syncthing, the official static arm64 build, which SAVE BACKUP
+	  runs to keep the saves on other devices.
+
+	  https://syncthing.net

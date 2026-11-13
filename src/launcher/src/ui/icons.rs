@@ -1077,6 +1077,34 @@ pub const TIME: Icon = [
 ];
 
 /// Theme settings: a paint palette.
+/// The DATA tile: a card, with what goes to and from it.
+pub const DATA: Icon = [
+    "................................",
+    "................................",
+    "..........KKKKKKKKKKK...........",
+    ".........KLLLLLLLLLLK...........",
+    "........KLDLDLDLDLDLK...........",
+    ".......KLLDLDLDLDLDLK...B.......",
+    ".......KLLDLDLDLDLDLK..BBB......",
+    ".......KLLDLDLDLDLDLK.BBBBB.....",
+    ".......KLLLLLLLLLLLLK..BBB.NNN..",
+    ".......KLLLLLLLLLLLLK..BBB.NNN..",
+    ".......KLLLLLLLLLLLLK..BBB.NNN..",
+    ".......KLGGGGGGGGGGLK..BBB.NNN..",
+    ".......KLGGGGGGGGGGLK..BBB.NNN..",
+    ".......KLGGGGGGGGGGLK..BBB.NNN..",
+    ".......KLGGGGGGGGGGLK..BBB.NNN..",
+    ".......KLGGGGGGGGGGLK..BBB.NNN..",
+    ".......KLGGGGGGGGGGLK..BBB.NNN..",
+    ".......KLGGGGGGGGGGLK..BBB.NNN..",
+    ".......KLLLLLLLLLLLLK.....NNNNN.",
+    ".......KLLLLLLLLLLLLK......NNN..",
+    ".......KKKKKKKKKKKKKK.......N...",
+    "................................",
+    "................................",
+    "................................",
+];
+
 pub const THEME: Icon = [
     "................................",
     "................................",

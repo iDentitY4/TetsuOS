@@ -466,7 +466,7 @@ fn settings_group_canvas((width, height): (usize, usize), group: Group, launcher
             let (covered, total) = art_counts();
             Some(trf("{} OF {} GAMES HAVE A COVER", &[&covered, &total]))
         }
-        Group::Time => Some(time_note()),
+        Group::General if launcher.setting_selected(group).is_some_and(is_time_setting) => Some(time_note()),
         // The display is per console, but vibration is one setting for every game.
         Group::InGame if launcher.setting_selected(group) == Some(launcher::Setting::Vibration) => {
             Some(tr("THE SAME FOR EVERY CONSOLE AND GAME").into())
@@ -597,11 +597,18 @@ pub(crate) fn login_changed() {
     ssh::restart_server();
 }
 
+/// Whether a setting is one of GENERAL's time rows, under which the date and time show.
+fn is_time_setting(setting: launcher::Setting) -> bool {
+    matches!(setting, launcher::Setting::TimeZone | launcher::Setting::ClockFormat | launcher::Setting::SetTime)
+}
+
 /// The minute the launcher's screen shows, in the corner or in the time settings, so it is
 /// drawn again when it changes.
 pub(crate) fn clock_minute(launcher: &Launcher) -> Option<String> {
     match launcher.screen() {
-        Screen::SettingsGroup(Group::Time) => Some(time_note()),
+        Screen::SettingsGroup(Group::General) if launcher.setting_selected(Group::General).is_some_and(is_time_setting) => {
+            Some(time_note())
+        }
         _ => corner_clock(),
     }
 }
@@ -849,6 +856,7 @@ pub(crate) fn act(
         Action::UsbStorage => return usb_drive(framebuffer, events),
         // The browser may have changed the games, saves and covers.
         Action::WifiTransfer => return wifi_transfer(framebuffer, events),
+        Action::SaveBackup => crate::backup::backup_screen::backup_settings(framebuffer, events)?,
         Action::SystemUpdate => crate::update::system_update(framebuffer, events)?,
         Action::Reboot => shut_down(framebuffer, tr("REBOOTING"), "reboot")?,
         Action::PowerOff => shut_down(framebuffer, tr("POWERING OFF"), &power::poweroff_command())?,
@@ -1409,6 +1417,7 @@ pub(crate) fn run_launcher() -> io::Result<()> {
             if settings::get().bluetooth {
                 std::thread::spawn(|| crate::bluetooth::set_service(true));
             }
+            std::thread::spawn(crate::backup::syncthing::start_if_on);
             // Unlocks earned offline go to RetroAchievements once there is a connection.
             std::thread::spawn(|| loop {
                 let sent = achievements::send_waiting_unlocks();

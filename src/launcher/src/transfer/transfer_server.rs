@@ -68,6 +68,8 @@ pub(crate) enum Done {
     SaveReplaced(String),
     CoverSaved(String),
     Deleted(String),
+    /// A backup ZIP was restored, with this many files.
+    Restored(usize),
 }
 
 /// An upload under way.
@@ -93,6 +95,9 @@ pub(crate) struct Activity {
     pub(crate) browser: bool,
     /// Whether games, saves or covers changed, so the launcher reads them again.
     pub(crate) changed: bool,
+    /// Whether a backup was restored, which replaces the settings and lists the launcher
+    /// holds, so it starts again once the screen closes.
+    pub(crate) restored: bool,
 }
 
 struct Shared {
@@ -133,6 +138,13 @@ impl Server {
         let server = tiny_http::Server::http(ADDRESS).map_err(io::Error::other)?;
         for folder in cards::rom_dirs() {
             remove_unfinished(folder);
+        }
+        // A backup ZIP being restored waits at TETSU-DATA's top level.
+        for entry in std::fs::read_dir(crate::device::paths::DATA_DIR).into_iter().flatten().flatten() {
+            if entry.file_name().to_string_lossy().starts_with(UPLOAD_PREFIX) && entry.file_type().is_ok_and(|kind| kind.is_file()) {
+                println!("transfer: removing the unfinished {}", entry.path().display());
+                let _ = std::fs::remove_file(entry.path());
+            }
         }
         let shared = Arc::new(Shared {
             code: code.to_string(),
@@ -237,6 +249,7 @@ const NO_ROOM: Refused = refused(507, "no-room");
 const NOT_A_COVER: Refused = refused(415, "not-a-cover");
 const INCOMPLETE: Refused = refused(400, "incomplete");
 const NOT_WRITTEN: Refused = refused(500, "write-failed");
+const NOT_A_BACKUP: Refused = refused(415, "not-a-backup");
 
 fn header(name: &str, value: &str) -> Header {
     Header::from_bytes(name.as_bytes(), value.as_bytes()).unwrap_or_else(|()| {
@@ -307,6 +320,8 @@ fn route(request: &mut Request, shared: &Shared) -> Result<ResponseBox, Refused>
         (Method::Get, "/api/list") => Ok(json(&listing())),
         (Method::Get, "/api/cover") => cover_image(&find_game(argument("game"))?),
         (Method::Get, "/api/file") => download(argument("path")),
+        (Method::Get, "/api/backup") => download_backup(),
+        (Method::Put, "/api/restore") => restore_backup(request, shared),
         (Method::Put, "/api/game") => upload_game(request, argument("name"), card_folder(argument("card"))?, shared),
         (Method::Put, "/api/save") => upload_save(request, &find_game(argument("game"))?, shared),
         (Method::Put, "/api/cover") => upload_cover(request, &find_game(argument("game"))?, shared),
@@ -749,6 +764,66 @@ fn download(path: &str) -> Result<ResponseBox, Refused> {
         .with_header(header("Content-Type", content_type))
         .with_header(header("Content-Disposition", &format!("attachment; filename*=UTF-8''{encoded}")))
         .boxed())
+}
+
+/// All of the backup as one ZIP, written as it is sent.
+fn download_backup() -> Result<ResponseBox, Refused> {
+    let (reader, writer) = io::pipe().map_err(|_| NOT_WRITTEN)?;
+    thread::Builder::new()
+        .name("transfer-backup".into())
+        .spawn(move || match crate::backup::write_backup_zip(crate::backup::data_root(), writer) {
+            Ok(files) => println!("transfer: sent a backup of {files} files"),
+            // Also when the browser stops the download.
+            Err(error) => eprintln!("transfer: the backup ZIP stopped: {error}"),
+        })
+        .map_err(|_| NOT_WRITTEN)?;
+    let hostname = std::fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default();
+    let today = crate::device::clock::local(jiff::Timestamp::now(), settings::get().time_zone()).date();
+    let name = crate::backup::backup_zip_name(hostname.trim(), today);
+    Ok(Response::new(
+        200.into(),
+        vec![
+            header("Content-Type", "application/zip"),
+            header("Content-Disposition", &format!("attachment; filename=\"{name}\"")),
+            header("Cache-Control", "no-store"),
+        ],
+        reader,
+        None,
+        None,
+    )
+    .boxed())
+}
+
+/// A backup ZIP from the page: received whole into a hidden file first, then its files put
+/// in place (`backup::restore_zip`).
+fn restore_backup(request: &mut Request, shared: &Shared) -> Result<ResponseBox, Refused> {
+    let size = request.body_length().ok_or(NO_LENGTH)? as u64;
+    let root = Path::new(crate::device::paths::DATA_DIR);
+    if size > LARGEST_FILE {
+        return Err(TOO_LARGE);
+    }
+    // Room for the ZIP and for what comes out of it, which is about as large again.
+    if free_space(root).is_some_and(|free| free < 2 * size + KEPT_FREE) {
+        return Err(NO_ROOM);
+    }
+    let upload = root.join(upload_name("backup.zip"));
+    receive(request.as_reader(), &upload, size, "backup.zip", shared)?;
+    let restored = File::open(&upload).and_then(|file| crate::backup::restore_zip(io::BufReader::new(file), root));
+    let _ = std::fs::remove_file(&upload);
+    match restored {
+        Ok(restored) if restored.files > 0 => {
+            println!("transfer: restored {} files from a backup, left out {}", restored.files, restored.skipped);
+            shared.update(|activity| activity.restored = true);
+            shared.finished(Done::Restored(restored.files), true);
+            Ok(json(&serde_json::json!({ "files": restored.files, "skipped": restored.skipped })))
+        }
+        Ok(_) => Err(NOT_A_BACKUP),
+        Err(error) if error.kind() == io::ErrorKind::InvalidData => Err(NOT_A_BACKUP),
+        Err(error) => {
+            eprintln!("transfer: could not restore the backup: {error}");
+            Err(NOT_WRITTEN)
+        }
+    }
 }
 
 #[derive(Serialize)]

@@ -1,0 +1,15 @@
+#!/bin/sh
+# Stops Syncthing at power-off, before S15data unmounts TETSU-DATA under it. The
+# launcher starts it, only while SAVE BACKUP is on (/usr/sbin/syncthing-service).
+
+case "$1" in
+start)
+	;;
+stop)
+	/usr/sbin/syncthing-service stop
+	;;
+*)
+	echo "Usage: $0 {start|stop}"
+	exit 1
+	;;
+esac

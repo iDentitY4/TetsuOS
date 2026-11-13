@@ -30,7 +30,10 @@ games in its `roms` folder, mounted at `/mnt/tf2` as it goes in and out, also th
 USB STORAGE (a second drive) and WI-FI TRANSFER (a SEND TO choice). SYSTEM UPDATE
 installs a signed build over the network into the other root slot (A/B), and U-Boot goes
 back to the old slot after 3 boots that don't reach the launcher. The mini-HDMI port
-mirrors the screen at 640x480 (`video=` in `extlinux.conf`), without sound.
+mirrors the screen at 640x480 (`video=` in `extlinux.conf`), without sound. SAVE BACKUP
+(Settings > DATA) keeps the saves, states, settings and lists on a PC, phone or server
+through Syncthing, sent after each game, and restores them to a new card when it pairs;
+WI-FI TRANSFER's page downloads the same as one ZIP and restores from one.
 
 Games: NES (FCEUmm), SNES (Snes9x), Game Boy, Color and Advance (mGBA), PlayStation (PCSX
 ReARMed, with discs grouped by name or an `.m3u`, and CHANGE DISC), Mega Drive, Master System and Game Gear (Genesis Plus GX), PC Engine (Beetle PCE
@@ -47,8 +50,9 @@ the theme's colours or black), kept per console, and a volume sign on the volume
 Launcher: a tile grid with RECENT and FAVORITES, lists with covers and scrolling names,
 sorting by name or how recently or long a game was played, jumping by letter on L1 and R1, search on X, a game's details, play time and deleting it on Y,
 box art downloaded on the device, play statistics (time per console and per week, from
-2026-11-11 on), and a settings grid (GENERAL, IN GAME, WI-FI,
-BOX ART, THEME, TIME, SYSTEM, ADVANCED, CORES, STATISTICS) with colours, background, title, grid size,
+2026-11-11 on), and a settings grid (GENERAL, IN GAME, WI-FI, BLUETOOTH,
+BOX ART, THEME, DATA, SYSTEM, ADVANCED, CORES, TROPHIES, STATISTICS, regrouped by topic on
+2026-11-13, with DATA where TIME was) with colours, background, title, grid size,
 the game switcher's look, hidden tiles, start screen, game names, battery display, menu sounds, the boot jingle, sleep when idle
 and power-off after sleep.
 The launcher and in-game menu are in English or German (Settings > GENERAL > LANGUAGE).
@@ -56,6 +60,13 @@ A new install starts with a setup (language, Wi-Fi, time, adding games), which S
 ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Not yet checked by the user
+
+- SAVE BACKUP (2026-11-13): pairing a real PC or phone over Wi-Fi, a real new card restored
+  from it, a game's end sending its save, USB STORAGE with it on, the lid during a restore,
+  the ZIP from a real browser, the German wording. Checked by Claude against a second
+  Syncthing on the device (`docs/features.md`)
+- The new settings groups (2026-11-13): whether each setting is where you'd look, and the
+  DATA icon
 
 - Updates over Wi-Fi (2026-11-13): an update over Wi-Fi rather than the cable, the lid,
   B and a low battery during one, typing a source, the German wording. The device runs
@@ -169,7 +180,9 @@ ADVANCED > RUN SETUP AGAIN repeats.
   They are in folders (since 2026-11-12), so a file named below is `crate::<folder>::<name>`:
   `ui/` (canvas, color, font, icons, image, png, fb, screens, signs, corner, keyboard,
   repeat, input), `wifi/` (`mod.rs` is the former `wifi.rs`, with network), `bluetooth/`,
-  `transfer/` (with usb_drive and `transfer_page.html`), `library/` (systems, rom_zip,
+  `transfer/` (with usb_drive and `transfer_page.html`), `backup/` (mod: the backup's
+  files, its ZIP and restore; syncthing: the service and REST API; backup_menu,
+  backup_screen: SAVE BACKUP), `library/` (systems, rom_zip,
   game_files, cards, favorites, recent, names, play_time, play_log, statistics_screen, gallery,
   boxart*), `update/` (mod: the SYSTEM UPDATE screen, install, manifest, slots,
   boot_env: U-Boot's environment), `ingame/` (pause*, switcher, screenshot, cheats, controls, core_options*,
@@ -294,7 +307,8 @@ In short here; `docs/features.md` has them in full.
   `logo.ppm`
 - `external.mk`: includes the packages, builds Mesa without LLVM, installs the logo
 - `package/launcher/`, `package/libretro-*/`: Buildroot packages for the app and the cores;
-  `package/freedoom/` the bundled Doom games
+  `package/freedoom/` the bundled Doom games; `package/syncthing/` the official static
+  Syncthing build
 - `src/launcher/`: the Rust launcher; `testdata/` has the PNG test images, `lang/` the
   translations, `rcheevos/` the RetroAchievements library that `build.rs` compiles in
 - `src/launcher/src/setup.rs`: the setup on a new install

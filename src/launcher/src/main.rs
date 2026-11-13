@@ -8,6 +8,7 @@
 compile_error!("the launcher needs Linux: it uses evdev, the framebuffer, /sys and /proc");
 
 mod app;
+mod backup;
 mod bluetooth;
 mod device;
 mod game;
@@ -62,6 +63,10 @@ fn main() -> ExitCode {
         [flag, path] if flag == "--preview-settings" => {
             write_launcher_preview(path, &[Button::Start, Button::Up, Button::A])
         }
+        // The settings grid with DATA selected.
+        [flag, path] if flag == "--preview-settings-grid" => {
+            write_launcher_preview(path, &[Button::Start, Button::Down, Button::Right, Button::Right])
+        }
         [flag, path] if flag == "--preview-buttons" => write_button_preview(path),
         [flag, path] if flag == "--preview-usb" => write_usb_drive_preview(path),
         [flag, path] if flag == "--preview-transfer" => write_transfer_preview(path),
@@ -72,6 +77,7 @@ fn main() -> ExitCode {
         [flag, path] if flag == "--preview-gallery-full" => previews::write_gallery_preview(true, path),
         [flag, path] if flag == "--preview-bluetooth" => previews::write_bluetooth_preview(path),
         [flag, path] if flag == "--preview-keyboard" => write_keyboard_preview(path),
+        [flag, path] if flag == "--preview-backup" => write_ppm(&backup::backup_screen::preview(), path),
         [flag, path] if flag == "--preview-update" => write_ppm(&update::preview(false), path),
         [flag, path] if flag == "--preview-update-installing" => write_ppm(&update::preview(true), path),
         [flag, step, path] if flag == "--preview-setup" => match step.parse() {

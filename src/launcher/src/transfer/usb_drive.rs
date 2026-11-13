@@ -102,8 +102,13 @@ enum Leaving {
 pub(crate) fn usb_drive(framebuffer: &mut fb::Framebuffer, events: &Receiver<Event>) -> io::Result<bool> {
     let (width, height) = framebuffer.size();
     framebuffer.draw(&screens::message_screen(width, height, tr("STARTING USB STORAGE"), current_theme()))?;
+    // Syncthing keeps files on TETSU-DATA open, which would keep it from being unmounted.
+    let syncthing = crate::backup::syncthing::stop_for_card();
     let status = Command::new(GADGET).arg("storage").status()?;
     if !status.success() {
+        if syncthing {
+            crate::backup::syncthing::start_if_on();
+        }
         let message = if status.code() == Some(IN_USE_EXIT) {
             tr("THE CARD IS IN USE - TRY AGAIN")
         } else {
@@ -188,6 +193,9 @@ pub(crate) fn usb_drive(framebuffer: &mut fb::Framebuffer, events: &Receiver<Eve
     println!("usb storage: finished {}", boot_time());
     // The PC may have changed them.
     settings::reload();
+    if syncthing {
+        crate::backup::syncthing::start_if_on();
+    }
     events.try_iter().for_each(drop);
     if leaving == Leaving::BatteryEmpty {
         shut_down(framebuffer, tr("BATTERY EMPTY"), &power::poweroff_command())?;
