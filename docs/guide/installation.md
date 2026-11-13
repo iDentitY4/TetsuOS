@@ -28,9 +28,10 @@ sha256sum tetsu-rg35xxsp-*-sdcard.img.gz
 
 ## 2. Write the card
 
-The image holds the boot partition and the system. **TETSU-DATA** is added after it,
-starting 4 GiB into the card, and fills the rest. Because it lies past the image, writing a
-new image later leaves your games and saves where they are.
+The image holds the boot partition and the system. **TETSU-DATA** comes after it,
+starting 4 GiB into the card, and fills the rest. The device adds it on its first start from
+the card, so any image writer will do. Because it lies past the image, writing a new image
+later leaves your games and saves where they are.
 
 ### Option A: an image writer
 
@@ -39,16 +40,11 @@ Write the `.img.gz` with any card image writer, such as
 [Raspberry Pi Imager](https://www.raspberrypi.com/software/) ("Use custom"). Both read
 the `.gz` directly.
 
-::: warning TETSU-DATA
-An image writer only writes the image. TETSU-DATA must then be added with
-`scripts/data-partition.sh` from the source tree, on Linux:
-
-```bash
-scripts/data-partition.sh /dev/sdX
-```
-
-It adds the partition entry, and formats the area only if it is empty, so games from an
-earlier install are found again.
+::: info TETSU-DATA
+An image writer only writes the image, so the card has no TETSU-DATA until the device's
+first start adds it, which takes about a second longer behind the logo. A card that had Tetsu OS before keeps
+its games and saves there. Anything else 4 GiB into the card is erased, as writing an
+image erases a card anyway. The card needs at least 6 GiB.
 :::
 
 ### Option B: flash.sh on Linux

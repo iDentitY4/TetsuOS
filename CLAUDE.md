@@ -65,6 +65,10 @@ ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Not yet checked by the user
 
+- TETSU-DATA on the first start (2026-11-14): a card written with balenaEtcher or another
+  image writer, a new card and one with another system's files on it. Checked by Claude
+  with loop disks and the real card's partition entry removed (`docs/features.md`)
+
 - 50 Hz games at 50 Hz (2026-11-14): the user saw the panel at 50 Hz on the menus,
   without flicker. Not yet: the 162 ms black at a PAL game's start and end, smoothness in a real PAL game
   (PlayStation, Mega Drive, SNES), the lid during one, HDMI with one, the German wording
@@ -301,7 +305,8 @@ In short here; `docs/features.md` has them in full.
   count is in `uboot.env` and `uboot-redund.env` on TETSU-BOOT; `push.sh uboot` removes
   them when running slot A, as a saved boot command would outlive a new U-Boot's.
 - **TETSU-DATA starts at a fixed 4 GiB.** Writing the image replaces the partition table, and
-  `flash.sh` adds TETSU-DATA back; after a plain `dd`, run `data-partition.sh`.
+  `flash.sh` adds TETSU-DATA back; after an image writer or `dd`, `S15data` runs
+  `/usr/sbin/data-partition` at the next start, which adds it, or formats it if it isn't there.
 - **Bluetooth** shares the RTL8821CS with Wi-Fi: Wi-Fi fails to probe while the Bluetooth
   half is held in reset, and while Bluetooth is on rtw88's deep power save stalls Wi-Fi
   (`/usr/sbin/bluetooth` turns it off). Patch 0017 keeps the driver from sleeping in probe.

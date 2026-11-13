@@ -2083,6 +2083,27 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   byte, and a reboot with TEXT had `console=tty1 loglevel=7` on the kernel's command
   line, so U-Boot reads the file the device wrote. SAVE LOGS TO CARD and `bootlog.txt`
   reach TETSU-BOOT. `push.sh boot` copied, verified, rebooted and put LOGO back.
+- **TETSU-DATA on the first start** (2026-11-14): a card written with an image writer
+  (balenaEtcher, Raspberry Pi Imager, `dd`) has only the image's partitions, so `S15data`,
+  finding no TETSU-DATA, runs `/usr/sbin/data-partition`. It only acts on TF1's card with no
+  fourth partition, at least 1 GiB past 4 GiB, partitions 1 to 3 ending before 4 GiB and the
+  MBR's fourth entry empty. It writes that entry with `dd` (type `0x0c`, 4 GiB to the card's
+  end, as `scripts/data-partition.sh` does) and tells the kernel with util-linux's `addpart`,
+  as BusyBox's `partprobe` re-reads the whole table, which fails while root is mounted.
+  A FAT32 file system labelled TETSU-DATA found there is kept (a card that had Tetsu OS and
+  was written again); anything else is erased (its first MiB) and formatted with dosfstools'
+  `mkfs.vfat -F 32 -n TETSU-DATA`, as writing the image meant erasing the card. Each step
+  goes to the kernel log, so `bootlog.txt` shows it. The image gained `mkfs.fat` (59 KiB),
+  `addpart` (30 KiB) and libblkid, libuuid and libsmartcols; `blkid` stays BusyBox's.
+  Checked on the device with a sparse 5.5 GiB loop disk holding the card's MBR (`losetup
+  -P`): an empty area formatted in 0.26 s, a second run left the fourth partition alone, the
+  entry removed again kept TETSU-DATA with a file on it, and a FAT labelled OTHER was
+  formatted; a 64 GiB loop disk gave a 60.0 GiB TETSU-DATA. On the real card, with its fourth
+  MBR entry cleared and a reboot: `added /dev/mmcblk0p4 with the TETSU-DATA file system
+  already there` 1.15 s into the kernel, mounted with the games and settings, the launcher
+  drawn at 4.67 s after power on against 4.43 s on the next, normal, boot. Not done on the
+  real card: formatting, as it would erase the device's games. Its time is estimated from
+  the FATs, 15 MB for a 60 GB card, which the card writes in 0.79 s.
 - **Updates over Wi-Fi** (2026-11-13): Settings > SYSTEM > SYSTEM UPDATE (`update/`)
   installs a new root filesystem, which holds the kernel too, into the root slot that
   isn't running, and keeps the running one to go back to. U-Boot is not updated this way.
@@ -2349,7 +2370,8 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
 - **TETSU-DATA starts at a fixed 4 GiB,** past the image, so writing the image can't reach it.
   Writing the image does replace the partition table, so `flash.sh` adds the entry back,
   as partition 4 since 2026-11-12 (3 before); the system finds it by its label.
-  A plain `dd` of the image leaves TETSU-DATA unreachable until `data-partition.sh` is run.
+  After an image writer or a plain `dd`, the device adds it at its next start
+  (`/usr/sbin/data-partition`, see the card layout).
 - **Panels:** ROCKNIX has a separate v2 panel device tree for the SP. This unit
   works with the mainline NV3052C driver, but another unit may not.
 - **Wi-Fi blocks sleep without `keep-power-in-suspend`.** rtw88 fails its SDIO

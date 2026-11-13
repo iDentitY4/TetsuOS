@@ -1,0 +1,100 @@
+#!/bin/sh
+# Adds TF1's TETSU-DATA partition on the first boot of a card written with an image
+# writer such as balenaEtcher, which writes only the image: partitions 1 to 3. S15data
+# runs this when it finds no TETSU-DATA.
+#
+# It writes the fourth entry into the card's partition table, from 4 GiB to the card's
+# end as scripts/data-partition.sh does, and tells the kernel about it (addpart, as a
+# full re-read fails while root is mounted). A TETSU-DATA file system found there is
+# kept: the card held Tetsu OS before and was written again, which only replaces the
+# partition table. Anything else is formatted, as writing the image meant erasing the card.
+#
+# Usage: data-partition [DISK]
+# DISK is TF1's card by default; a loop device set up with losetup -P for testing.
+
+START=8388608 # 4 GiB in sectors, as in scripts/data-partition.sh
+MINIMUM=2097152 # Room for 1 GiB of games at least
+LABEL=TETSU-DATA
+
+log() {
+	echo "data-partition: $*" > /dev/kmsg
+	echo "data-partition: $*" >&2
+}
+
+# Reads COUNT bytes at OFFSET of FILE as hex digits
+hex() {
+	dd if="$1" bs=1 skip="$2" count="$3" 2> /dev/null | od -An -tx1 | tr -d ' \n'
+}
+
+# A number as 4 little-endian bytes, in printf's octal escapes
+le32() {
+	printf '\\%03o\\%03o\\%03o\\%03o' $(($1 & 255)) $((($1 >> 8) & 255)) \
+		$((($1 >> 16) & 255)) $((($1 >> 24) & 255))
+}
+
+disk="${1:-$(/usr/sbin/cards disk tf1)}"
+[ -b "$disk" ] || { log "no card in TF1"; exit 1; }
+name="${disk##*/}"
+sys="/sys/block/$name"
+part="${disk}p4"
+
+# A card with a fourth partition holds the games on it, even one that blkid can't
+# read, so it is never formatted here
+if [ -e "$sys/${name}p4" ]; then
+	log "$disk already has a fourth partition, so it was left alone"
+	exit 1
+fi
+
+total="$(cat "$sys/size")"
+size=$((total - START))
+if [ "$size" -lt "$MINIMUM" ]; then
+	log "the card is too small for $LABEL: $((total / 2048)) MiB"
+	exit 1
+fi
+for p in "$sys/$name"p*; do
+	[ -e "$p/start" ] || continue
+	if [ $(($(cat "$p/start") + $(cat "$p/size"))) -gt "$START" ]; then
+		log "${p##*/} reaches past 4 GiB, where $LABEL belongs"
+		exit 1
+	fi
+done
+if [ "$(hex "$disk" 510 2)" != 55aa ] || [ "$(hex "$disk" 494 16)" != 00000000000000000000000000000000 ]; then
+	log "the partition table has no free fourth entry"
+	exit 1
+fi
+
+# Entry 4, at 494: not bootable, CHS past its limit as sfdisk writes it, type 0x0c
+# (FAT32 LBA), then the first sector and the length
+entry="\\000\\376\\377\\377\\014\\376\\377\\377$(le32 "$START")$(le32 "$size")"
+printf "$entry" | dd of="$disk" bs=1 seek=494 count=16 conv=notrunc,fsync 2> /dev/null
+if [ "$(hex "$disk" 494 16)" != "$(printf "$entry" | od -An -tx1 | tr -d ' \n')" ]; then
+	log "writing the partition table failed"
+	exit 1
+fi
+if ! addpart "$disk" 4 "$START" "$size"; then
+	log "the kernel didn't take the new partition"
+	exit 1
+fi
+tries=0
+until [ -b "$part" ]; do
+	tries=$((tries + 1))
+	[ "$tries" -lt 20 ] || { log "$part didn't appear"; exit 1; }
+	usleep 100000
+done
+
+found="$(blkid "$part" | cut -d: -f2-)"
+if [ "$(hex "$part" 82 8)" = 4641543332202020 ] && echo "$found" | grep -q "LABEL=\"$LABEL\""; then
+	log "added $part with the $LABEL file system already there, keeping its games and saves"
+	exit 0
+fi
+
+log "formatting $part as $LABEL (found there:${found:- nothing})"
+# Clears an old file system's signature, which mkfs.vfat would leave if it was another kind
+dd if=/dev/zero of="$part" bs=1M count=1 conv=fsync 2> /dev/null
+# Its stderr is only a warning that the system has no codepage 850
+if ! mkfs.vfat -F 32 -n "$LABEL" "$part" > /dev/null 2>&1; then
+	log "formatting $part failed"
+	exit 1
+fi
+sync
+log "created $LABEL on $part"

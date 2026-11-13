@@ -59,10 +59,9 @@ update** that SYSTEM UPDATE downloads.
 
 ## Known gaps before the first release
 
-- `scripts/flash.sh` only writes the locally built `output/images/sdcard.img`, and
-  `data-partition.sh` needs `mkfs.vfat` from a build tree. Users who download an image need a
-  way to add TETSU-DATA without building: for example an image argument for `flash.sh`, or
-  creating TETSU-DATA on the device's first start.
+- `scripts/flash.sh` only writes the locally built `output/images/sdcard.img`. Users who
+  download an image write it with an image writer, and the device adds TETSU-DATA on its
+  first start (`/usr/sbin/data-partition`).
 - RetroAchievements hardcore needs the client registered with RetroAchievements by its user
   agent, `TetsuOS/0.1.0 (Linux) rcheevos/12.5.0`.
 

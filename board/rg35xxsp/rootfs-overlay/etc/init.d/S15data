@@ -39,6 +39,8 @@ case "$1" in
 start)
 	# Only TF1's: a Tetsu card in TF2 has a TETSU-DATA too
 	dev="$(/usr/sbin/cards data)"
+	# A card just written with an image writer has none yet
+	[ -n "$dev" ] || { /usr/sbin/data-partition && dev="$(/usr/sbin/cards data)"; }
 	[ -n "$dev" ] || exit 1
 	# A power cut leaves the file system marked dirty, and maybe damaged. Unrepaired, the
 	# kernel finds the damage later, makes the partition read-only, and from then on

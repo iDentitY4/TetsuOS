@@ -2,7 +2,8 @@
 
 ## Card layout
 
-`board/rg35xxsp/genimage.cfg` makes the image; `flash.sh` adds TETSU-DATA. MBR, four primary
+`board/rg35xxsp/genimage.cfg` makes the image; `flash.sh` or the device's first start adds
+TETSU-DATA. MBR, four primary
 partitions:
 
 | # | Label | Offset | Size | Type | Contents |
@@ -16,7 +17,11 @@ partitions:
 The image stops at slot A's end, so flashing doesn't write slot B. TETSU-DATA starts at a fixed
 4 GiB, past the image, so writing the image never reaches it. Writing replaces the partition
 table, though, so `flash.sh` adds TETSU-DATA's entry back with `data-partition.sh`, which
-formats only an empty area. After a plain `dd`, run `data-partition.sh` yourself.
+formats only an empty area. After an image writer or a plain `dd`, `S15data` finds no
+TETSU-DATA and runs `/usr/sbin/data-partition`, which writes the fourth entry into the MBR,
+tells the kernel with `addpart` (a full re-read fails while root is mounted), keeps a FAT32
+TETSU-DATA found there and formats anything else. It never touches a card that already has
+a fourth partition.
 
 Root partitions use fixed PARTUUIDs: `54455453-02` for A and `54455453-03` for B.
 

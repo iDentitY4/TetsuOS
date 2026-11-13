@@ -49,9 +49,11 @@ change, write the new image to the card.
 
 ## Writing a new image
 
-Write the new card image as in [Installation](./installation#_2-write-the-card). With
-`scripts/flash.sh` (without `--format-data`) or `data-partition.sh`, TETSU-DATA is kept with
-everything on it: it starts past the end of the image, so the image never reaches it.
+Write the new card image as in [Installation](./installation#_2-write-the-card), with an
+image writer or `scripts/flash.sh` (without `--format-data`). TETSU-DATA is kept with
+everything on it: it starts past the end of the image, so the image never reaches it, and the
+partition table entry that writing the image removes is added back, by `flash.sh` or by the
+device at its next start.
 
 Writing an image resets:
 
