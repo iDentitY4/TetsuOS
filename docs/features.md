@@ -843,8 +843,22 @@ Built but not yet tested on the device:
     `firmware failed to leave lps state` and once stopped sending, connected, until
     Wi-Fi reconnected; Bluetooth off alone didn't bring it back. With
     `rtw88_core.disable_lps_deep` set, 170 s of searching lost no ping (85 of 85), and 50
-    such errors came back when it was cleared again. `/usr/sbin/bluetooth` sets it while
-    Bluetooth is on and clears it after.
+    such errors came back when it was cleared again. Since 2026-11-13 it is set for good
+    on the kernel command line (`rtw88_core.disable_lps_deep=Y` in `extlinux.conf`), see
+    "Wi-Fi hang with Bluetooth off" below.
+  - Wi-Fi hang with Bluetooth off (2026-11-09 and 2026-11-13): connected, with an
+    address, but nothing sent (no ping to the gateway, no DNS, no DHCP answer), while
+    receiving still worked; rtw88 logged `failed to get tx report from firmware` from
+    312 s after boot, at first once a minute, then several a second, and a WARNING ran
+    `rtw_watch_dog_work` > `rtw_enter_lps` > `rtw_sdio_deep_ps` >
+    `rtw_power_mode_change`. Restarting `S42wifi` didn't help, a reboot did. So deep
+    power save hangs the firmware with Bluetooth off too. The driver reads
+    `disable_lps_deep` only in `rtw_core_start`, when the interface comes up, so the
+    runtime switch `/usr/sbin/bluetooth` used to make took effect only at the next Wi-Fi
+    restart, and turning Bluetooth off switched deep power save back on. Now it is set
+    from the start and the script leaves it alone. Plain power save (POWER SAVING,
+    `iw ... power_save`) stays on. Not yet measured: what it costs in battery, and
+    whether the hang stays away over many hours.
   - Sleep: the Realtek driver puts the Bluetooth half in reset while asleep and probes it
     again on waking. With an RTC-timed s2idle (Wi-Fi disconnected first, as the launcher
     does), Wi-Fi reconnected and pinged after waking, with Bluetooth off and on, and the

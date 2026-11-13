@@ -182,7 +182,8 @@ ADVANCED > RUN SETUP AGAIN repeats.
 - 50 Hz games show some frames twice on the 59.94 Hz panel
 - Twice (2026-11-09, 2026-11-13), Wi-Fi stayed connected but sent nothing from 53 s and
   312 s after boot, with rtw88 logging `failed to get tx report from firmware`; restarting
-  `S42wifi` didn't help, a reboot did
+  `S42wifi` didn't help, a reboot did. Deep power save is off since 2026-11-13
+  (`rtw88_core.disable_lps_deep=Y`); not yet known whether that ends it
 
 ## Next steps
 
