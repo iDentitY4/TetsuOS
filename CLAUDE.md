@@ -341,14 +341,16 @@ In short here; `docs/features.md` has them in full.
 - `src/launcher/`: the Rust launcher; `testdata/` has the PNG test images, `lang/` the
   translations, `rcheevos/` the RetroAchievements library that `build.rs` compiles in
 - `src/launcher/src/setup.rs`: the setup on a new install
-- `scripts/`: `flash.sh`, `push.sh`, `make-update.sh` and `serve-update.sh` (signed
-  updates; the private key is `~/.config/tetsu/update-key.pem`), `press.py`, `screenshot.py`, `boxart.py`,
+- `scripts/`: `flash.sh`, `push.sh`, `make-update.sh`, `serve-update.sh` and `sign-release.sh` (signed
+  updates; the private key is `~/.config/tetsu/update-key.pem`, never on GitHub), `press.py`, `screenshot.py`, `boxart.py`,
   `data-partition.sh`, and `jingles/`, which makes the boot jingle candidates and
   `src/launcher/sounds/boot-jingle.s16`
 - `docs/features.md`: every feature in detail
 - `docs/`: also the VitePress documentation site (user guide, reference, developer guide;
   `docs/.vitepress/config.mts` has the sidebar, `docs/public/screenshots/` the `--preview*`
   renders), published by `.github/workflows/docs.yml`
+- `.github/workflows/release.yml`: a `v*` tag builds each board's image and unsigned update
+  into a draft release (`docs/developer/releases.md`)
 - Git-ignored: `buildroot-2026.08.1/`, `dl/`, `output/`, `output-toolchain/`, `ccache/`
 
 ## Commands

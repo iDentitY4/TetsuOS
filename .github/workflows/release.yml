@@ -1,0 +1,155 @@
+# Builds a card image and an update for each board. A tag (v0.1, ...) puts them in a draft
+# release; scripts/sign-release.sh then signs the updates on the PC, since the signing key
+# never comes here. Run by hand (Actions > Release > Run workflow), it only keeps them as
+# the run's artifacts for a few days.
+#
+# Hosted runners for a private repository have 2 cores and a 6-hour limit, and a first
+# build (with host LLVM and Clang) takes longer than that. The caches (downloads, ccache,
+# the toolchain) are saved even when the build stops, so a run started again goes further,
+# until one finishes. After that, builds take a fraction of the time.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  toolchain:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    outputs:
+      key: ${{ steps.key.outputs.key }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: key
+        name: Toolchain cache key
+        run: |
+          version="$(sed -n 's/^BUILDROOT_VERSION := //p' Makefile)"
+          echo "key=toolchain-$version-${{ hashFiles('configs/toolchain_a53_defconfig') }}" >> "$GITHUB_OUTPUT"
+      - id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: output-toolchain/host
+          key: ${{ steps.key.outputs.key }}
+      - if: steps.cache.outputs.cache-hit != 'true'
+        name: Install Buildroot's host packages
+        run: ./.github/host-packages.sh
+      - if: steps.cache.outputs.cache-hit != 'true'
+        name: Build the toolchain
+        run: |
+          make toolchain
+          # Only host/ is used by the board builds
+          rm -rf output-toolchain/build
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: output-toolchain/host
+          key: ${{ steps.key.outputs.key }}
+
+  board:
+    needs: toolchain
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        board: [rg35xxsp]
+    env:
+      BOARD: ${{ matrix.board }}
+      # Built into the launcher (settings.rs), so devices find updates without typing a
+      # source. Only for tags: a build run by hand keeps the empty default.
+      TETSU_UPDATE_SOURCE: ${{ startsWith(github.ref, 'refs/tags/') && format('https://github.com/{0}/releases/latest/download', github.repository) || '' }}
+    steps:
+      - name: Free disk space
+        # A hosted runner has about 14 GB free; the build needs about 30.
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache \
+            /usr/local/share/boost /usr/local/.ghcup /usr/share/swift
+          sudo docker image prune --all --force >/dev/null || true
+          df -h /
+      - uses: actions/checkout@v4
+      - name: Install Buildroot's host packages
+        run: ./.github/host-packages.sh
+      - uses: actions/cache/restore@v4
+        with:
+          path: output-toolchain/host
+          key: ${{ needs.toolchain.outputs.key }}
+          fail-on-cache-miss: true
+      - id: dl
+        uses: actions/cache/restore@v4
+        with:
+          path: dl
+          key: dl-${{ hashFiles('Makefile', 'configs/*.config', 'board/*/buildroot.config', 'package/**/*.mk', 'package/**/*.hash') }}
+          restore-keys: dl-
+      - uses: actions/cache/restore@v4
+        with:
+          path: ccache
+          key: ccache-${{ matrix.board }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ccache-${{ matrix.board }}-
+
+      - name: Build
+        id: build
+        # Stops in time to save the caches before the job's limit
+        timeout-minutes: 320
+        run: make
+
+      - if: always() && steps.dl.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: dl
+          key: ${{ steps.dl.outputs.cache-primary-key }}
+      - if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ccache
+          key: ccache-${{ matrix.board }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Card image and update
+        run: |
+          mkdir release
+          name="tetsu-$BOARD-${GITHUB_REF_NAME//\//-}"
+          gzip -9 -n -c output/images/sdcard.img > "release/$name-sdcard.img.gz"
+          scripts/make-update.sh --unsigned
+          mv output/images/update/* release/
+          ls -l release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.board }}
+          path: release/
+          retention-days: 3
+          compression-level: 0
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: board
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # SYSTEM UPDATE asks every device for manifest.txt in releases/latest/download,
+          # where a release's files share one folder: a second board needs its own name
+          # for it, in the launcher too (docs/developer/releases.md).
+          [ "$(ls release/*/manifest.txt | wc -l)" = 1 ] ||
+            { echo "More than one board's manifest.txt: give each board its own name first" >&2; exit 1; }
+          mv release/*/* release/
+          rmdir release/*/
+          (cd release && sha256sum -- * > SHA256SUMS)
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
+            --title "Tetsu OS $GITHUB_REF_NAME" \
+            --notes "Card images (\`*-sdcard.img.gz\`) and updates for each device. Not yet signed: run scripts/sign-release.sh $GITHUB_REF_NAME." \
+            release/*
