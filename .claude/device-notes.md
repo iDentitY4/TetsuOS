@@ -438,7 +438,10 @@ before power-off in seconds and `LAUNCHER_PREVIEW_LANGUAGE=de` renders
   `git -c credential.helper='!gh auth git-credential' push https://github.com/iDentitY4/TetsuOS.git <branch>`
 - Since 2026-11-14 a ruleset protects `main`: no direct pushes. Work on a branch, open a
   pull request with `gh pr create`, and the user approves it as code owner before a
-  squash merge. Never approve in the user's name. Tags can be pushed directly.
+  squash merge. Never approve in the user's name. Tags can be pushed directly. The flow
+  is in `CONTRIBUTING.md` ("How a change gets into main"). GitHub deletes a merged
+  branch; afterwards run `git switch main && git pull --ff-only <https url> main`, `git
+  fetch --prune` and `git branch -D <branch>` (squashed branches look unmerged to git).
 - `.github/workflows/ci.yml` runs `cargo test` and `cargo clippy` (warnings denied) on
   every pull request; Dependabot's PRs rely on it, as the Claude review skips bots.
 - Ask before larger changes, with options to choose from.

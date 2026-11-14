@@ -40,6 +40,38 @@ Security problems go through [private reporting](SECURITY.md), not public issues
 
 `CLAUDE.md` sums up the conventions and what reviews look at.
 
+## How a change gets into main
+
+`main` only takes pull requests: nobody pushes to it directly.
+
+1. **Branch** from an up-to-date `main`, with a short name for the topic:
+
+   ```sh
+   git switch main && git pull
+   git switch -c fix-wifi-stall
+   ```
+
+   Contributors without write access work on a fork the same way.
+2. **Commit and push** the branch, and open a pull request. The template asks what was
+   tested.
+3. **Checks:** the `launcher` check (`.github/workflows/ci.yml`: the launcher's tests
+   and clippy) must pass, on a branch that is up to date with `main`; GitHub's **Update
+   branch** button brings it up to date. A Claude review comments on the changes too.
+4. **Review:** the maintainer approves as code owner, after the last push, with every
+   review thread resolved.
+5. **Merge:** squash only, so each pull request becomes one commit on `main`, titled after
+   the pull request. With **Enable auto-merge**, it merges by itself once the checks
+   pass. GitHub then deletes the branch.
+6. **Clean up** your copy:
+
+   ```sh
+   git switch main && git pull && git fetch --prune
+   git branch -D fix-wifi-stall   # -D: git can't tell a squashed branch was merged
+   ```
+
+Releases are tags on `main` (`v0.1`, `v0.2`, ...); see
+[Making a release](https://identity4.github.io/TetsuOS/developer/releases).
+
 ## Licence
 
 By contributing, you agree that your contribution is licensed under the
