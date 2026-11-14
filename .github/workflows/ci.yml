@@ -27,10 +27,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Rust
-        # Stable, so new clippy lints show here before they reach a PC
+        # The version Buildroot builds the device's launcher with (RUST_BIN_VERSION in
+        # buildroot-<ver>/package/rust-bin/rust-bin.mk): update both together. Newer
+        # stable releases add lints and APIs the device's compiler doesn't have.
         run: |
-          rustup toolchain install stable --profile minimal --component clippy
-          rustup default stable
+          rustup toolchain install 1.97.1 --profile minimal --component clippy
+          rustup default 1.97.1
           rustc --version
       - uses: actions/cache@v6
         with:
@@ -38,8 +40,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             src/launcher/target
-          key: cargo-${{ runner.os }}-${{ hashFiles('src/launcher/Cargo.lock') }}
-          restore-keys: cargo-${{ runner.os }}-
+          key: cargo-${{ runner.os }}-rust1.97.1-${{ hashFiles('src/launcher/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-rust1.97.1-
       - name: Test
         run: cargo test --locked
       - name: Clippy
