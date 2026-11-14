@@ -10,3 +10,6 @@ __pycache__/
 /node_modules/
 /docs/.vitepress/cache/
 /docs/.vitepress/dist/
+
+# Local Claude Code memory: imports .claude/device-notes.md
+/CLAUDE.local.md

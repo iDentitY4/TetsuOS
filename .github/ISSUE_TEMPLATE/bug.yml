@@ -1,0 +1,81 @@
+name: Bug report
+description: Something doesn't work as it should on the device or in the build.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please check [Troubleshooting](https://identity4.github.io/TetsuOS/guide/troubleshooting) and the [FAQ](https://identity4.github.io/TetsuOS/guide/faq) first.
+        **Security problems:** report them [privately](https://github.com/iDentitY4/TetsuOS/security/advisories/new) instead.
+        Please don't link to or attach games or BIOS files.
+  - type: input
+    id: build
+    attributes:
+      label: Build
+      description: Settings > SYSTEM > SYSTEM INFO shows it, or the release you downloaded.
+      placeholder: v0.1 (20261114-123000, 5399ef4)
+    validations:
+      required: true
+  - type: dropdown
+    id: device
+    attributes:
+      label: Device
+      options:
+        - Anbernic RG35XX SP
+        - Other (say which below)
+    validations:
+      required: true
+  - type: dropdown
+    id: memory
+    attributes:
+      label: Memory type
+      description: "[How to check](https://identity4.github.io/TetsuOS/guide/requirements#check-your-memory-type)"
+      options:
+        - LPDDR3
+        - LPDDR4
+        - Don't know
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Starting up or the setup
+        - Playing a game (emulation, sound, controls, saves)
+        - The launcher's menus
+        - Wi-Fi, Bluetooth or networking
+        - Sleep, power or battery
+        - Updates
+        - Building from source
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen
+      description: The steps, and whether it happens every time. For a game, name the system, the game and its file type (.zip, .chd, ...).
+      placeholder: |
+        1. Open Settings > WI-FI
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: X on Settings > SYSTEM > SYSTEM INFO saves them to the card's TETSU-BOOT drive. Paste the relevant part of launcher.log, or attach the files. If the device doesn't start, bootlog.txt on TETSU-BOOT may help.
+      render: text
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: Screenshots or photos, other things you tried, an earlier build where it worked.

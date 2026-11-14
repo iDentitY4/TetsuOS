@@ -1,0 +1,43 @@
+name: Feature request
+description: An idea for Tetsu OS, or a device or console to support.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please search the [open issues](https://github.com/iDentitY4/TetsuOS/issues) first, in case someone asked already.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - A new feature or a change to one
+        - Another console or emulator core
+        - Another device
+        - A translation
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you'd like to do
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How it could work
+      description: On the device's screen and buttons, if you have an idea. For a device, its name, chip and anything known about running Linux on it.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Other ways
+      description: Workarounds you use now, or how other systems do it.
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Helping
+      options:
+        - label: I could help build or test this

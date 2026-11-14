@@ -1306,7 +1306,7 @@ Built but not yet tested on the device:
     and the charge limit to FULL; the CPU, charge limit and SSH server are applied again.
     Games, saves, covers, Wi-Fi networks, keys, the root password and the boot messages
     stay. Checked on the device, then the user's settings were put back
-- Settings > SYSTEM > SAVE LOGS TO CARD (`boot_partition::save_logs`): writes
+- SAVE LOGS TO CARD, X on Settings > SYSTEM > SYSTEM INFO (`boot_partition::save_logs`): writes
   `launcher.log`, `dmesg.txt` and `system.txt` (date, kernel, build, uptime, settings,
   storage, memory, processes, network) to `logs` on TETSU-BOOT, replacing the last ones, and
   says where. Wi-Fi passwords, keys and the root password hash are in other files and

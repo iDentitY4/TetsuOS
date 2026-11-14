@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security problem
+    url: https://github.com/iDentitY4/TetsuOS/security/advisories/new
+    about: Privately, so it can be fixed before it is public.
+  - name: Documentation and troubleshooting
+    url: https://identity4.github.io/TetsuOS/guide/troubleshooting
+    about: Installing, adding games, controls, and what to do when something goes wrong.

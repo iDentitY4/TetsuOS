@@ -1,0 +1,30 @@
+# Weekly update pull requests for the launcher's crates, the docs site's npm packages and
+# the workflows' actions. Buildroot, the kernel, U-Boot and the emulator cores are pinned
+# in configs/ and package/, which Dependabot doesn't read: update those by hand.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /src/launcher
+    schedule:
+      interval: weekly
+    groups:
+      crates:
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      docs:
+        patterns: ["*"]
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

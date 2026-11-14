@@ -8,8 +8,8 @@ printf '%s\r\n' \
 	'Tetsu OS' \
 	'' \
 	'bootlog.txt and the logs folder are written here by the device, to read on a PC:' \
-	'bootlog.txt about 15 and 60 seconds after each start, logs by Settings > SYSTEM >' \
-	'SAVE LOGS TO CARD. The kernel and its boot settings are in the root file system.' \
+	'bootlog.txt about 15 and 60 seconds after each start, logs by X on Settings >' \
+	'SYSTEM > SYSTEM INFO. The kernel and its boot settings are in the root file system.' \
 	> "$BINARIES_DIR/README.txt"
 
 GENIMAGE_TMP="$BUILD_DIR/genimage.tmp"

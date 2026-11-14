@@ -85,8 +85,9 @@ and the [FAQ](https://identity4.github.io/TetsuOS/guide/faq).
 
 ## Status
 
-Tetsu OS is young and developed on a single LPDDR3 RG35XX SP. Most features are checked on
-that unit, but expect rough edges, and LPDDR4 units need their own build for now. USB
+Tetsu OS is in **beta** and developed on a single LPDDR3 RG35XX SP. Most features are
+checked on that unit, but expect rough edges, and LPDDR4 units need their own build for
+now. [CHANGELOG.md](CHANGELOG.md) lists what each release brings. USB
 accessories don't work yet, as the USB-C port runs in device mode only. Other H700 devices
 (RG35XX Plus, RG40XX, RG28XX) are not supported yet.
 
@@ -108,8 +109,9 @@ updating the device over USB, the boot process, the launcher's code and the hard
 ## Contributing
 
 Issues and pull requests are welcome. Translations and testing on other RG35XX SP units
-help most. See [Contributing](https://identity4.github.io/TetsuOS/developer/contributing)
-before opening a pull request.
+help most. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request, and the
+[Code of Conduct](CODE_OF_CONDUCT.md). Report security problems privately, as
+[SECURITY.md](SECURITY.md) describes.
 
 ## Credits
 

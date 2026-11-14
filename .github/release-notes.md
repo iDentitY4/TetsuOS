@@ -1,7 +1,8 @@
-**Beta.** Tetsu OS has been tested on one Anbernic RG35XX SP. Other SP units may use
-different RAM or a different screen panel, and may not start at all (a slowly blinking
-green light) or show nothing. If yours doesn't start, please open an issue saying when you
-bought it. A muOS or stock card still starts the device as before.
+**Beta.** Tetsu OS has been tested on one Anbernic RG35XX SP. The image is built for
+units with **LPDDR3** memory: [check yours](https://identity4.github.io/TetsuOS/guide/requirements#check-your-memory-type)
+first, as an LPDDR4 unit won't start it (a slowly blinking green light). Units with
+another screen panel may show nothing. If yours doesn't start, please open an issue. A
+muOS or stock card still starts the device as before.
 
 ## Install
 
