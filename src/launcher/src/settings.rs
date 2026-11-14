@@ -661,6 +661,10 @@ fn parse_display(value: &str) -> Option<GameDisplay> {
 
 fn parse(text: &str) -> Settings {
     let mut settings = Settings::default();
+    // A release build starts with SSH off (device/ssh.rs), as S50dropbear does.
+    if crate::device::ssh::release() {
+        settings.ssh = SshAccess::Off;
+    }
     for line in text.lines() {
         let Some((key, value)) = line.split_once('=') else { continue };
         let value = value.trim();

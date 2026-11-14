@@ -2,6 +2,10 @@ LAUNCHER_VERSION = 0.1.0
 LAUNCHER_SITE = $(BR2_EXTERNAL_TETSU_PATH)/src/launcher
 LAUNCHER_SITE_METHOD = local
 LAUNCHER_LICENSE = MIT
+# legal-info would archive src/launcher without the exclusions below, so with the PC's
+# target/ (gigabytes). The launcher is MIT, and its source is the project itself, so a
+# release's sources leave it out; manifest.csv still lists it and its licence.
+LAUNCHER_REDISTRIBUTE = NO
 # The PC's own build output and vendored crates aren't copied.
 LAUNCHER_OVERRIDE_SRCDIR_RSYNC_EXCLUSIONS = --exclude /target --exclude /VENDOR --exclude /.cargo
 

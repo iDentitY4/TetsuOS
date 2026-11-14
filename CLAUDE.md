@@ -197,8 +197,9 @@ ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Next steps
 
-1. Proposed, not confirmed: before a release, decide whether USB ONLY should keep root's
-   empty password, as the serial console does
+1. The first beta (`docs/developer/releases.md`; the repository is public since
+   2026-11-14): the release workflow's first green run, the smoke test on a card from the
+   draft
 2. Rewind, moved to the end by the user
 
 ## How the launcher is built
@@ -349,8 +350,9 @@ In short here; `docs/features.md` has them in full.
 - `docs/`: also the VitePress documentation site (user guide, reference, developer guide;
   `docs/.vitepress/config.mts` has the sidebar, `docs/public/screenshots/` the `--preview*`
   renders), published by `.github/workflows/docs.yml`
-- `.github/workflows/release.yml`: a `v*` tag builds each board's image and unsigned update
-  into a draft release (`docs/developer/releases.md`)
+- `.github/workflows/release.yml`: a `v*` tag makes a release build of each board's image,
+  unsigned update and GPL sources (`make legal-info`) in a draft release with
+  `.github/release-notes.md` (`docs/developer/releases.md`)
 - Git-ignored: `buildroot-2026.08.1/`, `dl/`, `output/`, `output-toolchain/`, `ccache/`
 
 ## Commands
@@ -391,7 +393,8 @@ physical like the lid.
   (partition 3) is empty, kept for A/B updates, and TETSU-DATA is partition 4.
 - **The boot partition:** TETSU-BOOT holds only logs and a README. It isn't mounted while the device runs; mount it at a
   folder of your own under `/tmp` (`blkid` finds it) and unmount it after.
-- **Claude logs in with root's empty password,** which only SSH USB ONLY with no root
+- **Claude logs in with root's empty password,** which only a development build (a
+  release build, `TETSU_RELEASE=1`, allows no empty password at all) with SSH USB ONLY and no root
   password allows: the PC's `id_rsa` has a passphrase and no agent. USB + WI-FI or a
   password locks Claude out, and pressing Right on SSH restarts the server mid-press.
   To test them, add a passphrase-less key from the scratchpad with `push.sh key` and

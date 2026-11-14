@@ -53,6 +53,14 @@ sed -i -e 's/^NAME=.*/NAME="Tetsu OS"/' -e 's/^ID=.*/ID=tetsuos\nID_LIKE=buildro
 # (scripts/make-update.sh puts the same in the update's manifest).
 sed -i '/^BUILD_ID=/d' usr/lib/os-release
 echo "BUILD_ID=$(date -u +%Y%m%d-%H%M%S)" >> usr/lib/os-release
+# A release build (TETSU_RELEASE=1, set by .github/workflows/release.yml for a tag) says
+# so here, and S50dropbear and the launcher then allow no empty root password; root's
+# is locked until one is set.
+sed -i '/^VARIANT_ID=/d; /^VARIANT=/d' usr/lib/os-release
+if [ "${TETSU_RELEASE:-}" = 1 ]; then
+	printf 'VARIANT="Release"\nVARIANT_ID=release\n' >> usr/lib/os-release
+	sed -i 's/^root:[^:]*:/root:*:/' etc/shadow
+fi
 
 # Fail the build if anything links to a library that isn't on the device.
 missing=0

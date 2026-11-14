@@ -71,7 +71,7 @@ and SORT GAMES BY. See [Making it yours](../guide/library#making-it-yours).
 
 | Setting | Choices |
 | --- | --- |
-| SSH | OFF, USB ONLY (default) or USB + WI-FI. USB + WI-FI needs a root password or an SSH key |
+| SSH | OFF (default on a release), USB ONLY (default on a development build) or USB + WI-FI. On a release, turning it on makes a root password first; on a development build only USB + WI-FI needs a root password or an SSH key |
 | ROOT PASSWORD | Type one, or R1 for a random one. Start on an empty field removes it |
 | SSH KEYS | How many are set. A twice removes them all |
 | PERFORMANCE | BATTERY, BALANCED (default) or PERFORMANCE |

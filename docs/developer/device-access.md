@@ -28,8 +28,11 @@ TETSU-DATA, so they survive updates and reflashing. The device also answers to
 `tetsu-rg35xxsp.local`.
 
 ::: danger Development images
-Root has no password over the serial console and USB SSH. Decide before a release whether
-that stays.
+Root has no password over the serial console and USB SSH on a development build (any
+`make` without `TETSU_RELEASE=1`). A release build allows no empty password: SSH starts
+off, and root can't log in anywhere until a password is set or a key added. Add a key
+with `scripts/push.sh key` before pushing a release build to a device you work on over
+SSH. See [Making a release](./releases#the-release-build).
 :::
 
 ## Pushing builds

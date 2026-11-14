@@ -8,6 +8,10 @@
 #              an SSH key or a root password, and falls back to usb without either
 #   ssh=off    no SSH server
 #
+# A release build (VARIANT_ID=release in os-release, from TETSU_RELEASE=1) allows no
+# empty password anywhere: SSH starts off, needs a key or a root password over USB too,
+# and without a password root can't log in on the serial console either.
+#
 # The keys and the root password live in /mnt/data/ssh, so updates and new images
 # keep them: authorized_keys (scripts/push.sh key adds the PC's) and root-password,
 # a crypt(3) hash. They are copied to /root/.ssh and /etc/shadow here, so the
@@ -17,11 +21,15 @@
 DATA=/mnt/data/ssh
 PIDFILE=/var/run/dropbear.pid
 
+release() {
+	grep -qx 'VARIANT_ID="\{0,1\}release"\{0,1\}' /etc/os-release 2>/dev/null
+}
+
 mode() {
 	mode=$(sed -n 's/^ssh=//p' /mnt/data/settings.txt 2>/dev/null | tail -n 1)
 	case "$mode" in
-	off | wifi) echo "$mode" ;;
-	*) echo usb ;;
+	off | wifi | usb) echo "$mode" ;;
+	*) if release; then echo off; else echo usb; fi ;;
 	esac
 }
 
@@ -44,6 +52,8 @@ apply_login() {
 		rm -f /root/.ssh/authorized_keys
 	fi
 	hash=$(password_hash)
+	# "*" matches no password: a release build's root without one can't log in.
+	[ -z "$hash" ] && release && hash='*'
 	awk -F: -v OFS=: -v hash="$hash" '$1 == "root" { $2 = hash } { print }' \
 		/etc/shadow > /etc/shadow.new &&
 		chmod 600 /etc/shadow.new &&
@@ -57,12 +67,16 @@ start() {
 		echo "SSH over Wi-Fi needs a key or a root password: USB only"
 		mode=usb
 	fi
+	if release && [ "$mode" != off ] && [ ! -s "$DATA/authorized_keys" ] && [ -z "$(password_hash)" ]; then
+		echo "A release build's SSH needs a key or a root password: off"
+		mode=off
+	fi
 	case "$mode" in
 	off)
 		echo "SSH is off"
 		return 0
 		;;
-	usb) args="-B -p 10.35.35.1:22" ;;
+	usb) args="-p 10.35.35.1:22"; release || args="-B $args" ;;
 	wifi) args="-p 22" ;;
 	esac
 	# Buildroot may make it a link into /var/run, which would lose the host keys.

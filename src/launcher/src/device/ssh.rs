@@ -55,15 +55,42 @@ pub fn valid_hash(text: &str) -> bool {
     first.starts_with('$') && !first.contains(':')
 }
 
-/// The access that is in effect: Wi-Fi falls back to USB with nothing to secure it.
-pub fn effective(access: SshAccess, login: Login) -> SshAccess {
-    if access == SshAccess::Wifi && !login.allows_wifi() { SshAccess::Usb } else { access }
+/// The access that is in effect. With nothing to secure it, Wi-Fi falls back to USB, and
+/// on a release build, which allows no empty password at all, every access to off.
+pub fn effective(access: SshAccess, login: Login, release: bool) -> SshAccess {
+    if login.allows_wifi() || access == SshAccess::Off {
+        access
+    } else if release {
+        SshAccess::Off
+    } else if access == SshAccess::Wifi {
+        SshAccess::Usb
+    } else {
+        access
+    }
 }
 
-/// The access `steps` away, passing over Wi-Fi when it can't be chosen.
-pub fn next_access(current: SshAccess, steps: i32, login: Login) -> SshAccess {
-    let next = current.cycle(steps);
-    if effective(next, login) == next { next } else { next.cycle(steps.signum()) }
+/// The access `steps` away, passing over the ones that can't be chosen.
+pub fn next_access(current: SshAccess, steps: i32, login: Login, release: bool) -> SshAccess {
+    let mut next = current.cycle(steps);
+    // Off can always be chosen, so this ends.
+    while effective(next, login, release) != next {
+        next = next.cycle(steps.signum());
+    }
+    next
+}
+
+/// Whether this is a release build, from `VARIANT_ID=release` in `os-release`, which
+/// `post-build.sh` writes when built with `TETSU_RELEASE=1`. Release builds start with SSH
+/// off and never allow root in without a password, over SSH or the serial console.
+pub fn release() -> bool {
+    static RELEASE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *RELEASE.get_or_init(|| {
+        std::fs::read_to_string(crate::device::paths::OS_RELEASE).is_ok_and(|text| parse_release(&text))
+    })
+}
+
+pub fn parse_release(os_release: &str) -> bool {
+    os_release.lines().any(|line| matches!(line.trim(), "VARIANT_ID=release" | "VARIANT_ID=\"release\""))
 }
 
 /// Whether the on-screen keyboard can type it: printable ASCII, as the font draws.
@@ -155,14 +182,35 @@ mod tests {
         let key = Login { keys: 1, ..Login::default() };
         let password = Login { password: true, ..Login::default() };
         assert!(!none.allows_wifi() && key.allows_wifi() && password.allows_wifi());
-        assert_eq!(effective(SshAccess::Wifi, none), SshAccess::Usb);
-        assert_eq!(effective(SshAccess::Wifi, key), SshAccess::Wifi);
-        assert_eq!(effective(SshAccess::Off, none), SshAccess::Off);
+        assert_eq!(effective(SshAccess::Wifi, none, false), SshAccess::Usb);
+        assert_eq!(effective(SshAccess::Wifi, key, false), SshAccess::Wifi);
+        assert_eq!(effective(SshAccess::Off, none, false), SshAccess::Off);
         // Off, USB, Wi-Fi, wrapping: without a key, Wi-Fi is passed over both ways.
-        assert_eq!(next_access(SshAccess::Usb, 1, none), SshAccess::Off);
-        assert_eq!(next_access(SshAccess::Off, -1, none), SshAccess::Usb);
-        assert_eq!(next_access(SshAccess::Usb, 1, password), SshAccess::Wifi);
-        assert_eq!(next_access(SshAccess::Off, -1, key), SshAccess::Wifi);
+        assert_eq!(next_access(SshAccess::Usb, 1, none, false), SshAccess::Off);
+        assert_eq!(next_access(SshAccess::Off, -1, none, false), SshAccess::Usb);
+        assert_eq!(next_access(SshAccess::Usb, 1, password, false), SshAccess::Wifi);
+        assert_eq!(next_access(SshAccess::Off, -1, key, false), SshAccess::Wifi);
+    }
+
+    #[test]
+    fn a_release_build_allows_no_login_without_a_password_or_key() {
+        let none = Login::default();
+        let password = Login { password: true, ..Login::default() };
+        for access in SshAccess::ALL.iter().copied() {
+            assert_eq!(effective(access, none, true), SshAccess::Off);
+            assert_eq!(effective(access, password, true), access);
+        }
+        // Nothing to step to without a login: it stays off both ways.
+        assert_eq!(next_access(SshAccess::Off, 1, none, true), SshAccess::Off);
+        assert_eq!(next_access(SshAccess::Off, -1, none, true), SshAccess::Off);
+        assert_eq!(next_access(SshAccess::Off, 1, password, true), SshAccess::Usb);
+    }
+
+    #[test]
+    fn a_release_build_is_named_in_os_release() {
+        assert!(parse_release("NAME=\"Tetsu OS\"\nVARIANT_ID=release\nBUILD_ID=1\n"));
+        assert!(parse_release("VARIANT_ID=\"release\"\n"));
+        assert!(!parse_release("NAME=\"Tetsu OS\"\nBUILD_ID=1\n"));
     }
 
     #[test]

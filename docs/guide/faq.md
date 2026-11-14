@@ -75,9 +75,13 @@ Yes, with [Syncthing](./save-backup#syncthing). The handheld sends its saves aft
 
 ### Is SSH open on my network?
 
-No. By default SSH only listens on the USB cable, where root has no password. To allow SSH
-over Wi-Fi, set a root password or add an SSH key first, then choose **USB + WI-FI** in
-Settings > ADVANCED > SSH.
+No. SSH is off on a released version. Choosing **USB ONLY** or **USB + WI-FI** in
+Settings > ADVANCED > SSH first makes a root password and shows it to note down (or type
+your own instead); without a password or an SSH key, root can't log in at all, also not on
+the USB serial console. USB ONLY listens only on the USB cable.
+
+Development builds made from the source differ: SSH is on over the cable by default, where
+root has no password.
 
 ### Is WI-FI TRANSFER safe?
 

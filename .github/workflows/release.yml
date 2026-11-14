@@ -1,12 +1,13 @@
-# Builds a card image and an update for each board. A tag (v0.1, ...) puts them in a draft
+# Builds a card image, an update and the GPL sources for each board. A tag (v0.1, ...)
+# makes a release build (TETSU_RELEASE=1: no empty root password) and puts them in a draft
 # release; scripts/sign-release.sh then signs the updates on the PC, since the signing key
-# never comes here. Run by hand (Actions > Release > Run workflow), it only keeps them as
-# the run's artifacts for a few days.
+# never comes here. Run by hand (Actions > Release > Run workflow), it makes a development
+# build and keeps the images as the run's artifacts for a few days, without the sources.
 #
-# Hosted runners for a private repository have 2 cores and a 6-hour limit, and a first
-# build (with host LLVM and Clang) takes longer than that. The caches (downloads, ccache,
-# the toolchain) are saved even when the build stops, so a run started again goes further,
-# until one finishes. After that, builds take a fraction of the time.
+# Hosted runners have 4 cores (for a public repository) and a 6-hour limit, and a first
+# build (with host LLVM and Clang) may take longer than that. The caches (downloads,
+# ccache, the toolchain) are saved even when the build stops, so a run started again goes
+# further, until one finishes. After that, builds take a fraction of the time.
 name: Release
 
 on:
@@ -54,22 +55,45 @@ jobs:
           path: output-toolchain/host
           key: ${{ steps.key.outputs.key }}
 
+  # For a tag: the draft release that each board's job adds its files to
+  draft:
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
+            # Not a pre-release, even as a beta: releases/latest, the devices' update
+            # source, skips pre-releases. The title and notes say beta instead.
+            gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
+              --title "Tetsu OS $GITHUB_REF_NAME (beta)" --notes-file .github/release-notes.md
+
   board:
-    needs: toolchain
+    needs: [toolchain, draft]
+    # The draft job is skipped for a run by hand
+    if: ${{ !failure() && !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 360
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
         board: [rg35xxsp]
     env:
       BOARD: ${{ matrix.board }}
-      # Built into the launcher (settings.rs), so devices find updates without typing a
-      # source. Only for tags: a build run by hand keeps the empty default.
+      TAGGED: ${{ startsWith(github.ref, 'refs/tags/') }}
+      # Both only for tags. The update source is built into the launcher (settings.rs), so
+      # devices find updates without typing one; TETSU_RELEASE is read by post-build.sh.
       TETSU_UPDATE_SOURCE: ${{ startsWith(github.ref, 'refs/tags/') && format('https://github.com/{0}/releases/latest/download', github.repository) || '' }}
+      TETSU_RELEASE: ${{ startsWith(github.ref, 'refs/tags/') && '1' || '' }}
     steps:
       - name: Free disk space
-        # A hosted runner has about 14 GB free; the build needs about 30.
+        # A hosted runner has about 14 GB free; the build and its sources need about 40.
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache \
             /usr/local/share/boost /usr/local/.ghcup /usr/share/swift
@@ -96,9 +120,8 @@ jobs:
           restore-keys: ccache-${{ matrix.board }}-
 
       - name: Build
-        id: build
         # Stops in time to save the caches before the job's limit
-        timeout-minutes: 320
+        timeout-minutes: 300
         run: make
 
       - if: always() && steps.dl.outputs.cache-hit != 'true'
@@ -116,40 +139,42 @@ jobs:
         run: |
           mkdir release
           name="tetsu-$BOARD-${GITHUB_REF_NAME//\//-}"
+          echo "NAME=$name" >> "$GITHUB_ENV"
           gzip -9 -n -c output/images/sdcard.img > "release/$name-sdcard.img.gz"
           scripts/make-update.sh --unsigned
           mv output/images/update/* release/
           ls -l release
-      - uses: actions/upload-artifact@v4
+
+      - name: GPL sources
+        if: env.TAGGED == 'true'
+        run: |
+          make legal-info
+          cp output/legal-info/manifest.csv "release/$NAME-licences.csv"
+          # Release files can be 2 GB at most: the tar in parts, joined with cat
+          mkdir sources
+          # Buildroot's own source too, which legal-info can't save from a tarball's folder
+          buildroot="dl/buildroot-$(sed -n 's/^BUILDROOT_VERSION := //p' Makefile).tar.gz"
+          tar -cf - --transform 's,^output-toolchain/legal-info,toolchain-legal-info,;s,^output/legal-info,legal-info,;s,^dl/,,' \
+            output/legal-info output-toolchain/legal-info "$buildroot" |
+            split -b 1900M -d -a 2 - "sources/$NAME-sources.tar.part"
+          ls -l sources
+
+      - name: Add to the draft release
+        if: env.TAGGED == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          (cd release && sha256sum -- * > "SHA256SUMS-$BOARD")
+          # SYSTEM UPDATE asks every device for manifest.txt in releases/latest/download,
+          # where a release's files share one folder. Without --clobber this fails when a
+          # second board's manifest.txt arrives: give each board its own name first, in the
+          # launcher too (docs/developer/releases.md).
+          gh release upload "$GITHUB_REF_NAME" release/* sources/*
+
+      - if: env.TAGGED != 'true'
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.board }}
           path: release/
           retention-days: 3
           compression-level: 0
-
-  release:
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: board
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: release
-      - name: Draft release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # SYSTEM UPDATE asks every device for manifest.txt in releases/latest/download,
-          # where a release's files share one folder: a second board needs its own name
-          # for it, in the launcher too (docs/developer/releases.md).
-          [ "$(ls release/*/manifest.txt | wc -l)" = 1 ] ||
-            { echo "More than one board's manifest.txt: give each board its own name first" >&2; exit 1; }
-          mv release/*/* release/
-          rmdir release/*/
-          (cd release && sha256sum -- * > SHA256SUMS)
-          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
-            --title "Tetsu OS $GITHUB_REF_NAME" \
-            --notes "Card images (\`*-sdcard.img.gz\`) and updates for each device. Not yet signed: run scripts/sign-release.sh $GITHUB_REF_NAME." \
-            release/*

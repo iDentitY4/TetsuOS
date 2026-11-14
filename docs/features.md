@@ -1239,6 +1239,28 @@ Built but not yet tested on the device:
     and replaces one set with `passwd`. `push.sh rootfs` overwrites `/etc/shadow`, so it
     restarts `S50dropbear` afterwards. Removing the last key or the password drops USB +
     WI-FI back to USB ONLY (`login_changed` in `app.rs`)
+  - A release build (2026-11-14) allows no empty password anywhere. `post-build.sh`
+    writes `VARIANT_ID=release` into `os-release` when built with `TETSU_RELEASE=1` (the
+    release workflow does for a tag) and locks root's entry in `/etc/shadow` (`*`).
+    `ssh::release()` and `S50dropbear` read that line. Then SSH defaults to OFF, the
+    server never gets `-B`, every access needs a key or a password (`ssh::effective`
+    falls back to OFF, and `S50dropbear` starts nothing), and without a password root
+    stays `*`, so the serial console can't log in either. Right or Left on SSH while it
+    is OFF with nothing set opens ROOT PASSWORD with a made-up one already in the field
+    ("NOTE IT DOWN - START TURNS SSH ON"); Start saves it and turns SSH on one step from
+    OFF (Right: USB ONLY), and B, which deletes first, leaves it off once the field is
+    empty. The note under the group says TURNING SSH ON MAKES A ROOT PASSWORD, and THE
+    USB CONSOLE STILL WORKS only with a password set. Removing the password and keys
+    turns SSH off again
+  - Claude checked on the device (2026-11-14), with the device's `os-release` marked as
+    a release and the new launcher and `S50dropbear`: with a key, SSH ran on USB without
+    `-B`, the key logged in and the empty password was refused; without the key the
+    server stopped and SSH showed OFF with the note; Right showed a made-up password,
+    Start turned SSH to USB ONLY (the first try went to USB + WI-FI, from the old `usb`
+    setting: fixed by stepping from what was in effect), the shown password logged in
+    and the empty one was refused; removing the password turned SSH off and locked root
+    again, and the serial console refused root ("bad salt"). Then put back to a
+    development build. A whole release image on the device is not yet checked
   - PERFORMANCE (`performance.rs`, `performance=`): BATTERY is `schedutil` up to 1104 MHz,
     BALANCED (default) `schedutil` up to 1512 MHz, as before, and PERFORMANCE the
     `performance` governor at 1512 MHz. The launcher sets them at start and on a change;

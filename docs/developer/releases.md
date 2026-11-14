@@ -1,17 +1,20 @@
 # Making a release
 
-A release on GitHub carries two things: a **card image** for new installs, and a **signed
-update** that SYSTEM UPDATE downloads.
+A release on GitHub carries a **card image** for new installs, a **signed update** that
+SYSTEM UPDATE downloads, and the **sources** of its GPL and other components. Releases
+are betas for now, tested on one RG35XX SP, and say so in their title and notes. They
+aren't marked as pre-releases, which `releases/latest/download/` would skip.
 
 ## Checklist
 
-1. **Decide on root's password.** Development images let root log in without a password over
-   USB SSH and the serial console. Decide whether a release keeps that.
+1. **Keep the repository public** (since 2026-11-14), or devices can't download updates
+   and the GPL sources aren't offered to anyone.
 2. **Commit everything.** SYSTEM INFO shows the git revision, and MODIFIED for a build with
    uncommitted changes.
-3. **Tag and push.** `.github/workflows/release.yml` builds a card image and an update for
-   each board on GitHub's runners, with the update source built in
-   (`TETSU_UPDATE_SOURCE`, below), and puts them in a **draft** release:
+3. **Tag and push.** `.github/workflows/release.yml` makes a [release build](#the-release-build)
+   of each board on GitHub's runners, with the update source built in
+   (`TETSU_UPDATE_SOURCE`, below), and puts its card image, update and sources in a
+   **draft** release, with `.github/release-notes.md` as the notes:
 
    ```bash
    git tag v0.1
@@ -30,17 +33,18 @@ update** that SYSTEM UPDATE downloads.
    and checksum, signs the manifest with `scripts/make-update.sh --sign` and uploads
    `manifest.sig`. Devices refuse the update until then.
 
-5. **Test** the draft's card image on a freshly flashed card, the update from the previous
-   release with `scripts/serve-update.sh` (see [Boot and updates](./boot#serving-one)), and
-   on the device that SYSTEM UPDATE's source row shows the built-in source.
+5. **Test** the draft with the [smoke test](#smoke-test).
 
-6. **Publish** the draft on GitHub, with the release notes. Its assets:
+6. **Edit the notes** (U-Boot changes, what's new) and **publish** the draft on GitHub.
+   Its assets:
 
    | Asset | For |
    | --- | --- |
    | `tetsu-<board>-<tag>-sdcard.img.gz` | New installs |
    | `manifest.txt`, `manifest.sig`, `tetsu-<board>-<build>.img.gz` | SYSTEM UPDATE |
-   | `SHA256SUMS` | Checking downloads |
+   | `SHA256SUMS-<board>` | Checking downloads |
+   | `tetsu-<board>-<tag>-sources.tar.part*` | `make legal-info`'s sources, in parts of 1.9 GB (GitHub's limit is 2 GB); `cat` joins them |
+   | `tetsu-<board>-<tag>-licences.csv` | Every package's licence, from `legal-info` |
 
    SYSTEM UPDATE requests `manifest.txt` from the source folder, and `releases/latest/download/`
    redirects to the newest release's assets, so the newest release must always carry its
@@ -50,56 +54,102 @@ update** that SYSTEM UPDATE downloads.
 7. **Building locally instead** works the same way by hand:
 
    ```bash
+   export TETSU_RELEASE=1
    export TETSU_UPDATE_SOURCE=https://github.com/iDentitY4/TetsuOS/releases/latest/download
    P=$PWD; make -C buildroot-2026.08.1 O=$P/output BR2_EXTERNAL=$P BR2_DL_DIR=$P/dl launcher-rebuild
    make
    scripts/make-update.sh
    gzip -9 -n -c output/images/sdcard.img > tetsu-rg35xxsp-v0.1-sdcard.img.gz
+   make legal-info
    ```
+
+   The next plain `make` goes back to a development build (`post-build.sh` runs each time).
 
    The launcher reads the source at compile time (`option_env!` in `settings.rs`).
 
 8. **Say in the notes** if U-Boot changed: SYSTEM UPDATE doesn't update it, so users need to
    write the new image once.
 
+## The release build
+
+`TETSU_RELEASE=1` makes `post-build.sh` write `VARIANT_ID=release` into `os-release` and
+lock root's `/etc/shadow` entry. The launcher (`ssh::release()`) and `S50dropbear` then
+allow no empty root password anywhere:
+
+- SSH starts OFF, and stays off without a password or a key.
+- Turning it on in Settings > ADVANCED opens ROOT PASSWORD with a made-up password in the
+  field to note down; Start saves it and turns SSH on (USB ONLY, with Right).
+- Without a password, root can't log in on the serial console either.
+
+Development builds keep USB ONLY with the empty password, which Claude's testing over
+SSH needs. To work on a release build over SSH, add a key with `scripts/push.sh key`
+first.
+
+## Smoke test
+
+On a card written from the draft's `*-sdcard.img.gz` with balenaEtcher (not `flash.sh`),
+in a device that has had a muOS or older card in it:
+
+1. **First start:** the logo or jingle, TETSU-DATA made (the card shows it on a PC
+   afterwards), the setup in both languages.
+2. **Games:** one per core family, with sound and the buttons: NES, SNES, Game Boy
+   Advance, PlayStation, Mega Drive, PC Engine, and Doom. Save in the menu, leave, come
+   back to the resume point.
+3. **Power:** close and open the lid in a game and in the menus; power off with the
+   button and start again into the same game.
+4. **Wi-Fi:** join a network, download a cover, WI-FI TRANSFER a game from a phone.
+5. **SSH:** OFF at first; turning it on shows a password, which logs in over USB; no
+   login without it, on SSH or the serial console.
+6. **Update:** tag a test release after it (`v0.1.1-test`, deleted afterwards), sign it,
+   and update the device to it through SYSTEM UPDATE over Wi-Fi with the built-in source.
+   The games, saves and settings stay.
+
 ## The release workflow
 
 `.github/workflows/release.yml` runs on a pushed `v*` tag, or by hand from Actions >
-Release > Run workflow, which builds without the update source and keeps the files as the
-run's artifacts for 3 days instead of making a release. It has three jobs:
+Release > Run workflow, which makes a development build without the update source and
+keeps the images as the run's artifacts for 3 days instead of making a release. Its jobs:
 
 - **toolchain** builds the cross toolchain once and caches `output-toolchain/host`, keyed by
   the Buildroot version and `configs/toolchain_a53_defconfig`.
+- **draft**, for a tag, makes the draft release from `.github/release-notes.md`.
 - **board** runs once per board in its matrix (only `rg35xxsp` so far), on its own
-  runner: it frees disk space (a runner has about 14 GB free; the build needs about 30),
-  runs `make`, then `scripts/make-update.sh --unsigned`. The signing key never goes to
-  GitHub.
-- **release**, for a tag, puts every board's files and a `SHA256SUMS` in a draft release.
+  runner: it frees disk space (a runner has about 14 GB free; the build and sources need
+  about 40), runs `make`, then `scripts/make-update.sh --unsigned`. The signing key never
+  goes to GitHub. For a tag, it also runs `make legal-info` and uploads everything to the
+  draft.
 
-Hosted runners for a private repository have 2 cores, and a job stops after 6 hours. A
-first build compiles host LLVM and Clang for Mesa, which takes longer than that. The
-build step stops after 320 minutes, and `dl/` and `ccache/` are saved even when it fails,
+Hosted runners for a public repository have 4 cores and free minutes, and a job stops
+after 6 hours. A first build compiles host LLVM and Clang for Mesa, which may take longer
+than that. The
+build step stops after 300 minutes, and `dl/` and `ccache/` are saved even when it fails,
 so running the failed job again goes further each time, until one finishes. The caches
-share GitHub's 10 GB per repository, and private repositories' minutes are limited by
-the plan; a public repository gets 4-core runners and free minutes.
+share GitHub's 10 GB per repository.
 
 **More boards:** add one to the matrix, with its own `board/<board>/`. `make-update.sh`
 takes the device's name for the manifest from the board's device tree. But SYSTEM UPDATE
 asks every device for `manifest.txt`, and a release's files share one folder, so before a
 second board the launcher needs a name per board for it (for example
-`manifest-<board>.txt`); the release job stops with an error until then.
+`manifest-<board>.txt`); the second board's upload fails until then.
 
 ## Known gaps before the first release
 
 - `scripts/flash.sh` only writes the locally built `output/images/sdcard.img`. Users who
   download an image write it with an image writer, and the device adds TETSU-DATA on its
   first start (`/usr/sbin/data-partition`).
+- Only one RG35XX SP has been tested: units with other RAM or another panel may not
+  start. The release notes say so.
 - RetroAchievements hardcore needs the client registered with RetroAchievements by its user
   agent, `TetsuOS/0.1.0 (Linux) rcheevos/12.5.0`.
 
 ## Licences
 
 Tetsu OS's own code is MIT. The kernel and BlueZ patches are GPL-2.0 like the projects they
-change, and rcheevos keeps its MIT licence. Cores come with their own licences: Snes9x and
-Genesis Plus GX forbid commercial use. A release that ships binaries of GPL components must
-offer their source, which Buildroot can collect with `make legal-info`.
+change, and rcheevos keeps its MIT licence. Cores come with their own licences: Snes9x,
+Genesis Plus GX and PicoDrive forbid commercial use. A release that ships binaries of GPL components must
+offer their source: `make legal-info` collects the board's in `output/legal-info` (with
+Buildroot's and our patches) and the toolchain's (glibc, GCC's runtime libraries) in
+`output-toolchain/legal-info`, which the board build can't, as it sees the toolchain as
+an external one. The release workflow attaches both, with Buildroot's own tarball, which
+`legal-info` can't save. The launcher's source is left out (`LAUNCHER_REDISTRIBUTE = NO`):
+it is MIT and the repository itself, and its folder holds Cargo's `target/` on a PC.

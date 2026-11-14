@@ -15,7 +15,7 @@ TOOLCHAIN_OUTPUT := $(CURDIR)/output-toolchain
 TOOLCHAIN_GCC := $(TOOLCHAIN_OUTPUT)/host/bin/aarch64-buildroot-linux-gnu-gcc
 BR_TOOLCHAIN := $(MAKE) -C $(BUILDROOT_DIR) O=$(TOOLCHAIN_OUTPUT) BR2_EXTERNAL=$(CURDIR) BR2_DL_DIR=$(CURDIR)/dl
 
-.PHONY: all config toolchain menuconfig linux-menuconfig savedefconfig clean preview
+.PHONY: all config toolchain menuconfig linux-menuconfig savedefconfig clean preview legal-info
 
 all: $(OUTPUT)/.config $(TOOLCHAIN_GCC)
 	$(BR)
@@ -41,6 +41,15 @@ $(BUILDROOT_DIR)/Makefile:
 	echo "$(BUILDROOT_SHA256)  $(BUILDROOT_TARBALL)" | sha256sum -c -
 	tar xzf $(BUILDROOT_TARBALL)
 	touch $@
+
+# The sources and licences a release must offer (docs/developer/releases.md): the board's
+# in output/legal-info, and the toolchain's (glibc and GCC's runtime libraries, which the
+# image carries) in output-toolchain/legal-info, as the board build only sees it as an
+# external toolchain. Needs a finished build.
+legal-info: $(OUTPUT)/.config
+	$(BR) legal-info
+	$(BR_TOOLCHAIN) toolchain_a53_defconfig
+	$(BR_TOOLCHAIN) legal-info
 
 # Renders the launcher's home screen on this PC, without the device
 preview:

@@ -477,7 +477,7 @@ fn settings_group_canvas((width, height): (usize, usize), group: Group, launcher
         None
     };
     // As the server runs it, in case a key or password went missing.
-    current.ssh = ssh::effective(current.ssh, login);
+    current.ssh = ssh::effective(current.ssh, login, ssh::release());
     let note = match group {
         Group::BoxArt => {
             let (covered, total) = art_counts();
@@ -628,8 +628,11 @@ pub(crate) fn achievements_note(settings: &settings::Settings, logged_in: bool) 
 /// Under the ADVANCED settings: how to reach SSH, or what USB + WI-FI is missing.
 pub(crate) fn advanced_note(access: settings::SshAccess, login: ssh::Login) -> Option<String> {
     let mut lines = Vec::new();
+    let release = ssh::release();
     if !login.allows_wifi() {
-        lines.push(tr("USB + WI-FI NEEDS A ROOT PASSWORD OR A KEY").to_string());
+        // A release build allows no empty password, so turning SSH on makes one.
+        let note = if release { tr("TURNING SSH ON MAKES A ROOT PASSWORD") } else { tr("USB + WI-FI NEEDS A ROOT PASSWORD OR A KEY") };
+        lines.push(note.to_string());
     }
     match access {
         settings::SshAccess::Wifi => {
@@ -637,7 +640,9 @@ pub(crate) fn advanced_note(access: settings::SshAccess, login: ssh::Login) -> O
                 lines.push(trf("SSH OVER WI-FI: ROOT@{}", &[&address]));
             }
         }
-        settings::SshAccess::Off => lines.push(tr("THE USB CONSOLE STILL WORKS").to_string()),
+        // On a release build the console needs the root password too.
+        settings::SshAccess::Off if !release || login.password => lines.push(tr("THE USB CONSOLE STILL WORKS").to_string()),
+        settings::SshAccess::Off => {}
         settings::SshAccess::Usb => {}
     }
     (!lines.is_empty()).then(|| lines.join("\n"))
@@ -648,8 +653,8 @@ pub(crate) fn advanced_note(access: settings::SshAccess, login: ssh::Login) -> O
 pub(crate) fn login_changed() {
     let login = ssh::Login::read();
     let access = settings::get().ssh;
-    if ssh::effective(access, login) != access {
-        change_settings(|s| s.ssh = ssh::effective(s.ssh, login));
+    if ssh::effective(access, login, ssh::release()) != access {
+        change_settings(|s| s.ssh = ssh::effective(s.ssh, login, ssh::release()));
     }
     ssh::restart_server();
 }
@@ -874,11 +879,32 @@ pub(crate) fn act(
         Action::ClockFormat(steps) => change_settings(|s| s.clock = s.clock.cycle(steps)),
         Action::SetTime => set_time::set_time(framebuffer, events)?,
         Action::SshAccess(steps) => {
-            let login = ssh::Login::read();
-            change_settings(|s| s.ssh = ssh::next_access(ssh::effective(s.ssh, login), steps, login));
+            let release = ssh::release();
+            let mut login = ssh::Login::read();
+            // What is in effect now, which the step starts from: the setting may say USB
+            // while nothing allows it, and a password made below would bring that back.
+            let current = ssh::effective(settings::get().ssh, login, release);
+            // A release build needs a password before SSH can go on: offer a made-up one to
+            // note down, and turn SSH on if it is saved.
+            if release && !login.allows_wifi() && current == settings::SshAccess::Off {
+                let offer = match ssh::random_password() {
+                    Ok(password) => password,
+                    Err(error) => {
+                        eprintln!("warning: could not make up a password: {error}");
+                        return Ok(false);
+                    }
+                };
+                if !edit_root_password(framebuffer, events, Some(offer))? {
+                    return Ok(false);
+                }
+                login = ssh::Login::read();
+            }
+            change_settings(|s| s.ssh = ssh::next_access(current, steps, login, release));
             ssh::restart_server();
         }
-        Action::EditRootPassword => edit_root_password(framebuffer, events)?,
+        Action::EditRootPassword => {
+            edit_root_password(framebuffer, events, None)?;
+        }
         Action::RemoveSshKeys => {
             if let Err(error) = ssh::remove_keys() {
                 eprintln!("warning: could not remove the SSH keys: {error}");
@@ -1063,15 +1089,26 @@ pub(crate) fn save_logs(framebuffer: &mut fb::Framebuffer) -> io::Result<()> {
 }
 
 /// Types the root password on the on-screen keyboard, from Settings > ADVANCED. Empty
-/// removes it. B leaves it as it was.
-pub(crate) fn edit_root_password(framebuffer: &mut fb::Framebuffer, events: &Receiver<Event>) -> io::Result<()> {
+/// removes it. B leaves it as it was. `offer` starts the field with a made-up password,
+/// for turning SSH on in a release build. Returns whether a password was saved.
+pub(crate) fn edit_root_password(
+    framebuffer: &mut fb::Framebuffer,
+    events: &Receiver<Event>,
+    offer: Option<String>,
+) -> io::Result<bool> {
     let (width, height) = framebuffer.size();
     let mut keyboard = keyboard::Keyboard::new(ssh::MAX_PASSWORD_LENGTH, ssh::valid_password);
-    let subtitle = if ssh::Login::read().password {
+    let mut saved = false;
+    let subtitle = if offer.is_some() {
+        tr("NOTE IT DOWN - START TURNS SSH ON")
+    } else if ssh::Login::read().password {
         tr("R1 MAKES ONE UP - START WHILE EMPTY REMOVES IT")
     } else {
         tr("R1 MAKES ONE UP - FOR SSH AND THE CONSOLE")
     };
+    if let Some(password) = offer {
+        keyboard.text = password;
+    }
     let view = screens::KeyboardView { icon: &icons::ADVANCED, title: tr("ROOT PASSWORD"), subtitle, valid_note: "" };
     let battery = read_battery(&power::battery_dir());
     loop {
@@ -1082,7 +1119,7 @@ pub(crate) fn edit_root_password(framebuffer: &mut fb::Framebuffer, events: &Rec
             Ok(event) => event,
             // The volume sign's time is up, and drawing again removes it.
             Err(RecvTimeoutError::Timeout) => continue,
-            Err(RecvTimeoutError::Disconnected) => return Ok(()),
+            Err(RecvTimeoutError::Disconnected) => return Ok(saved),
         };
         match event.pressed() {
             Some(Button::Lid) => sleep_until_lid_opens(events),
@@ -1104,7 +1141,10 @@ pub(crate) fn edit_root_password(framebuffer: &mut fb::Framebuffer, events: &Rec
                         let result =
                             if password.is_empty() { ssh::remove_password() } else { ssh::set_password(&password) };
                         match result {
-                            Ok(()) => println!("ssh: root password {}", if password.is_empty() { "removed" } else { "set" }),
+                            Ok(()) => {
+                                saved = !password.is_empty();
+                                println!("ssh: root password {}", if password.is_empty() { "removed" } else { "set" });
+                            }
                             Err(error) => eprintln!("warning: could not change the root password: {error}"),
                         }
                         login_changed();
@@ -1117,7 +1157,7 @@ pub(crate) fn edit_root_password(framebuffer: &mut fb::Framebuffer, events: &Rec
         }
     }
     events.try_iter().for_each(drop);
-    Ok(())
+    Ok(saved)
 }
 
 /// Types text on the on-screen keyboard, with the icon, title and subtitle of `view`.
