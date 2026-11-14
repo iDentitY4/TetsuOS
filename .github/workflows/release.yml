@@ -29,14 +29,14 @@ jobs:
     outputs:
       key: ${{ steps.key.outputs.key }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: key
         name: Toolchain cache key
         run: |
           version="$(sed -n 's/^BUILDROOT_VERSION := //p' Makefile)"
           echo "key=toolchain-$version-${{ hashFiles('configs/toolchain_a53_defconfig') }}" >> "$GITHUB_OUTPUT"
       - id: cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: output-toolchain/host
           key: ${{ steps.key.outputs.key }}
@@ -50,7 +50,7 @@ jobs:
           # Only host/ is used by the board builds
           rm -rf output-toolchain/build
       - if: steps.cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: output-toolchain/host
           key: ${{ steps.key.outputs.key }}
@@ -62,7 +62,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -99,21 +99,21 @@ jobs:
             /usr/local/share/boost /usr/local/.ghcup /usr/share/swift
           sudo docker image prune --all --force >/dev/null || true
           df -h /
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Buildroot's host packages
         run: ./.github/host-packages.sh
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v6
         with:
           path: output-toolchain/host
           key: ${{ needs.toolchain.outputs.key }}
           fail-on-cache-miss: true
       - id: dl
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: dl
           key: dl-${{ hashFiles('Makefile', 'configs/*.config', 'board/*/buildroot.config', 'package/**/*.mk', 'package/**/*.hash') }}
           restore-keys: dl-
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v6
         with:
           path: ccache
           key: ccache-${{ matrix.board }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -125,12 +125,12 @@ jobs:
         run: make
 
       - if: always() && steps.dl.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: dl
           key: ${{ steps.dl.outputs.cache-primary-key }}
       - if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ccache
           key: ccache-${{ matrix.board }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -172,7 +172,7 @@ jobs:
           gh release upload "$GITHUB_REF_NAME" release/* sources/*
 
       - if: env.TAGGED != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.board }}
           path: release/
