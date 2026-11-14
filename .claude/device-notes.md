@@ -433,9 +433,14 @@ before power-off in seconds and `LAUNCHER_PREVIEW_LANGUAGE=de` renders
 - Never write to a disk on the PC from Claude's side: it has internal disks with the
   user's data, and flashing stays with the user. Writing to the device over SSH is fine.
 - Commit only when the user asks, and push only when the user asks. The remote is
-  `origin` (github.com/iDentitY4/TetsuOS); its SSH URL needs the passphrase-protected key,
-  so push over HTTPS through `gh`:
-  `git -c credential.helper='!gh auth git-credential' push https://github.com/iDentitY4/TetsuOS.git main`
+  `origin` (github.com/iDentitY4/TetsuOS, public since 2026-11-14); its SSH URL needs the
+  passphrase-protected key, so push over HTTPS through `gh`:
+  `git -c credential.helper='!gh auth git-credential' push https://github.com/iDentitY4/TetsuOS.git <branch>`
+- Since 2026-11-14 a ruleset protects `main`: no direct pushes. Work on a branch, open a
+  pull request with `gh pr create`, and the user approves it as code owner before a
+  squash merge. Never approve in the user's name. Tags can be pushed directly.
+- `.github/workflows/ci.yml` runs `cargo test` and `cargo clippy` (warnings denied) on
+  every pull request; Dependabot's PRs rely on it, as the Claude review skips bots.
 - Ask before larger changes, with options to choose from.
 - Check that a patch applies with `support/scripts/apply-patches.sh`, because plain
   `patch` allows fuzz that Buildroot rejects.
