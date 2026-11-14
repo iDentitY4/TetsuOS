@@ -16,8 +16,9 @@ tested); read the part you touch. Working on the real device: `.claude/device-no
 - `configs/common.config` + `board/<board>/buildroot.config`: the Buildroot config and
   every version pin; `package/`: Buildroot packages (launcher, cores, Syncthing, Freedoom)
 - `scripts/`: flashing, pushing to the device, signed updates; `docs/`: the VitePress site
-- `.github/workflows/`: `docs.yml` (the site), `release.yml` (a `v*` tag builds a draft
-  release: `docs/developer/releases.md`)
+- `.github/workflows/`: `ci.yml` (the launcher's tests and clippy on every pull request),
+  `docs.yml` (the site), `release.yml` (a `v*` tag builds a draft release:
+  `docs/developer/releases.md`)
 
 ## Commands
 

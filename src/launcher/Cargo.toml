@@ -2,6 +2,9 @@
 name = "launcher"
 version = "0.1.0"
 edition = "2021"
+# Buildroot's Rust (package/rust-bin), which builds the device's launcher; clippy keeps
+# to it too. .github/workflows/ci.yml tests with that version.
+rust-version = "1.97"
 license = "MIT"
 description = "Game launcher and libretro frontend for the RG35XX SP"
 
@@ -53,6 +56,7 @@ items_after_statements = "allow"
 match_same_arms = "allow"
 single_match_else = "allow"
 unreadable_literal = "allow"
+duration_suboptimal_units = "allow"
 # Names and signatures kept as they are.
 needless_pass_by_value = "allow"
 option_option = "allow"
