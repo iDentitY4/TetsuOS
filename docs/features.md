@@ -2126,6 +2126,27 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   drawn at 4.67 s after power on against 4.43 s on the next, normal, boot. Not done on the
   real card: formatting, as it would erase the device's games. Its time is estimated from
   the FATs, 15 MB for a 60 GB card, which the card writes in 0.79 s.
+- **The boot card identified again** (2026-11-15): the v0.1 release card stopped 3 times
+  in its first 4 cold starts at "Waiting for root device PARTUUID=54455453-02", and a
+  freshly wiped and written SanDisk Ultra did on most cold first starts. The screen showed
+  why: `mmc0: new SD card at address d555` and `mmcblk0: mmc0:d555 SD032 30.6 MiB` with no
+  partitions, against `new high speed SDHC card at address aaaa`, `SD32G 29.7 GiB` on a
+  good start. SanDisk cards give `aaaa` as their first address after power up and `d555`
+  as the second, so the card was still in U-Boot's session: Linux's reset hadn't taken.
+  TF1's supply is the always-on `vcc-io`, so Linux can't power cycle it. Taking the card
+  out and putting it back, which does, made the boot carry on every time. Ruled out: the
+  release build, Etcher, the data partition, U-Boot's environment file (written into the
+  image beforehand, it still failed), the battery, a busy card (a kernel waiting on DATA0
+  found it never busy), and RAM to keep the log (it doesn't survive a reset here). A 2 s
+  `post-power-on-delay-ms` booted once, but costs every start. Patch 0019 instead makes
+  `wait_for_root()` identify the SD memory cards again when the root device is missing 1 s
+  after the drivers are done, then every 2 s, 3 times at most: each card is dropped, its
+  host powered down and up and rescanned. A good start finds its root before it ever
+  waits (no "Waiting for root device" line), so it is unchanged: root mounted at 0.537 s,
+  launcher at 6.65 s. Checked by Claude on the device with `mmc_reidentify_test`, which
+  forces one round: the card was removed at 0.493 s, found again at 0.608 s with its four
+  partitions, the root mounted at 0.695 s and the launcher drew at 6.99 s. Not yet seen:
+  a real failing start recovering by itself
 - **Updates over Wi-Fi** (2026-11-13): Settings > SYSTEM > SYSTEM UPDATE (`update/`)
   installs a new root filesystem, which holds the kernel too, into the root slot that
   isn't running, and keeps the running one to go back to. U-Boot is not updated this way.

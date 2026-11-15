@@ -64,6 +64,14 @@ Ten patches are specific to this project:
   `0159-arm64-dts-rg35xx-2024-keep-the-second-sd-card-powered.patch`; with the supply
   off, the card is powered back through its pulled-up pins. It also adds `mmc` aliases,
   so TF1 stays `mmcblk0` and TF2 is `mmcblk2` though the hosts probe asynchronously.
+- `linux/0019-mmc-identify-sd-cards-again-when-root-is-missing.patch` (ours): TF1's
+  supply is the always-on `vcc-io`, so Linux finds the card as U-Boot left it and can't
+  power cycle it. Once in a while, most often on the first cold start of a freshly written
+  SanDisk Ultra, it is identified wrongly ("SD032, 30.6 MiB", no partitions) and the root
+  device never appears. `wait_for_root()` then identifies the SD memory cards again: 1 s
+  after the drivers finish probing, then every 2 s, 3 times at most. A start that finds
+  its root at once never waits, so it costs nothing. `mmc_reidentify_test` on the kernel's
+  command line forces one round, to test it on a card that works.
 - `bluez5_utils/0001-device-raise-le-security-on-demand.patch` keeps BlueZ from starting
   encryption as soon as a paired LE device connects, and lets the first read the device
   refuses unencrypted start it instead. Started 26 ms in, a Backbone Pro never answered
