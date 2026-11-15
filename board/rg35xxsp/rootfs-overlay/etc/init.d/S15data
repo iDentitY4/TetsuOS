@@ -22,7 +22,9 @@ copy_bundled_games() {
 		name="${game##*/}"
 		grep -qxF "$name" "$COPIED" 2>/dev/null && continue
 		# A folder of that name already is the user's, so it is left as it is. Copying
-		# goes to a name with a dot, which the launcher doesn't list, until it is complete.
+		# goes to a name with a dot, which the launcher doesn't list, until it is complete;
+		# one left by a copy that was cut off goes first, or cp would copy into it.
+		rm -rf /mnt/data/roms/.copying
 		if [ -e "/mnt/data/roms/$name" ] ||
 			{ cp -r "$game" /mnt/data/roms/.copying && mv /mnt/data/roms/.copying "/mnt/data/roms/$name"; }; then
 			echo "$name" >> "$COPIED"
@@ -33,6 +35,23 @@ copy_bundled_games() {
 			echo "S15data: could not copy $name to the games" > /dev/kmsg
 		fi
 	done
+}
+
+# Copies them once the boot jingle (S21jingle) has ended, in the background and at low
+# priority. Copying 60 MB while the jingle played kept the card writing, and the
+# launcher's code, read from the card as it ran, drew 2 frames of the animation in 4 s.
+# The games appear when the launcher reads the games again, as it does after the setup.
+copy_bundled_games_later() {
+	# The jingle's process, which S21jingle writes to /run/jingle.pid and the launcher
+	# removes about 200 ms later, once it has read it: kept once read. At most 15 s, as a
+	# start from USB power has no jingle.
+	pid=""
+	for _ in $(seq 750); do
+		[ -n "$pid" ] || pid="$(cat /run/jingle.pid 2>/dev/null)"
+		[ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null && break
+		sleep 0.02
+	done
+	copy_bundled_games
 }
 
 case "$1" in
@@ -53,7 +72,13 @@ start)
 	# Fixed permissions: vfat would otherwise take them from the caller's umask
 	mount -t vfat -o umask=022 "$dev" /mnt/data || exit 1
 	mkdir -p /mnt/data/roms /mnt/data/saves
-	copy_bundled_games
+	# Only when there is something to copy, as on the first start
+	for game in "$BUNDLED"/*; do
+		[ -d "$game" ] || continue
+		grep -qxF "${game##*/}" "$COPIED" 2>/dev/null && continue
+		copy_bundled_games_later </dev/null >/dev/null 2>&1 &
+		break
+	done
 	# The launcher mounts a card put in later
 	/usr/sbin/cards mount
 	exit 0
