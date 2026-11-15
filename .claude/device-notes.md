@@ -193,6 +193,13 @@ ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Known issues
 
+- Cold starts, mostly the first of a freshly written SanDisk Ultra, sometimes identify
+  TF1's card wrongly ("SD032, 30.6 MiB" at address d555, no partitions) and wait for the
+  root forever (2026-11-14/15, `docs/features.md`). Patch 0019 identifies the cards again
+  when the root is missing; checked with `mmc_reidentify_test`, not yet seen recovering a
+  real failing start. The cause is unknown: Linux's reset doesn't take, and only a power
+  cycle (the card out and in) is certain
+
 - A faint high-pitched noise with USB connected, not heard since; VBUS read 4.42 V
 - USB host mode is disabled (see the PHY note below), so USB accessories don't work
 - An occasional single audio underrun during play, seen in `/var/log/launcher.log`
@@ -327,6 +334,10 @@ In short here; `docs/features.md` has them in full.
 - **Wi-Fi:** without `keep-power-in-suspend` (patch 0013) rtw88 aborts every suspend.
   Sleeping while connected hangs the device for good, so sleep sends `DISCONNECT` first
   and `RECONNECT` after. This `wpa_supplicant` has no syslog (`-s` just prints usage).
+- **RAM doesn't survive a reset,** by the reset button or `sysrq b`: pstore's ramoops
+  (tried 2026-11-14, 1 MiB at `0x60000000`) found only damaged headers after either, as
+  the SPL trains the RAM again at every start. A start that hangs before userspace leaves
+  no log anywhere: only the screen (BOOT MESSAGES TEXT) shows it.
 - **Panels:** ROCKNIX has a separate v2 panel device tree for the SP. This unit works with
   the mainline NV3052C driver; another may not.
 - **The linux-sunxi wiki returns 403 to automated fetches.** Use U-Boot's

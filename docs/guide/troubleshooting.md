@@ -16,6 +16,11 @@ and 60 seconds after Linux starts. No `bootlog.txt` means Linux didn't get that 
 To see the kernel's messages while starting, set **Settings > ADVANCED > BOOT MESSAGES** to
 TEXT on a working boot.
 
+**It stays on the logo, and the power button does nothing.** The card wasn't recognised
+properly. Since v0.1 the device tries again by itself within a few seconds. If it still
+hangs, take the card out and put it back while the logo shows: the start carries on. Please
+report it with a photo of the screen, taken with BOOT MESSAGES set to TEXT.
+
 **After an update, the old version is back.** The new system didn't reach the launcher in
 three tries, and the device went back to the old one by itself. SYSTEM UPDATE says
 `<build> DID NOT START, THIS SYSTEM WAS KEPT`. Save logs (Settings > SYSTEM > SYSTEM INFO, X)
