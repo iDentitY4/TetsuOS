@@ -680,7 +680,15 @@ Working on the test unit, confirmed by the user:
   release's signed checksum). They go to `/usr/share/tetsu/games`, and `S15data` copies each
   folder to `roms` once, noting it in `bundled-games.txt` on TETSU-DATA, so a deleted game
   stays deleted and a folder of the same name is left alone; the first boot after the update
-  took 3.5 s longer for the 60 MB. `System::titles` names known files (`freedoom1` shows as
+  took 3.5 s longer for the 60 MB. Since 2026-11-15 the copy runs in the background once the
+  boot jingle has ended (`S15data` keeps the PID that `S21jingle` writes to `/run/jingle.pid`,
+  which the launcher removes about 200 ms later, and waits 15 s at most), and a `.copying`
+  folder left by a cut-off copy is removed first. Copying during the jingle kept the card
+  writing, and the launcher's code, read from the card as it ran, took 1.5 s per animation
+  frame: 2 frames instead of about 50, and the setup at 13.6 s. On the device, with the
+  games and `bundled-games.txt` removed, twice: 51 and 52 frames at 3 ms, the launcher at
+  6.65 s, both games copied 7.3 s after the kernel started. The games appear when the
+  launcher reads the games again, as it does after the setup. `System::titles` names known files (`freedoom1` shows as
   "Freedoom: Phase 1", `doom2` as "Doom II", `Doukutsu.exe` as "Cave Story") in the lists,
   RECENT, SWITCH GAME, the details screen and the transfer page, with either GAME NAMES.
   Cave Story's `.exe` only counts when it is named `Doukutsu.exe` (`System::only_titled`),
