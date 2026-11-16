@@ -2154,7 +2154,9 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   launcher at 6.65 s. Checked by Claude on the device with `mmc_reidentify_test`, which
   forces one round: the card was removed at 0.493 s, found again at 0.608 s with its four
   partitions, the root mounted at 0.695 s and the launcher drew at 6.99 s. Not yet seen:
-  a real failing start recovering by itself
+  a real failing start recovering by itself. The user saw it only with SanDisk Ultra
+  cards, never with a 64 GB SanDisk Extreme, and a reset always starts the device, so it
+  is left as it is (2026-11-16), with a line in the release notes
 - **Updates over Wi-Fi** (2026-11-13): Settings > SYSTEM > SYSTEM UPDATE (`update/`)
   installs a new root filesystem, which holds the kernel too, into the root slot that
   isn't running, and keeps the running one to go back to. U-Boot is not updated this way.

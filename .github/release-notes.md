@@ -25,6 +25,8 @@ UPDATE. A new bootloader would need a new card image, and the notes would say so
 - RetroAchievements hardcore mode: refused until the client is registered with
   RetroAchievements
 - USB accessories on the USB-C port don't work (host mode is off)
+- Some SanDisk Ultra cards sometimes stop on a cold start, waiting for the card. Taking
+  the card out and putting it back in, or pressing reset, starts it
 
 ## SSH and the root password
 
