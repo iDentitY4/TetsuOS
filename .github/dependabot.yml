@@ -10,6 +10,11 @@ updates:
     groups:
       crates:
         update-types: [minor, patch]
+    ignore:
+      # zbus 6 removed the blocking API that bluetooth/mod.rs and device/audio_out.rs use.
+      # Moving to it means async D-Bus code and Bluetooth tested again on the device.
+      - dependency-name: zbus
+        update-types: ["version-update:semver-major"]
     open-pull-requests-limit: 5
 
   - package-ecosystem: npm

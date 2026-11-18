@@ -4,27 +4,32 @@ Installing Tetsu OS means writing an image to a microSD card and adding the
 **TETSU-DATA** partition, where your games and saves live. Nothing is installed on the
 device itself: take the card out, and the stock firmware starts as before.
 
-::: info Before the first release
-There are no release downloads yet. Until there are, build the image yourself
-([Building from source](../developer/building)) and write it with `scripts/flash.sh` as
-shown in [Option B](#option-b-flash-sh-on-linux).
+::: warning Check your memory type first
+v0.1 starts only on units with LPDDR3 memory; later builds also start on LPDDR4. See
+[Check your memory type](./requirements#check-your-memory-type). To test a build on an
+LPDDR4 unit, see [Testing your device](./testing).
 :::
 
 ## 1. Download an image
 
 Open the project's [Releases page](https://github.com/iDentitY4/TetsuOS/releases) and
-download the card image of the newest release:
+download the card image of the newest release. Skip any marked **Pre-release**: those are
+test builds, for [testing your device](./testing).
 
 | File | What it is |
 | --- | --- |
-| `tetsu-rg35xxsp-<build>-sdcard.img.gz` | The card image for a new install |
+| `tetsu-rg35xxsp-<version>-sdcard.img.gz`, such as `tetsu-rg35xxsp-v0.1-sdcard.img.gz` | The card image for a new install |
+| `SHA256SUMS-rg35xxsp` | Checksums, to check the download |
 | `tetsu-rg35xxsp-<build>.img.gz`, `manifest.txt`, `manifest.sig` | The signed update that [SYSTEM UPDATE](./upgrading) downloads. You don't need these to install |
+| `tetsu-rg35xxsp-<version>-sources.tar.part*`, `-licences.csv` | The sources of the GPL and other components, and their licences |
 
-Check that the download is complete against the checksum listed with the release:
+Check that the download is complete: with `SHA256SUMS-rg35xxsp` in the same folder,
 
 ```bash
-sha256sum tetsu-rg35xxsp-*-sdcard.img.gz
+sha256sum -c --ignore-missing SHA256SUMS-rg35xxsp
 ```
+
+prints `OK` after the image's name.
 
 ## 2. Write the card
 
