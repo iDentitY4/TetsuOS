@@ -198,7 +198,9 @@ ADVANCED > RUN SETUP AGAIN repeats.
   root forever (2026-11-14/15, `docs/features.md`). Patch 0019 identifies the cards again
   when the root is missing; checked with `mmc_reidentify_test`, not yet seen recovering a
   real failing start. The cause is unknown: Linux's reset doesn't take, and only a power
-  cycle (the card out and in) is certain
+  cycle (the card out and in) is certain. The user saw it only with SanDisk Ultra cards,
+  never with a 64 GB SanDisk Extreme, and a reset always starts it: left as it is
+  (2026-11-16), with a line in the release notes
 
 - A faint high-pitched noise with USB connected, not heard since; VBUS read 4.42 V
 - USB host mode is disabled (see the PHY note below), so USB accessories don't work
