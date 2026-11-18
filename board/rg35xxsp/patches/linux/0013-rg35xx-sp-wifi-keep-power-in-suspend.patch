@@ -6,7 +6,7 @@ whole suspend: "Failed to host PM flag MMC_PM_KEEP_POWER". Allow it on mmc1.
 ---
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
-@@ -64,3 +64,11 @@
+@@ -67,3 +67,11 @@
  		gpios = <&pio 0 3 GPIO_ACTIVE_LOW>; /* PA3 */
  	};
  };

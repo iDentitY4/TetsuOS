@@ -30,9 +30,12 @@ instead:
 | `0x4c` | ODT_EN |
 | `0xa0` / `0xa4` / `0xa8` / `0xac` | TPR6 / TPR10 / TPR11 / TPR12 |
 
-**RAM voltage is set twice:** `CONFIG_AXP_DCDC3_VOLT` in `board/rg35xxsp/uboot.fragment` and
-`reg_dcdc3` in kernel patch 0006. They must match. An LPDDR4 unit needs different U-Boot DRAM
-settings and no patch 0006. A RAM setup failure shows as a 1 Hz green blink.
+**The SP comes with LPDDR4 or LPDDR3,** and the SPL finds out which (U-Boot patch 0001):
+it tries LPDDR4 at 1.1V (`CONFIG_AXP_DCDC3_VOLT` and the `CONFIG_DRAM_SUNXI_*` values in
+`board/rg35xxsp/uboot.fragment`), and if that fails, LPDDR3 at 1.2V (the
+`CONFIG_DRAM_SUNXI_LPDDR3_*` values). Kernel patch 0006 gives `reg_dcdc3` a range of 1.1V to
+1.2V, so Linux keeps the voltage the SPL set. If neither type works, the SPL stops, which
+shows as a 1 Hz green blink.
 
 ## USB
 

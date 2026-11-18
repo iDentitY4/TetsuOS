@@ -2360,9 +2360,18 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   It starts 8 KiB into the card. At these offsets: `0x38` clock, `0x3c` type
   (7 LPDDR3, 8 LPDDR4), `0x40` DX_ODT, `0x44` DX_DRI, `0x48` CA_DRI, `0x4c` ODT_EN,
   `0xa0` TPR6, `0xa4` TPR10, `0xa8` TPR11, `0xac` TPR12.
-- **RAM voltage is set in two places:** `CONFIG_AXP_DCDC3_VOLT` in
-  `board/rg35xxsp/uboot.fragment`, and `reg_dcdc3` in patch 0006. They must match.
-  Only change them once the RAM type is known.
+- **The SPL detects the RAM type** (U-Boot patch 0001). It tries LPDDR4 at 1.1V first,
+  counting it only if it trains on the full 32-bit bus and passes the size check, then
+  LPDDR3 at 1.2V, so LPDDR4 chips never get 1.2V. The settings for both are in
+  `board/rg35xxsp/uboot.fragment`. Patch 0006 gives `reg_dcdc3` a range of 1.1V to
+  1.2V, and Linux leaves a voltage inside its range alone, so it keeps the SPL's. U-Boot
+  proper needs the same range (U-Boot patch 0002): its regulator uclass sets an
+  always-on regulator whose minimum equals its maximum, and set 1.1V again after the SPL.
+  Tested on the LPDDR3 test unit (2026-11-18): the controller came up as LPDDR3 on the
+  full bus with one rank (MSTR `0xC1040008`), 1 GiB, `vdd-dram` at 1.2V through 3 reboots
+  and a lid sleep. The time before the kernel was 2.74 to 3.03 s over four boots, against
+  2.53 to 2.66 s recorded before, so the failed LPDDR4 try costs about 0.1 to 0.2 s. Not
+  tested: any LPDDR4 unit, a cold start from power-off with this SPL.
 - **A RAM setup failure resets the chip.** The first boot stage turns the LED on,
   then panics and resets, which shows as a 1 Hz green blink with nothing on the card.
 - **EHCI0 and OHCI0 share PHY 0 with the MUSB device controller.** If they run, they

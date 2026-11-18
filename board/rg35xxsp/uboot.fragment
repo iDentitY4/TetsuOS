@@ -2,23 +2,34 @@
 # which this unit has no adapter for.
 CONFIG_BOOTDELAY=0
 
-# RAM setup for this unit, which has LPDDR3 rather than the LPDDR4 assumed by
-# anbernic_rg35xx_h700_defconfig. Values read from the boot0 that works on this
-# device (muOS card, offsets 0x38-0xac). ROCKNIX's generic LPDDR3 config has the
-# same type and voltage, with slightly different TPR11 and TPR12.
+# RAM setup. The SP is sold with LPDDR4 or LPDDR3, and the SPL tries LPDDR4 first and
+# then LPDDR3 (patches/uboot/0001). LPDDR4: the values of anbernic_rg35xx_h700_defconfig
+# (and ROCKNIX's LPDDR4 build) at 1.1 V. LPDDR3: read from the boot0 that works on the
+# test unit (muOS card, offsets 0x38-0xac), at 1.2 V; ROCKNIX's LPDDR3 build has the same
+# type and voltage, with slightly different TPR11 and TPR12. Both at 672 MHz. LPDDR4 is
+# tried first so its chips never get LPDDR3's voltage; Linux keeps the voltage set here.
 # CONFIG_SUNXI_DRAM_H616_LPDDR4 is not set
-CONFIG_SUNXI_DRAM_H616_LPDDR3=y
+CONFIG_SUNXI_DRAM_H616_LPDDR4_OR_LPDDR3=y
 CONFIG_DRAM_CLK=672
-CONFIG_DRAM_SUNXI_DX_ODT=0x06060606
-CONFIG_DRAM_SUNXI_DX_DRI=0x0d0d0d0d
-CONFIG_DRAM_SUNXI_CA_DRI=0x1919
-CONFIG_DRAM_SUNXI_ODT_EN=0x9988eeee
+CONFIG_DRAM_SUNXI_DX_ODT=0x08080808
+CONFIG_DRAM_SUNXI_DX_DRI=0x0e0e0e0e
+CONFIG_DRAM_SUNXI_CA_DRI=0x0e0e
+CONFIG_DRAM_SUNXI_ODT_EN=0x7887bbbb
 CONFIG_DRAM_SUNXI_TPR2=0x1
-CONFIG_DRAM_SUNXI_TPR6=0x2fb08080
-CONFIG_DRAM_SUNXI_TPR10=0x402f4489
-CONFIG_DRAM_SUNXI_TPR11=0x10131113
-CONFIG_DRAM_SUNXI_TPR12=0x0f0e0e0f
-CONFIG_AXP_DCDC3_VOLT=1200
+CONFIG_DRAM_SUNXI_TPR6=0x40808080
+CONFIG_DRAM_SUNXI_TPR10=0x402f6633
+CONFIG_DRAM_SUNXI_TPR11=0x1b1f1e1c
+CONFIG_DRAM_SUNXI_TPR12=0x06060606
+CONFIG_AXP_DCDC3_VOLT=1100
+CONFIG_DRAM_SUNXI_LPDDR3_DX_ODT=0x06060606
+CONFIG_DRAM_SUNXI_LPDDR3_DX_DRI=0x0d0d0d0d
+CONFIG_DRAM_SUNXI_LPDDR3_CA_DRI=0x1919
+CONFIG_DRAM_SUNXI_LPDDR3_ODT_EN=0x9988eeee
+CONFIG_DRAM_SUNXI_LPDDR3_TPR6=0x2fb08080
+CONFIG_DRAM_SUNXI_LPDDR3_TPR10=0x402f4489
+CONFIG_DRAM_SUNXI_LPDDR3_TPR11=0x10131113
+CONFIG_DRAM_SUNXI_LPDDR3_TPR12=0x0f0e0e0f
+CONFIG_DRAM_SUNXI_LPDDR3_VOLT=1200
 
 # A/B root slots with fallback (docs/features.md, "Updates over Wi-Fi"). RAUC's bootmeth
 # boots the first slot in BOOT_ORDER with tries left, counting each try down in the
