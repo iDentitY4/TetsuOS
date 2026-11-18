@@ -40,9 +40,9 @@ holding the device. The [FAQ](./faq) and [Troubleshooting](./troubleshooting) pa
 list the known issues.
 
 ::: warning RG35XX SP units differ
-Anbernic has shipped the RG35XX SP with different memory chips. Tetsu OS is currently
-built for units with **LPDDR3** memory. Check yours before installing: see
-[Requirements](./requirements#check-your-memory-type).
+Anbernic has shipped the RG35XX SP with different memory chips. v0.1 is built for units
+with **LPDDR3** memory; later builds also start on **LPDDR4**, but are untested there. Check
+yours before installing: see [Requirements](./requirements#check-your-memory-type).
 :::
 
 ## How it compares

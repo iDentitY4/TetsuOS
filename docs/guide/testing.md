@@ -1,0 +1,63 @@
+# Testing your device
+
+Tetsu OS is developed on one RG35XX SP, which has LPDDR3 memory. Builds after v0.1 also
+start on units with **LPDDR4** memory, but no LPDDR4 unit has run one yet. If you have
+one, a test tells us whether it works. It takes about fifteen minutes, and a card that
+doesn't start does no harm.
+
+## Before you start
+
+- **Find out your memory type** from the stock card, as shown in
+  [Check your memory type](./requirements#check-your-memory-type). It helps to know what
+  to expect, but you can test without it.
+- **A spare microSD card** of at least 6 GB. Writing the image erases it. Don't use the
+  stock firmware card.
+- **The test image:** the newest pre-release marked **TEST** on the
+  [Releases page](https://github.com/iDentitY4/TetsuOS/releases). Write it as shown in
+  [Installation](./installation#_2-write-the-card).
+
+::: tip Nothing on the device changes
+Tetsu OS runs from the card. The internal storage is not touched: take the card out, and
+the stock firmware starts as before.
+:::
+
+## 1. Start the device
+
+Put the card in **TF1**, unplug the USB cable and press the power button. Watch the screen
+and the green light for a minute:
+
+| What you see | What it means |
+| --- | --- |
+| The logo, then the setup | It works. Go on to [step 2](#_2-check-the-memory). |
+| No picture, and the green light blinks about once a second | The memory setup failed: neither memory type worked. |
+| The green light stays on, but the screen stays dark | The memory works, but something later doesn't, often the screen. |
+| Nothing at all | Check the card is in TF1 and the battery is charged, and try again. |
+
+If it doesn't start, take the card out and put it in your computer. A drive named
+**TETSU-BOOT** appears. If it has a file named `bootlog.txt`, Linux started, and the file
+says how far it got: attach it to your report. No `bootlog.txt` means Linux didn't start.
+
+## 2. Check the memory
+
+Go through the setup, then open **Settings > SYSTEM > SYSTEM INFO**. The **MEMORY** row
+shows the memory the device found, like `1 GB LPDDR4 - 850 MB FREE`. If it says LPDDR3
+on a unit whose stock card says LPDDR4, or the other way round, please say so.
+
+## 3. Try it for a few minutes
+
+Each of these takes a minute or two. Note anything that doesn't work as you'd expect:
+
+- **A game:** add one as shown in [Adding games](./adding-games), play it for five minutes,
+  and listen to the sound, through headphones too.
+- **Sleep:** close the lid for about a minute, open it, and carry on playing.
+- **Wi-Fi:** connect to your network in **Settings > WI-FI**.
+- **Power:** turn it off with the power button, wait ten seconds, and turn it on again.
+
+## 4. Send the report
+
+On **SYSTEM INFO**, press **X**. It saves the logs to the card's **TETSU-BOOT** drive, in
+`logs`. They hold no passwords or keys. Then
+[open a hardware test report](https://github.com/iDentitY4/TetsuOS/issues/new?template=hardware-test.yml)
+and attach `logs/system.txt`, `logs/launcher.log` and `bootlog.txt`.
+
+A report that it works is as useful as one that it doesn't. Thank you!

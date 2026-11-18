@@ -61,8 +61,9 @@ You need an RG35XX SP, a spare microSD card of at least 6 GB (16 GB or more leav
 games) and a computer with a card reader. Tetsu OS runs from the card and leaves the
 device's own firmware alone: take the card out and the stock system starts as before.
 
-1. **Check your memory type.** RG35XX SP units ship with LPDDR3 or LPDDR4 memory, and the
-   images are built for **LPDDR3**. [Requirements](https://identity4.github.io/TetsuOS/guide/requirements#check-your-memory-type)
+1. **Check your memory type.** RG35XX SP units ship with LPDDR3 or LPDDR4 memory, and
+   v0.1 is built for **LPDDR3**; later builds also start on LPDDR4 but are untested there.
+   [Requirements](https://identity4.github.io/TetsuOS/guide/requirements#check-your-memory-type)
    shows how to check from the stock card in a minute.
 2. **Download** the newest `tetsu-rg35xxsp-…-sdcard.img.gz` from
    [Releases](https://github.com/iDentitY4/TetsuOS/releases).
@@ -86,10 +87,12 @@ and the [FAQ](https://identity4.github.io/TetsuOS/guide/faq).
 ## Status
 
 Tetsu OS is in **beta** and developed on a single LPDDR3 RG35XX SP. Most features are
-checked on that unit, but expect rough edges, and LPDDR4 units need their own build for
-now. [CHANGELOG.md](CHANGELOG.md) lists what each release brings. USB
-accessories don't work yet, as the USB-C port runs in device mode only. Other H700 devices
-(RG35XX Plus, RG40XX, RG28XX) are not supported yet.
+checked on that unit, but expect rough edges. Builds after v0.1 also start on LPDDR4
+units, which nobody has tested yet:
+[help test](https://identity4.github.io/TetsuOS/guide/testing).
+[CHANGELOG.md](CHANGELOG.md) lists what each release brings. USB accessories don't work
+yet, as the USB-C port runs in device mode only. Other H700 devices (RG35XX Plus, RG40XX,
+RG28XX) are not supported yet.
 
 ## Building from source
 
