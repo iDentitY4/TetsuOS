@@ -2,7 +2,7 @@
 
 use crate::i18n::{tr, trf};
 use crate::ui::canvas::Battery;
-use crate::device::power;
+use crate::device::{power, ram};
 use crate::wifi;
 use std::path::Path;
 use std::process::Command;
@@ -107,6 +107,15 @@ fn wifi_line() -> Option<String> {
     })
 }
 
+/// The MEMORY row: the RAM as sold, like `1 GB LPDDR3`, and what is free, or with the
+/// type unknown, free of the kernel's total. Both fit the German row on a 2 GB device.
+pub(crate) fn memory_line(free: u64, total: u64, ram_type: Option<&str>) -> String {
+    match ram_type {
+        Some(kind) => trf("{} - {} FREE", &[&format!("{} GB {kind}", ram::sold_gigabytes(total)), &megabytes(free)]),
+        None => trf("{} FREE OF {}", &[&megabytes(free), &megabytes(total)]),
+    }
+}
+
 /// The lines the system info screen shows. There is room for 11.
 pub(crate) fn system_info(battery: Option<Battery>, games: usize) -> Vec<(String, String)> {
     let unknown = || tr("UNKNOWN").to_string();
@@ -128,7 +137,7 @@ pub(crate) fn system_info(battery: Option<Battery>, games: usize) -> Vec<(String
     };
     let memory = read_text(crate::device::paths::MEMORY)
         .and_then(|meminfo| parse_meminfo(&meminfo))
-        .map_or_else(unknown, |(free, total)| trf("{} FREE OF {}", &[&megabytes(free), &megabytes(total)]));
+        .map_or_else(unknown, |(free, total)| memory_line(free, total, ram::ram_type()));
     let speed = read_number(crate::device::paths::CPU_SPEED).map(|khz| format!("{} MHZ", khz / 1000));
     let temperature =
         read_number("/sys/class/thermal/thermal_zone0/temp").map(|millidegrees| format!("{} C", millidegrees / 1000));
@@ -214,6 +223,8 @@ mod tests {
         let meminfo = "MemTotal:        1005464 kB\nMemFree:          859028 kB\nMemAvailable:     869592 kB\n";
         assert_eq!(parse_meminfo(meminfo), Some((869592, 1005464)));
         assert_eq!(megabytes(1005464), "981 MB");
+        assert_eq!(memory_line(869592, 1005464, Some("LPDDR3")), "1 GB LPDDR3 - 849 MB FREE");
+        assert_eq!(memory_line(869592, 1005464, None), "849 MB FREE OF 981 MB");
         assert_eq!(parse_os_build("NAME=Buildroot\nVERSION=-g83e209b-dirty\n").as_deref(), Some("83e209b MODIFIED"));
         assert_eq!(parse_os_build("VERSION=-g83e209b\n").as_deref(), Some("83e209b"));
         assert_eq!(parse_os_build("NAME=Buildroot\n"), None);

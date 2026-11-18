@@ -176,6 +176,7 @@ pub fn save_logs() -> io::Result<String> {
         // in other files, which are left out.
         ("settings", read(crate::device::paths::SETTINGS)),
         ("storage", run("df", &["-k"])),
+        ("ram", format!("{}\n", crate::device::ram::summary())),
         ("memory", read(crate::device::paths::MEMORY)),
         ("processes", run("ps", &[])),
         ("network", run("ifconfig", &[])),

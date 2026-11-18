@@ -13,6 +13,7 @@ pub(crate) mod paths;
 pub(crate) mod performance;
 pub(crate) mod power;
 pub(crate) mod profile;
+pub(crate) mod ram;
 pub(crate) mod set_time;
 pub(crate) mod sleep;
 pub(crate) mod sounds;

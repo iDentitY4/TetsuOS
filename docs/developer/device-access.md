@@ -69,7 +69,7 @@ Press Enter and log in as `root`. Quit with Ctrl-a, k, y. Your user needs to be 
 | `/var/log/launcher.log` | The launcher and games: timings, fps, underruns |
 | `dmesg` | Kernel messages (they go to `ttynull`, not the screen) |
 | `/var/log/wifi-event.log`, `/var/log/ntp.log`, `/var/log/fsck-data.log` | Wi-Fi addresses, network time, TETSU-DATA repairs |
-| `bootlog.txt` on TETSU-BOOT | Written about 15 and 60 s after init: connector, backlight, deferred probes, the launcher and `dmesg` |
+| `bootlog.txt` on TETSU-BOOT | Written about 15 and 60 s after init: the device, RAM type and voltage, connector, backlight, deferred probes, the launcher and `dmesg` |
 
 TETSU-BOOT isn't mounted while the device runs. Mount it at a folder under `/tmp` (find it
 with `blkid`) and unmount it after.
