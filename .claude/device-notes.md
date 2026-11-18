@@ -102,8 +102,9 @@ ADVANCED > RUN SETUP AGAIN repeats.
   DATA icon
 
 - Updates over Wi-Fi (2026-11-13): an update over Wi-Fi rather than the cable, the lid,
-  B and a low battery during one, typing a source, the German wording. The device runs
-  slot B since the test; a flash starts again from A
+  B and a low battery during one, typing a source, the German wording. Since 2026-11-18 the
+  device runs the deleted `v0.1.1-test` release build (20261117-001904) in slot B; a
+  flash starts again from A
 
 - RetroAchievements offline (2026-11-13): a real unlock without Wi-Fi, sent later from the
   menus and dated right on the site, the OFFLINE notice, the German wording
@@ -212,10 +213,14 @@ ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Next steps
 
-1. The first beta (`docs/developer/releases.md`; the repository is public since
-   2026-11-14): the release workflow's first green run, the smoke test on a card from the
-   draft
-2. Rewind, moved to the end by the user
+1. Rewind, moved to the end by the user
+
+v0.1, the first beta, is published as the latest release since 2026-11-18
+(`docs/developer/releases.md`). Its update test: `v0.1.1-test`, signed and published as a
+pre-release, installed through SYSTEM UPDATE into slot B with all 492 files on TETSU-DATA
+unchanged but the source, then deleted; SYSTEM UPDATE with the default source found v0.1
+at `releases/latest` and said UP TO DATE. Installing v0.1 itself over the network wasn't
+tested, nor SSH over Wi-Fi on a release build.
 
 ## How the launcher is built
 
@@ -420,6 +425,10 @@ physical like the lid.
   pass it with `-i`. If locked out, the serial console still logs in (Python on
   `/dev/ttyACM0` works; Claude is in `uucp`), and cycling SSH back to USB ONLY there with
   injected presses fixes it. Leave the device on USB ONLY with no password and no keys.
+  A release build (on the device since 2026-11-18) needs a root password: the user gives
+  it in the session. Pass it through `SSH_ASKPASS` from an environment variable with
+  `SSH_ASKPASS_REQUIRE=force` and `PubkeyAuthentication=no`, never in a file; the serial
+  console asks for it too.
 - **Pressing buttons:** take a screenshot before pressing A, because a wrong guess at
   where the selection is can start one of the user's games or change their settings.
   Groups remember their selected row, and Up and Down wrap. Starting a game moves its
@@ -454,7 +463,8 @@ before power-off in seconds and `LAUNCHER_PREVIEW_LANGUAGE=de` renders
   squash merge. Never approve in the user's name. Tags can be pushed directly. The flow
   is in `CONTRIBUTING.md` ("How a change gets into main"). GitHub deletes a merged
   branch; afterwards run `git switch main && git pull --ff-only <https url> main`, `git
-  fetch --prune` and `git branch -D <branch>` (squashed branches look unmerged to git).
+  fetch --prune <https url> '+refs/heads/*:refs/remotes/origin/*'` (a plain fetch from
+  `origin` needs the SSH key) and `git branch -D <branch>` (squashed branches look unmerged to git).
 - `.github/workflows/ci.yml` runs `cargo test` and `cargo clippy` (warnings denied) on
   every pull request; Dependabot's PRs rely on it, as the Claude review skips bots.
 - Ask before larger changes, with options to choose from.
