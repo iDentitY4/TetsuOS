@@ -9,7 +9,7 @@ has them in full.
 | --- | --- |
 | SoC | Allwinner H700: 4× Cortex-A53 up to 1512 MHz, Mali-G31 GPU |
 | RAM | 1 GB; LPDDR3 at 1.2 V on the test unit, LPDDR4 on others |
-| Display | 640x480 at 59.94 Hz, NV3052C panel (`card1`; Panfrost is `card0`) |
+| Display | 640x480 at 59.94 Hz with the NV3052C panel, 59.52 Hz with the second panel (`card1`; Panfrost is `card0`) |
 | PMIC | X-Powers AXP717 |
 | Wi-Fi / Bluetooth | Realtek RTL8821CS: Wi-Fi on SDIO (`mmc1`, rtw88), Bluetooth on UART1 (H5) |
 | Storage | TF1 (`mmc0`, boot) and TF2 (`mmc2`) |
@@ -66,8 +66,11 @@ shows as a 1 Hz green blink.
   `/dev/input/event*` numbers move: find devices by name.
 - **TF2 is `mmc2`** (patch 0018), with a 3.3 V switch on PE4 that must stay on.
   `/usr/sbin/cards` finds each slot's card by its controller, not its number.
-- **Panels:** ROCKNIX has a separate v2 panel device tree for the SP. The test unit works with
-  the mainline NV3052C driver; another may not.
+- **The SP has one of two panels,** on the same wires. Kernel patch 0020 resets the panel when
+  the driver starts and reads its ID: an NV3052C reports `30 52 01` (its setup then replaces
+  that), and any other answer gets the second panel's setup and timings (720 x 560 pixels per
+  frame, 59.52 Hz). `dmesg` and `bootlog.txt` say which: `panel: NV3052C, ID 305201`.
+  `panel_newvision_nv3052c.panel=nv3052c` or `=v2` on the kernel's command line overrides it.
 - **HDMI** mirrors `fb0` at 640x480 via `video=HDMI-A-1:640x480@60`. Its TMDS clock is
   24.75 MHz against the 25.175 MHz mode: the first suspect if a TV shows nothing.
 

@@ -2444,8 +2444,21 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   as partition 4 since 2026-11-12 (3 before); the system finds it by its label.
   After an image writer or a plain `dd`, the device adds it at its next start
   (`/usr/sbin/data-partition`, see the card layout).
-- **Panels:** ROCKNIX has a separate v2 panel device tree for the SP. This unit
-  works with the mainline NV3052C driver, but another unit may not.
+- **The SP has one of two panels, found at each start** (kernel patch 0020). ROCKNIX ships a
+  device tree for each and leaves the choice to the user. Here the NV3052C driver resets the
+  panel when it probes and reads its display ID (`0x04`) over the 3-wire SPI bus. An NV3052C
+  reports `30 52 01` after a reset and `40 00 03` once set up. Any other ID, still after a
+  second read 130 ms later, gets the second panel's setup and timings, from ROCKNIX's
+  `anbernic,rg35xx-sp-v2-panel.panel`; an ID that can't be read keeps the NV3052C's. Only
+  boards with the new `anbernic,rg35xx-sp-panel` compatible do this. The log says what it
+  found, `panel_newvision_nv3052c.panel=nv3052c` or `=v2` on the command line overrides it, and
+  the launcher reads the same parameter in sysfs: games are paced at the second panel's
+  59.52 Hz, and 50 HZ GAMES AT 50 HZ does nothing on it, as nobody has seen that panel take
+  the longer blanking. Tested on the NV3052C unit (2026-11-18): found on 8 of 8 starts, the
+  launcher starting 1.45 to 1.75 s after the kernel as before. With `=v2` forced there, the
+  kernel set the second panel's mode (640 664 672 720 / 480 512 516 560) and blanking and
+  unblanking gave no errors. The user saw the picture normal and back after a lid close.
+  Not tested: any real second panel, its picture or its ID.
 - **Wi-Fi blocks sleep without `keep-power-in-suspend`.** rtw88 fails its SDIO
   suspend with `-EINVAL` ("Failed to host PM flag MMC_PM_KEEP_POWER"), which aborts
   the whole suspend, so lid sleep stops working. Patch 0013 adds the property to `mmc1`.
