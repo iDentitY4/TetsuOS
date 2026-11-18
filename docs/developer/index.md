@@ -21,7 +21,8 @@ making releases and finding your way around the code.
 ## How it starts
 
 1. The SoC's boot ROM loads U-Boot's SPL from 8 KiB into the card. The SPL sets up the
-   RAM (LPDDR3 values read from a working stock boot0) and loads TF-A and U-Boot.
+   RAM, trying LPDDR4 and then LPDDR3 (see [Hardware](./hardware#memory)), and loads TF-A
+   and U-Boot.
 2. U-Boot picks a root slot from the A/B boot order on TETSU-BOOT, runs that slot's
    `/boot/boot.scr`, which boots its `extlinux.conf`. See [Boot and updates](./boot).
 3. Linux shows the logo, mounts the root slot and runs the init scripts: TETSU-DATA,

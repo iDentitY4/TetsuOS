@@ -1,0 +1,81 @@
+name: Hardware test report
+description: You tried a Tetsu OS build on your device, whether it worked or not.
+title: "Hardware test: "
+labels: [hardware-test]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for testing. [Testing your device](https://identity4.github.io/TetsuOS/guide/testing) explains the steps. A report that it works is as useful as one that it doesn't.
+        Please don't link to or attach games or BIOS files.
+  - type: input
+    id: build
+    attributes:
+      label: Build
+      description: The release you downloaded, or what Settings > SYSTEM > SYSTEM INFO shows.
+      placeholder: v0.2-test (20261120-101500, 1a2b3c4)
+    validations:
+      required: true
+  - type: dropdown
+    id: device
+    attributes:
+      label: Device
+      options:
+        - Anbernic RG35XX SP
+        - Other (say which below)
+    validations:
+      required: true
+  - type: dropdown
+    id: stock-memory
+    attributes:
+      label: Memory type on the stock card
+      description: "The value at 0x3c in boot0: 7 is LPDDR3, 8 is LPDDR4. [How to check](https://identity4.github.io/TetsuOS/guide/requirements#check-your-memory-type)"
+      options:
+        - LPDDR4 (8)
+        - LPDDR3 (7)
+        - Didn't check
+    validations:
+      required: true
+  - type: dropdown
+    id: start
+    attributes:
+      label: What happened at the first start
+      options:
+        - The logo, then the setup
+        - No picture, and the green light blinked about once a second
+        - The green light stayed on, but the screen stayed dark
+        - Something else (say what below)
+    validations:
+      required: true
+  - type: input
+    id: memory-row
+    attributes:
+      label: SYSTEM INFO's MEMORY row
+      description: As it reads in Settings > SYSTEM > SYSTEM INFO, if the device started.
+      placeholder: 1 GB LPDDR4 - 850 MB FREE
+  - type: checkboxes
+    id: worked
+    attributes:
+      label: What worked
+      description: Tick what you tried and what worked. Say below what didn't.
+      options:
+        - label: A game, with sound from the speaker
+        - label: Sound through headphones
+        - label: Sleep with the lid, and playing on afterwards
+        - label: Wi-Fi
+        - label: Turning it off and on again with the power button
+  - type: textarea
+    id: what
+    attributes:
+      label: What didn't work, or anything odd
+      description: What you tried, what you expected and what happened instead.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: X on SYSTEM INFO saves them to `logs` on the card's TETSU-BOOT drive. Attach `logs/system.txt`, `logs/launcher.log` and `bootlog.txt` from TETSU-BOOT. If the device didn't start, `bootlog.txt` alone, if there is one.
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: Photos of the screen, where you bought the device and when, other things you tried.

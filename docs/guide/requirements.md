@@ -8,9 +8,14 @@ controls and power wiring.
 
 ### Check your memory type
 
-RG35XX SP units ship with either LPDDR3 or LPDDR4 memory, and the bootloader must be built
-for the right one. **Tetsu OS images are built for LPDDR3.** On an LPDDR4 unit the device
-won't start, and the green light blinks about once a second.
+RG35XX SP units ship with either LPDDR3 or LPDDR4 memory, and the bootloader has to set
+up the right one.
+
+- **v0.1 is built for LPDDR3.** On an LPDDR4 unit it doesn't start, and the green light
+  blinks about once a second.
+- **Builds after v0.1** try LPDDR4, then LPDDR3, so one image starts on both. No LPDDR4
+  unit has run one yet: if you have one, please [help test it](./testing). Once it runs,
+  Settings > SYSTEM > SYSTEM INFO shows the memory type on the MEMORY row.
 
 You can read the memory type from the stock firmware card (or a muOS card) that boots on
 your unit. The first boot stage, boot0, starts 8 KiB into the card, and the 32-bit value at
@@ -21,8 +26,8 @@ a reader at `/dev/sdX`:
 sudo dd if=/dev/sdX bs=1 skip=$((8192 + 0x3c)) count=4 2>/dev/null | od -An -tu4
 ```
 
-If it prints `8`, the image needs to be built for LPDDR4. See
-[Hardware notes](../developer/hardware#memory) for what to change.
+If it prints `8`, your unit has LPDDR4: v0.1 won't start on it, but the
+[test image](./testing) should.
 
 ::: tip
 Trying a card costs nothing: a card that doesn't boot does no harm, and the stock card

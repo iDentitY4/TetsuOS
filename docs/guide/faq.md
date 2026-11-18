@@ -9,7 +9,8 @@ stock firmware as before.
 
 ### Which devices are supported?
 
-Only the Anbernic RG35XX SP with LPDDR3 memory for now. The launcher already picks its
+Only the Anbernic RG35XX SP for now: v0.1 on units with LPDDR3 memory, and builds after
+it on LPDDR4 too, though no LPDDR4 unit has run one yet ([help test](./testing)). The launcher already picks its
 battery, backlight and power paths from a device profile, so other H700 handhelds can follow.
 
 ### Do I need BIOS files?

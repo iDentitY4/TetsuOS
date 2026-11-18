@@ -60,6 +60,7 @@ export default defineConfig({
           items: [
             { text: 'Upgrading', link: '/guide/upgrading' },
             { text: 'Troubleshooting', link: '/guide/troubleshooting' },
+            { text: 'Testing your device', link: '/guide/testing' },
             { text: 'FAQ', link: '/guide/faq' },
           ],
         },
