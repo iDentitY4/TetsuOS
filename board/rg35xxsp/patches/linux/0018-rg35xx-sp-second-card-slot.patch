@@ -8,7 +8,7 @@ the hosts probe in, which they do asynchronously.
 ---
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
-@@ -80,3 +80,36 @@
+@@ -83,3 +83,36 @@
  &mmc1 {
  	keep-power-in-suspend;
  };

@@ -6,7 +6,7 @@ left one. Swap the pins, so the labels and codes match the buttons.
 ---
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
-@@ -50,3 +50,17 @@
+@@ -53,3 +53,17 @@
  &ohci0 {
  	status = "disabled";
  };

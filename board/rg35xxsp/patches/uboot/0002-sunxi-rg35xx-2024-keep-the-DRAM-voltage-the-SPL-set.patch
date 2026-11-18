@@ -1,0 +1,34 @@
+Subject: [PATCH 2/2] sunxi: rg35xx-2024: keep the DRAM voltage the SPL set
+
+U-Boot proper set vdd-dram back to the device tree's fixed 1.1V when the
+AXP717's regulators probed, as the regulator uclass does for an
+always-on regulator whose minimum equals its maximum. With
+SUNXI_DRAM_H616_LPDDR4_OR_LPDDR3 the SPL sets 1.2V for LPDDR3, which
+this undid; Linux, given the same range, then kept the 1.1V. A range of
+1.1V to 1.2V in U-Boot's copy of the device tree leaves the voltage
+where the SPL set it.
+---
+ .../sun50i-h700-anbernic-rg35xx-2024-u-boot.dtsi   | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+ create mode 100644 arch/arm/dts/sun50i-h700-anbernic-rg35xx-2024-u-boot.dtsi
+
+diff --git a/arch/arm/dts/sun50i-h700-anbernic-rg35xx-2024-u-boot.dtsi b/arch/arm/dts/sun50i-h700-anbernic-rg35xx-2024-u-boot.dtsi
+new file mode 100644
+index 00000000..51e59088
+--- /dev/null
++++ b/arch/arm/dts/sun50i-h700-anbernic-rg35xx-2024-u-boot.dtsi
+@@ -0,0 +1,14 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++
++#include "sunxi-u-boot.dtsi"
++
++/*
++ * Every Anbernic H700 board builds U-Boot with this device tree, but they come
++ * with LPDDR4 (1.1V) or LPDDR3 (1.2V), and the SPL sets the voltage for the one
++ * it finds. With min equal to max, the regulator uclass would set 1.1V again
++ * when the PMIC's regulators probe, undervolting LPDDR3; a range leaves it be.
++ */
++&reg_dcdc3 {
++	regulator-min-microvolt = <1100000>;
++	regulator-max-microvolt = <1200000>;
++};

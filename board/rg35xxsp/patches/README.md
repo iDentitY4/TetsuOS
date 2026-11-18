@@ -21,8 +21,8 @@ squashes multi-commit files, so the original commit boundaries are in ROCKNIX.
 
 Ten patches are specific to this project:
 
-- `linux/0006-rg35xx-sp-lpddr3-ram-voltage.patch` runs the RAM rail at 1.2V for
-  LPDDR3 units.
+- `linux/0006-rg35xx-sp-ram-voltage-from-spl.patch` lets the RAM rail stay at the
+  voltage the SPL set, 1.1V for LPDDR4 or 1.2V for LPDDR3.
 - `linux/0007-rg35xx-sp-usb-device-mode.patch` disables the USB host controllers,
   which share the port with the device controller and would otherwise take it
   over at boot. USB host mode needs this reverted, plus a dual-role setup like
@@ -81,3 +81,18 @@ Ten patches are specific to this project:
   `mac_addr=3` when wpa_supplicant 2.12 saves its configuration, which it reads but left
   out. Settings > WI-FI's PRIVATE MAC address uses it; without it a network came back
   after a restart with an all-zero address and never connected.
+- `uboot/0001-sunxi-H616-detect-LPDDR4-or-LPDDR3-at-boot.patch` (ours): the SP is sold
+  with LPDDR4 or LPDDR3, and mainline U-Boot picks the type when it is built. With
+  `CONFIG_SUNXI_DRAM_H616_LPDDR4_OR_LPDDR3` the SPL has both types' PHY table and timings.
+  It tries LPDDR4 at `CONFIG_AXP_DCDC3_VOLT` first and counts it only on the full 32-bit
+  bus with the size check passing, then sets `CONFIG_DRAM_SUNXI_LPDDR3_VOLT` and sets up
+  LPDDR3 from the `CONFIG_DRAM_SUNXI_LPDDR3_*` values as before. LPDDR4 goes first so its
+  chips never get LPDDR3's higher voltage. While LPDDR4 is only tried, a DRAM timeout
+  fails the try instead of stopping, and read calibration's waits, which had no limit,
+  give up after 1 s. ROCKNIX builds a separate U-Boot and image for each type instead.
+- `uboot/0002-sunxi-rg35xx-2024-keep-the-DRAM-voltage-the-SPL-set.patch` (ours): every
+  Anbernic H700 board builds U-Boot with the RG35XX 2024 device tree, which pins
+  `vdd-dram` at 1.1 V. U-Boot proper's regulator uclass sets an always-on regulator whose
+  minimum equals its maximum when it probes, so it undid the SPL's 1.2 V for LPDDR3 (seen
+  on the test unit: 1.1 V in Linux with patch 0006's range). A 1.1 V to 1.2 V range in
+  U-Boot's `-u-boot.dtsi` leaves the SPL's voltage alone.

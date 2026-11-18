@@ -1,0 +1,474 @@
+Subject: [PATCH 1/2] sunxi: H616: detect LPDDR4 or LPDDR3 at boot
+
+Anbernic sells the same H700 handhelds with either LPDDR4 or LPDDR3,
+which needed a different SPL each. SUNXI_DRAM_H616_LPDDR4_OR_LPDDR3
+builds both types' PHY table and timings. LPDDR4 is tried first, at
+AXP_DCDC3_VOLT, and counts only if it trains on the full 32-bit bus
+and passes the size check; otherwise DCDC3 goes to
+DRAM_SUNXI_LPDDR3_VOLT and LPDDR3 is set up as before, with the
+DRAM_SUNXI_LPDDR3_* settings. LPDDR4 goes first so that its chips never
+see LPDDR3's higher voltage.
+
+While LPDDR4 is only tried, a DRAM timeout fails the try instead of
+stopping, and read calibration's waits, unbounded before, give up
+after 1s.
+---
+ arch/arm/include/asm/arch-sunxi/dram.h        |   2 +
+ .../include/asm/arch-sunxi/dram_sun50i_h616.h |   4 +
+ arch/arm/mach-sunxi/Kconfig                   |  62 ++++++
+ arch/arm/mach-sunxi/dram_helpers.c            |  21 +-
+ arch/arm/mach-sunxi/dram_sun50i_h616.c        | 196 ++++++++++++++++--
+ arch/arm/mach-sunxi/dram_timings/Makefile     |   1 +
+ .../dram_timings/h616_lpddr4_lpddr3.c         |  16 ++
+ 7 files changed, 287 insertions(+), 15 deletions(-)
+ create mode 100644 arch/arm/mach-sunxi/dram_timings/h616_lpddr4_lpddr3.c
+
+diff --git a/arch/arm/include/asm/arch-sunxi/dram.h b/arch/arm/include/asm/arch-sunxi/dram.h
+index 59e2e980..7107d694 100644
+--- a/arch/arm/include/asm/arch-sunxi/dram.h
++++ b/arch/arm/include/asm/arch-sunxi/dram.h
+@@ -43,6 +43,8 @@
+ 
+ unsigned long sunxi_dram_init(void);
+ void mctl_await_completion(u32 *reg, u32 mask, u32 val);
++extern bool mctl_trying;
++extern bool mctl_try_failed;
+ bool mctl_mem_matches(u32 offset);
+ bool mctl_mem_matches_base(u32 offset, ulong base);
+ bool mctl_check_memory(phys_addr_t addr);
+diff --git a/arch/arm/include/asm/arch-sunxi/dram_sun50i_h616.h b/arch/arm/include/asm/arch-sunxi/dram_sun50i_h616.h
+index a8fdda12..13d2d3d2 100644
+--- a/arch/arm/include/asm/arch-sunxi/dram_sun50i_h616.h
++++ b/arch/arm/include/asm/arch-sunxi/dram_sun50i_h616.h
+@@ -176,5 +176,9 @@ static inline int ns_to_t(int nanoseconds)
+ }
+ 
+ void mctl_set_timing_params(const struct dram_para *para);
++#ifdef CONFIG_SUNXI_DRAM_H616_LPDDR4_OR_LPDDR3
++void mctl_set_timing_params_lpddr4(const struct dram_para *para);
++void mctl_set_timing_params_lpddr3(const struct dram_para *para);
++#endif
+ 
+ #endif /* _SUNXI_DRAM_SUN50I_H616_H */
+diff --git a/arch/arm/mach-sunxi/Kconfig b/arch/arm/mach-sunxi/Kconfig
+index b0c5d3cd..14b572ba 100644
+--- a/arch/arm/mach-sunxi/Kconfig
++++ b/arch/arm/mach-sunxi/Kconfig
+@@ -186,6 +186,57 @@ config DRAM_SUNXI_TPR14
+ 	help
+ 	  TPR14 value from vendor DRAM settings.
+ 
++if SUNXI_DRAM_H616_LPDDR4_OR_LPDDR3
++config DRAM_SUNXI_LPDDR3_DX_ODT
++	hex "LPDDR3 DX ODT parameter"
++	help
++	  DX ODT value for LPDDR3 chips, used when the LPDDR4 settings above
++	  fail and the DRAM is tried as LPDDR3.
++
++config DRAM_SUNXI_LPDDR3_DX_DRI
++	hex "LPDDR3 DX DRI parameter"
++	help
++	  DX DRI value for LPDDR3 chips.
++
++config DRAM_SUNXI_LPDDR3_CA_DRI
++	hex "LPDDR3 CA DRI parameter"
++	help
++	  CA DRI value for LPDDR3 chips.
++
++config DRAM_SUNXI_LPDDR3_ODT_EN
++	hex "LPDDR3 ODT EN parameter"
++	help
++	  ODT EN value for LPDDR3 chips.
++
++config DRAM_SUNXI_LPDDR3_TPR6
++	hex "LPDDR3 TPR6 parameter"
++	help
++	  TPR6 value for LPDDR3 chips.
++
++config DRAM_SUNXI_LPDDR3_TPR10
++	hex "LPDDR3 TPR10 parameter"
++	help
++	  TPR10 value for LPDDR3 chips.
++
++config DRAM_SUNXI_LPDDR3_TPR11
++	hex "LPDDR3 TPR11 parameter"
++	help
++	  TPR11 value for LPDDR3 chips.
++
++config DRAM_SUNXI_LPDDR3_TPR12
++	hex "LPDDR3 TPR12 parameter"
++	help
++	  TPR12 value for LPDDR3 chips.
++
++config DRAM_SUNXI_LPDDR3_VOLT
++	int "LPDDR3 DRAM supply voltage (mV)"
++	default 1200
++	help
++	  Voltage set on DCDC3 before LPDDR3 is tried, after LPDDR4 failed,
++	  on boards whose DRAM is supplied by an AXP PMIC's DCDC3. LPDDR4 is
++	  tried at AXP_DCDC3_VOLT, which should be the LPDDR4 voltage.
++endif
++
+ choice
+ 	prompt "DRAM PHY pin mapping selection"
+ 	default DRAM_SUNXI_PHY_ADDR_MAP_0
+@@ -673,6 +724,17 @@ config SUNXI_DRAM_H616_LPDDR4
+ 	  This option is the LPDDR4 timing used by the stock boot0 by
+ 	  Allwinner.
+ 
++config SUNXI_DRAM_H616_LPDDR4_OR_LPDDR3
++	bool "LPDDR4 or LPDDR3 on the H616 DRAM controller, detected at boot"
++	select SUNXI_DRAM_LPDDR3
++	select SUNXI_DRAM_LPDDR4
++	depends on DRAM_SUN50I_H616
++	help
++	  For boards sold with either LPDDR4 or LPDDR3 chips. LPDDR4 is
++	  tried first, with the DRAM_SUNXI_* settings and at AXP_DCDC3_VOLT. If it fails to train at full bus width, LPDDR3 is tried
++	  with the DRAM_SUNXI_LPDDR3_* settings at its higher voltage. Both
++	  use Allwinner's boot0 timings.
++
+ config SUNXI_DRAM_H616_DDR3_1333
+ 	bool "DDR3-1333 boot0 timings on the H616 DRAM controller"
+ 	select SUNXI_DRAM_DDR3
+diff --git a/arch/arm/mach-sunxi/dram_helpers.c b/arch/arm/mach-sunxi/dram_helpers.c
+index 376b7d14..4d679a9e 100644
+--- a/arch/arm/mach-sunxi/dram_helpers.c
++++ b/arch/arm/mach-sunxi/dram_helpers.c
+@@ -12,16 +12,33 @@
+ #include <asm/io.h>
+ #include <asm/arch/dram.h>
+ 
++/*
++ * Set while a DRAM type is only being tried: a timeout then marks the try
++ * as failed instead of stopping, and later waits of the same try return at
++ * once. The SPL's BSS is in DRAM, so these live in .data.
++ */
++bool mctl_trying __section(".data");
++bool mctl_try_failed __section(".data");
++
+ /*
+  * Wait up to 1s for value to be set in given part of reg.
+  */
+ void mctl_await_completion(u32 *reg, u32 mask, u32 val)
+ {
+-	unsigned long tmo = timer_get_us() + 1000000;
++	unsigned long tmo;
++
++	if (mctl_try_failed)
++		return;
+ 
++	tmo = timer_get_us() + 1000000;
+ 	while ((readl(reg) & mask) != val) {
+-		if (timer_get_us() > tmo)
++		if (timer_get_us() > tmo) {
++			if (mctl_trying) {
++				mctl_try_failed = true;
++				return;
++			}
+ 			panic("Timeout initialising DRAM\n");
++		}
+ 	}
+ }
+ 
+diff --git a/arch/arm/mach-sunxi/dram_sun50i_h616.c b/arch/arm/mach-sunxi/dram_sun50i_h616.c
+index 42a0550e..5af70c7c 100644
+--- a/arch/arm/mach-sunxi/dram_sun50i_h616.c
++++ b/arch/arm/mach-sunxi/dram_sun50i_h616.c
+@@ -12,8 +12,10 @@
+  * (C) Copyright 2020 Jernej Skrabec <jernej.skrabec@siol.net>
+  *
+  */
++#include <axp_pmic.h>
+ #include <init.h>
+ #include <log.h>
++#include <time.h>
+ #include <asm/io.h>
+ #include <asm/arch/clock.h>
+ #include <asm/arch/dram.h>
+@@ -227,6 +229,7 @@ static void mctl_set_addrmap(const struct dram_config *config)
+ 	mctl_ctl->addrmap[8] = 0x3F3F;
+ }
+ 
++#ifndef CONFIG_SUNXI_DRAM_H616_LPDDR4_OR_LPDDR3
+ #ifdef CONFIG_DRAM_SUNXI_PHY_ADDR_MAP_1
+ static const u8 phy_init[] = {
+ #ifdef CONFIG_SUNXI_DRAM_H616_DDR3_1333
+@@ -266,6 +269,50 @@ static const u8 phy_init[] = {
+ #endif
+ };
+ #endif /* CONFIG_DRAM_SUNXI_PHY_ADDR_MAP_0 */
++#else /* CONFIG_SUNXI_DRAM_H616_LPDDR4_OR_LPDDR3 */
++/* The tables above for each type, as both may be needed. */
++#ifdef CONFIG_DRAM_SUNXI_PHY_ADDR_MAP_1
++static const u8 phy_init_lpddr4[] = {
++	0x03, 0x00, 0x17, 0x05, 0x02, 0x19, 0x06, 0x07,
++	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
++	0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x01,
++	0x18, 0x04, 0x1a
++};
++
++static const u8 phy_init_lpddr3[] = {
++	0x18, 0x00, 0x04, 0x09, 0x06, 0x05, 0x02, 0x19,
++	0x17, 0x03, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
++	0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x07,
++	0x08, 0x01, 0x1a
++};
++#else
++static const u8 phy_init_lpddr4[] = {
++	0x02, 0x00, 0x17, 0x05, 0x04, 0x19, 0x06, 0x07,
++	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
++	0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x01,
++	0x18, 0x03, 0x1a
++};
++
++static const u8 phy_init_lpddr3[] = {
++	0x18, 0x06, 0x00, 0x05, 0x04, 0x03, 0x09, 0x02,
++	0x08, 0x01, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
++	0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x07,
++	0x17, 0x19, 0x1a
++};
++#endif
++
++_Static_assert(sizeof(phy_init_lpddr4) == sizeof(phy_init_lpddr3),
++	       "PHY tables differ in size");
++
++void mctl_set_timing_params(const struct dram_para *para)
++{
++	if (para->type == SUNXI_DRAM_TYPE_LPDDR4)
++		mctl_set_timing_params_lpddr4(para);
++	else
++		mctl_set_timing_params_lpddr3(para);
++}
++#endif
++
+ #define MASK_BYTE(reg, nr) (((reg) >> ((nr) * 8)) & 0x1f)
+ static void mctl_phy_configure_odt(const struct dram_para *para)
+ {
+@@ -378,6 +425,24 @@ static bool mctl_phy_write_leveling(const struct dram_para *para,
+ 	return result;
+ }
+ 
++/*
++ * Waits for read calibration to finish, for up to 1s: false if it reports an
++ * error or never finishes, as with the wrong type of DRAM.
++ */
++static bool mctl_phy_await_read_calibration(u32 val)
++{
++	unsigned long tmo = timer_get_us() + 1000000;
++
++	while ((readl(SUNXI_DRAM_PHY0_BASE + 0x184) & val) != val) {
++		if (readl(SUNXI_DRAM_PHY0_BASE + 0x184) & 0x20)
++			return false;
++		if (timer_get_us() > tmo)
++			return false;
++	}
++
++	return true;
++}
++
+ static bool mctl_phy_read_calibration(const struct dram_config *config)
+ {
+ 	bool result = true;
+@@ -392,12 +457,8 @@ static bool mctl_phy_read_calibration(const struct dram_config *config)
+ 	else
+ 		val = 3;
+ 
+-	while ((readl(SUNXI_DRAM_PHY0_BASE + 0x184) & val) != val) {
+-		if (readl(SUNXI_DRAM_PHY0_BASE + 0x184) & 0x20) {
+-			result = false;
+-			break;
+-		}
+-	}
++	if (!mctl_phy_await_read_calibration(val))
++		result = false;
+ 
+ 	clrbits_le32(SUNXI_DRAM_PHY0_BASE + 8, 1);
+ 
+@@ -408,12 +469,8 @@ static bool mctl_phy_read_calibration(const struct dram_config *config)
+ 
+ 		setbits_le32(SUNXI_DRAM_PHY0_BASE + 8, 1);
+ 
+-		while ((readl(SUNXI_DRAM_PHY0_BASE + 0x184) & val) != val) {
+-			if (readl(SUNXI_DRAM_PHY0_BASE + 0x184) & 0x20) {
+-				result = false;
+-				break;
+-			}
+-		}
++		if (!mctl_phy_await_read_calibration(val))
++			result = false;
+ 
+ 		clrbits_le32(SUNXI_DRAM_PHY0_BASE + 8, 1);
+ 	}
+@@ -964,8 +1021,14 @@ static bool mctl_phy_init(const struct dram_para *para,
+ 	writel(val2, SUNXI_DRAM_PHY0_BASE + 0x37c);
+ 
+ 	ptr = (u32 *)(SUNXI_DRAM_PHY0_BASE + 0xc0);
++#ifdef CONFIG_SUNXI_DRAM_H616_LPDDR4_OR_LPDDR3
++	for (i = 0; i < ARRAY_SIZE(phy_init_lpddr4); i++)
++		writel(para->type == SUNXI_DRAM_TYPE_LPDDR4 ?
++		       phy_init_lpddr4[i] : phy_init_lpddr3[i], &ptr[i]);
++#else
+ 	for (i = 0; i < ARRAY_SIZE(phy_init); i++)
+ 		writel(phy_init[i], &ptr[i]);
++#endif
+ 
+ 	if (para->tpr10 & TPR10_CA_BIT_DELAY)
+ 		mctl_phy_ca_bit_delay_compensation(para, config);
+@@ -1314,11 +1377,117 @@ static bool mctl_ctrl_init(const struct dram_para *para,
+ bool mctl_core_init(const struct dram_para *para,
+ 		    const struct dram_config *config)
+ {
++	bool ok;
++
++	mctl_try_failed = false;
++
+ 	mctl_sys_init(para->clk);
+ 
+-	return mctl_ctrl_init(para, config);
++	ok = mctl_ctrl_init(para, config);
++
++	return ok && !mctl_try_failed;
++}
++
++#ifdef CONFIG_SUNXI_DRAM_H616_LPDDR4_OR_LPDDR3
++static const struct dram_para para_lpddr4 = {
++	.clk = CONFIG_DRAM_CLK,
++	.type = SUNXI_DRAM_TYPE_LPDDR4,
++	.dx_odt = CONFIG_DRAM_SUNXI_DX_ODT,
++	.dx_dri = CONFIG_DRAM_SUNXI_DX_DRI,
++	.ca_dri = CONFIG_DRAM_SUNXI_CA_DRI,
++	.odt_en = CONFIG_DRAM_SUNXI_ODT_EN,
++	.tpr0 = CONFIG_DRAM_SUNXI_TPR0,
++	.tpr2 = CONFIG_DRAM_SUNXI_TPR2,
++	.tpr6 = CONFIG_DRAM_SUNXI_TPR6,
++	.tpr10 = CONFIG_DRAM_SUNXI_TPR10,
++	.tpr11 = CONFIG_DRAM_SUNXI_TPR11,
++	.tpr12 = CONFIG_DRAM_SUNXI_TPR12,
++};
++
++static const struct dram_para para_lpddr3 = {
++	.clk = CONFIG_DRAM_CLK,
++	.type = SUNXI_DRAM_TYPE_LPDDR3,
++	.dx_odt = CONFIG_DRAM_SUNXI_LPDDR3_DX_ODT,
++	.dx_dri = CONFIG_DRAM_SUNXI_LPDDR3_DX_DRI,
++	.ca_dri = CONFIG_DRAM_SUNXI_LPDDR3_CA_DRI,
++	.odt_en = CONFIG_DRAM_SUNXI_LPDDR3_ODT_EN,
++	.tpr0 = CONFIG_DRAM_SUNXI_TPR0,
++	.tpr2 = CONFIG_DRAM_SUNXI_TPR2,
++	.tpr6 = CONFIG_DRAM_SUNXI_LPDDR3_TPR6,
++	.tpr10 = CONFIG_DRAM_SUNXI_LPDDR3_TPR10,
++	.tpr11 = CONFIG_DRAM_SUNXI_LPDDR3_TPR11,
++	.tpr12 = CONFIG_DRAM_SUNXI_LPDDR3_TPR12,
++};
++
++/*
++ * Tries LPDDR4 without stopping on a failure, and returns its size, or 0.
++ * Only the full 32-bit bus counts: LPDDR3 might train on half of it as
++ * LPDDR4, and a board sold with either type has both on the full bus.
++ * The size check at the end also catches settings that trained but don't
++ * hold data.
++ */
++static unsigned long mctl_try_lpddr4(struct dram_config *config)
++{
++	unsigned long size = 0;
++
++	mctl_trying = true;
++
++	config->cols = 8;
++	config->rows = 13;
++	config->bus_full_width = 1;
++
++	config->ranks = 2;
++	if (!mctl_core_init(&para_lpddr4, config)) {
++		config->ranks = 1;
++		if (!mctl_core_init(&para_lpddr4, config))
++			goto out;
++	}
++
++	mctl_auto_detect_dram_size(&para_lpddr4, config);
++
++	if (mctl_core_init(&para_lpddr4, config))
++		size = mctl_calc_size(config);
++
++out:
++	mctl_trying = false;
++	mctl_try_failed = false;
++
++	return size;
+ }
+ 
++unsigned long sunxi_dram_init(void)
++{
++	void *const prcm = (void *)SUNXI_PRCM_BASE;
++	struct dram_config config;
++	unsigned long size;
++
++	setbits_le32(prcm + CCU_PRCM_RES_CAL_CTRL, BIT(8));
++	clrbits_le32(prcm + CCU_PRCM_OHMS240, 0x3f);
++
++	size = mctl_try_lpddr4(&config);
++	if (size) {
++		printf(" LPDDR4");
++	} else {
++#ifdef CONFIG_AXP_DCDC3_VOLT
++		/* LPDDR3 needs more than LPDDR4, which mustn't see this. */
++		axp_set_dcdc3(CONFIG_DRAM_SUNXI_LPDDR3_VOLT);
++		udelay(1000);
++#endif
++		mctl_auto_detect_rank_width(&para_lpddr3, &config);
++		mctl_auto_detect_dram_size(&para_lpddr3, &config);
++
++		mctl_core_init(&para_lpddr3, &config);
++
++		size = mctl_calc_size(&config);
++		printf(" LPDDR3");
++	}
++
++	mctl_set_master_priority();
++
++	return size;
++};
++#else
++
+ static const struct dram_para para = {
+ 	.clk = CONFIG_DRAM_CLK,
+ #ifdef CONFIG_SUNXI_DRAM_H616_DDR3_1333
+@@ -1360,3 +1529,4 @@ unsigned long sunxi_dram_init(void)
+ 
+ 	return size;
+ };
++#endif /* CONFIG_SUNXI_DRAM_H616_LPDDR4_OR_LPDDR3 */
+diff --git a/arch/arm/mach-sunxi/dram_timings/Makefile b/arch/arm/mach-sunxi/dram_timings/Makefile
+index 5de9fd5a..526b95ac 100644
+--- a/arch/arm/mach-sunxi/dram_timings/Makefile
++++ b/arch/arm/mach-sunxi/dram_timings/Makefile
+@@ -6,6 +6,7 @@ obj-$(CONFIG_SUNXI_DRAM_H6_DDR3_1333)	+= h6_ddr3_1333.o
+ obj-$(CONFIG_SUNXI_DRAM_H616_DDR3_1333)	+= h616_ddr3_1333.o
+ obj-$(CONFIG_SUNXI_DRAM_H616_LPDDR3)	+= h616_lpddr3.o
+ obj-$(CONFIG_SUNXI_DRAM_H616_LPDDR4)	+= h616_lpddr4_2133.o
++obj-$(CONFIG_SUNXI_DRAM_H616_LPDDR4_OR_LPDDR3)	+= h616_lpddr4_lpddr3.o
+ obj-$(CONFIG_SUNXI_DRAM_A133_DDR4)	+= a133_ddr4.o
+ obj-$(CONFIG_SUNXI_DRAM_A133_LPDDR4)	+= a133_lpddr4.o
+ obj-$(CONFIG_SUNXI_DRAM_A523_DDR3)	+= a523_ddr3.o
+diff --git a/arch/arm/mach-sunxi/dram_timings/h616_lpddr4_lpddr3.c b/arch/arm/mach-sunxi/dram_timings/h616_lpddr4_lpddr3.c
+new file mode 100644
+index 00000000..db56d81a
+--- /dev/null
++++ b/arch/arm/mach-sunxi/dram_timings/h616_lpddr4_lpddr3.c
+@@ -0,0 +1,16 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * Both H616 LPDDR4 and LPDDR3 timings, for boards whose DRAM type is
++ * detected at boot (SUNXI_DRAM_H616_LPDDR4_OR_LPDDR3).
++ */
++
++#include <asm/arch/dram.h>
++#include <asm/arch/cpu.h>
++
++#define mctl_set_timing_params mctl_set_timing_params_lpddr4
++#include "h616_lpddr4_2133.c"
++#undef mctl_set_timing_params
++
++#define mctl_set_timing_params mctl_set_timing_params_lpddr3
++#include "h616_lpddr3.c"
++#undef mctl_set_timing_params

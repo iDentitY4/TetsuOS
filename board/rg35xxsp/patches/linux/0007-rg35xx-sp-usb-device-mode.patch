@@ -6,8 +6,8 @@ usbotg has dr_mode = "peripheral". Disable them, so the USB serial gadget works.
 ---
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
-@@ -38,3 +38,15 @@
- 	regulator-min-microvolt = <1200000>;
+@@ -41,3 +41,15 @@
+ 	regulator-min-microvolt = <1100000>;
  	regulator-max-microvolt = <1200000>;
  };
 +

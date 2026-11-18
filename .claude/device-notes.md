@@ -289,8 +289,11 @@ In short here; `docs/features.md` has them in full.
   device tree assume LPDDR4 at 1.1 V. Read the working boot0, 8 KiB into the card: `0x38`
   clock, `0x3c` type (7 LPDDR3, 8 LPDDR4), `0x40` DX_ODT, `0x44` DX_DRI, `0x48` CA_DRI,
   `0x4c` ODT_EN, `0xa0` TPR6, `0xa4` TPR10, `0xa8` TPR11, `0xac` TPR12.
-- **RAM voltage is set twice**, `CONFIG_AXP_DCDC3_VOLT` in `uboot.fragment` and `reg_dcdc3`
-  in patch 0006; they must match. A RAM setup failure shows as a 1 Hz green blink.
+- **The SPL detects LPDDR4 or LPDDR3** (U-Boot patch 0001): LPDDR4 at 1.1 V first, then
+  LPDDR3 at 1.2 V. U-Boot (patch 0002) and Linux (patch 0006) have a 1.1-1.2 V range for
+  `reg_dcdc3`, so they keep the SPL's; a fixed value in either would set it again. Check
+  with `devmem 0x047FB000 32` (MSTR: bit 3 LPDDR3, bit 5 LPDDR4) and `vdd-dram`'s
+  `microvolts`. A RAM setup failure shows as a 1 Hz green blink.
 - **EHCI0 and OHCI0 share PHY 0 with the MUSB device controller** and switch the port to
   host mode, so patch 0007 disables them. Host mode needs that reverted plus a dual-role
   setup like ROCKNIX's `0151` and `0152`, which also drive 5 V on the port: review them
