@@ -30,7 +30,7 @@ and the green light for a minute:
 | --- | --- |
 | The logo, then the setup | It works. Go on to [step 2](#_2-check-the-memory). |
 | No picture, and the green light blinks about once a second | The memory setup failed: neither memory type worked. |
-| The green light stays on, but the screen stays dark | The memory works, but something later doesn't, often the screen. |
+| The green light stays on, but the screen stays dark or garbled | The memory works, but something later doesn't, often the screen. Builds from `v0.2-test.2` on detect which of the SP's two screens yours has, and this is how a wrong guess would look. |
 | Nothing at all | Check the card is in TF1 and the battery is charged, and try again. |
 
 If it doesn't start, take the card out and put it in your computer. A drive named

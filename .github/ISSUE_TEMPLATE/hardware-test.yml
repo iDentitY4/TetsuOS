@@ -43,7 +43,7 @@ body:
       options:
         - The logo, then the setup
         - No picture, and the green light blinked about once a second
-        - The green light stayed on, but the screen stayed dark
+        - The green light stayed on, but the screen stayed dark or garbled
         - Something else (say what below)
     validations:
       required: true

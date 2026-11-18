@@ -1,0 +1,429 @@
+Subject: [PATCH] drm/panel: nv3052c: find which panel an RG35XX SP has
+
+The RG35XX SP was made with two panels on the same wires: an NV3052C and a
+later one with another controller, which needs its own setup and timings.
+Other systems ship a device tree for each and leave the choice to the user,
+who sees a garbled picture until they guess right.
+
+After a reset an NV3052C reports the ID 30 52 01 (the setup then replaces it),
+so the driver now resets the panel at probe and reads it. A panel that doesn't
+report it is given the second panel's setup, and an ID that can't be read keeps
+the NV3052C's. The log says which it found. panel_newvision_nv3052c.panel=nv3052c
+or =v2 on the kernel's command line overrides it, and the same parameter in sysfs
+tells the launcher, as the second panel refreshes at 59.52 Hz.
+
+The second panel's setup and timings are from ROCKNIX's
+anbernic,rg35xx-sp-v2-panel.panel.
+---
+diff --color -urN a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
+@@ -116,3 +116,8 @@
+ 	vqmmc-supply = <&reg_cldo3>;
+ 	status = "okay";
+ };
++
++/* The SP has one of two panels, which the driver tells apart by the panel's ID. */
++&panel {
++	compatible = "anbernic,rg35xx-sp-panel", "anbernic,rg35xx-plus-panel";
++};
+diff --color -urN a/drivers/gpu/drm/panel/panel-newvision-nv3052c.c b/drivers/gpu/drm/panel/panel-newvision-nv3052c.c
+--- a/drivers/gpu/drm/panel/panel-newvision-nv3052c.c
++++ b/drivers/gpu/drm/panel/panel-newvision-nv3052c.c
+@@ -14,7 +14,9 @@
+ #include <linux/of.h>
+ #include <linux/platform_device.h>
+ #include <linux/regulator/consumer.h>
++#include <linux/slab.h>
+ #include <linux/spi/spi.h>
++#include <linux/string.h>
+ #include <video/mipi_display.h>
+ #include <drm/drm_mipi_dbi.h>
+ #include <drm/drm_modes.h>
+@@ -32,6 +34,11 @@
+ 	u32 bus_format, bus_flags;
+ 	const struct nv3052c_reg *panel_regs;
+ 	unsigned int panel_regs_len;
++	/* A panel with another controller: commands, each after its length */
++	const u8 *init_seq;
++	size_t init_seq_len;
++	/* The panel to use if the one found doesn't identify as an NV3052C */
++	const struct nv3052c_panel_info *other;
+ };
+ 
+ struct nv3052c {
+@@ -358,11 +365,51 @@
+ 	{ 0xf6, 0xc0 },
+ };
+ 
++/*
++ * What this panel is, read from the panel or set on the kernel's command line with
++ * panel_newvision_nv3052c.panel=nv3052c or =v2, and shown in sysfs for the launcher.
++ */
++static char panel_kind[8];
++module_param_string(panel, panel_kind, sizeof(panel_kind), 0444);
++MODULE_PARM_DESC(panel, "RG35XX SP: the panel fitted, nv3052c or v2 (default: read its ID)");
++
+ static inline struct nv3052c *to_nv3052c(struct drm_panel *panel)
+ {
+ 	return container_of(panel, struct nv3052c, panel);
+ }
+ 
++/* Sets up a panel that has another controller, with the delays it needs. */
++static int nv3052c_init_other(struct nv3052c *priv)
++{
++	const struct nv3052c_panel_info *info = priv->panel_info;
++	struct mipi_dbi *dbi = &priv->dbi;
++	size_t i = 0;
++	int err;
++
++	msleep(120);
++
++	while (i < info->init_seq_len) {
++		u8 len = info->init_seq[i++];
++
++		err = mipi_dbi_command_stackbuf(dbi, info->init_seq[i], &info->init_seq[i + 1],
++						len - 1);
++		if (err) {
++			dev_err(priv->dev, "Unable to set register: %d\n", err);
++			return err;
++		}
++		i += len;
++	}
++
++	err = mipi_dbi_command(dbi, MIPI_DCS_EXIT_SLEEP_MODE);
++	if (err) {
++		dev_err(priv->dev, "Unable to exit sleep mode: %d\n", err);
++		return err;
++	}
++	msleep(120);
++
++	return 0;
++}
++
+ static int nv3052c_prepare(struct drm_panel *panel)
+ {
+ 	struct nv3052c *priv = to_nv3052c(panel);
+@@ -380,10 +427,17 @@
+ 
+ 	/* Reset the chip */
+ 	gpiod_set_value_cansleep(priv->reset_gpio, 1);
+-	usleep_range(10, 1000);
++	usleep_range(1000, 2000);
+ 	gpiod_set_value_cansleep(priv->reset_gpio, 0);
+ 	usleep_range(5000, 20000);
+ 
++	if (priv->panel_info->init_seq) {
++		err = nv3052c_init_other(priv);
++		if (err)
++			goto err_disable_regulator;
++		return 0;
++	}
++
+ 	/* Apply panel-specific initialization registers */
+ 	for (i = 0; i < panel_regs_len; i++) {
+ 		err = mipi_dbi_command(dbi, panel_regs[i].cmd,
+@@ -428,6 +482,9 @@
+ 	if (err)
+ 		dev_err(priv->dev, "Unable to enter sleep mode: %d\n", err);
+ 
++	if (priv->panel_info->init_seq)
++		msleep(120);
++
+ 	gpiod_set_value_cansleep(priv->reset_gpio, 1);
+ 	regulator_disable(priv->supply);
+ 
+@@ -511,6 +568,86 @@
+ 	.get_modes	= nv3052c_get_modes,
+ };
+ 
++/* The ID an NV3052C reports after a reset; the setup then replaces it. */
++static bool nv3052c_id_matches(const u8 *id)
++{
++	return id[0] == 0x30 && id[1] == 0x52;
++}
++
++static int nv3052c_read_id(struct nv3052c *priv, u8 *id)
++{
++	static const u8 read_commands[] = { MIPI_DCS_GET_DISPLAY_ID, 0 };
++	int err;
++
++	priv->dbi.read_commands = read_commands;
++	err = mipi_dbi_command_buf(&priv->dbi, MIPI_DCS_GET_DISPLAY_ID, id, 3);
++	priv->dbi.read_commands = NULL;
++
++	return err;
++}
++
++/*
++ * The RG35XX SP was made with two panels, on the same wires and with nothing else to
++ * tell them apart. A panel that doesn't report an NV3052C's ID, even after waiting as
++ * long as the other panel needs, is taken for the other one. If the ID can't be read at
++ * all, the NV3052C's setup stays.
++ */
++static void nv3052c_detect(struct nv3052c *priv)
++{
++	const struct nv3052c_panel_info *other = priv->panel_info->other;
++	u8 *id;
++	int err;
++
++	if (!other)
++		return;
++
++	if (!strcmp(panel_kind, "v2")) {
++		priv->panel_info = other;
++		dev_info(priv->dev, "panel: v2, set on the command line\n");
++		return;
++	}
++	if (!strcmp(panel_kind, "nv3052c")) {
++		dev_info(priv->dev, "panel: NV3052C, set on the command line\n");
++		return;
++	}
++
++	id = kzalloc(3, GFP_KERNEL);
++	if (!id)
++		return;
++
++	err = regulator_enable(priv->supply);
++	if (err)
++		goto out_free;
++
++	gpiod_set_value_cansleep(priv->reset_gpio, 1);
++	usleep_range(1000, 2000);
++	gpiod_set_value_cansleep(priv->reset_gpio, 0);
++	msleep(20);
++
++	err = nv3052c_read_id(priv, id);
++	if (!err && !nv3052c_id_matches(id)) {
++		msleep(130);
++		err = nv3052c_read_id(priv, id);
++	}
++
++	gpiod_set_value_cansleep(priv->reset_gpio, 1);
++	regulator_disable(priv->supply);
++
++	if (err) {
++		dev_warn(priv->dev, "panel: ID not read (%d), using the NV3052C's setup\n", err);
++	} else if (nv3052c_id_matches(id)) {
++		strscpy(panel_kind, "nv3052c");
++		dev_info(priv->dev, "panel: NV3052C, ID %3phN\n", id);
++	} else {
++		priv->panel_info = other;
++		strscpy(panel_kind, "v2");
++		dev_info(priv->dev, "panel: v2, ID %3phN\n", id);
++	}
++
++out_free:
++	kfree(id);
++}
++
+ static int nv3052c_probe(struct spi_device *spi)
+ {
+ 	struct device *dev = &spi->dev;
+@@ -542,6 +679,8 @@
+ 
+ 	priv->dbi.read_commands = NULL;
+ 
++	nv3052c_detect(priv);
++
+ 	spi_set_drvdata(spi, priv);
+ 
+ 	err = drm_panel_of_backlight(&priv->panel);
+@@ -619,6 +758,154 @@
+ 	},
+ };
+ 
++/* From the setup that Anbernic's firmware uses for the RG35XX SP's second panel. */
++static const u8 rg35xx_sp_v2_init_seq[] = {
++	4, 0xd7, 0x61, 0x74, 0x97,
++	2, 0xd0, 0x10,
++	2, 0x60, 0xff,
++	2, 0x61, 0xff,
++	2, 0x62, 0xff,
++	2, 0x63, 0xff,
++	2, 0x64, 0xff,
++	2, 0x65, 0xff,
++	2, 0x66, 0xff,
++	2, 0x67, 0xff,
++	2, 0x68, 0xff,
++	2, 0x69, 0xff,
++	2, 0x6a, 0xff,
++	2, 0x6b, 0xff,
++	2, 0x6c, 0xff,
++	2, 0x6d, 0xff,
++	2, 0x6e, 0xff,
++	2, 0x6f, 0xff,
++	2, 0x7e, 0x2a,
++	2, 0xa9, 0x03,
++	2, 0xa8, 0x06,
++	2, 0x81, 0xaa,
++	2, 0x84, 0xaa,
++	2, 0xf5, 0xbb,
++	2, 0xfd, 0x67,
++	2, 0x9d, 0xae,
++	2, 0x9f, 0x08,
++	2, 0xa5, 0x00,
++	3, 0xa6, 0xc0, 0x80,
++	2, 0x7a, 0x25,
++	2, 0x7b, 0x76,
++	2, 0x88, 0x32,
++	3, 0xb8, 0x01, 0xdf,
++	2, 0xb6, 0x22,
++	2, 0xb7, 0x30,
++	5, 0x92, 0x2c, 0x28, 0x30, 0x28,
++	2, 0xb5, 0x80,
++	2, 0xad, 0x88,
++	2, 0xd0, 0x11,
++	2, 0x60, 0xff,
++	2, 0x61, 0xff,
++	2, 0x62, 0xff,
++	2, 0x63, 0xff,
++	2, 0x64, 0xff,
++	2, 0x65, 0xff,
++	2, 0x66, 0xff,
++	2, 0x67, 0xff,
++	2, 0x68, 0xff,
++	2, 0x69, 0xff,
++	2, 0x6a, 0xff,
++	2, 0x6b, 0xff,
++	2, 0x6c, 0xff,
++	2, 0x6d, 0xff,
++	2, 0xb8, 0xff,
++	2, 0xb9, 0xff,
++	2, 0xba, 0xff,
++	45, 0xb3, 0x3f, 0x38, 0x34, 0x34, 0x28, 0x29, 0x17, 0x09, 0x0b, 0x15,
++		0x31, 0x3f, 0x34, 0x34, 0x3f, 0x3f, 0x3f, 0x3f, 0x3f, 0x3f,
++		0x3f, 0x3f, 0x3f, 0x39, 0x34, 0x34, 0x28, 0x29, 0x16, 0x08,
++		0x0a, 0x14, 0x30, 0x3f, 0x34, 0x34, 0x3f, 0x3f, 0x3f, 0x3f,
++		0x3f, 0x3f, 0x3f, 0x3f,
++	2, 0xb7, 0x27,
++	3, 0xbc, 0x00, 0x10,
++	9, 0xa3, 0x10, 0x0d, 0x52, 0x52, 0x10, 0x0e, 0x52, 0x52,
++	9, 0xa6, 0x10, 0x01, 0x10, 0x0b, 0x10, 0x01, 0x10, 0x0b,
++	6, 0xa7, 0x11, 0x62, 0x62, 0x62, 0x62,
++	11, 0xa8, 0x00, 0x0f, 0x01, 0xf6, 0x00, 0x00, 0x0f, 0x01, 0xf6, 0x00,
++	11, 0xa9, 0x00, 0x08, 0x01, 0xf0, 0x00, 0x00, 0x08, 0x01, 0xf0, 0x00,
++	14, 0xa4, 0x07, 0x00, 0x04, 0x00, 0x07, 0x1e, 0x1e, 0x00, 0x04, 0x00,
++		0x07, 0x1e, 0x1e,
++	2, 0xc3, 0x1a,
++	3, 0xe5, 0x06, 0x0a,
++	2, 0xf8, 0x29,
++	2, 0xac, 0x60,
++	2, 0xad, 0xaa,
++	2, 0xf4, 0xff,
++	2, 0xf5, 0x00,
++	2, 0xf6, 0xff,
++	2, 0xf7, 0x00,
++	2, 0xd0, 0x12,
++	17, 0x80, 0x00, 0x2d, 0x00, 0x29, 0x00, 0x42, 0x00, 0x54, 0x00, 0x6f,
++		0x00, 0x88, 0x00, 0x91, 0x00, 0xa5,
++	17, 0x81, 0x00, 0xb6, 0x00, 0xeb, 0x01, 0x11, 0x01, 0x49, 0x01, 0x75,
++		0x01, 0xb4, 0x01, 0xe8, 0x01, 0xea,
++	17, 0x82, 0x02, 0x2a, 0x02, 0x74, 0x02, 0xa2, 0x02, 0xe0, 0x03, 0x06,
++		0x03, 0x38, 0x03, 0x4c, 0x03, 0x53,
++	13, 0x83, 0x03, 0x6e, 0x03, 0x72, 0x03, 0x98, 0x03, 0xa1, 0x03, 0xc3,
++		0x03, 0xe4,
++	17, 0x84, 0x00, 0x2d, 0x00, 0x29, 0x00, 0x42, 0x00, 0x54, 0x00, 0x6f,
++		0x00, 0x88, 0x00, 0x91, 0x00, 0xa5,
++	17, 0x85, 0x00, 0xb6, 0x00, 0xeb, 0x01, 0x11, 0x01, 0x49, 0x01, 0x75,
++		0x01, 0xb4, 0x01, 0xe8, 0x01, 0xea,
++	17, 0x86, 0x02, 0x2a, 0x02, 0x74, 0x02, 0xa2, 0x02, 0xe0, 0x03, 0x06,
++		0x03, 0x38, 0x03, 0x4c, 0x03, 0x53,
++	13, 0x87, 0x03, 0x6e, 0x03, 0x72, 0x03, 0x98, 0x03, 0xa1, 0x03, 0xc3,
++		0x03, 0xe4,
++	17, 0x88, 0x00, 0x2d, 0x00, 0x29, 0x00, 0x42, 0x00, 0x54, 0x00, 0x6f,
++		0x00, 0x88, 0x00, 0x91, 0x00, 0xa5,
++	17, 0x89, 0x00, 0xb6, 0x00, 0xeb, 0x01, 0x11, 0x01, 0x49, 0x01, 0x75,
++		0x01, 0xb4, 0x01, 0xe8, 0x01, 0xea,
++	17, 0x8a, 0x02, 0x2a, 0x02, 0x74, 0x02, 0xa2, 0x02, 0xe0, 0x03, 0x06,
++		0x03, 0x38, 0x03, 0x4c, 0x03, 0x53,
++	13, 0x8b, 0x03, 0x6e, 0x03, 0x72, 0x03, 0x98, 0x03, 0xa1, 0x03, 0xc3,
++		0x03, 0xe4,
++	17, 0x90, 0x00, 0x2d, 0x00, 0x29, 0x00, 0x42, 0x00, 0x54, 0x00, 0x6f,
++		0x00, 0x88, 0x00, 0x91, 0x00, 0xa5,
++	17, 0x91, 0x00, 0xb6, 0x00, 0xeb, 0x01, 0x11, 0x01, 0x49, 0x01, 0x75,
++		0x01, 0xb4, 0x01, 0xe8, 0x01, 0xea,
++	17, 0x92, 0x02, 0x2a, 0x02, 0x74, 0x02, 0xa2, 0x02, 0xe0, 0x03, 0x06,
++		0x03, 0x38, 0x03, 0x4c, 0x03, 0x53,
++	13, 0x93, 0x03, 0x6e, 0x03, 0x72, 0x03, 0x98, 0x03, 0xa1, 0x03, 0xc3,
++		0x03, 0xe4,
++	17, 0x94, 0x00, 0x2d, 0x00, 0x29, 0x00, 0x42, 0x00, 0x54, 0x00, 0x6f,
++		0x00, 0x88, 0x00, 0x91, 0x00, 0xa5,
++	17, 0x95, 0x00, 0xb6, 0x00, 0xeb, 0x01, 0x11, 0x01, 0x49, 0x01, 0x75,
++		0x01, 0xb4, 0x01, 0xe8, 0x01, 0xea,
++	17, 0x96, 0x02, 0x2a, 0x02, 0x74, 0x02, 0xa2, 0x02, 0xe0, 0x03, 0x06,
++		0x03, 0x38, 0x03, 0x4c, 0x03, 0x53,
++	13, 0x97, 0x03, 0x6e, 0x03, 0x72, 0x03, 0x98, 0x03, 0xa1, 0x03, 0xc3,
++		0x03, 0xe4,
++	17, 0x98, 0x00, 0x2d, 0x00, 0x29, 0x00, 0x42, 0x00, 0x54, 0x00, 0x6f,
++		0x00, 0x88, 0x00, 0x91, 0x00, 0xa5,
++	17, 0x99, 0x00, 0xb6, 0x00, 0xeb, 0x01, 0x11, 0x01, 0x49, 0x01, 0x75,
++		0x01, 0xb4, 0x01, 0xe8, 0x01, 0xea,
++	17, 0x9a, 0x02, 0x2a, 0x02, 0x74, 0x02, 0xa2, 0x02, 0xe0, 0x03, 0x06,
++		0x03, 0x38, 0x03, 0x4c, 0x03, 0x53,
++	13, 0x9b, 0x03, 0x6e, 0x03, 0x72, 0x03, 0x98, 0x03, 0xa1, 0x03, 0xc3,
++		0x03, 0xe4,
++	2, 0x36, 0x00,
++};
++
++static const struct drm_display_mode rg35xx_sp_v2_mode[] = {
++	{
++		.clock = 24000,
++		.hdisplay = 640,
++		.hsync_start = 640 + 24,
++		.hsync_end = 640 + 24 + 8,
++		.htotal = 640 + 24 + 8 + 48,
++		.vdisplay = 480,
++		.vsync_start = 480 + 32,
++		.vsync_end = 480 + 32 + 4,
++		.vtotal = 480 + 32 + 4 + 44,
++		.flags = DRM_MODE_FLAG_PVSYNC | DRM_MODE_FLAG_PHSYNC,
++	},
++};
++
+ static const struct nv3052c_panel_info ltk035c5444t_panel_info = {
+ 	.display_modes = ltk035c5444t_modes,
+ 	.num_modes = ARRAY_SIZE(ltk035c5444t_modes),
+@@ -652,10 +939,34 @@
+ 	.panel_regs_len = ARRAY_SIZE(wl_355608_a8_panel_regs),
+ };
+ 
++static const struct nv3052c_panel_info rg35xx_sp_v2_panel_info = {
++	.display_modes = rg35xx_sp_v2_mode,
++	.num_modes = ARRAY_SIZE(rg35xx_sp_v2_mode),
++	.width_mm = 70,
++	.height_mm = 53,
++	.bus_format = MEDIA_BUS_FMT_RGB888_1X24,
++	.bus_flags = DRM_BUS_FLAG_DE_HIGH | DRM_BUS_FLAG_PIXDATA_DRIVE_NEGEDGE,
++	.init_seq = rg35xx_sp_v2_init_seq,
++	.init_seq_len = ARRAY_SIZE(rg35xx_sp_v2_init_seq),
++};
++
++static const struct nv3052c_panel_info rg35xx_sp_panel_info = {
++	.display_modes = wl_355608_a8_mode,
++	.num_modes = ARRAY_SIZE(wl_355608_a8_mode),
++	.width_mm = 150,
++	.height_mm = 94,
++	.bus_format = MEDIA_BUS_FMT_RGB888_1X24,
++	.bus_flags = DRM_BUS_FLAG_DE_HIGH | DRM_BUS_FLAG_PIXDATA_DRIVE_NEGEDGE,
++	.panel_regs = wl_355608_a8_panel_regs,
++	.panel_regs_len = ARRAY_SIZE(wl_355608_a8_panel_regs),
++	.other = &rg35xx_sp_v2_panel_info,
++};
++
+ static const struct spi_device_id nv3052c_ids[] = {
+ 	{ "ltk035c5444t", },
+ 	{ "fs035vg158", },
+ 	{ "rg35xx-plus-panel", },
++	{ "rg35xx-sp-panel", },
+ 	{ /* sentinel */ }
+ };
+ MODULE_DEVICE_TABLE(spi, nv3052c_ids);
+@@ -664,6 +975,7 @@
+ 	{ .compatible = "leadtek,ltk035c5444t", .data = &ltk035c5444t_panel_info },
+ 	{ .compatible = "fascontek,fs035vg158", .data = &fs035vg158_panel_info },
+ 	{ .compatible = "anbernic,rg35xx-plus-panel", .data = &wl_355608_a8_panel_info },
++	{ .compatible = "anbernic,rg35xx-sp-panel", .data = &rg35xx_sp_panel_info },
+ 	{ /* sentinel */ }
+ };
+ MODULE_DEVICE_TABLE(of, nv3052c_of_match);

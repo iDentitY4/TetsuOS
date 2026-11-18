@@ -19,7 +19,7 @@ squashes multi-commit files, so the original commit boundaries are in ROCKNIX.
 | `linux/0005-sun4i-rgb-connector-type.patch` | `0155-sun4i-set-rgb-connector-as-DSI.patch` |
 | `linux/0010-axp20x-pek-ignore-wake-press.patch` | `0157-input-axp20x-pek-do-not-report-the-key-press-that-woke-the-system.patch` |
 
-Ten patches are specific to this project:
+Eleven patches are specific to this project:
 
 - `linux/0006-rg35xx-sp-ram-voltage-from-spl.patch` lets the RAM rail stay at the
   voltage the SPL set, 1.1V for LPDDR4 or 1.2V for LPDDR3.
@@ -72,6 +72,11 @@ Ten patches are specific to this project:
   after the drivers finish probing, then every 2 s, 3 times at most. A start that finds
   its root at once never waits, so it costs nothing. `mmc_reidentify_test` on the kernel's
   command line forces one round, to test it on a card that works.
+- `linux/0020-nv3052c-find-which-panel-an-rg35xx-sp-has.patch` (ours): the SP has an NV3052C or
+  a second panel with another controller. The driver reads the panel's ID after a reset, and
+  a panel that doesn't report `30 52` gets the second panel's setup and timings. Those come from
+  ROCKNIX's `anbernic,rg35xx-sp-v2-panel.panel`, which has no licence file beside it, so ask
+  ROCKNIX before a final release.
 - `bluez5_utils/0001-device-raise-le-security-on-demand.patch` keeps BlueZ from starting
   encryption as soon as a paired LE device connects, and lets the first read the device
   refuses unencrypted start it instead. Started 26 ms in, a Backbone Pro never answered

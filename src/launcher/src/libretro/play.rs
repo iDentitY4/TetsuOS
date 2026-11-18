@@ -31,7 +31,7 @@ use super::scale::picture_in_area;
 use super::core::Core;
 use super::save::{autosave_frames, forget_place, load_resume, resume_path, save_progress};
 use super::audio::{AUDIO_PROBE_FRAMES, playback_rate, start_audio};
-use crate::ui::panel_rate::{PANEL_HZ, PanelRate};
+use crate::ui::panel_rate::{PanelRate, own_hz};
 use super::menu::{Achievements, AfterMenu, Game, chosen_options, hardcore_off_notice, pause};
 
 /// Set when the system asks the game to stop with SIGTERM, as it does at power-off.
@@ -440,7 +440,7 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
     // Held until the game ends: then the kernel sets the panel's own rate again.
     // Settings > IN GAME > DISPLAY > 50 HZ GAMES AT 50 HZ can leave the panel as it is.
     let panel_rate = if settings::get().fifty_hz_off { None } else { PanelRate::for_game(fps) };
-    let panel_hz = panel_rate.as_ref().map_or(PANEL_HZ, PanelRate::hz);
+    let panel_hz = panel_rate.as_ref().map_or_else(own_hz, PanelRate::hz);
     let events = input::spawn_readers();
     let levels = volume_levels();
     framebuffer.clear()?;

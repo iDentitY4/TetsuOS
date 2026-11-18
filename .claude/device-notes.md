@@ -348,8 +348,9 @@ In short here; `docs/features.md` has them in full.
   (tried 2026-11-14, 1 MiB at `0x60000000`) found only damaged headers after either, as
   the SPL trains the RAM again at every start. A start that hangs before userspace leaves
   no log anywhere: only the screen (BOOT MESSAGES TEXT) shows it.
-- **Panels:** ROCKNIX has a separate v2 panel device tree for the SP. This unit works with
-  the mainline NV3052C driver; another may not.
+- **Panels:** the SP has an NV3052C or a second panel. Patch 0020 reads the ID after a reset
+  (`30 52 01` on this unit; `40 00 03` once set up) and gives anything else the second panel's
+  setup. No second panel has run it: `panel_newvision_nv3052c.panel=v2` forces that path.
 - **The linux-sunxi wiki returns 403 to automated fetches.** Use U-Boot's
   `doc/board/allwinner/sunxi.rst`, the ROCKNIX tree and the source instead.
 
