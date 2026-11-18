@@ -1446,6 +1446,7 @@ pub(crate) fn run_launcher() -> io::Result<()> {
     show_shutdown_on_signal();
     println!("launcher started {}", boot_time());
     println!("device: {}", crate::device::profile::get().name);
+    println!("ram: {}", crate::device::ram::summary());
     settings::restore_levels();
     performance::apply(settings::get().performance);
     power::apply_charge_limit(settings::get().charge);

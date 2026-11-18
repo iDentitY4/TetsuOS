@@ -1315,13 +1315,14 @@ Built but not yet tested on the device:
     Games, saves, covers, Wi-Fi networks, keys, the root password and the boot messages
     stay. Checked on the device, then the user's settings were put back
 - SAVE LOGS TO CARD, X on Settings > SYSTEM > SYSTEM INFO (`boot_partition::save_logs`): writes
-  `launcher.log`, `dmesg.txt` and `system.txt` (date, kernel, build, uptime, settings,
-  storage, memory, processes, network) to `logs` on TETSU-BOOT, replacing the last ones, and
+  `launcher.log`, `dmesg.txt` and `system.txt` (date, device, kernel, build, uptime,
+  settings, storage, RAM type and voltage, memory, processes, network) to `logs` on TETSU-BOOT, replacing the last ones, and
   says where. Wi-Fi passwords, keys and the root password hash are in other files and
   left out. Checked on the device
 - System info (`system_info.rs`) shows 11 lines, as many as the screen has room for:
   battery with voltage, game storage, game count (a `.cue` and its `.bin` count once),
-  available memory, CPU speed and temperature, the Wi-Fi network and address (from
+  the RAM as sold with its type and what is free (`1 GB LPDDR3 - 856 MB FREE`; free of the
+  kernel's total if the type is unknown), CPU speed and temperature, the Wi-Fi network and address (from
   wpa_supplicant's `STATUS`), the USB address, time since boot, kernel release and build
   date, the system build and the app version. The system build is the project's git
   revision, which Buildroot writes to `VERSION` in `/etc/os-release`; MODIFIED means
@@ -2372,6 +2373,15 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   and a lid sleep. The time before the kernel was 2.74 to 3.03 s over four boots, against
   2.53 to 2.66 s recorded before, so the failed LPDDR4 try costs about 0.1 to 0.2 s. Not
   tested: any LPDDR4 unit, a cold start from power-off with this SPL.
+- **The RAM type is reported** for testers (`device/ram.rs`): the launcher reads the DRAM
+  controller's MSTR register (`0x047FB000` on the H616, H618 and H700, found by the chip's
+  name in the device tree's `compatible`) through `/dev/mem` once, and its device type bits
+  give the type. SYSTEM INFO's MEMORY row shows it, the launcher's log starts with
+  `ram: LPDDR3, vdd-dram 1.20 V`, SAVE LOGS TO CARD's `system.txt` has it, and
+  `bootlog.txt` has a `== ram` section from `S99bootlog` (type, bus width, ranks, MSTR,
+  the voltage and `MemTotal`), written even if the launcher doesn't start. Checked on the
+  LPDDR3 unit (2026-11-18): all four show LPDDR3 at 1.20 V; the German row wasn't seen
+  on the device, but `1 GB LPDDR3 - 856 MB FREI` is 25 of the 28 characters it has.
 - **A RAM setup failure resets the chip.** The first boot stage turns the LED on,
   then panics and resets, which shows as a 1 Hz green blink with nothing on the card.
 - **EHCI0 and OHCI0 share PHY 0 with the MUSB device controller.** If they run, they

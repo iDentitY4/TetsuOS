@@ -503,6 +503,7 @@ NONE - X SETS ONE = KEINE - X LEGT SIE FEST
 {} FREE OF {} = {} FREI VON {}
 {} + TF2 {} FREE = {} + TF2 {} FREI
 {} FREE = {} FREI
+{} - {} FREE = {} - {} FREI
 {} MODIFIED = {} GEÄNDERT
 CHARGING = LÄDT
 

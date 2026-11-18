@@ -35,3 +35,9 @@ pub(crate) const UPTIME: &str = "/proc/uptime";
 pub(crate) const MEMORY: &str = "/proc/meminfo";
 pub(crate) const KERNEL_VERSION: &str = "/proc/version";
 pub(crate) const OS_RELEASE: &str = "/etc/os-release";
+/// The device tree's `compatible` list: the device's own name, then its chip's.
+pub(crate) const DEVICE_TREE_COMPATIBLE: &str = "/proc/device-tree/compatible";
+/// Physical memory, for reading a hardware register.
+pub(crate) const PHYSICAL_MEMORY: &str = "/dev/mem";
+/// The voltage regulators, each a folder with its `name` and `microvolts`.
+pub(crate) const REGULATORS: &str = "/sys/class/regulator";

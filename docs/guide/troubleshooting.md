@@ -83,7 +83,7 @@ shows up as a network adapter (and a serial port) as soon as it starts.
 
 - **Settings > SYSTEM > SYSTEM INFO**, then **X**, saves `launcher.log`, `dmesg.txt` and
   `system.txt` to `logs` on TETSU-BOOT, without passwords or keys.
-- `bootlog.txt` on TETSU-BOOT has each start's log.
+- `bootlog.txt` on TETSU-BOOT has each start's log, with the RAM's type and voltage.
 - Over USB, see [Device access](../developer/device-access) for SSH and the serial console.
 
 Please include them when [reporting an issue](https://github.com/iDentitY4/TetsuOS/issues).

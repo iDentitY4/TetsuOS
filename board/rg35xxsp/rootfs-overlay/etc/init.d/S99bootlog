@@ -2,6 +2,25 @@
 # Saves diagnostics to the FAT boot partition, so a failed display can be
 # debugged by reading the SD card on a PC. No serial adapter needed.
 
+# The RAM type the SPL set up (U-Boot patch 0001 tries LPDDR4, then LPDDR3), from the
+# DRAM controller's MSTR register on the H616 family, and the RAM's supply voltage.
+ram_info() {
+	if tr '\0' '\n' < /proc/device-tree/compatible | grep -qxE 'allwinner,sun50i-h(616|618|700)'; then
+		mstr=$(devmem 0x047FB000 32)
+		case $((mstr & 0x3f)) in
+		1) type=DDR3 ;; 4) type=LPDDR2 ;; 8) type=LPDDR3 ;; 16) type=DDR4 ;; 32) type=LPDDR4 ;;
+		*) type=unknown ;;
+		esac
+		[ $((mstr & 0x3000)) = 0 ] && width=full || width=half
+		[ $((mstr & 0x3000000)) = $((0x3000000)) ] && ranks=2 || ranks=1
+		echo "type $type, $width bus, $ranks rank(s) (MSTR $mstr)"
+	fi
+	for r in /sys/class/regulator/*; do
+		[ "$(cat "$r/name" 2>/dev/null)" = vdd-dram ] && echo "vdd-dram $(cat "$r/microvolts") uV"
+	done
+	grep MemTotal /proc/meminfo
+}
+
 write_log() {
 	dev="$(blkid | grep 'LABEL="TETSU-BOOT"' | head -n 1 | cut -d: -f1)"
 	[ -n "$dev" ] || return 1
@@ -12,6 +31,8 @@ write_log() {
 
 	{
 		echo "== kernel"; uname -a
+		echo "== device"; tr '\0' ' ' < /proc/device-tree/model; echo
+		echo "== ram"; ram_info
 		echo "== uptime"; cat /proc/uptime
 		echo "== launcher"; cat /var/log/launcher.log
 		echo "== launcher running"; pidof launcher
