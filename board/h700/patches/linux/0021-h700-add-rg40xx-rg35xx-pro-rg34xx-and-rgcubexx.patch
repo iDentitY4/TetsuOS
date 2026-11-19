@@ -12,8 +12,13 @@ RG34XX-SP were also made with a second panel, chosen as the SP's is when the
 ID read isn't an NV3052C's. init_seq now waits init_delay ms after the reset,
 which each panel file gives; the SP's second panel keeps its 120 ms.
 
-Untested: none of these devices has started this kernel. The panel files
-have no licence beside them in ROCKNIX's tree, as with patch 0020.
+The panels' setups come from Hironori Kikuchi, who first added the RG40XX
+and RG CubeXX panels to this driver (dri-devel, November 2024), and Philippe
+Simons, who added the RG34XX's to it and found the RG34XX-SP's and the second
+panels in Anbernic's firmware for ROCKNIX. ROCKNIX later turned them into
+the panel firmware files they are taken from here.
+
+Untested: none of these devices has started this kernel.
 ---
 diff --git a/arch/arm64/boot/dts/allwinner/Makefile b/arch/arm64/boot/dts/allwinner/Makefile
 index 53e6b701..c05f7421 100644
@@ -372,7 +377,7 @@ index 1da9e9b4..d3f67f63 100644
 + * how it takes them). The RG40XX and RG34XX-SP were also made with a second panel,
 + * found as the SP's is when the ID isn't an NV3052C's.
 + */
-+/* anbernic,rg40xx-v2-panel: the setup and timings of ROCKNIX's rg40xx-v2-panel.panel */
++/* anbernic,rg40xx-v2-panel: found by Philippe Simons, from ROCKNIX's .panel file */
 +static const u8 rg40xx_v2_init_seq[] = {
 +	4, 0xd7, 0x61, 0x74, 0x97,
 +	2, 0xd0, 0x10,
@@ -500,7 +505,7 @@ index 1da9e9b4..d3f67f63 100644
 +	.init_delay = 20,
 +};
 +
-+/* anbernic,rg40xx-panel: the setup and timings of ROCKNIX's rg40xx-panel.panel */
++/* anbernic,rg40xx-panel: Hironori Kikuchi's YLM-LBV0400001X-V1, from ROCKNIX's .panel file */
 +static const u8 rg40xx_init_seq[] = {
 +	2, 0xff, 0x30,
 +	2, 0xff, 0x52,
@@ -711,7 +716,7 @@ index 1da9e9b4..d3f67f63 100644
 +	.other = &rg40xx_v2_panel_info,
 +};
 +
-+/* anbernic,rg34xx-panel: the setup and timings of ROCKNIX's rg34xx-panel.panel */
++/* anbernic,rg34xx-panel: added by Philippe Simons, from ROCKNIX's .panel file */
 +static const u8 rg34xx_init_seq[] = {
 +	2, 0xff, 0x30,
 +	2, 0xff, 0x52,
@@ -885,7 +890,7 @@ index 1da9e9b4..d3f67f63 100644
 +	.init_delay = 10,
 +};
 +
-+/* anbernic,rg34xx-sp-v2-panel: the setup and timings of ROCKNIX's rg34xx-sp-v2-panel.panel */
++/* anbernic,rg34xx-sp-v2-panel: found by Philippe Simons, from ROCKNIX's .panel file */
 +static const u8 rg34xx_sp_v2_init_seq[] = {
 +	4, 0xd7, 0x61, 0x74, 0x97,
 +	2, 0xd0, 0x10,
@@ -1014,7 +1019,7 @@ index 1da9e9b4..d3f67f63 100644
 +	.init_delay = 50,
 +};
 +
-+/* anbernic,rg34xx-sp-panel: the setup and timings of ROCKNIX's rg34xx-sp-panel.panel */
++/* anbernic,rg34xx-sp-panel: found by Philippe Simons, from ROCKNIX's .panel file */
 +static const u8 rg34xx_sp_init_seq[] = {
 +	2, 0xff, 0x30,
 +	2, 0xff, 0x52,
@@ -1190,7 +1195,7 @@ index 1da9e9b4..d3f67f63 100644
 +	.other = &rg34xx_sp_v2_panel_info,
 +};
 +
-+/* anbernic,rgcubexx-panel: the setup and timings of ROCKNIX's rgcubexx-panel.panel */
++/* anbernic,rgcubexx-panel: Hironori Kikuchi's YLM-LBN0395004H-V1, from ROCKNIX's .panel file */
 +static const u8 rgcubexx_init_seq[] = {
 +	2, 0xff, 0x30,
 +	2, 0xff, 0x52,
