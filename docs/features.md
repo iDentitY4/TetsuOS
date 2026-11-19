@@ -930,7 +930,7 @@ Built but not yet tested on the device:
   warnings such as `4021000.mmc: card claims to support voltages below defined range`
   still printed over the logo, as the user saw, because tty3 isn't allocated that
   early and the kernel falls back to the visible tty1. The
-  logo is `board/rg35xxsp/logo.ppm`, a plain PPM made with `launcher --preview-splash`,
+  logo is `board/h700/logo.ppm`, a plain PPM made with `launcher --preview-splash`,
   copied over the kernel's by a hook in `external.mk`, and shown centred from about
   0.44 s after the kernel starts. The init scripts take 0.01 to 0.04 s each.
   `scripts/push.sh uboot` writes U-Boot at 8 KiB on the card over SSH and checks it by
@@ -2284,6 +2284,40 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   `launcher started`, and SAVE LOGS TO CARD a `device` line. Features some devices lack
   (lid, vibration motor, second slot, Wi-Fi, an analog stick) join it with the first such
   device, as nothing would read them yet.
+- **One image for the H700 family** (2026-11-19): `board/rg35xxsp/` became `board/h700/`,
+  and the image carries the device trees of the RG35XX SP, Plus, H and 2024 in each slot's
+  `/boot/allwinner/` (`BR2_LINUX_KERNEL_DTB_KEEP_DIRNAME`, about 33 KB each). Nothing before
+  Linux tells these devices apart, so `device.txt` on TETSU-BOOT names the device
+  (`device=rg35xx-plus`), which `boot.scr` imports and turns into `fdtfile` for
+  `extlinux.conf`'s `FDTDIR /boot`. A missing file, or a name without a device tree, boots
+  the SP's, so every card from before is unchanged. The choice lives outside the slots, so
+  updates and the fall back to the other slot keep it. `flash.sh --device` writes it;
+  TETSU-BOOT's `README.txt` explains it for image writers. U-Boot only reads the chosen
+  device tree; reading `device.txt` and checking the device tree is there cost about
+  0.05 s: the kernel started 2.78 to 2.82 s after power on in three reboots, against 2.74 s
+  with the old script and its fixed `FDT` line on the same build (launcher drawn at 6.96 to
+  7.08 s, with the jingle). U-Boot's old hush parser stops at a `'` even inside double
+  quotes, and a script that stops leaves the boot to the extlinux bootmeth, which boots
+  slot A with whatever `fdtfile` was set: a first version of the script did that, so every
+  boot skipped the A/B order, and an unknown name hung. `post-build.sh` now refuses a
+  `boot.cmd` with a `'` outside comments. The script was checked in U-Boot's sandbox
+  (same source and parser) with no file, CRLF and LF lines, an unknown, empty and garbled
+  name. Patches 0006 (the RAM voltage range) and 0007
+  (USB device mode) moved to the RG35XX 2024 device tree and 0013 (Wi-Fi keep-power) to the
+  Plus's, which the others include; the rest stay the SP's. Launcher profiles for the
+  Plus, H (3300 mAh) and 2024 (2600 mAh) share the SP's power and backlight paths. The
+  manifest gained `devices`, every device tree's `compatible`; `device` stays the SP's for
+  v0.1 launchers, which only read that. An install also checks the new slot has this
+  device's device tree. Not yet handled: the 2024 has no Wi-Fi or Bluetooth, the H has
+  sticks, and the Plus, H and 2024 have no lid; the X/Y swap (0008), TF2 (0018), vibration
+  (0015) and panel ID (0020) are SP-only until checked on the others. Only the SP has
+  started this image. Checked on the SP (LPDDR3): no `device.txt`, `device=rg35xx-sp`
+  with CRLF and an unknown name boot the SP's device tree; `device=rg35xx-plus` with CRLF
+  booted the Plus's on the SP, with the Plus profile in the log, USB networking (0007 from
+  the 2024's tree), `wlan0` and `keep-power-in-suspend` on mmc1 (0013), vdd-dram kept at
+  1.2 V (0006), and no lid or vibrator, as the Plus has none. Not checked: a real Plus, H
+  or 2024, the screen with the Plus's tree, `flash.sh --device`, and an update installed
+  through the new `devices` check.
 
 - **Save backup** (2026-11-13): the saves kept off the card, so a dead card loses nothing.
   A backup is the same set both ways (`backup::FOLDERS` and `FILES`): `saves` (saves,
@@ -2373,7 +2407,7 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
 - **The SPL detects the RAM type** (U-Boot patch 0001). It tries LPDDR4 at 1.1V first,
   counting it only if it trains on the full 32-bit bus and passes the size check, then
   LPDDR3 at 1.2V, so LPDDR4 chips never get 1.2V. The settings for both are in
-  `board/rg35xxsp/uboot.fragment`. Patch 0006 gives `reg_dcdc3` a range of 1.1V to
+  `board/h700/uboot.fragment`. Patch 0006 gives `reg_dcdc3` a range of 1.1V to
   1.2V, and Linux leaves a voltage inside its range alone, so it keeps the SPL's. U-Boot
   proper needs the same range (U-Boot patch 0002): its regulator uclass sets an
   always-on regulator whose minimum equals its maximum, and set 1.1V again after the SPL.

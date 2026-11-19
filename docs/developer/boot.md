@@ -2,15 +2,15 @@
 
 ## Card layout
 
-`board/rg35xxsp/genimage.cfg` makes the image; `flash.sh` or the device's first start adds
+`board/h700/genimage.cfg` makes the image; `flash.sh` or the device's first start adds
 TETSU-DATA. MBR, four primary
 partitions:
 
 | # | Label | Offset | Size | Type | Contents |
 | --- | --- | --- | --- | --- | --- |
 | – | | 8 KiB | | raw | U-Boot SPL, TF-A and U-Boot |
-| 1 | TETSU-BOOT | 1 MiB | 128 MiB | FAT | `bootlog.txt`, `logs/`, `uboot.env`, `uboot-redund.env`, `README.txt` |
-| 2 | TETSU-ROOT | | 1 GiB | ext4 | Root slot A, bootable flag. Kernel and device tree in `/boot` |
+| 1 | TETSU-BOOT | 1 MiB | 128 MiB | FAT | `bootlog.txt`, `logs/`, `uboot.env`, `uboot-redund.env`, `README.txt`, `device.txt` |
+| 2 | TETSU-ROOT | | 1 GiB | ext4 | Root slot A, bootable flag. Kernel and device trees in `/boot` |
 | 3 | | | 1 GiB | – | Root slot B, empty until an update. Not part of `sdcard.img` |
 | 4 | TETSU-DATA | 4 GiB | rest | FAT32 | Games and saves, found by label |
 
@@ -33,15 +33,38 @@ Root partitions use fixed PARTUUIDs: `54455453-02` for A and `54455453-03` for B
    `BOOT_ORDER` and `BOOT_A_LEFT`/`BOOT_B_LEFT` from its environment on TETSU-BOOT, takes a try
    off the first slot with any left, saves the environment and runs that slot's
    `/boot/boot.scr`.
-3. **`boot.scr`** `sysboot`s the slot's own `/boot/extlinux/extlinux.conf`, which has the
-   slot's `root=PARTUUID=…`, `panic=10` and the BOOT MESSAGES arguments.
+3. **`boot.scr`** picks the device tree (below), then `sysboot`s the slot's own
+   `/boot/extlinux/extlinux.conf`, which has the slot's `root=PARTUUID=…`, `panic=10` and the
+   BOOT MESSAGES arguments, and `FDTDIR /boot`.
 4. A slot whose script fails falls through to U-Boot's extlinux bootmeth, which boots the
-   partition with the bootable flag: slot A.
+   partition with the bootable flag: slot A, with U-Boot's own default device tree, the
+   RG35XX 2024's.
 5. **Linux** shows the logo about 0.44 s after starting; kernel messages go to `ttynull` at
    `loglevel=5`. Init runs the scripts in `/etc/init.d`.
 6. **The launcher** marks the running slot good once per boot (`slots::mark_good_in_background`):
    it goes first in `BOOT_ORDER` with its 3 tries back. Only boots that never reach the launcher
    count as failed.
+
+### Which device
+
+One image serves the H700 family: `/boot/allwinner/` in each slot holds the device tree of
+the RG35XX SP, Plus, H and 2024 (`BR2_LINUX_KERNEL_INTREE_DTS_NAME`), and nothing before
+Linux tells the devices apart. `device.txt` on TETSU-BOOT names the device in one line, such
+as `device=rg35xx-plus`. `boot.scr` reads it with `env import -t -r` (so Windows line endings
+work too), sets `fdtfile` to `allwinner/sun50i-h700-anbernic-<name>.dtb` and lets
+`FDTDIR` load it. Without `device.txt`, or with a name the slot has no device tree for, it
+boots the SP's: every card from before `device.txt` is an SP's.
+
+`flash.sh --device rg35xx-plus` writes the file; after an image writer, it can be written on
+the PC (TETSU-BOOT's `README.txt` says how). The launcher's profile (`device/profile.rs`)
+comes from the booted device tree's `compatible`.
+
+The device tree patches go in the most general device tree the hardware is in
+(`board/h700/patches/README.md`): the RAM voltage range and USB device mode in the 2024's,
+which the others include, Wi-Fi's keep-power in the Plus's, and the rest in the SP's.
+
+Only the SP has run this image. The Plus, H and 2024 device trees are mainline's with those
+patches, built but not started on a real device.
 
 U-Boot's environment is two redundant 64 KiB copies (`CONFIG_ENV_REDUNDANT`); the one with a
 valid CRC and the higher counter is current. The launcher reads and writes them the same way
@@ -73,7 +96,7 @@ The second writes `output/images/update/`:
 | File | Contents |
 | --- | --- |
 | `tetsu-<board>-<build>.img.gz` | The gzipped `rootfs.ext4` (about 62 MB) |
-| `manifest.txt` | `format`, `device` (the device tree's `compatible`), `build`, `revision`, `file`, `file_size`, `image_size`, `image_sha256` |
+| `manifest.txt` | `format`, `device` (the first device tree's `compatible`, the SP's), `devices` (every device tree's), `build`, `revision`, `file`, `file_size`, `image_size`, `image_sha256` |
 | `manifest.sig` | The manifest's Ed25519 signature, in hex |
 
 `build` is the `BUILD_ID` (`YYYYMMDD-HHMMSS`, UTC) that `post-build.sh` writes into
@@ -95,14 +118,15 @@ followed, so GitHub release assets work as a source
 
 `update/install.rs`:
 
-1. Checks the signature, the device and that the build is newer than the running
-   `BUILD_ID`. Refuses under 30% battery while not charging.
+1. Checks the signature, that this device is in `devices` (or is `device`, in a manifest
+   without `devices`) and that the build is newer than the running `BUILD_ID`. Refuses under 30% battery while not charging.
 2. Puts the running slot first in the boot order and the other at 0 tries, so a half-written
    slot is never booted.
 3. Streams the download, unpacks it and writes the other slot's partition in 1 MiB chunks,
    hashing as it goes; then drops the page cache, reads the partition back and hashes it again.
    Both must match `image_sha256`.
-4. Mounts the slot to check `boot/boot.scr`, `boot/Image` and `extlinux.conf`, and points its
+4. Mounts the slot to check `boot/boot.scr`, `boot/Image`, `extlinux.conf` and this device's
+   device tree, and points its
    `extlinux.conf` at its own PARTUUID, with the running BOOT MESSAGES.
 5. Puts the new slot first with 3 tries and writes `/mnt/data/update-pending.txt`.
 

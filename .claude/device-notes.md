@@ -72,6 +72,11 @@ ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Not yet checked by the user
 
+- One image for the H700 family (2026-11-19, branch `h700-family`): a real Plus, H or 2024,
+  `flash.sh --device`, an update through the manifest's `devices`. Checked by Claude on
+  the SP: `device.txt` absent, CRLF, unknown, and the Plus's device tree on the SP
+  (`docs/features.md`)
+
 - TETSU-DATA on the first start (2026-11-14): a card written with balenaEtcher or another
   image writer, a new card and one with another system's files on it. Checked by Claude
   with loop disks and the real card's partition entry removed (`docs/features.md`)
@@ -193,6 +198,10 @@ ADVANCED > RUN SETUP AGAIN repeats.
   PERFORMANCE, and the battery gauge over a whole charge with CHARGE TO below FULL
 
 ## Known issues
+
+- After a flash on 2026-11-19 the unit went to FEL (`1f3a:efe8`, no LEDs, screen off)
+  twice with the card in TF1 and its SPL matching the image; the reset button started it
+  normally. The cause is unknown; if it happens, press reset before suspecting the build
 
 - Cold starts, mostly the first of a freshly written SanDisk Ultra, sometimes identify
   TF1's card wrongly ("SD032, 30.6 MiB" at address d555, no partitions) and wait for the
@@ -359,7 +368,7 @@ In short here; `docs/features.md` has them in full.
 - `configs/common.config` and `board/<board>/buildroot.config`: the Buildroot config,
   with all version pins, which `make config` joins; `configs/toolchain_a53_defconfig`
   the cross toolchain, built once in `output-toolchain/`
-- `board/rg35xxsp/`: `buildroot.config`, `linux.defconfig`, the `*.fragment` config changes, kernel `patches/`
+- `board/h700/`: `buildroot.config`, `linux.defconfig`, the `*.fragment` config changes, kernel `patches/`
   (origins in `patches/README.md`), `rootfs-overlay/` (init scripts), `extlinux.conf`,
   `genimage.cfg`, `post-image.sh`, `post-build.sh` (drops unused Mesa dependencies),
   `logo.ppm`

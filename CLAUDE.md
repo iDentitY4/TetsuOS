@@ -11,7 +11,7 @@ tested); read the part you touch. Working on the real device: `.claude/device-no
   folders (`ui/`, `wifi/`, `bluetooth/`, `transfer/`, `backup/`, `library/`, `update/`,
   `ingame/`, `device/`, `libretro/`), with `app.rs` (the menus' loop), `launcher.rs`
   (button logic), `settings.rs`, `i18n.rs` and `lang/de.txt` at the top
-- `board/rg35xxsp/`: kernel and U-Boot config fragments, `patches/`, `rootfs-overlay/`
+- `board/h700/`: kernel and U-Boot config fragments, `patches/`, `rootfs-overlay/`
   (init scripts in `etc/init.d/`, helpers in `usr/sbin/`), `post-build.sh`, `genimage.cfg`
 - `configs/common.config` + `board/<board>/buildroot.config`: the Buildroot config and
   every version pin; `package/`: Buildroot packages (launcher, cores, Syncthing, Freedoom)

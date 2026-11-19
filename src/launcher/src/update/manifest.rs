@@ -14,8 +14,12 @@ const FORMAT: &str = "1";
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Manifest {
-    /// The device tree's name for the device it is for, such as `anbernic,rg35xx-sp`.
+    /// The device tree's name for the first device it is for, such as `anbernic,rg35xx-sp`:
+    /// the only one launchers from before `devices` (v0.1) install for.
     pub device: String,
+    /// Every device it is for, separated by spaces in the manifest; just `device` in a
+    /// manifest from before an image served several.
+    pub devices: Vec<String>,
     /// The build's time in UTC, `20261113-193012`, as in its `os-release` `BUILD_ID`.
     pub build: String,
     /// The project's git revision, as SYSTEM INFO shows it.
@@ -72,8 +76,14 @@ pub fn parse(text: &str) -> Result<Manifest, String> {
     let image_sha256 = from_hex(field("image_sha256")?)
         .and_then(|bytes| bytes.try_into().ok())
         .ok_or("the manifest's image_sha256 isn't a SHA-256")?;
+    let device = field("device")?.to_string();
+    let devices = match field("devices") {
+        Ok(list) => list.split_whitespace().map(str::to_string).collect(),
+        Err(_) => vec![device.clone()],
+    };
     Ok(Manifest {
-        device: field("device")?.to_string(),
+        device,
+        devices,
         build: build.to_string(),
         revision: field("revision").unwrap_or_default().to_string(),
         file: file.to_string(),
@@ -81,6 +91,13 @@ pub fn parse(text: &str) -> Result<Manifest, String> {
         image_size: number("image_size")?,
         image_sha256,
     })
+}
+
+impl Manifest {
+    /// Whether the update is for the device with this `compatible` name.
+    pub fn is_for(&self, compatible: &str) -> bool {
+        self.devices.iter().any(|device| device == compatible)
+    }
 }
 
 /// Whether `text` is a build time as `post-build.sh` writes it: `YYYYMMDD-HHMMSS`.
@@ -115,7 +132,7 @@ mod tests {
     use ring::signature::{Ed25519KeyPair, KeyPair};
 
     const TEXT: &str = "format=1\ndevice=anbernic,rg35xx-sp\nbuild=20261113-193012\nrevision=5608e24\n\
-        file=tetsu-rg35xxsp-20261113-193012.img.gz\nfile_size=62384069\nimage_size=1073741824\n\
+        file=tetsu-h700-20261113-193012.img.gz\nfile_size=62384069\nimage_size=1073741824\n\
         image_sha256=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff\n";
 
     fn hex(bytes: &[u8]) -> String {
@@ -128,11 +145,26 @@ mod tests {
         assert_eq!(manifest.device, "anbernic,rg35xx-sp");
         assert_eq!(manifest.build, "20261113-193012");
         assert_eq!(manifest.revision, "5608e24");
-        assert_eq!(manifest.file, "tetsu-rg35xxsp-20261113-193012.img.gz");
+        assert_eq!(manifest.file, "tetsu-h700-20261113-193012.img.gz");
         assert_eq!((manifest.file_size, manifest.image_size), (62384069, 1073741824));
         assert_eq!(manifest.image_sha256[..3], [0x00, 0x11, 0x22]);
         // Unknown lines are skipped.
         assert!(parse(&format!("{TEXT}later=1\n")).is_ok());
+    }
+
+    #[test]
+    fn an_update_is_for_its_listed_devices_or_its_one_device() {
+        let old = parse(TEXT).unwrap();
+        assert_eq!(old.devices, ["anbernic,rg35xx-sp"]);
+        assert!(old.is_for("anbernic,rg35xx-sp") && !old.is_for("anbernic,rg35xx-plus"));
+        let family = parse(&TEXT.replace(
+            "device=anbernic,rg35xx-sp\n",
+            "device=anbernic,rg35xx-sp\ndevices=anbernic,rg35xx-sp anbernic,rg35xx-plus anbernic,rg35xx-h\n",
+        ))
+        .unwrap();
+        assert_eq!(family.device, "anbernic,rg35xx-sp", "devices= isn't read as device=");
+        assert!(family.is_for("anbernic,rg35xx-plus") && family.is_for("anbernic,rg35xx-h"));
+        assert!(!family.is_for("anbernic,rg35xx-2024") && !family.is_for("anbernic,rg35xx"));
     }
 
     #[test]

@@ -8,7 +8,7 @@ MESA3D_CONF_OPTS += -Dllvm=disabled
 # The boot logo, shown centred until the launcher starts. It is a plain-text PPM,
 # made with `launcher --preview-splash`, because the kernel's converter reads no other.
 define TETSU_BOOT_LOGO
-	cp $(BR2_EXTERNAL_TETSU_PATH)/board/rg35xxsp/logo.ppm \
+	cp $(BR2_EXTERNAL_TETSU_PATH)/board/h700/logo.ppm \
 		$(LINUX_DIR)/drivers/video/logo/logo_linux_clut224.ppm
 endef
 LINUX_PRE_BUILD_HOOKS += TETSU_BOOT_LOGO

@@ -73,11 +73,11 @@ The Buildroot configuration has two parts, joined by `make config` into
 
 - `configs/common.config`: what every device shares (system, packages, emulator cores,
   ccache)
-- `board/rg35xxsp/buildroot.config`: the CPU, toolchain, kernel and bootloader versions, GPU
+- `board/h700/buildroot.config`: the CPU, toolchain, kernel and bootloader versions, GPU
   and Wi-Fi firmware, and the board's paths
 
 Every version pin is in these two files. Kernel options go in
-`board/rg35xxsp/linux.fragment`, U-Boot's in `uboot.fragment` and BusyBox's in
+`board/h700/linux.fragment`, U-Boot's in `uboot.fragment` and BusyBox's in
 `busybox.fragment`.
 
 ::: warning Kernel modules

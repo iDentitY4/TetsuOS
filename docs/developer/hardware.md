@@ -32,7 +32,7 @@ instead:
 
 **The SP comes with LPDDR4 or LPDDR3,** and the SPL finds out which (U-Boot patch 0001):
 it tries LPDDR4 at 1.1V (`CONFIG_AXP_DCDC3_VOLT` and the `CONFIG_DRAM_SUNXI_*` values in
-`board/rg35xxsp/uboot.fragment`), and if that fails, LPDDR3 at 1.2V (the
+`board/h700/uboot.fragment`), and if that fails, LPDDR3 at 1.2V (the
 `CONFIG_DRAM_SUNXI_LPDDR3_*` values). Kernel patch 0006 gives `reg_dcdc3` a range of 1.1V to
 1.2V, so Linux keeps the voltage the SPL set. If neither type works, the SPL stops, which
 shows as a 1 Hz green blink.

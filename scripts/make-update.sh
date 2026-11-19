@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Makes a signed update over Wi-Fi from the last build, in output/images/update:
 #
-#   manifest.txt              what the update is: the device, the build, the file and its checksums
+#   manifest.txt              what the update is: the devices, the build, the file and its checksums
 #   manifest.sig              the manifest's Ed25519 signature, in hex
 #   tetsu-<board>-<build>.img.gz  the root filesystem image, which holds the kernel too
 #
@@ -23,7 +23,7 @@ set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")/.."
 KEY="${TETSU_UPDATE_KEY:-$HOME/.config/tetsu/update-key.pem}"
 PUBLIC=src/launcher/update-key.pub
-BOARD="${BOARD:-rg35xxsp}"
+BOARD="${BOARD:-h700}"
 IMAGES=output/images
 OUT="$IMAGES/update"
 
@@ -83,13 +83,23 @@ revision="$(sed -n 's/^VERSION=-*g*//p' output/target/usr/lib/os-release | tr -d
 debugfs -R "cat /usr/lib/os-release" "$ROOTFS" 2>/dev/null | grep -qx "BUILD_ID=$build" ||
 	{ echo "$ROOTFS isn't the build in output/target: run command make" >&2; exit 1; }
 
-# The device the update is for: the first name in its device tree's compatible list, which
-# the launcher compares with its own (device/profile.rs).
-dts="$(sed -n 's/^BR2_LINUX_KERNEL_INTREE_DTS_NAME="\(.*\)"/\1/p' output/.config)"
-dtb="$IMAGES/$(basename "${dts%% *}").dtb"
-[ -f "$dtb" ] || { echo "No device tree at $dtb: build first" >&2; exit 1; }
-device="$(output/host/bin/fdtget -t s "$dtb" / compatible | cut -d' ' -f1)"
-[ -n "$device" ] || { echo "$dtb has no compatible name" >&2; exit 1; }
+# The devices the update is for: the first name in each device tree's compatible list,
+# which the launcher compares with its own (device/profile.rs). "devices" lists them all;
+# "device" is the first, the RG35XX SP, the only one that launchers from before "devices"
+# (v0.1) read and install for.
+devices=""
+for dts in $(sed -n 's/^BR2_LINUX_KERNEL_INTREE_DTS_NAME="\(.*\)"/\1/p' output/.config); do
+	dtb="$IMAGES/$dts.dtb"
+	[ -f "$dtb" ] || { echo "No device tree at $dtb: build first" >&2; exit 1; }
+	# The image must have the same, where boot.cmd looks for it (debugfs exits 0 either way)
+	debugfs -R "cat /boot/$dts.dtb" "$ROOTFS" 2>/dev/null | cmp -s - "$dtb" ||
+		{ echo "$ROOTFS has no /boot/$dts.dtb like $dtb" >&2; exit 1; }
+	name="$(output/host/bin/fdtget -t s "$dtb" / compatible | cut -d' ' -f1)"
+	[ -n "$name" ] || { echo "$dtb has no compatible name" >&2; exit 1; }
+	devices="${devices:+$devices }$name"
+done
+device="${devices%% *}"
+[ -n "$device" ] || { echo "output/.config names no device tree" >&2; exit 1; }
 
 file="tetsu-$BOARD-$build.img.gz"
 rm -rf "$OUT"
@@ -99,6 +109,7 @@ gzip -9 -n -c "$ROOTFS" > "$OUT/$file"
 {
 	echo "format=1"
 	echo "device=$device"
+	echo "devices=$devices"
 	echo "build=$build"
 	echo "revision=$revision"
 	echo "file=$file"

@@ -11,8 +11,8 @@ making releases and finding your way around the code.
 | Build system | Buildroot 2026.08.1, as an external tree |
 | Toolchain | GCC 15, binutils 2.45, glibc, built once in `output-toolchain/` |
 | Bootloader | U-Boot 2026.10 with TF-A v2.12, A/B boot through U-Boot's RAUC bootmeth |
-| Kernel | Linux 7.2.15, modules off, plus the patches in `board/rg35xxsp/patches/` |
-| Init | BusyBox init with scripts in `board/rg35xxsp/rootfs-overlay/etc/init.d/` |
+| Kernel | Linux 7.2.15, modules off, plus the patches in `board/h700/patches/` |
+| Init | BusyBox init with scripts in `board/h700/rootfs-overlay/etc/init.d/` |
 | Graphics | `/dev/fb0` through the kernel's fbdev emulation; Panfrost for the Mali-G31 |
 | Audio | ALSA (`sun4i-codec`), bluez-alsa for Bluetooth headphones |
 | Launcher | Rust, in `src/launcher/`: the menus, the libretro frontend and every screen |
@@ -45,7 +45,7 @@ flags render any screen to a PPM file on a PC. See [The launcher](./launcher).
 | `Makefile` | Downloads Buildroot, builds the toolchain, joins the config, builds the image |
 | `configs/common.config` | Buildroot config shared by every device: packages, cores, ccache |
 | `configs/toolchain_a53_defconfig` | The cross toolchain |
-| `board/rg35xxsp/` | The device: `buildroot.config`, kernel and U-Boot fragments, patches, rootfs overlay, `extlinux.conf`, `genimage.cfg`, post-build and post-image scripts, `logo.ppm` |
+| `board/h700/` | The device: `buildroot.config`, kernel and U-Boot fragments, patches, rootfs overlay, `extlinux.conf`, `genimage.cfg`, post-build and post-image scripts, `logo.ppm` |
 | `external.mk`, `Config.in` | The external tree's packages and hooks |
 | `package/launcher/` | The launcher package, which vendors its crates |
 | `package/libretro-*/` | One package per emulator core |

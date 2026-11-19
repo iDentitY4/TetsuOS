@@ -1,0 +1,27 @@
+Subject: [PATCH] arm64: dts: allwinner: rg35xx-2024: keep the RAM voltage the SPL set
+
+The RG35XX 2024 device tree, which the Plus, H and SP include, pins vdd-dram at
+1.1V for LPDDR4, but these devices are also sold with LPDDR3, which runs at
+1.2V (an SP has it). The SPL finds out which one the unit has and sets the
+voltage for it. With a range of 1.1V to 1.2V, Linux leaves the regulator where
+it is, since it only moves a voltage outside the range, so it neither
+undervolts LPDDR3 nor overvolts LPDDR4.
+ROCKNIX instead sets 1.2V through its H700 ddr3 overlay, in its LPDDR3 build.
+---
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-2024.dts b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-2024.dts
+index 15dbb4b3..aaa398f3 100644
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-2024.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-2024.dts
+@@ -473,3 +473,12 @@
+ &pwm {
+ 	status = "okay";
+ };
++
++/*
++ * LPDDR4 runs at 1.1V and LPDDR3 at 1.2V. The SPL tries both and sets the
++ * voltage of the one that works; Linux keeps it, as it is inside this range.
++ */
++&reg_dcdc3 {
++	regulator-min-microvolt = <1100000>;
++	regulator-max-microvolt = <1200000>;
++};

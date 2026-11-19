@@ -4,8 +4,8 @@ BUILDROOT_TARBALL := dl/buildroot-$(BUILDROOT_VERSION).tar.gz
 BUILDROOT_DIR := buildroot-$(BUILDROOT_VERSION)
 
 # The device to build for: board/$(BOARD)/buildroot.config is its part of the
-# configuration, after configs/common.config. Only rg35xxsp so far.
-BOARD ?= rg35xxsp
+# configuration, after configs/common.config. One board per SoC family: h700 so far.
+BOARD ?= h700
 OUTPUT := $(CURDIR)/output
 DEFCONFIG := $(OUTPUT)/tetsu_defconfig
 BR := $(MAKE) -C $(BUILDROOT_DIR) O=$(OUTPUT) BR2_EXTERNAL=$(CURDIR) BR2_DL_DIR=$(CURDIR)/dl

@@ -83,7 +83,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        board: [rg35xxsp]
+        board: [h700]
     env:
       BOARD: ${{ matrix.board }}
       TAGGED: ${{ startsWith(github.ref, 'refs/tags/') }}

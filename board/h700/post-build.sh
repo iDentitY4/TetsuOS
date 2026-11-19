@@ -41,7 +41,14 @@ done
 # U-Boot boots from the root filesystem's /boot (genimage.cfg), where the kernel and
 # device tree are installed, so each root slot has its own boot configuration.
 install -D -m 644 "$BOARD_DIR/extlinux.conf" boot/extlinux/extlinux.conf
-# U-Boot's RAUC bootmeth runs the slot's boot.scr, which boots its extlinux.conf.
+# U-Boot's RAUC bootmeth runs the slot's boot.scr, which boots its extlinux.conf. Its old
+# hush parser stops at a single quote even inside double quotes ("syntax error"), and a
+# script that stops leaves the boot to the extlinux bootmeth: slot A, whatever the boot
+# order, with whatever fdtfile was set. So the build refuses one.
+if grep -v '^[[:space:]]*#' "$BOARD_DIR/boot.cmd" | grep -q "'"; then
+	echo "post-build: boot.cmd has a single quote outside a comment, which U-Boot can't parse" >&2
+	exit 1
+fi
 "$HOST_DIR/bin/mkimage" -A arm64 -O linux -T script -C none -n "Tetsu OS slot" \
 	-d "$BOARD_DIR/boot.cmd" boot/boot.scr >/dev/null
 

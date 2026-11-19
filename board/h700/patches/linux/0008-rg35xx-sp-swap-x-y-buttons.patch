@@ -4,11 +4,13 @@ The shared device tree has X on PA3 and Y on PA2. On the test SP they are the
 other way round, which sent BTN_WEST from the top button and BTN_NORTH from the
 left one. Swap the pins, so the labels and codes match the buttons.
 ---
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
+index 0cf16dc9..416121fd 100644
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
-@@ -53,3 +53,17 @@
- &ohci0 {
- 	status = "disabled";
+@@ -32,3 +32,17 @@
+ 		reg = <0x51>;
+ 	};
  };
 +
 +/*
