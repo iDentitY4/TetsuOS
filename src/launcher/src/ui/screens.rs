@@ -606,7 +606,7 @@ pub fn settings_screen(width: usize, height: usize, view: &SettingsView, frame: 
     let mut canvas = Canvas::new(width, height, frame.theme);
     header(&mut canvas, group_icon(view.group), view.group.label(), frame.battery);
     let right = width.saturating_sub(SETTINGS_RIGHT);
-    let settings = view.group.settings();
+    let settings = view.group.rows();
     for (row, &setting) in settings.iter().enumerate() {
         let y = SETTINGS_TOP + row * SETTINGS_ROW;
         let selected = setting == view.selected;

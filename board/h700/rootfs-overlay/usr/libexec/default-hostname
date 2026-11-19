@@ -1,0 +1,9 @@
+#!/bin/sh
+# Prints the device's default hostname, made from the first name in its device tree's
+# compatible list: anbernic,rg35xx-plus is tetsu-rg35xxplus, and an SP keeps
+# tetsu-rg35xxsp. The launcher's profiles (device/profile.rs) have the same names.
+# Anything unexpected gets the SP's, which every device had before.
+model="$(tr '\0' '\n' < /proc/device-tree/compatible 2>/dev/null | head -n 1)"
+name="tetsu-$(echo "${model#*,}" | sed 's/-//g')"
+echo "$name" | grep -qE '^tetsu-[a-z0-9]{1,50}$' || name=tetsu-rg35xxsp
+echo "$name"

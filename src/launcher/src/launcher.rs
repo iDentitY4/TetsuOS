@@ -1,6 +1,7 @@
 //! The launcher's screens and what each button does on them, kept apart from drawing and
 //! from running games so they can be tested.
 
+use crate::device::profile::{self, Profile};
 use crate::i18n::tr;
 use crate::ingame::screenshot::{self, Shot};
 use crate::ui::input::Button;
@@ -222,6 +223,16 @@ pub const GROUPS: [Group; 12] = [
     Group::Statistics,
 ];
 
+/// The tiles of the settings grid this device has: all of `GROUPS` but those it lacks the
+/// hardware for, such as WI-FI on an RG35XX 2024.
+pub fn groups() -> Vec<Group> {
+    groups_on(profile::get())
+}
+
+fn groups_on(device: &Profile) -> Vec<Group> {
+    GROUPS.into_iter().filter(|group| group.available_on(device)).collect()
+}
+
 /// Groups opened from a row of another, which B goes back to.
 pub const SUBGROUPS: [Group; 2] = [Group::Display, Group::Achievements];
 
@@ -252,6 +263,20 @@ impl Group {
     /// The group whose row opens this one, for a page of another group.
     pub fn parent(self) -> Option<Group> {
         SUBGROUPS.contains(&self).then_some(Self::InGame)
+    }
+
+    /// Whether the device has what the group is about: WI-FI and BLUETOOTH need its radio.
+    pub fn available_on(self, device: &Profile) -> bool {
+        device.wireless || !matches!(self, Self::Wifi | Self::Bluetooth)
+    }
+
+    /// The group's settings this device has, in their order: the rows on its screen.
+    pub fn rows(self) -> Vec<Setting> {
+        self.rows_on(profile::get())
+    }
+
+    fn rows_on(self, device: &Profile) -> Vec<Setting> {
+        self.settings().iter().copied().filter(|setting| setting.available_on(device)).collect()
     }
 
     /// The name on its tile in the settings grid, which fits 11 characters.
@@ -488,6 +513,21 @@ impl Setting {
             Self::ProgressNotices => "PROGRESS",
             Self::OtherNotices => "OTHER MESSAGES",
         })
+    }
+
+    /// Whether the device can use it: those that only work over the network need Wi-Fi.
+    /// ACHIEVEMENTS does too, as a game only plays offline after being played online.
+    pub fn available_on(self, device: &Profile) -> bool {
+        device.wireless
+            || !matches!(
+                self,
+                Self::WifiTransfer
+                    | Self::SaveBackup
+                    | Self::SystemUpdate
+                    | Self::DownloadMissingArt
+                    | Self::DownloadAllArt
+                    | Self::AchievementsPage
+            )
     }
 
     /// Whether A opens another screen, shown with a `>`.
@@ -1032,12 +1072,13 @@ impl Launcher {
 
     /// The selected tile on the settings grid.
     pub fn group_selected(&self) -> Group {
-        GROUPS[self.group]
+        let groups = groups();
+        groups[self.group.min(groups.len() - 1)]
     }
 
     /// The selected setting in a group, or None for a group without any.
     pub fn setting_selected(&self, group: Group) -> Option<Setting> {
-        let settings = group.settings();
+        let settings = group.rows();
         let row = self.group_rows.get(&group).copied().unwrap_or(0);
         settings.get(row.min(settings.len().saturating_sub(1))).copied()
     }
@@ -1341,7 +1382,7 @@ impl Launcher {
     }
 
     fn press_settings_grid(&mut self, button: Button) -> Command {
-        self.group = grid_move(self.group, GROUPS.len(), COLUMNS, button);
+        self.group = grid_move(self.group, groups().len(), COLUMNS, button);
         match button {
             Button::B => self.screen = self.before_settings,
             Button::A => match self.group_selected() {
@@ -1404,7 +1445,7 @@ impl Launcher {
     }
 
     fn press_group(&mut self, button: Button, group: Group, confirming: Option<Setting>) -> Command {
-        let settings = group.settings();
+        let settings = group.rows();
         let Some(setting) = self.setting_selected(group) else {
             self.screen = Screen::Settings;
             return Command::Nothing;
@@ -1525,6 +1566,30 @@ impl Launcher {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::device::profile::{RG35XX_2024, RG35XX_SP};
+
+    #[test]
+    fn a_device_without_wifi_has_no_wifi_bluetooth_or_network_settings() {
+        assert_eq!(groups_on(&RG35XX_SP), GROUPS, "the SP has every group");
+        let groups = groups_on(&RG35XX_2024);
+        assert!(!groups.contains(&Group::Wifi) && !groups.contains(&Group::Bluetooth));
+        assert_eq!(groups.len(), GROUPS.len() - 2);
+        let hidden = [
+            Setting::WifiTransfer,
+            Setting::SaveBackup,
+            Setting::SystemUpdate,
+            Setting::DownloadMissingArt,
+            Setting::DownloadAllArt,
+            Setting::AchievementsPage,
+        ];
+        for group in GROUPS.into_iter().chain(SUBGROUPS) {
+            assert_eq!(group.rows_on(&RG35XX_SP), group.settings(), "{group:?}");
+            let rows = group.rows_on(&RG35XX_2024);
+            let expected: Vec<Setting> = group.settings().iter().copied().filter(|setting| !hidden.contains(setting)).collect();
+            assert_eq!(rows, expected, "{group:?}");
+        }
+        assert!(!Group::BoxArt.rows_on(&RG35XX_2024).is_empty(), "covers can still be shown and deleted");
+    }
 
     fn game(name: &str, system: usize) -> Game {
         Game { path: PathBuf::from(format!("/roms/{name}")), name: name.to_string(), system }

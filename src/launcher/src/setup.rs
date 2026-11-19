@@ -59,19 +59,33 @@ pub enum Request {
 pub struct Setup {
     step: usize,
     row: usize,
+    /// Whether the device has Wi-Fi. Without it, the Wi-Fi step and sending games over
+    /// Wi-Fi are left out.
+    wireless: bool,
+    steps: Vec<Step>,
 }
 
 impl Setup {
     pub fn new() -> Self {
-        Self::at(0)
+        Self::for_device(0, crate::device::profile::get().wireless)
     }
 
     pub fn at(step: usize) -> Self {
-        Self { step, row: 0 }
+        Self::for_device(step, true)
+    }
+
+    fn for_device(step: usize, wireless: bool) -> Self {
+        let steps = STEPS.into_iter().filter(|&step| wireless || step != Step::Wifi).collect();
+        Self { step, row: 0, wireless, steps }
     }
 
     pub fn step(&self) -> Step {
-        STEPS[self.step]
+        self.steps[self.step]
+    }
+
+    /// The games step's rows: copy from a PC, send over Wi-Fi if there is Wi-Fi, finish.
+    fn games_rows(&self) -> usize {
+        if self.wireless { 3 } else { 2 }
     }
 
     fn next(&mut self) -> Request {
@@ -100,12 +114,12 @@ impl Setup {
                 if self.row == 0 { Request::TimeZone(steps) } else { Request::ClockFormat(steps) }
             }
             (Step::Wifi | Step::Time | Step::Games, Button::Up | Button::Down) => {
-                let rows = if step == Step::Games { 3 } else { 2 };
+                let rows = if step == Step::Games { self.games_rows() } else { 2 };
                 self.row = if button == Button::Down { (self.row + 1) % rows } else { (self.row + rows - 1) % rows };
                 Request::Nothing
             }
             (Step::Wifi, Button::A) if self.row == 1 => self.next(),
-            (Step::Games, Button::A) if self.row == 2 => Request::Finish,
+            (Step::Games, Button::A) if self.row == self.games_rows() - 1 => Request::Finish,
             // On coming back, the way on is selected.
             (Step::Wifi, Button::A) => {
                 self.row = 1;
@@ -113,7 +127,7 @@ impl Setup {
             }
             (Step::Games, Button::A) => {
                 let request = if self.row == 0 { Request::CopyGames } else { Request::SendGamesOverWifi };
-                self.row = 2;
+                self.row = self.games_rows() - 1;
                 request
             }
             _ => Request::Nothing,
@@ -157,7 +171,14 @@ pub(crate) fn setup_view(setup: &Setup, current: &settings::Settings, status: St
         Step::Time => (
             &icons::TIME,
             tr("TIME"),
-            vec![tr("CHOOSE A CITY IN YOUR TIME ZONE."), tr("THE TIME COMES FROM THE NETWORK OVER WI-FI.")],
+            vec![
+                tr("CHOOSE A CITY IN YOUR TIME ZONE."),
+                if setup.wireless {
+                    tr("THE TIME COMES FROM THE NETWORK OVER WI-FI.")
+                } else {
+                    tr("SET THE TIME IN GENERAL > SET TIME.")
+                },
+            ],
             vec![choice(0, Setting::TimeZone), choice(1, Setting::ClockFormat)],
             setup.row,
             tr("LEFT RIGHT CHANGES - A NEXT - B BACK - START ENDS"),
@@ -165,21 +186,32 @@ pub(crate) fn setup_view(setup: &Setup, current: &settings::Settings, status: St
         Step::Games => (
             &icons::GAME_BOY,
             tr("GAMES"),
-            vec![
-                tr("GAMES GO IN THE ROMS FOLDER ON THE TETSU-DATA"),
-                tr("PARTITION. COPY THEM OVER USB, SEND THEM FROM"),
-                tr("A BROWSER OVER WI-FI, OR USE A CARD READER."),
-            ],
-            vec![
-                plain(tr("COPY GAMES FROM A PC"), Some(">")),
-                plain(tr("SEND GAMES OVER WI-FI"), Some(">")),
-                plain(tr("FINISH"), None),
-            ],
+            if setup.wireless {
+                vec![
+                    tr("GAMES GO IN THE ROMS FOLDER ON THE TETSU-DATA"),
+                    tr("PARTITION. COPY THEM OVER USB, SEND THEM FROM"),
+                    tr("A BROWSER OVER WI-FI, OR USE A CARD READER."),
+                ]
+            } else {
+                vec![
+                    tr("GAMES GO IN THE ROMS FOLDER ON THE TETSU-DATA"),
+                    tr("PARTITION. COPY THEM OVER USB FROM A PC,"),
+                    tr("OR USE A CARD READER."),
+                ]
+            },
+            [
+                Some(plain(tr("COPY GAMES FROM A PC"), Some(">"))),
+                setup.wireless.then(|| plain(tr("SEND GAMES OVER WI-FI"), Some(">"))),
+                Some(plain(tr("FINISH"), None)),
+            ]
+            .into_iter()
+            .flatten()
+            .collect(),
             setup.row,
             tr("A SELECTS - B BACK"),
         ),
     };
-    let number = trf("STEP {} OF {}", &[&(setup.step + 1), &STEPS.len()]);
+    let number = trf("STEP {} OF {}", &[&(setup.step + 1), &setup.steps.len()]);
     SetupView { icon, title, number, lines, rows, selected, status, hint }
 }
 
@@ -400,6 +432,24 @@ mod tests {
         let mut setup = Setup::at(3);
         setup.press(Button::Up);
         assert_eq!(setup.press(Button::A), Request::Finish);
+    }
+
+    #[test]
+    fn without_wifi_the_wifi_step_and_sending_games_are_left_out() {
+        let mut setup = Setup::for_device(0, false);
+        assert_eq!(setup.press(Button::A), Request::Nothing);
+        assert_eq!(setup.step(), Step::Time, "the language step leads to the time");
+        setup.press(Button::A);
+        assert_eq!(setup.step(), Step::Games);
+        let view = setup_view(&setup, &settings::Settings::default(), String::new());
+        assert_eq!(view.number, "STEP 3 OF 3");
+        assert_eq!(view.rows.iter().map(|row| row.label).collect::<Vec<_>>(), ["COPY GAMES FROM A PC", "FINISH"]);
+        assert!(view.lines.iter().all(|line| !line.contains("WI-FI")), "{:?}", view.lines);
+        assert_eq!(setup.press(Button::A), Request::CopyGames);
+        assert_eq!(setup.press(Button::A), Request::Finish, "back from copying, FINISH is selected");
+        setup.press(Button::B);
+        let view = setup_view(&setup, &settings::Settings::default(), String::new());
+        assert!(view.lines.iter().all(|line| !line.contains("WI-FI")), "{:?}", view.lines);
     }
 
     #[test]

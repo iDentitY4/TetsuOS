@@ -319,7 +319,7 @@ fn carry_out(
         }
         Request::Options => {
             let current = settings::get();
-            let hostname = current.hostname.clone().unwrap_or_else(|| network::DEFAULT_HOSTNAME.to_string());
+            let hostname = current.hostname.clone().unwrap_or_else(|| network::default_hostname().to_string());
             *view = View::Options(WifiOptions::new(hostname, current.wifi_country, !current.wifi_power_save_off));
         }
     }
@@ -457,11 +457,11 @@ fn carry_out_options(
             *view = View::List;
         }
         OptionsRequest::TypeHostname => {
-            let subtitle = trf("EMPTY BRINGS BACK {}", &[&network::DEFAULT_HOSTNAME]);
+            let subtitle = trf("EMPTY BRINGS BACK {}", &[&network::default_hostname()]);
             let start = (options.hostname.clone(), wifi_pages::hostname_typable as fn(&str) -> bool);
             if let Some(text) = type_value(framebuffer, events, (tr("HOSTNAME"), &subtitle), start, network::MAX_HOSTNAME)? {
                 let name = wifi_pages::typed_hostname(&text);
-                options.hostname = name.clone().unwrap_or_else(|| network::DEFAULT_HOSTNAME.to_string());
+                options.hostname = name.clone().unwrap_or_else(|| network::default_hostname().to_string());
                 change_settings(|s| s.hostname = name);
                 println!("wifi: the hostname is now {}", options.hostname);
                 // Tells the router with a new DHCP request, which takes a moment.

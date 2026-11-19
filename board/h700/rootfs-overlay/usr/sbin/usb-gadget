@@ -43,8 +43,10 @@ setup() {
 	echo 0x01 > "$G/bDeviceProtocol"
 	mkdir "$G/strings/0x409"
 	echo "Tetsu OS" > "$G/strings/0x409/manufacturer"
-	echo "Tetsu OS RG35XX SP" > "$G/strings/0x409/product"
-	echo "tetsu-rg35xxsp" > "$G/strings/0x409/serialnumber"
+	# The device's model, "Anbernic RG35XX SP" in the device tree, without the maker
+	model="$(tr -d '\0' < /proc/device-tree/model 2>/dev/null)"
+	echo "Tetsu OS ${model#Anbernic }" > "$G/strings/0x409/product"
+	/usr/libexec/default-hostname > "$G/strings/0x409/serialnumber"
 
 	mkdir "$G/functions/acm.GS0"
 	mkdir "$G/functions/ecm.usb0"

@@ -3,7 +3,8 @@
 # after S15data. Init has set the default from /etc/hostname by then.
 # "reload", after the setting changes, also tells the router and mdnsd.
 
-DEFAULT=tetsu-rg35xxsp
+# Each device's own, from its device tree: tetsu-rg35xxsp on an SP
+DEFAULT="$(/usr/libexec/default-hostname)"
 
 apply() {
 	name="$(/usr/libexec/setting hostname "$DEFAULT")"

@@ -87,6 +87,9 @@ tried yet, open the card's **TETSU-BOOT** partition on the PC after writing it a
 file `device.txt` holding one line: `device=rg35xx-plus`, `device=rg35xx-h` or
 `device=rg35xx-2024`. `flash.sh` writes it for you with `--device rg35xx-plus` (or the
 others). Without the file, or with a name it doesn't know, the device starts as an SP.
+Name the right device: with another device's name, it can start and then stop about 30
+seconds later, as Linux turns off power it thinks is unused. Delete `device.txt` on the
+PC and it starts as an SP again.
 
 ## 3. First boot
 

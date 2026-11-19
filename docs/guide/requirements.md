@@ -5,8 +5,10 @@
 An **Anbernic RG35XX SP** (Allwinner H700).
 
 Builds after v0.1 are one image for the H700 family, and also carry the device trees of the
-**RG35XX Plus, H and 2024**. Nobody has started one of those yet: they are experimental, and
-the launcher doesn't know yet that the 2024 has no Wi-Fi or that the H has sticks. To try
+**RG35XX Plus, H and 2024**. Nobody has started one of those yet: they are experimental.
+The 2024 has no Wi-Fi, so its menus leave out Wi-Fi, Bluetooth and what needs them,
+including SYSTEM UPDATE: it updates with a new card image. The H's left stick works like
+the D-pad; games don't get analog input yet. To try
 one, write `device=rg35xx-plus` (or `rg35xx-h`, `rg35xx-2024`) into a file `device.txt` on
 the card's TETSU-BOOT partition after writing the image; without it, the device starts as an
 SP. Other H700 devices, such as the RG40XX, RG34XX, RG CubeXX or RG28XX, need their own

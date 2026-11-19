@@ -345,7 +345,7 @@ impl RowList for WifiOptions {
 /// A typed hostname as it is kept: lowercase, None for the default or nothing.
 pub fn typed_hostname(text: &str) -> Option<String> {
     let name = text.trim().to_ascii_lowercase();
-    (network::valid_hostname(&name) && name != network::DEFAULT_HOSTNAME).then_some(name)
+    (network::valid_hostname(&name) && name != network::default_hostname()).then_some(name)
 }
 
 /// Whether the keyboard accepts a hostname: a valid one in any case, or empty for the
