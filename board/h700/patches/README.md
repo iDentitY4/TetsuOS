@@ -21,9 +21,13 @@ squashes multi-commit files, so the original commit boundaries are in ROCKNIX.
 
 Eleven patches are specific to this project:
 
-- `linux/0006-rg35xx-sp-ram-voltage-from-spl.patch` lets the RAM rail stay at the
+The device tree patches go in the most general device tree the hardware is in. Mainline's
+SP and H include the Plus's, which includes the RG35XX 2024's, so a change to the 2024's
+reaches all four; patches named `rg35xx-sp` change only the SP.
+
+- `linux/0006-rg35xx-2024-ram-voltage-from-spl.patch` lets the RAM rail stay at the
   voltage the SPL set, 1.1V for LPDDR4 or 1.2V for LPDDR3.
-- `linux/0007-rg35xx-sp-usb-device-mode.patch` disables the USB host controllers,
+- `linux/0007-rg35xx-2024-usb-device-mode.patch` disables the USB host controllers,
   which share the port with the device controller and would otherwise take it
   over at boot. USB host mode needs this reverted, plus a dual-role setup like
   ROCKNIX's `0151` and `0152` patches.
@@ -37,7 +41,7 @@ Eleven patches are specific to this project:
 - `linux/0012-musb-sunxi-keep-session-in-suspend.patch` keeps the USB session through
   system sleep, because the device otherwise stays disconnected from the PC after
   waking until the cable is re-plugged.
-- `linux/0013-rg35xx-sp-wifi-keep-power-in-suspend.patch` lets the Wi-Fi's SDIO host
+- `linux/0013-rg35xx-plus-wifi-keep-power-in-suspend.patch` lets the Wi-Fi's SDIO host
   keep the card powered in system sleep, because rtw88 otherwise fails to suspend,
   which aborted every sleep, including lid sleep.
 - `linux/0014-musb-gadget-keep-rx-packet-before-request.patch` reads a USB packet that

@@ -59,7 +59,7 @@ aren't marked as pre-releases, which `releases/latest/download/` would skip.
    P=$PWD; make -C buildroot-2026.08.1 O=$P/output BR2_EXTERNAL=$P BR2_DL_DIR=$P/dl launcher-rebuild
    make
    scripts/make-update.sh
-   gzip -9 -n -c output/images/sdcard.img > tetsu-rg35xxsp-v0.1-sdcard.img.gz
+   gzip -9 -n -c output/images/sdcard.img > tetsu-h700-v0.2-sdcard.img.gz
    make legal-info
    ```
 
@@ -126,11 +126,14 @@ build step stops after 300 minutes, and `dl/` and `ccache/` are saved even when 
 so running the failed job again goes further each time, until one finishes. The caches
 share GitHub's 10 GB per repository.
 
-**More boards:** add one to the matrix, with its own `board/<board>/`. `make-update.sh`
-takes the device's name for the manifest from the board's device tree. But SYSTEM UPDATE
-asks every device for `manifest.txt`, and a release's files share one folder, so before a
-second board the launcher needs a name per board for it (for example
-`manifest-<board>.txt`); the second board's upload fails until then.
+**More boards:** a board is a SoC family, with one image for all its devices (`board/h700/`
+so far). A new device of the family is a device tree in `BR2_LINUX_KERNEL_INTREE_DTS_NAME`
+and a profile in `device/profile.rs`; `make-update.sh` lists every device tree's name in
+the manifest's `devices`. A new family is a row in the matrix with its own `board/<family>/`.
+SYSTEM UPDATE asks every device for `manifest.txt`, and a release's files share one folder,
+so before a second family the launcher needs a name per family for it (for example
+`manifest-<family>.txt`); the second family's upload fails until then. `manifest.txt`
+itself stays the H700's, as v0.1 devices ask for it.
 
 ## Known gaps before the first release
 

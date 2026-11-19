@@ -187,8 +187,8 @@ fn look(source: &str) -> Result<Manifest, Failure> {
         eprintln!("update: {error}");
         Failure::NotGenuine
     })?;
-    if manifest.device != profile::get().compatible {
-        eprintln!("update: the update is for {}, not this device", manifest.device);
+    if !manifest.is_for(profile::get().compatible) {
+        eprintln!("update: the update is for {}, not this device", manifest.devices.join(" "));
         return Err(Failure::NotGenuine);
     }
     println!("update: {} has build {} ({})", source.trim(), manifest.build, manifest.revision);
@@ -403,7 +403,9 @@ fn point_at_partition(device: &Path, slot: Slot) -> io::Result<()> {
     }
     let root = Path::new(SLOT_MOUNT);
     let result = (|| {
-        if let Some(missing) = BOOT_FILES.iter().find(|file| !root.join(file).is_file()) {
+        // The boot files and this device's own device tree, without which boot.cmd boots the SP's
+        let device_tree = profile::get().device_tree;
+        if let Some(missing) = BOOT_FILES.iter().chain([&device_tree]).find(|file| !root.join(file).is_file()) {
             return Err(io::Error::other(format!("the new slot has no {missing}")));
         }
         let path = root.join(EXTLINUX);

@@ -18,15 +18,16 @@ test builds, for [testing your device](./testing).
 
 | File | What it is |
 | --- | --- |
-| `tetsu-rg35xxsp-<version>-sdcard.img.gz`, such as `tetsu-rg35xxsp-v0.1-sdcard.img.gz` | The card image for a new install |
-| `SHA256SUMS-rg35xxsp` | Checksums, to check the download |
-| `tetsu-rg35xxsp-<build>.img.gz`, `manifest.txt`, `manifest.sig` | The signed update that [SYSTEM UPDATE](./upgrading) downloads. You don't need these to install |
-| `tetsu-rg35xxsp-<version>-sources.tar.part*`, `-licences.csv` | The sources of the GPL and other components, and their licences |
+| `tetsu-h700-<version>-sdcard.img.gz` (up to v0.1 `tetsu-rg35xxsp-…`), such as `tetsu-rg35xxsp-v0.1-sdcard.img.gz` | The card image for a new install |
+| `SHA256SUMS-h700` (up to v0.1 `SHA256SUMS-rg35xxsp`) | Checksums, to check the download |
+| `tetsu-h700-<build>.img.gz`, `manifest.txt`, `manifest.sig` | The signed update that [SYSTEM UPDATE](./upgrading) downloads. You don't need these to install |
+| `tetsu-h700-<version>-sources.tar.part*`, `-licences.csv` | The sources of the GPL and other components, and their licences |
 
-Check that the download is complete: with `SHA256SUMS-rg35xxsp` in the same folder,
+Check that the download is complete: with `SHA256SUMS-h700` (for v0.1,
+`SHA256SUMS-rg35xxsp`) in the same folder,
 
 ```bash
-sha256sum -c --ignore-missing SHA256SUMS-rg35xxsp
+sha256sum -c --ignore-missing SHA256SUMS-h700
 ```
 
 prints `OK` after the image's name.
@@ -78,6 +79,14 @@ scripts/flash.sh --format-data /dev/sdX
 A card flashed before 2026-11-08 has a data partition named `RGDATA`. It needs
 `--format-data` once; copy your saves off it first.
 :::
+
+### Another H700 device (experimental)
+
+The image starts an RG35XX SP as it is. For an RG35XX Plus, H or 2024, which nobody has
+tried yet, open the card's **TETSU-BOOT** partition on the PC after writing it and add a
+file `device.txt` holding one line: `device=rg35xx-plus`, `device=rg35xx-h` or
+`device=rg35xx-2024`. `flash.sh` writes it for you with `--device rg35xx-plus` (or the
+others). Without the file, or with a name it doesn't know, the device starts as an SP.
 
 ## 3. First boot
 

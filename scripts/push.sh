@@ -16,7 +16,6 @@ cd "$(dirname "$(readlink -f "$0")")/.."
 TARGET=output/target
 IMAGES=output/images
 DEVICE="${RG_DEVICE:-root@10.35.35.1}"
-DTB=sun50i-h700-anbernic-rg35xx-sp.dtb
 # Host keys change with every reflash, and the link only reaches this cable.
 SSH_OPTIONS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=5"
 
@@ -57,13 +56,14 @@ push_rootfs() {
 }
 
 push_boot() {
-	echo "Copying the kernel, device tree, extlinux.conf and boot.scr"
+	echo "Copying the kernel, device trees, extlinux.conf and boot.scr"
 	# They are in the root filesystem's /boot, which U-Boot reads (genimage.cfg)
 	on_device mkdir -p /tmp/push-boot
-	copy "$TARGET/boot/Image" "$TARGET/boot/$DTB" "$TARGET/boot/boot.scr" "$TARGET/boot/extlinux/extlinux.conf" "$DEVICE:/tmp/push-boot/"
+	copy "$TARGET/boot/Image" "$TARGET/boot/allwinner" "$TARGET/boot/boot.scr" "$TARGET/boot/extlinux/extlinux.conf" "$DEVICE:/tmp/push-boot/"
 	on_device sh -es <<-EOF
-		mkdir -p /boot/extlinux
-		cp /tmp/push-boot/Image /tmp/push-boot/$DTB /tmp/push-boot/boot.scr /boot/
+		mkdir -p /boot/extlinux /boot/allwinner
+		cp /tmp/push-boot/Image /tmp/push-boot/boot.scr /boot/
+		cp /tmp/push-boot/allwinner/*.dtb /boot/allwinner/
 		# The build's extlinux.conf boots slot A (partition 2); slot B's boots partition 3.
 		if grep -q 'root=PARTUUID=54455453-03' /proc/cmdline; then
 			sed -i 's/root=PARTUUID=54455453-02/root=PARTUUID=54455453-03/' /tmp/push-boot/extlinux.conf
@@ -72,7 +72,7 @@ push_boot() {
 		sync
 		echo 3 > /proc/sys/vm/drop_caches
 		cmp /tmp/push-boot/Image /boot/Image
-		cmp /tmp/push-boot/$DTB /boot/$DTB
+		for dtb in /tmp/push-boot/allwinner/*.dtb; do cmp "\$dtb" "/boot/allwinner/\${dtb##*/}"; done
 		cmp /tmp/push-boot/boot.scr /boot/boot.scr
 		cmp /tmp/push-boot/extlinux.conf /boot/extlinux/extlinux.conf
 		rm -r /tmp/push-boot

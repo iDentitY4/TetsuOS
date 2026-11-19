@@ -6,11 +6,13 @@ and 0159-arm64-dts-rg35xx-2024-keep-the-second-sd-card-powered. The supply stays
 on, as the vendor firmware leaves it. Aliases keep TF1 at mmcblk0 whatever order
 the hosts probe in, which they do asynchronously.
 ---
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
+index 21bb8163..fa8778ed 100644
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
-@@ -83,3 +83,36 @@
- &mmc1 {
- 	keep-power-in-suspend;
+@@ -54,3 +54,36 @@
+ 		gpios = <&pio 0 3 GPIO_ACTIVE_LOW>; /* PA3 */
+ 	};
  };
 +
 +/*

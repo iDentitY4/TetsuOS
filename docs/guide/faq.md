@@ -10,8 +10,10 @@ stock firmware as before.
 ### Which devices are supported?
 
 Only the Anbernic RG35XX SP for now: v0.1 on units with LPDDR3 memory, and builds after
-it on LPDDR4 too, though no LPDDR4 unit has run one yet ([help test](./testing)). The launcher already picks its
-battery, backlight and power paths from a device profile, so other H700 handhelds can follow.
+it on LPDDR4 too, though no LPDDR4 unit has run one yet ([help test](./testing)). Builds
+after v0.1 are one image for the H700 family, with the RG35XX Plus, H and 2024 as
+untested, experimental devices ([requirements](./requirements#the-device)). The RG40XX,
+RG34XX, RG CubeXX and RG28XX come next.
 
 ### Do I need BIOS files?
 

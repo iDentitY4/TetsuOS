@@ -363,9 +363,10 @@ pub fn preview(installing: bool) -> Canvas {
     let rows = system_rows(Some("20261113-193012"), Some("5608e24"), Some(slots::Slot::A), "http://10.35.35.2:8035");
     let update = manifest::Manifest {
         device: "anbernic,rg35xx-sp".into(),
+        devices: vec!["anbernic,rg35xx-sp".into()],
         build: "20261114-090000".into(),
         revision: "abc1234".into(),
-        file: "tetsu-rg35xxsp-20261114-090000.img.gz".into(),
+        file: "tetsu-h700-20261114-090000.img.gz".into(),
         file_size: 62_384_069,
         image_size: 1 << 30,
         image_sha256: [0; 32],

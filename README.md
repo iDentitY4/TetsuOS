@@ -65,7 +65,7 @@ device's own firmware alone: take the card out and the stock system starts as be
    v0.1 is built for **LPDDR3**; later builds also start on LPDDR4 but are untested there.
    [Requirements](https://identity4.github.io/TetsuOS/guide/requirements#check-your-memory-type)
    shows how to check from the stock card in a minute.
-2. **Download** the newest `tetsu-rg35xxsp-…-sdcard.img.gz` from
+2. **Download** the newest `tetsu-h700-…-sdcard.img.gz` (`tetsu-rg35xxsp-…` up to v0.1) from
    [Releases](https://github.com/iDentitY4/TetsuOS/releases).
 3. **Write it to the card** with [balenaEtcher](https://etcher.balena.io) or
    [Raspberry Pi Imager](https://www.raspberrypi.com/software/) ("Use custom"). This
@@ -91,8 +91,10 @@ checked on that unit, but expect rough edges. Builds after v0.1 also start on LP
 units, which nobody has tested yet:
 [help test](https://identity4.github.io/TetsuOS/guide/testing).
 [CHANGELOG.md](CHANGELOG.md) lists what each release brings. USB accessories don't work
-yet, as the USB-C port runs in device mode only. Other H700 devices (RG35XX Plus, RG40XX,
-RG28XX) are not supported yet.
+yet, as the USB-C port runs in device mode only. Builds after v0.1 are one image for the
+H700 family, which can also start the RG35XX Plus, H and 2024, untested so far
+([requirements](https://identity4.github.io/TetsuOS/guide/requirements#the-device)); other
+H700 devices (RG40XX, RG34XX, RG CubeXX, RG28XX) are not supported yet.
 
 ## Building from source
 
@@ -136,7 +138,7 @@ Tetsu OS stands on a lot of other people's work:
 ## License
 
 Tetsu OS's own code (the launcher, scripts, Buildroot packages and board files) is under
-the [MIT license](LICENSE). The kernel and BlueZ patches in `board/rg35xxsp/patches/` are
+the [MIT license](LICENSE). The kernel and BlueZ patches in `board/h700/patches/` are
 under GPL-2.0, like the code they change. The emulator cores are downloaded at build time
 under their own licenses, some of which forbid commercial use.
 

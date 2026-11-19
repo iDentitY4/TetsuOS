@@ -15,10 +15,11 @@ tells the launcher, as the second panel refreshes at 59.52 Hz.
 The second panel's setup and timings are from ROCKNIX's
 anbernic,rg35xx-sp-v2-panel.panel.
 ---
-diff --color -urN a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
+index fa8778ed..74fd93f6 100644
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
-@@ -116,3 +116,8 @@
+@@ -87,3 +87,8 @@
  	vqmmc-supply = <&reg_cldo3>;
  	status = "okay";
  };
@@ -27,7 +28,8 @@ diff --color -urN a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp
 +&panel {
 +	compatible = "anbernic,rg35xx-sp-panel", "anbernic,rg35xx-plus-panel";
 +};
-diff --color -urN a/drivers/gpu/drm/panel/panel-newvision-nv3052c.c b/drivers/gpu/drm/panel/panel-newvision-nv3052c.c
+diff --git a/drivers/gpu/drm/panel/panel-newvision-nv3052c.c b/drivers/gpu/drm/panel/panel-newvision-nv3052c.c
+index 18130bc1..1da9e9b4 100644
 --- a/drivers/gpu/drm/panel/panel-newvision-nv3052c.c
 +++ b/drivers/gpu/drm/panel/panel-newvision-nv3052c.c
 @@ -14,7 +14,9 @@
@@ -40,7 +42,7 @@ diff --color -urN a/drivers/gpu/drm/panel/panel-newvision-nv3052c.c b/drivers/gp
  #include <video/mipi_display.h>
  #include <drm/drm_mipi_dbi.h>
  #include <drm/drm_modes.h>
-@@ -32,6 +34,11 @@
+@@ -32,6 +34,11 @@ struct nv3052c_panel_info {
  	u32 bus_format, bus_flags;
  	const struct nv3052c_reg *panel_regs;
  	unsigned int panel_regs_len;
@@ -52,7 +54,7 @@ diff --color -urN a/drivers/gpu/drm/panel/panel-newvision-nv3052c.c b/drivers/gp
  };
  
  struct nv3052c {
-@@ -358,11 +365,51 @@
+@@ -358,11 +365,51 @@ static const struct nv3052c_reg wl_355608_a8_panel_regs[] = {
  	{ 0xf6, 0xc0 },
  };
  
@@ -104,7 +106,7 @@ diff --color -urN a/drivers/gpu/drm/panel/panel-newvision-nv3052c.c b/drivers/gp
  static int nv3052c_prepare(struct drm_panel *panel)
  {
  	struct nv3052c *priv = to_nv3052c(panel);
-@@ -380,10 +427,17 @@
+@@ -380,10 +427,17 @@ static int nv3052c_prepare(struct drm_panel *panel)
  
  	/* Reset the chip */
  	gpiod_set_value_cansleep(priv->reset_gpio, 1);
@@ -123,7 +125,7 @@ diff --color -urN a/drivers/gpu/drm/panel/panel-newvision-nv3052c.c b/drivers/gp
  	/* Apply panel-specific initialization registers */
  	for (i = 0; i < panel_regs_len; i++) {
  		err = mipi_dbi_command(dbi, panel_regs[i].cmd,
-@@ -428,6 +482,9 @@
+@@ -428,6 +482,9 @@ static int nv3052c_unprepare(struct drm_panel *panel)
  	if (err)
  		dev_err(priv->dev, "Unable to enter sleep mode: %d\n", err);
  
@@ -133,7 +135,7 @@ diff --color -urN a/drivers/gpu/drm/panel/panel-newvision-nv3052c.c b/drivers/gp
  	gpiod_set_value_cansleep(priv->reset_gpio, 1);
  	regulator_disable(priv->supply);
  
-@@ -511,6 +568,86 @@
+@@ -511,6 +568,86 @@ static const struct drm_panel_funcs nv3052c_funcs = {
  	.get_modes	= nv3052c_get_modes,
  };
  
@@ -220,7 +222,7 @@ diff --color -urN a/drivers/gpu/drm/panel/panel-newvision-nv3052c.c b/drivers/gp
  static int nv3052c_probe(struct spi_device *spi)
  {
  	struct device *dev = &spi->dev;
-@@ -542,6 +679,8 @@
+@@ -542,6 +679,8 @@ static int nv3052c_probe(struct spi_device *spi)
  
  	priv->dbi.read_commands = NULL;
  
@@ -229,7 +231,7 @@ diff --color -urN a/drivers/gpu/drm/panel/panel-newvision-nv3052c.c b/drivers/gp
  	spi_set_drvdata(spi, priv);
  
  	err = drm_panel_of_backlight(&priv->panel);
-@@ -619,6 +758,154 @@
+@@ -619,6 +758,154 @@ static const struct drm_display_mode wl_355608_a8_mode[] = {
  	},
  };
  
@@ -384,7 +386,7 @@ diff --color -urN a/drivers/gpu/drm/panel/panel-newvision-nv3052c.c b/drivers/gp
  static const struct nv3052c_panel_info ltk035c5444t_panel_info = {
  	.display_modes = ltk035c5444t_modes,
  	.num_modes = ARRAY_SIZE(ltk035c5444t_modes),
-@@ -652,10 +939,34 @@
+@@ -652,10 +939,34 @@ static const struct nv3052c_panel_info wl_355608_a8_panel_info = {
  	.panel_regs_len = ARRAY_SIZE(wl_355608_a8_panel_regs),
  };
  
@@ -419,7 +421,7 @@ diff --color -urN a/drivers/gpu/drm/panel/panel-newvision-nv3052c.c b/drivers/gp
  	{ /* sentinel */ }
  };
  MODULE_DEVICE_TABLE(spi, nv3052c_ids);
-@@ -664,6 +975,7 @@
+@@ -664,6 +975,7 @@ static const struct of_device_id nv3052c_of_match[] = {
  	{ .compatible = "leadtek,ltk035c5444t", .data = &ltk035c5444t_panel_info },
  	{ .compatible = "fascontek,fs035vg158", .data = &fs035vg158_panel_info },
  	{ .compatible = "anbernic,rg35xx-plus-panel", .data = &wl_355608_a8_panel_info },

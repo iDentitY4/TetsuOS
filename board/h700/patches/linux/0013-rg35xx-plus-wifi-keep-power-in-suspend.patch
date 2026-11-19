@@ -1,0 +1,23 @@
+Subject: [PATCH] arm64: dts: allwinner: rg35xx-plus: keep Wi-Fi powered in suspend
+
+rtw88's SDIO driver asks the host to keep the card powered through system sleep,
+and fails to suspend with -EINVAL when the host doesn't allow it. That aborts the
+whole suspend: "Failed to host PM flag MMC_PM_KEEP_POWER". Allow it on mmc1, in
+the Plus device tree, which the H and SP include.
+---
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-plus.dts b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-plus.dts
+index 60a8e492..8606b7c2 100644
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-plus.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-plus.dts
+@@ -51,3 +51,11 @@
+ 		host-wake-gpios = <&pio 6 16 GPIO_ACTIVE_HIGH>; /* PG16 */
+ 	};
+ };
++
++/*
++ * rtw88 fails system sleep unless the SDIO host keeps the Wi-Fi card powered, which
++ * aborted every suspend, including lid sleep. mac80211 stops the card while asleep.
++ */
++&mmc1 {
++	keep-power-in-suspend;
++};

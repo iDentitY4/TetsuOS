@@ -2,9 +2,15 @@
 
 ## The device
 
-An **Anbernic RG35XX SP** (Allwinner H700). Other H700 devices such as the RG35XX Plus,
-RG40XX or RG28XX are not supported yet: they share the chip, but differ in screen,
-controls and power wiring.
+An **Anbernic RG35XX SP** (Allwinner H700).
+
+Builds after v0.1 are one image for the H700 family, and also carry the device trees of the
+**RG35XX Plus, H and 2024**. Nobody has started one of those yet: they are experimental, and
+the launcher doesn't know yet that the 2024 has no Wi-Fi or that the H has sticks. To try
+one, write `device=rg35xx-plus` (or `rg35xx-h`, `rg35xx-2024`) into a file `device.txt` on
+the card's TETSU-BOOT partition after writing the image; without it, the device starts as an
+SP. Other H700 devices, such as the RG40XX, RG34XX, RG CubeXX or RG28XX, need their own
+device trees and aren't in the image yet.
 
 ### Check your memory type
 

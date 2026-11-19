@@ -994,7 +994,7 @@ pub fn keyboard_screen(
 }
 
 /// The kernel's boot logo, shown centred on black until the launcher starts. It is made
-/// with `launcher --preview-splash` and kept as `board/rg35xxsp/logo.ppm`, in the first
+/// with `launcher --preview-splash` and kept as `board/h700/logo.ppm`, in the first
 /// theme colour whatever is chosen, since the kernel shows it.
 pub fn splash() -> Canvas {
     let (title, subtitle) = ("TETSU", "OS");
