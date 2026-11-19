@@ -113,7 +113,7 @@ keeps the images as the run's artifacts for 3 days instead of making a release. 
 - **toolchain** builds the cross toolchain once and caches `output-toolchain/host`, keyed by
   the Buildroot version and `configs/toolchain_a53_defconfig`.
 - **draft**, for a tag, makes the draft release from `.github/release-notes.md`.
-- **board** runs once per board in its matrix (only `rg35xxsp` so far), on its own
+- **board** runs once per board in its matrix (only `h700` so far), on its own
   runner: it frees disk space (a runner has about 14 GB free; the build and sources need
   about 40), runs `make`, then `scripts/make-update.sh --unsigned`. The signing key never
   goes to GitHub. For a tag, it also runs `make legal-info` and uploads everything to the
