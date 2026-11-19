@@ -56,7 +56,13 @@ work too), sets `fdtfile` to `allwinner/sun50i-h700-anbernic-<name>.dtb` and let
 `FDTDIR` load it. Without `device.txt`, or with a name the slot has no device tree for, it
 boots the SP's: every card from before `device.txt` is an SP's.
 
-`flash.sh --device rg35xx-plus` writes the file; after an image writer, it can be written on
+A second line, `panel=rev6`, `v2` or `nv3052c`, becomes `panel_newvision_nv3052c.panel=` on
+the kernel's command line, through `${tetsu_panel}` at the end of `extlinux.conf`'s `APPEND`
+line, which U-Boot fills in (empty without the line); any other value is dropped. `rev6`
+picks the panel of newer RG35XX Plus, H and 2024 units (patch 0022), which reports the same
+ID as the older one; `v2` and `nv3052c` override what the driver finds on an SP.
+
+`flash.sh --device rg35xx-plus` (and `--panel rev6`) writes the file; after an image writer, it can be written on
 the PC (TETSU-BOOT's `README.txt` says how). The launcher's profile (`device/profile.rs`)
 comes from the booted device tree's `compatible`.
 

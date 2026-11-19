@@ -18,22 +18,43 @@ use libc::{ioctl, Ioctl};
 const DISPLAY: &str = "/dev/dri/card1";
 
 /// Which panel the kernel's driver found (patch 0020): `nv3052c`, `v2`, or empty if it
-/// couldn't tell, when it uses the NV3052C's setup.
+/// couldn't tell, when it uses the NV3052C's setup; or `rev6`, set from `device.txt`
+/// for newer RG35XX Plus, H and 2024 units (patch 0022).
 const PANEL_KIND: &str = "/sys/module/panel_newvision_nv3052c/parameters/panel";
 
-fn is_v2(kind: &str) -> bool {
-    kind.trim() == "v2"
+/// The rev6 panel's rate: 24 MHz over 800 x 500 pixels a frame.
+const REV6_HZ: f64 = 60.0;
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Kind {
+    /// The device's own panel
+    Own,
+    /// The second panel the device was also made with, which the driver found
+    Second,
+    Rev6,
 }
 
-fn second_panel() -> bool {
-    std::fs::read_to_string(PANEL_KIND).is_ok_and(|kind| is_v2(&kind))
+fn kind_from(text: &str) -> Kind {
+    match text.trim() {
+        "v2" => Kind::Second,
+        "rev6" => Kind::Rev6,
+        _ => Kind::Own,
+    }
 }
 
-/// The panel's rate in its own mode, which paces games: the device's, or its second
-/// panel's (`device/profile.rs`).
+fn panel_kind() -> Kind {
+    std::fs::read_to_string(PANEL_KIND).map_or(Kind::Own, |text| kind_from(&text))
+}
+
+/// The panel's rate in its own mode, which paces games: the device's, its second
+/// panel's (`device/profile.rs`), or the rev6 panel's.
 pub fn own_hz() -> f64 {
     let device = crate::device::profile::get();
-    if second_panel() { device.second_panel_hz } else { device.panel_hz }
+    match panel_kind() {
+        Kind::Own => device.panel_hz,
+        Kind::Second => device.second_panel_hz,
+        Kind::Rev6 => REV6_HZ,
+    }
 }
 
 /// Games between these rates get a matching panel rate: the 50 Hz consoles.
@@ -215,10 +236,11 @@ pub struct PanelRate {
 
 impl PanelRate {
     /// Sets the panel to the rate nearest `fps`, for a game in `MATCHED_FPS`. The second
-    /// panel stays at its own rate: nobody has seen it take the longer blanking.
+    /// panel and the rev6 panel stay at their own rate: nobody has seen them take the
+    /// longer blanking.
     /// Other devices' panels stay at their own rate too, until one is seen taking it.
     pub fn for_game(fps: f64) -> Option<Self> {
-        if !MATCHED_FPS.contains(&fps) || second_panel() || !crate::device::profile::get().fifty_hz {
+        if !MATCHED_FPS.contains(&fps) || panel_kind() != Kind::Own || !crate::device::profile::get().fifty_hz {
             return None;
         }
         match Self::set(fps) {
@@ -350,9 +372,11 @@ mod tests {
 
     #[test]
     fn the_second_panel_is_told_from_the_drivers_answer() {
-        assert!(is_v2("v2\n"));
-        assert!(!is_v2("nv3052c\n"));
-        assert!(!is_v2("\n"), "a panel the driver couldn't identify has the NV3052C's setup");
+        assert_eq!(kind_from("v2\n"), Kind::Second);
+        assert_eq!(kind_from("nv3052c\n"), Kind::Own);
+        assert_eq!(kind_from("\n"), Kind::Own, "a panel the driver couldn't identify has the NV3052C's setup");
+        assert_eq!(kind_from("rev6\n"), Kind::Rev6);
+        assert!((REV6_HZ - 24_000_000.0 / (800.0 * 500.0)).abs() < 1e-9);
         assert!((crate::device::profile::RG35XX_SP.second_panel_hz - 59.5238).abs() < 0.001);
     }
 

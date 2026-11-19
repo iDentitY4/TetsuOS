@@ -1,0 +1,246 @@
+Subject: [PATCH] drm/panel: nv3052c: add the panel of newer RG35XX Plus, H and 2024 units
+
+Units of the RG35XX Plus, H and 2024 from board revision 6 on have another
+NV3052C panel, with its own setup and timings, on the same wires. It reports
+the same ID as the older one, so the driver can't find it as it finds the
+SP's second panel: panel_newvision_nv3052c.panel=rev6 on the command line
+selects it, which Tetsu OS's boot script sets from a panel=rev6 line in
+device.txt.
+
+The setup is Hironori Kikuchi's YLM-LBV0345001H-V2, which he posted for this
+driver to dri-devel in November 2024 (not merged), with the timings of
+ROCKNIX's anbernic,rg35xx-plus-rev6-panel.panel, whose setup it is taken from.
+
+Untested: no revision 6 unit has started this kernel.
+---
+diff --git a/drivers/gpu/drm/panel/panel-newvision-nv3052c.c b/drivers/gpu/drm/panel/panel-newvision-nv3052c.c
+index 1f6880b98..43eb88007 100644
+--- a/drivers/gpu/drm/panel/panel-newvision-nv3052c.c
++++ b/drivers/gpu/drm/panel/panel-newvision-nv3052c.c
+@@ -44,6 +44,11 @@ struct nv3052c_panel_info {
+ 	unsigned int init_delay;
+ 	/* The panel to use if the one found doesn't identify as an NV3052C */
+ 	const struct nv3052c_panel_info *other;
++	/*
++	 * A later NV3052C panel on the same wires, which reports the same ID, so it is
++	 * only used when the command line says panel_newvision_nv3052c.panel=rev6
++	 */
++	const struct nv3052c_panel_info *rev6;
+ };
+ 
+ struct nv3052c {
+@@ -603,6 +608,17 @@ static void nv3052c_detect(struct nv3052c *priv)
+ 	u8 *id;
+ 	int err;
+ 
++	if (!strcmp(panel_kind, "rev6")) {
++		if (priv->panel_info->rev6) {
++			priv->panel_info = priv->panel_info->rev6;
++			dev_info(priv->dev, "panel: rev6, set on the command line\n");
++			return;
++		}
++		/* Found as usual, and no longer reported as rev6 */
++		dev_warn(priv->dev, "panel: this panel has no rev6, finding it as usual\n");
++		panel_kind[0] = '\0';
++	}
++
+ 	if (!other)
+ 		return;
+ 
+@@ -911,6 +927,188 @@ static const struct drm_display_mode rg35xx_sp_v2_mode[] = {
+ 	},
+ };
+ 
++/*
++ * Newer RG35XX Plus, H and 2024 units (board revision 6) have another NV3052C panel with
++ * its own setup and timings. It reports the same ID as the older one, so nothing tells
++ * them apart but the user, through panel_newvision_nv3052c.panel=rev6.
++ */
++/* anbernic,rg35xx-plus-rev6-panel: Hironori Kikuchi's YLM-LBV0345001H-V2, from ROCKNIX's .panel file */
++static const u8 rg35xx_plus_rev6_init_seq[] = {
++	2, 0xff, 0x30,
++	2, 0xff, 0x52,
++	2, 0xff, 0x01,
++	2, 0xe3, 0x00,
++	2, 0x0a, 0x01,
++	2, 0x23, 0x00,
++	2, 0x24, 0x10,
++	2, 0x25, 0x09,
++	2, 0x28, 0x47,
++	2, 0x29, 0x01,
++	2, 0x2a, 0xdf,
++	2, 0x38, 0x9c,
++	2, 0x39, 0xa7,
++	2, 0x3a, 0x3f,
++	2, 0x91, 0x77,
++	2, 0x92, 0x77,
++	2, 0xa0, 0x55,
++	2, 0xa1, 0x50,
++	2, 0xa4, 0x9c,
++	2, 0xa7, 0x02,
++	2, 0xa8, 0x01,
++	2, 0xa9, 0x01,
++	2, 0xaa, 0xfc,
++	2, 0xab, 0x28,
++	2, 0xac, 0x06,
++	2, 0xad, 0x06,
++	2, 0xae, 0x06,
++	2, 0xaf, 0x03,
++	2, 0xb0, 0x08,
++	2, 0xb1, 0x26,
++	2, 0xb2, 0x28,
++	2, 0xb3, 0x28,
++	2, 0xb4, 0x03,
++	2, 0xb5, 0x08,
++	2, 0xb6, 0x26,
++	2, 0xb7, 0x08,
++	2, 0xb8, 0x26,
++	2, 0xff, 0x30,
++	2, 0xff, 0x52,
++	2, 0xff, 0x02,
++	2, 0xb0, 0x02,
++	2, 0xb1, 0x0f,
++	2, 0xb2, 0x11,
++	2, 0xb3, 0x32,
++	2, 0xb4, 0x36,
++	2, 0xb5, 0x3c,
++	2, 0xb6, 0x20,
++	2, 0xb7, 0x3e,
++	2, 0xb8, 0x0e,
++	2, 0xb9, 0x05,
++	2, 0xba, 0x11,
++	2, 0xbb, 0x11,
++	2, 0xbc, 0x13,
++	2, 0xbd, 0x14,
++	2, 0xbe, 0x16,
++	2, 0xbf, 0x0e,
++	2, 0xc0, 0x17,
++	2, 0xc1, 0x07,
++	2, 0xd0, 0x02,
++	2, 0xd1, 0x10,
++	2, 0xd2, 0x12,
++	2, 0xd3, 0x33,
++	2, 0xd4, 0x36,
++	2, 0xd5, 0x3c,
++	2, 0xd6, 0x20,
++	2, 0xd7, 0x3e,
++	2, 0xd8, 0x0d,
++	2, 0xd9, 0x05,
++	2, 0xda, 0x12,
++	2, 0xdb, 0x11,
++	2, 0xdc, 0x14,
++	2, 0xdd, 0x14,
++	2, 0xde, 0x18,
++	2, 0xdf, 0x0f,
++	2, 0xe0, 0x17,
++	2, 0xe1, 0x08,
++	2, 0xff, 0x30,
++	2, 0xff, 0x52,
++	2, 0xff, 0x03,
++	2, 0x07, 0x03,
++	2, 0x08, 0x00,
++	2, 0x09, 0x01,
++	2, 0x30, 0x00,
++	2, 0x31, 0x00,
++	2, 0x32, 0x00,
++	2, 0x33, 0x00,
++	2, 0x34, 0x61,
++	2, 0x35, 0xd4,
++	2, 0x36, 0x24,
++	2, 0x37, 0x03,
++	2, 0x40, 0x02,
++	2, 0x41, 0x03,
++	2, 0x42, 0x04,
++	2, 0x43, 0x05,
++	2, 0x44, 0x11,
++	2, 0x45, 0xe6,
++	2, 0x46, 0xe7,
++	2, 0x47, 0x11,
++	2, 0x48, 0xe8,
++	2, 0x49, 0xe9,
++	2, 0x50, 0x06,
++	2, 0x51, 0x07,
++	2, 0x52, 0x08,
++	2, 0x53, 0x09,
++	2, 0x54, 0x11,
++	2, 0x55, 0xea,
++	2, 0x56, 0xeb,
++	2, 0x57, 0x11,
++	2, 0x58, 0xec,
++	2, 0x59, 0xed,
++	2, 0x82, 0x00,
++	2, 0x83, 0x00,
++	2, 0x84, 0x02,
++	2, 0x85, 0x00,
++	2, 0x86, 0x1f,
++	2, 0x87, 0x00,
++	2, 0x88, 0x1f,
++	2, 0x89, 0x0e,
++	2, 0x8a, 0x0e,
++	2, 0x8b, 0x10,
++	2, 0x8c, 0x10,
++	2, 0x8d, 0x0a,
++	2, 0x8e, 0x0a,
++	2, 0x8f, 0x0c,
++	2, 0x90, 0x0c,
++	2, 0x98, 0x00,
++	2, 0x99, 0x00,
++	2, 0x9a, 0x01,
++	2, 0x9b, 0x00,
++	2, 0x9c, 0x1f,
++	2, 0x9d, 0x00,
++	2, 0x9e, 0x1f,
++	2, 0x9f, 0x0d,
++	2, 0xa0, 0x0d,
++	2, 0xa1, 0x0f,
++	2, 0xa2, 0x0f,
++	2, 0xa3, 0x09,
++	2, 0xa4, 0x09,
++	2, 0xa5, 0x0b,
++	2, 0xa6, 0x0b,
++	2, 0xff, 0x30,
++	2, 0xff, 0x52,
++	2, 0xff, 0x00,
++	2, 0x3a, 0x77,
++	2, 0x36, 0x0a,
++};
++
++static const struct drm_display_mode rg35xx_plus_rev6_mode[] = {
++	{
++		.clock = 24000,
++		.hdisplay = 640,
++		.hsync_start = 640 + 140,
++		.hsync_end = 640 + 140 + 4,
++		.htotal = 640 + 140 + 4 + 16,
++		.vdisplay = 480,
++		.vsync_start = 480 + 14,
++		.vsync_end = 480 + 14 + 4,
++		.vtotal = 480 + 14 + 4 + 2,
++		.flags = DRM_MODE_FLAG_NVSYNC | DRM_MODE_FLAG_NHSYNC,
++	},
++};
++
++static const struct nv3052c_panel_info rg35xx_plus_rev6_panel_info = {
++	.display_modes = rg35xx_plus_rev6_mode,
++	.num_modes = ARRAY_SIZE(rg35xx_plus_rev6_mode),
++	.width_mm = 70,
++	.height_mm = 53,
++	.bus_format = MEDIA_BUS_FMT_RGB888_1X24,
++	.bus_flags = DRM_BUS_FLAG_DE_HIGH | DRM_BUS_FLAG_PIXDATA_DRIVE_NEGEDGE,
++	.init_seq = rg35xx_plus_rev6_init_seq,
++	.init_seq_len = ARRAY_SIZE(rg35xx_plus_rev6_init_seq),
++	.init_delay = 10,
++};
++
++
+ static const struct nv3052c_panel_info ltk035c5444t_panel_info = {
+ 	.display_modes = ltk035c5444t_modes,
+ 	.num_modes = ARRAY_SIZE(ltk035c5444t_modes),
+@@ -942,6 +1140,7 @@ static const struct nv3052c_panel_info wl_355608_a8_panel_info = {
+ 	.bus_flags = DRM_BUS_FLAG_DE_HIGH | DRM_BUS_FLAG_PIXDATA_DRIVE_NEGEDGE,
+ 	.panel_regs = wl_355608_a8_panel_regs,
+ 	.panel_regs_len = ARRAY_SIZE(wl_355608_a8_panel_regs),
++	.rev6 = &rg35xx_plus_rev6_panel_info,
+ };
+ 
+ static const struct nv3052c_panel_info rg35xx_sp_v2_panel_info = {

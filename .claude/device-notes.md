@@ -72,6 +72,10 @@ ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Not yet checked by the user
 
+- The rev6 panel (2026-11-20, patch 0022, `panel=rev6` in `device.txt`): no revision 6
+  unit here. Checked by Claude on the SP: the setting reaches the kernel, the Plus tree with
+  it selects the rev6 setup, and the SP's own tree with it still finds its panel
+
 - Six more H700 devices (2026-11-19, kernel patch 0021): the RG40XX H/V, RG35XX Pro, RG34XX,
   RG34XX-SP and CubeXX, with panels from ROCKNIX's `.panel` files in the NV3052C driver and
   sticks as `adc-joystick`. No such device here; the SP must still start as before

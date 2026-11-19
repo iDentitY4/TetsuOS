@@ -23,9 +23,10 @@ without it, the device starts as an SP.
 | RG34XX-SP | `rg34xx-sp` | 720x480 screen, left stick as the D-pad |
 | RG CubeXX | `rgcubexx` | 720x720 screen: the menus use its top 480 rows for now; no RGB lights yet |
 
-Games don't get analog input yet. Units of the Plus, H and 2024 with the newer "rev6"
-screen may show nothing, as their panel setup isn't in the image yet. The RG28XX, whose
-screen is mounted turned, isn't in the image yet.
+Games don't get analog input yet. Newer units of the Plus, H and 2024 (board revision 6)
+have another screen panel, which can't be told from the older one: if the screen stays
+dark, add a second line `panel=rev6` to `device.txt`. The RG28XX, whose screen is mounted
+turned, isn't in the image yet.
 
 ### Check your memory type
 

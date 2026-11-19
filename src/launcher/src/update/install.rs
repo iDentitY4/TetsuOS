@@ -445,6 +445,8 @@ mod tests {
         assert_eq!(a, CONF);
         let text = for_slot(CONF, Slot::B, Some(BootMessages::Text));
         assert!(text.contains("root=PARTUUID=54455453-03 rootfstype=ext4 rootwait rw console=tty1 loglevel=7 panic=10"));
+        let panel = for_slot("APPEND root=PARTUUID=54455453-02 ${tetsu_panel}\n", Slot::B, None);
+        assert_eq!(panel, "APPEND root=PARTUUID=54455453-03 ${tetsu_panel}\n", "the panel choice stays");
     }
 
     #[test]
