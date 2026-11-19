@@ -20,7 +20,17 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
 
-pub(crate) const PREVIEW_SIZE: (usize, usize) = (640, 480);
+/// The screen size previews are drawn at: 640x480, or `LAUNCHER_PREVIEW_SIZE` such as
+/// `720x720`, to see a screen on the other H700 devices.
+pub(crate) fn preview_size() -> (usize, usize) {
+    std::env::var("LAUNCHER_PREVIEW_SIZE")
+        .ok()
+        .and_then(|text| {
+            let (width, height) = text.split_once('x')?;
+            Some((width.parse().ok()?, height.parse().ok()?))
+        })
+        .unwrap_or((640, 480))
+}
 
 pub(crate) fn write_ppm(canvas: &canvas::Canvas, path: &str) -> io::Result<()> {
     let mut file = io::BufWriter::new(std::fs::File::create(path)?);
@@ -100,7 +110,7 @@ fn write_preview_with(path: &str, buttons: &[Button], with_lists: bool) -> io::R
     }
     let battery = Some(Battery { percent: 95, charging: true, minutes_left: None });
     let mut art = boxart::BoxArt::new();
-    let (canvas, _) = launcher_canvas(PREVIEW_SIZE, &launcher, &library, &mut art, battery, Duration::ZERO);
+    let (canvas, _) = launcher_canvas(preview_size(), &launcher, &library, &mut art, battery, Duration::ZERO);
     write_ppm(&canvas, path)
 }
 
@@ -122,7 +132,7 @@ fn paused_frame() -> (Vec<u32>, (usize, usize)) {
 /// which some have covers, and the second selected.
 pub(crate) fn write_switch_preview(style: settings::SwitcherStyle, path: &str) -> io::Result<()> {
     use crate::ingame::switcher::{Cover, SwitchGame, SwitchPage, LARGE_COVER, SMALL_COVER};
-    let (width, height) = PREVIEW_SIZE;
+    let (width, height) = preview_size();
     let (frame, frame_size) = paused_frame();
     let names = [
         ("Pokemon - FireRed Version.gba", "Pokemon - FireRed Version"),
@@ -156,7 +166,7 @@ pub(crate) fn write_switch_preview(style: settings::SwitcherStyle, path: &str) -
 }
 
 pub(crate) fn write_pause_preview(path: &str) -> io::Result<()> {
-    let (width, height) = PREVIEW_SIZE;
+    let (width, height) = preview_size();
     let (frame, frame_size) = paused_frame();
     // A PlayStation game with several discs and achievements, the fullest the menu gets.
     let mut menu = pause::PauseMenu::with(3, true, true).with_ghosting(false);
@@ -180,7 +190,7 @@ pub(crate) fn write_pause_preview(path: &str) -> io::Result<()> {
 /// Color at INTEGER, and the theme's border around a Game Boy.
 pub(crate) fn write_borders_preview(path: &str) -> io::Result<()> {
     use settings::Border;
-    let screen = PREVIEW_SIZE;
+    let screen = preview_size();
     let shots = [
         ("gb", (480, 432), Border::Bezel),
         ("gg", (533, 480), Border::Bezel),
@@ -222,7 +232,7 @@ pub(crate) fn write_borders_preview(path: &str) -> io::Result<()> {
 /// can't load the device's cores, with a changed choice selected.
 pub(crate) fn write_core_options_preview(path: &str) -> io::Result<()> {
     use core_options::{Category, Choice, Choices, Declarations, Declared, OptionsPage};
-    let (width, height) = PREVIEW_SIZE;
+    let (width, height) = preview_size();
     let option = |key: &str, label: &str, category: &str, info: &str, choices: &[(&str, &str)]| Declared {
         key: key.into(),
         label: label.into(),
@@ -249,14 +259,14 @@ pub(crate) fn write_core_options_preview(path: &str) -> io::Result<()> {
         page.press(Button::Down);
     }
     let frame = vec![0x0040_6080u32; width * height];
-    write_ppm(&pause_screens::core_options_screen(width, height, &frame, PREVIEW_SIZE, &page, current_theme()), path)
+    write_ppm(&pause_screens::core_options_screen(width, height, &frame, preview_size(), &page, current_theme()), path)
 }
 
 /// Renders the in-game menu's CHEATS page with codes like those for Super Mario Bros., one
 /// of them on and a long one selected.
 pub(crate) fn write_cheats_preview(path: &str) -> io::Result<()> {
     use cheats::{Cheat, CheatsPage};
-    let (width, height) = PREVIEW_SIZE;
+    let (width, height) = preview_size();
     let cheat = |name: &str, code: &str| Cheat { name: name.into(), code: code.into() };
     let codes = vec![
         cheat("Always Big", "0754:00+0756:01"),
@@ -274,19 +284,19 @@ pub(crate) fn write_cheats_preview(path: &str) -> io::Result<()> {
         page.press(Button::Down);
     }
     let frame = vec![0x0040_6080u32; width * height];
-    write_ppm(&pause_screens::cheats_screen(width, height, &frame, PREVIEW_SIZE, &page, current_theme()), path)
+    write_ppm(&pause_screens::cheats_screen(width, height, &frame, preview_size(), &page, current_theme()), path)
 }
 
 /// Renders the in-game menu's CONTROLS page, with A swapped, X on turbo and R2 selected.
 pub(crate) fn write_controls_preview(path: &str) -> io::Result<()> {
-    let (width, height) = PREVIEW_SIZE;
+    let (width, height) = preview_size();
     let layout = controls::Layout::from_text("normal,a:b,b:a,x:a*,l2:none").unwrap_or_default();
     let mut menu = controls::ControlsMenu::new(controls::Layout::default(), Some(layout));
     while menu.note().is_none() {
         menu.press(Button::Down);
     }
     let frame = vec![0x0040_6080u32; width * height];
-    write_ppm(&pause_screens::controls_screen(width, height, &frame, PREVIEW_SIZE, &menu, current_theme()), path)
+    write_ppm(&pause_screens::controls_screen(width, height, &frame, preview_size(), &menu, current_theme()), path)
 }
 
 /// Renders the Wi-Fi screen with sample networks, connected to one of them.
@@ -323,7 +333,7 @@ pub(crate) fn write_wifi_preview(path: &str) -> io::Result<()> {
         connected: true,
         message: Some(i18n::tr("SCANNING")),
     };
-    let (width, height) = PREVIEW_SIZE;
+    let (width, height) = preview_size();
     let battery = Some(Battery { percent: 95, charging: true, minutes_left: None });
     write_ppm(&crate::wifi::wifi_screen::wifi_screen(width, height, &view, &screen_frame(battery)), path)
 }
@@ -361,7 +371,7 @@ pub(crate) fn write_bluetooth_preview(path: &str) -> io::Result<()> {
         busy_label: i18n::tr("PAIRING"),
         message: None,
     };
-    let (width, height) = PREVIEW_SIZE;
+    let (width, height) = preview_size();
     let battery = Some(Battery { percent: 95, charging: true, minutes_left: None });
     write_ppm(&crate::bluetooth::bluetooth_screen::bluetooth_screen(width, height, &view, &screen_frame(battery)), path)
 }
@@ -372,7 +382,7 @@ pub(crate) fn write_keyboard_preview(path: &str) -> io::Result<()> {
     keyboard.text = "Hunter2!".into();
     keyboard.press(Button::Down);
     keyboard.press(Button::Right);
-    let (width, height) = PREVIEW_SIZE;
+    let (width, height) = preview_size();
     let battery = Some(Battery { percent: 95, charging: true, minutes_left: None });
     let view = screens::KeyboardView {
         icon: &icons::WIFI,
@@ -385,7 +395,7 @@ pub(crate) fn write_keyboard_preview(path: &str) -> io::Result<()> {
 
 /// Renders a step of the setup, with sample text under its rows.
 pub(crate) fn write_setup_preview(step: usize, path: &str) -> io::Result<()> {
-    let (width, height) = PREVIEW_SIZE;
+    let (width, height) = preview_size();
     let setup = setup::Setup::at(step);
     let status = match setup.step() {
         setup::Step::Language => String::new(),
@@ -402,7 +412,7 @@ pub(crate) fn write_setup_preview(step: usize, path: &str) -> io::Result<()> {
 /// image shows each look a button can have.
 /// Settings > SYSTEM > USB STORAGE, with a PC using the drive.
 pub(crate) fn write_usb_drive_preview(path: &str) -> io::Result<()> {
-    let (width, height) = PREVIEW_SIZE;
+    let (width, height) = preview_size();
     let view = usb_drive_view(UsbLink::Connected, false, true);
     let frame = screens::Frame { theme: current_theme(), battery: Some(Battery { percent: 80, charging: true, minutes_left: None }) };
     write_ppm(&crate::transfer::usb_drive::usb_drive_screen(width, height, &view, &frame), path)
@@ -410,7 +420,7 @@ pub(crate) fn write_usb_drive_preview(path: &str) -> io::Result<()> {
 
 /// Settings > STATISTICS, with some weeks of play on several consoles up to today.
 pub(crate) fn write_statistics_preview(path: &str) -> io::Result<()> {
-    let (width, height) = PREVIEW_SIZE;
+    let (width, height) = preview_size();
     let today = crate::device::clock::local(jiff::Timestamp::now(), crate::settings::get().time_zone()).date();
     let mut log = crate::library::play_log::Log::default();
     let consoles = ["gba", "snes", "ps1", "gb", "md", "nes", "ngpc"];
@@ -425,7 +435,7 @@ pub(crate) fn write_statistics_preview(path: &str) -> io::Result<()> {
 
 /// Settings > TIME > SET TIME, on the hour.
 pub(crate) fn write_set_time_preview(path: &str) -> io::Result<()> {
-    let (width, height) = PREVIEW_SIZE;
+    let (width, height) = preview_size();
     let settings = crate::settings::get();
     let time: jiff::civil::DateTime = "2026-11-12T16:05".parse().map_err(io::Error::other)?;
     let values = crate::device::set_time::field_values(time, settings.clock);
@@ -437,7 +447,7 @@ pub(crate) fn write_set_time_preview(path: &str) -> io::Result<()> {
 
 /// Settings > SYSTEM > WI-FI TRANSFER, while a game arrives.
 pub(crate) fn write_transfer_preview(path: &str) -> io::Result<()> {
-    let (width, height) = PREVIEW_SIZE;
+    let (width, height) = preview_size();
     let activity = Activity {
         receiving: Some(Receiving { name: "Pokemon - Emerald Version (USA, Europe).gba".into(), received: 9 << 20, size: 16 << 20 }),
         browser: true,
@@ -451,7 +461,7 @@ pub(crate) fn write_transfer_preview(path: &str) -> io::Result<()> {
 pub(crate) fn write_button_preview(path: &str) -> io::Result<()> {
     const BTN_DPAD_UP: u16 = 0x220;
     const BTN_EAST: u16 = 0x131;
-    let (width, height) = PREVIEW_SIZE;
+    let (width, height) = preview_size();
     let mut controls = Controls::new();
     controls.apply(&Event::key(BTN_DPAD_UP, 1));
     controls.apply(&Event::key(BTN_DPAD_UP, 0));
@@ -482,7 +492,7 @@ fn preview_badges() -> io::Result<achievements::Badges> {
 /// under way and a few unlocked.
 pub(crate) fn write_achievements_preview(path: &str) -> io::Result<()> {
     use achievements::{Entry, Line, Page, Status, Summary};
-    let (width, height) = PREVIEW_SIZE;
+    let (width, height) = preview_size();
     let entry = |title: &str, description: &str, points: u32, unlocked: bool, progress: &str, badge: &str| {
         Line::Achievement(Entry {
             title: title.into(),
@@ -512,12 +522,12 @@ pub(crate) fn write_achievements_preview(path: &str) -> io::Result<()> {
     let view = pause_screens::AchievementsView { page: &page, status: &Status::Ready, summary };
     let frame = vec![0x0040_6080u32; width * height];
     let mut badges = preview_badges()?;
-    write_ppm(&pause_screens::achievements_screen(width, height, &frame, PREVIEW_SIZE, &view, &mut badges, current_theme()), path)
+    write_ppm(&pause_screens::achievements_screen(width, height, &frame, preview_size(), &view, &mut badges, current_theme()), path)
 }
 
 /// Renders an unlock notice at the bottom of a test pattern, where a game shows it.
 pub(crate) fn write_notice_preview(path: &str) -> io::Result<()> {
-    let (width, height) = PREVIEW_SIZE;
+    let (width, height) = preview_size();
     let notice = achievements::Notice {
         badge: Some("5".into()),
         ..achievements::Notice::new(i18n::trf("ACHIEVEMENT UNLOCKED - {} POINTS", &[&10]), "First Steps")
@@ -539,7 +549,7 @@ pub(crate) fn write_notice_preview(path: &str) -> io::Result<()> {
 /// Renders the boot animation at eight moments, as a 4 by 2 sheet at half size, to check
 /// it without the device.
 pub(crate) fn write_boot_animation_preview(path: &str) -> io::Result<()> {
-    let (width, height) = PREVIEW_SIZE;
+    let (width, height) = preview_size();
     let mut animation = crate::device::boot_animation::Animation::new(width, height);
     let moments = [0.25, 0.45, 0.52, 0.66, 0.78, 0.9, 1.1, crate::device::boot_animation::SECONDS];
     let mut sheet = canvas::Canvas::new(width * 2, height, current_theme());
@@ -560,7 +570,7 @@ pub(crate) fn write_boot_animation_preview(path: &str) -> io::Result<()> {
 pub(crate) fn write_gallery_preview(full: bool, path: &str) -> io::Result<()> {
     use crate::library::gallery::{fit_into, gallery_screen, sized, GalleryView, THUMB_BOUND};
     use crate::ui::image::Image;
-    let (width, height) = PREVIEW_SIZE;
+    let (width, height) = preview_size();
     let picture = |w: usize, h: usize, seed: usize| {
         let pixels = (0..w * h)
             .map(|index| {
@@ -653,7 +663,7 @@ fn preview_battery_log(now: i64) -> Vec<crate::device::battery_log::Sample> {
 /// Settings > BATTERY > CHARGE HISTORY or HEALTH AND USE, from a made-up log.
 pub(crate) fn write_battery_preview(page: &str, path: &str) -> io::Result<()> {
     use crate::device::{battery_estimates, battery_log, battery_screen};
-    let (width, height) = PREVIEW_SIZE;
+    let (width, height) = preview_size();
     let now = battery_log::unix_now();
     let samples = preview_battery_log(now);
     let stats = battery_log::Stats { since: Some(now - 40 * 86_400), charged: 1840, capacities: vec![(now - 20 * 86_400, 3180)] };

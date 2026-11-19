@@ -4,15 +4,28 @@
 
 An **Anbernic RG35XX SP** (Allwinner H700).
 
-Builds after v0.1 are one image for the H700 family, and also carry the device trees of the
-**RG35XX Plus, H and 2024**. Nobody has started one of those yet: they are experimental.
-The 2024 has no Wi-Fi, so its menus leave out Wi-Fi, Bluetooth and what needs them,
-including SYSTEM UPDATE: it updates with a new card image. The H's left stick works like
-the D-pad; games don't get analog input yet. To try
-one, write `device=rg35xx-plus` (or `rg35xx-h`, `rg35xx-2024`) into a file `device.txt` on
-the card's TETSU-BOOT partition after writing the image; without it, the device starts as an
-SP. Other H700 devices, such as the RG40XX, RG34XX, RG CubeXX or RG28XX, need their own
-device trees and aren't in the image yet.
+Builds after v0.1 are one image for the H700 family, which also carries other devices'
+device trees. Nobody has started one of them yet: they are experimental. To try one, write
+its name into a file `device.txt` on the card's TETSU-BOOT partition after writing the
+image, as `device=rg40xx-h` ([installation](./installation#another-h700-device-experimental));
+without it, the device starts as an SP.
+
+| Device | `device.txt` | Notes |
+| --- | --- | --- |
+| RG35XX SP | none, or `rg35xx-sp` | Tested |
+| RG35XX Plus | `rg35xx-plus` | |
+| RG35XX H | `rg35xx-h` | The left stick works like the D-pad |
+| RG35XX 2024 | `rg35xx-2024` | No Wi-Fi: the menus leave out Wi-Fi, Bluetooth and what needs them, SYSTEM UPDATE too |
+| RG35XX Pro | `rg35xx-pro` | Left stick as the D-pad |
+| RG40XX H | `rg40xx-h` | Left stick as the D-pad; no RGB lights or vibration yet |
+| RG40XX V | `rg40xx-v` | As the RG40XX H |
+| RG34XX | `rg34xx` | 720x480 screen |
+| RG34XX-SP | `rg34xx-sp` | 720x480 screen, left stick as the D-pad |
+| RG CubeXX | `rgcubexx` | 720x720 screen: the menus use its top 480 rows for now; no RGB lights yet |
+
+Games don't get analog input yet. Units of the Plus, H and 2024 with the newer "rev6"
+screen may show nothing, as their panel setup isn't in the image yet. The RG28XX, whose
+screen is mounted turned, isn't in the image yet.
 
 ### Check your memory type
 

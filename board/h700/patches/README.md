@@ -19,7 +19,7 @@ squashes multi-commit files, so the original commit boundaries are in ROCKNIX.
 | `linux/0005-sun4i-rgb-connector-type.patch` | `0155-sun4i-set-rgb-connector-as-DSI.patch` |
 | `linux/0010-axp20x-pek-ignore-wake-press.patch` | `0157-input-axp20x-pek-do-not-report-the-key-press-that-woke-the-system.patch` |
 
-Eleven patches are specific to this project:
+The rest are specific to this project:
 
 The device tree patches go in the most general device tree the hardware is in. Mainline's
 SP and H include the Plus's, which includes the RG35XX 2024's, so a change to the 2024's
@@ -81,6 +81,19 @@ reaches all four; patches named `rg35xx-sp` change only the SP.
   a panel that doesn't report `30 52` gets the second panel's setup and timings. Those come from
   ROCKNIX's `anbernic,rg35xx-sp-v2-panel.panel`, which has no licence file beside it, so ask
   ROCKNIX before a final release.
+- `linux/0021-h700-add-rg40xx-rg35xx-pro-rg34xx-and-rgcubexx.patch` adds the device trees of
+  the RG40XX H and V, RG35XX Pro, RG34XX, RG34XX-SP and RG CubeXX, after ROCKNIX's in
+  `projects/ROCKNIX/devices/H700/linux/dts/allwinner` (GPL-2.0 or BSD-2-Clause, their
+  copyright lines kept). ROCKNIX drives their sticks with its own joypad driver and their
+  panels with a generic panel driver and firmware files; here the sticks are mainline's
+  `adc-joystick`, wired as on the RG35XX H (`sun50i-h700-anbernic-rg35xx-2024-sticks.dtsi`,
+  with the right stick reversed where ROCKNIX inverts it), and the panels join the NV3052C
+  driver. Each panel's setup and timings are those of ROCKNIX's
+  `packages/linux-firmware/kernel-firmware/extra-firmware/panels/anbernic,*.panel`, sent
+  whole; the RG35XX Plus file matches the driver's own setup in all 189 commands but
+  register 0x23, which goes with ROCKNIX's timings. The RG40XX's and RG34XX-SP's second
+  panels are found as the SP's is. The panel files have no licence beside them either.
+  None of these devices has run it.
 - `bluez5_utils/0001-device-raise-le-security-on-demand.patch` keeps BlueZ from starting
   encryption as soon as a paired LE device connects, and lets the first read the device
   refuses unencrypted start it instead. Started 26 ms in, a Backbone Pro never answered
