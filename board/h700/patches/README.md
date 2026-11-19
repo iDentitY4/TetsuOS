@@ -79,8 +79,8 @@ reaches all four; patches named `rg35xx-sp` change only the SP.
 - `linux/0020-nv3052c-find-which-panel-an-rg35xx-sp-has.patch` (ours): the SP has an NV3052C or
   a second panel with another controller. The driver reads the panel's ID after a reset, and
   a panel that doesn't report `30 52` gets the second panel's setup and timings. Those come from
-  ROCKNIX's `anbernic,rg35xx-sp-v2-panel.panel`, which has no licence file beside it, so ask
-  ROCKNIX before a final release.
+  ROCKNIX's `anbernic,rg35xx-sp-v2-panel.panel`, which Philippe Simons found in Anbernic's
+  firmware for the SP.
 - `linux/0021-h700-add-rg40xx-rg35xx-pro-rg34xx-and-rgcubexx.patch` adds the device trees of
   the RG40XX H and V, RG35XX Pro, RG34XX, RG34XX-SP and RG CubeXX, after ROCKNIX's in
   `projects/ROCKNIX/devices/H700/linux/dts/allwinner` (GPL-2.0 or BSD-2-Clause, their
@@ -92,7 +92,12 @@ reaches all four; patches named `rg35xx-sp` change only the SP.
   `packages/linux-firmware/kernel-firmware/extra-firmware/panels/anbernic,*.panel`, sent
   whole; the RG35XX Plus file matches the driver's own setup in all 189 commands but
   register 0x23, which goes with ROCKNIX's timings. The RG40XX's and RG34XX-SP's second
-  panels are found as the SP's is. The panel files have no licence beside them either.
+  panels are found as the SP's is. The setups are Hironori Kikuchi's, who first added the
+  RG40XX and RG CubeXX panels to the NV3052C driver
+  ([dri-devel, November 2024](https://patchwork.kernel.org/project/dri-devel/cover/20241105055239.1577275-1-kikuchan98@gmail.com),
+  not merged), and Philippe Simons', who added the RG34XX's to it and found the RG34XX-SP's
+  and the second panels in Anbernic's firmware for ROCKNIX, which later made them `.panel`
+  files.
   None of these devices has run it.
 - `bluez5_utils/0001-device-raise-le-security-on-demand.patch` keeps BlueZ from starting
   encryption as soon as a paired LE device connects, and lets the first read the device

@@ -13,7 +13,8 @@ or =v2 on the kernel's command line overrides it, and the same parameter in sysf
 tells the launcher, as the second panel refreshes at 59.52 Hz.
 
 The second panel's setup and timings are from ROCKNIX's
-anbernic,rg35xx-sp-v2-panel.panel.
+anbernic,rg35xx-sp-v2-panel.panel, which Philippe Simons found in Anbernic's
+firmware for the SP.
 ---
 diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-sp.dts
 index fa8778ed..74fd93f6 100644

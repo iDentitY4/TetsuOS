@@ -2364,8 +2364,10 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   place; at 720x720 they use the top 480 rows. Left out: the RG40XX's and CubeXX's RGB
   lights (on UART5) and vibration motor (PWM3), the "rev6" panel of newer Plus, H and 2024
   units (also an NV3052C, so its ID can't tell it apart), and the RG28XX, whose panel is
-  mounted turned. None of these devices has started the image; the panel files have no
-  licence beside them in ROCKNIX's tree, as with patch 0020.
+  mounted turned. None of these devices has started the image. The panel setups are
+  Hironori Kikuchi's (the RG40XX and CubeXX, first posted for this driver to dri-devel in
+  November 2024) and Philippe Simons' (the RG34XX, and the RG34XX-SP and second panels he
+  found in Anbernic's firmware), as ROCKNIX's `.panel` files carry them.
 
 - **Save backup** (2026-11-13): the saves kept off the card, so a dead card loses nothing.
   A backup is the same set both ways (`backup::FOLDERS` and `FILES`): `saves` (saves,
