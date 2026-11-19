@@ -4,6 +4,7 @@ use crate::ingame::achievements;
 use crate::ingame::controls::Layout;
 use crate::ingame::core_options::Declarations;
 use crate::library::systems::{CoreSetup, Persistence};
+use std::borrow::Cow;
 use std::io;
 use std::ffi::{c_char, c_uint, c_void, CString};
 use std::io::Write;
@@ -193,11 +194,9 @@ impl Core {
     }
 
     pub(super) fn load_state(&mut self, state: &[u8]) -> io::Result<()> {
-        // SAFETY: the game is loaded, and the size is checked against the core's.
+        // SAFETY: the game is loaded, and the buffer is at least the size the core asks for.
         unsafe {
-            if state.len() != (self.serialize_size)() {
-                return Err(io::Error::other("the saved state has the wrong size"));
-            }
+            let state = state_for_core(state, (self.serialize_size)());
             if !(self.unserialize)(state.as_ptr().cast::<c_void>(), state.len()) {
                 return Err(io::Error::other("the core could not load the saved state"));
             }
@@ -237,5 +236,37 @@ impl Core {
             Err(error) => return Err(error),
         }
         Ok(SaveFile { path: path.to_path_buf(), written: self.snapshot(persistence)? })
+    }
+}
+
+/// A state as handed to the core. A state can be shorter than the size the core gives now:
+/// mGBA counts a 128 KiB save buffer until a game without a save type in its database
+/// first uses its save, and the real save after that, so a state saved on leaving such a
+/// game is smaller than the size at the next start, before the game runs. mGBA reads the
+/// length from the state itself, so a shorter one is padded with zeros to the core's size,
+/// and no core reads past the end. A longer one goes as it is, for the core to judge.
+fn state_for_core(state: &[u8], core_size: usize) -> Cow<'_, [u8]> {
+    if state.len() >= core_size {
+        return Cow::Borrowed(state);
+    }
+    let mut padded = state.to_vec();
+    padded.resize(core_size, 0);
+    Cow::Owned(padded)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::state_for_core;
+
+    #[test]
+    fn a_shorter_state_is_padded_to_the_cores_size() {
+        let state = state_for_core(&[1, 2, 3], 6);
+        assert_eq!(&*state, &[1, 2, 3, 0, 0, 0]);
+    }
+
+    #[test]
+    fn a_state_of_the_cores_size_or_longer_is_passed_as_it_is() {
+        assert_eq!(&*state_for_core(&[1, 2, 3], 3), &[1, 2, 3]);
+        assert_eq!(&*state_for_core(&[1, 2, 3, 4], 3), &[1, 2, 3, 4]);
     }
 }
