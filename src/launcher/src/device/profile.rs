@@ -24,10 +24,16 @@ pub struct Profile {
     pub backlight: &'static str,
     /// The battery's rated capacity, which HEALTH AND USE compares the measured one with.
     pub battery_mah: u32,
+    /// Whether it has the RTL8821CS, the Wi-Fi and Bluetooth chip. Without it, the menus
+    /// leave out what needs either (`launcher::Setting::available_on`).
+    pub wireless: bool,
+    /// The default hostname, which `S16hostname` makes the same way from the device tree.
+    pub hostname: &'static str,
 }
 
 // The RG35XX 2024, Plus, H and SP share the AXP717 power chip and the backlight, so they
-// differ here only in name and battery. Capacities are Anbernic's ratings.
+// differ here in name, battery and the Wi-Fi and Bluetooth chip, which the 2024 lacks.
+// Capacities are Anbernic's ratings.
 const AXP717_BATTERY: &str = "/sys/class/power_supply/axp20x-battery";
 const AXP717_USB: &str = "/sys/class/power_supply/axp20x-usb";
 const BACKLIGHT: &str = "/sys/class/backlight/backlight";
@@ -40,9 +46,11 @@ pub const RG35XX_SP: Profile = Profile {
     usb_power: AXP717_USB,
     backlight: BACKLIGHT,
     battery_mah: 3300,
+    wireless: true,
+    hostname: "tetsu-rg35xxsp",
 };
 
-const RG35XX_PLUS: Profile = Profile {
+pub(crate) const RG35XX_PLUS: Profile = Profile {
     compatible: "anbernic,rg35xx-plus",
     name: "Anbernic RG35XX Plus",
     device_tree: "boot/allwinner/sun50i-h700-anbernic-rg35xx-plus.dtb",
@@ -50,9 +58,11 @@ const RG35XX_PLUS: Profile = Profile {
     usb_power: AXP717_USB,
     backlight: BACKLIGHT,
     battery_mah: 3300,
+    wireless: true,
+    hostname: "tetsu-rg35xxplus",
 };
 
-const RG35XX_H: Profile = Profile {
+pub(crate) const RG35XX_H: Profile = Profile {
     compatible: "anbernic,rg35xx-h",
     name: "Anbernic RG35XX H",
     device_tree: "boot/allwinner/sun50i-h700-anbernic-rg35xx-h.dtb",
@@ -60,9 +70,11 @@ const RG35XX_H: Profile = Profile {
     usb_power: AXP717_USB,
     backlight: BACKLIGHT,
     battery_mah: 3300,
+    wireless: true,
+    hostname: "tetsu-rg35xxh",
 };
 
-const RG35XX_2024: Profile = Profile {
+pub(crate) const RG35XX_2024: Profile = Profile {
     compatible: "anbernic,rg35xx-2024",
     name: "Anbernic RG35XX 2024",
     device_tree: "boot/allwinner/sun50i-h700-anbernic-rg35xx-2024.dtb",
@@ -70,6 +82,8 @@ const RG35XX_2024: Profile = Profile {
     usb_power: AXP717_USB,
     backlight: BACKLIGHT,
     battery_mah: 2600,
+    wireless: false,
+    hostname: "tetsu-rg35xx2024",
 };
 
 const PROFILES: &[Profile] = &[RG35XX_SP, RG35XX_PLUS, RG35XX_H, RG35XX_2024];
@@ -108,10 +122,19 @@ mod tests {
     }
 
     #[test]
-    fn each_device_tree_is_named_after_the_device() {
+    fn each_device_tree_and_hostname_is_named_after_the_device() {
         for profile in PROFILES {
             let model = profile.compatible.strip_prefix("anbernic,").unwrap();
             assert_eq!(profile.device_tree, format!("boot/allwinner/sun50i-h700-anbernic-{model}.dtb"));
+            // As S16hostname makes it, so the launcher and the system agree
+            assert_eq!(profile.hostname, format!("tetsu-{}", model.replace('-', "")));
+            assert!(crate::wifi::network::valid_hostname(profile.hostname), "{}", profile.hostname);
         }
+        assert_eq!(RG35XX_SP.hostname, "tetsu-rg35xxsp", "an SP keeps the name it always had");
+    }
+
+    #[test]
+    fn only_the_2024_lacks_wifi_and_bluetooth() {
+        assert!(PROFILES.iter().all(|profile| profile.wireless == (profile.compatible != "anbernic,rg35xx-2024")));
     }
 }

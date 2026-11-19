@@ -155,19 +155,25 @@ pub(crate) fn system_info(battery: Option<Battery>, games: usize) -> Vec<(String
         (release, _) => release.unwrap_or_else(unknown),
     };
     let build = read_text(crate::device::paths::OS_RELEASE).and_then(|text| parse_os_build(&text)).unwrap_or_else(unknown);
-    vec![
+    let mut rows = vec![
         (tr("BATTERY").to_string(), battery),
         (tr("GAME STORAGE").to_string(), storage),
         (tr("GAMES").to_string(), games.to_string()),
         (tr("MEMORY").to_string(), memory),
         ("CPU".to_string(), cpu),
-        (tr("WI-FI").to_string(), wifi_line().unwrap_or_else(|| tr("NOT CONNECTED").into())),
+    ];
+    // A device without Wi-Fi has no line for it
+    if crate::device::profile::get().wireless {
+        rows.push((tr("WI-FI").to_string(), wifi_line().unwrap_or_else(|| tr("NOT CONNECTED").into())));
+    }
+    rows.extend([
         (tr("SSH OVER USB").to_string(), address),
         (tr("RUNNING FOR").to_string(), uptime),
         ("KERNEL".to_string(), kernel),
         (tr("SYSTEM BUILD").to_string(), build),
         (tr("APP VERSION").to_string(), env!("CARGO_PKG_VERSION").to_string()),
-    ]
+    ]);
+    rows
 }
 
 /// Seconds since the kernel started, for timing the boot in the log.

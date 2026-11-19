@@ -2308,9 +2308,8 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   Plus, H (3300 mAh) and 2024 (2600 mAh) share the SP's power and backlight paths. The
   manifest gained `devices`, every device tree's `compatible`; `device` stays the SP's for
   v0.1 launchers, which only read that. An install also checks the new slot has this
-  device's device tree. Not yet handled: the 2024 has no Wi-Fi or Bluetooth, the H has
-  sticks, and the Plus, H and 2024 have no lid; the X/Y swap (0008), TF2 (0018), vibration
-  (0015) and panel ID (0020) are SP-only until checked on the others. Only the SP has
+  device's device tree. The X/Y swap (0008), TF2 (0018), vibration (0015) and panel ID
+  (0020) are SP-only until checked on the others. Only the SP has
   started this image. Checked on the SP (LPDDR3): no `device.txt`, `device=rg35xx-sp`
   with CRLF and an unknown name boot the SP's device tree; `device=rg35xx-plus` with CRLF
   booted the Plus's on the SP, with the Plus profile in the log, USB networking (0007 from
@@ -2318,6 +2317,30 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   1.2 V (0006), and no lid or vibrator, as the Plus has none. Not checked: a real Plus, H
   or 2024, the screen with the Plus's tree, `flash.sh --device`, and an update installed
   through the new `devices` check.
+- **What differs between H700 devices** (2026-11-19): the profile says whether the device
+  has the RTL8821CS (`wireless`, false on the RG35XX 2024) and its default hostname.
+  Without the chip, `launcher::groups()` leaves WI-FI and BLUETOOTH off the settings grid
+  and `Group::rows()` leaves out WI-FI TRANSFER, SAVE BACKUP, SYSTEM UPDATE, the two
+  cover downloads and the ACHIEVEMENTS page (`Setting::available_on`); SYSTEM INFO has no
+  WI-FI line, and the setup skips its Wi-Fi step and SEND GAMES OVER WI-FI and says to
+  set the time in GENERAL > SET TIME. Updates then come only with a new card image.
+  DOWNLOAD CHEATS stays and fails with DOWNLOAD FAILED. The hostname is `tetsu-` and the
+  model without hyphens (`tetsu-rg35xxplus`), made by `/usr/libexec/default-hostname`
+  for `S16hostname` and the USB gadget's serial number and by the profile for the
+  launcher, so an SP keeps `tetsu-rg35xxsp`; the gadget's product name comes from the
+  device tree's model ("Tetsu OS RG35XX Plus"). The lid needs nothing: a device without
+  one never sends its event. The RG35XX H's sticks are an `adc-joystick` on the GPADC
+  behind a GPIO multiplexer in the mainline device tree; `linux.fragment` turns on their
+  drivers (`JOYSTICK_ADC`, `SUN20I_GPADC`, `IIO_MUX`, `MUX_GPIO`), and `ui/input.rs`
+  reads a device with axes and no keys like a gamepad's left stick, as D-pad presses in
+  the menus and in games. The right stick and the stick buttons (BTN_THUMBL and
+  BTN_THUMBR) do nothing yet; cores get no analog values. Checked on the SP with the 2024's device
+  tree: the hostname and USB names, no `wlan0`, and a settings grid of 10 tiles without
+  WI-FI and BLUETOOTH. That SP then stopped 29 to 33 s after the kernel started, twice:
+  Linux turns off unused regulators at 30 s, and the 2024's tree has `cldo4` (vcc-wifi)
+  and `aldo4` (avcc) with no consumer, while the SP's Wi-Fi chip is on them. A real 2024
+  has no Wi-Fi chip; whether its mainline tree is right there is unchecked. A wrong
+  `device.txt` can hang a device this way. The H's sticks are untested: the SP has none.
 
 - **Save backup** (2026-11-13): the saves kept off the card, so a dead card loses nothing.
   A backup is the same set both ways (`backup::FOLDERS` and `FILES`): `saves` (saves,

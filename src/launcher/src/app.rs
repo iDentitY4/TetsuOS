@@ -14,7 +14,7 @@ use crate::ui::corner::{
 use crate::game::{confirm_resume, forget_running_game, interrupted_game, play_game, PLAYING_PATH};
 use crate::i18n::{tr, trf};
 use crate::ui::input::{Button, Controls, Event};
-use crate::launcher::{Command as Action, Group, GROUPS, Launcher, Library, List, Screen, Tile};
+use crate::launcher::{Command as Action, Group, Launcher, Library, List, Screen, Tile};
 use crate::library::{
     collections_menu, find_games, game_title, last_played_game, load_library, open_start_screen, reload_library,
     set_search, tile_key, tile_look,
@@ -540,8 +540,9 @@ pub(crate) fn launcher_canvas(
         Screen::Collections => collections_menu::collections_canvas((width, height), launcher, library, &frame),
         Screen::HiddenGames => collections_menu::hidden_games_canvas((width, height), launcher, library, &frame),
         Screen::Settings => {
-            let selected = GROUPS.iter().position(|&group| group == launcher.group_selected()).unwrap_or(0);
-            screens::settings_grid(width, height, &GROUPS, selected, &frame)
+            let groups = launcher::groups();
+            let selected = groups.iter().position(|&group| group == launcher.group_selected()).unwrap_or(0);
+            screens::settings_grid(width, height, &groups, selected, &frame)
         }
         Screen::SettingsGroup(group) => settings_group_canvas((width, height), group, launcher, &frame),
         Screen::Info => {

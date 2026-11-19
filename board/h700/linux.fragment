@@ -137,3 +137,13 @@ CONFIG_SONY_FF=y
 CONFIG_HID_NINTENDO=y
 CONFIG_NINTENDO_FF=y
 CONFIG_HID_MICROSOFT=y
+
+# The RG35XX H's sticks: an adc-joystick reading the GPADC through a GPIO-switched
+# multiplexer, all in the mainline device tree. The launcher turns the left stick into
+# D-pad presses (ui/input.rs).
+CONFIG_INPUT_JOYSTICK=y
+CONFIG_JOYSTICK_ADC=y
+CONFIG_SUN20I_GPADC=y
+CONFIG_IIO_MUX=y
+CONFIG_MULTIPLEXER=y
+CONFIG_MUX_GPIO=y

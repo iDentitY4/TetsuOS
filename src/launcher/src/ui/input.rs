@@ -218,6 +218,24 @@ impl Controls {
     }
 }
 
+/// What an input device has, which decides whether its axes are read as a D-pad: a
+/// gamepad's (one with a south button), or a stick that is a device of its own, with axes
+/// and no keys at all, as the RG35XX H's sticks are. Not a motion sensor, which a Sony
+/// controller adds as a device of its own with the same axes; a touchscreen has its touch key.
+#[derive(Clone, Copy, Default)]
+struct Kind {
+    accelerometer: bool,
+    south_button: bool,
+    any_key: bool,
+    stick: bool,
+}
+
+impl Kind {
+    fn reads_axes(self) -> bool {
+        !self.accelerometer && (self.south_button || (!self.any_key && self.stick))
+    }
+}
+
 /// The D-pad directions, in the order `Axes` keeps them.
 const DIRECTIONS: [u16; 4] = [BTN_DPAD_UP, BTN_DPAD_DOWN, BTN_DPAD_LEFT, BTN_DPAD_RIGHT];
 
@@ -237,12 +255,18 @@ impl Axes {
         Self { stick: [stick_x, stick_y], hat: [false; 4], pushed: [false; 4] }
     }
 
-    /// A gamepad's: one with a south button, and not a motion sensor, which a Sony
-    /// controller adds as a device of its own with the same axes.
+    /// A gamepad's, or a stick's of its own, such as the RG35XX H's `adc-joystick`.
     fn for_device(device: &RawDevice) -> Option<Self> {
-        if device.properties().contains(PropType::ACCELEROMETER)
-            || !device.supported_keys().is_some_and(|keys| keys.contains(KeyCode::BTN_SOUTH))
-        {
+        let keys = device.supported_keys();
+        let axes = device.supported_absolute_axes();
+        let has = |axis: AbsoluteAxisCode| axes.is_some_and(|axes| axes.contains(axis));
+        let kind = Kind {
+            accelerometer: device.properties().contains(PropType::ACCELEROMETER),
+            south_button: keys.is_some_and(|keys| keys.contains(KeyCode::BTN_SOUTH)),
+            any_key: keys.is_some_and(|keys| keys.iter().next().is_some()),
+            stick: has(AbsoluteAxisCode::ABS_X) && has(AbsoluteAxisCode::ABS_Y),
+        };
+        if !kind.reads_axes() {
             return None;
         }
         let mut stick = [None, None];
@@ -360,6 +384,19 @@ mod tests {
 
     fn abs(code: u16, value: i32) -> Event {
         Event { event_type: EV_ABS, code, value }
+    }
+
+    #[test]
+    fn gamepads_and_sticks_of_their_own_are_read_but_not_motion_sensors_or_touchscreens() {
+        let gamepad = Kind { south_button: true, any_key: true, stick: true, ..Kind::default() };
+        assert!(gamepad.reads_axes());
+        assert!(Kind { stick: false, ..gamepad }.reads_axes(), "a gamepad with only a hat");
+        let stick = Kind { stick: true, ..Kind::default() };
+        assert!(stick.reads_axes(), "the H's adc-joystick");
+        assert!(!Kind { accelerometer: true, ..stick }.reads_axes(), "a controller's motion sensor");
+        assert!(!Kind { any_key: true, ..stick }.reads_axes(), "a touchscreen or tablet, with its touch key");
+        assert!(!Kind::default().reads_axes(), "nothing to read");
+        assert!(!Kind { any_key: true, ..Kind::default() }.reads_axes(), "the device's own buttons");
     }
 
     #[test]

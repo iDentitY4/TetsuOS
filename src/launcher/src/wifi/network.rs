@@ -6,8 +6,11 @@
 use crate::i18n::{tr, trf};
 use std::net::Ipv4Addr;
 
-/// The name the device has until another is typed, as in `/etc/hostname`.
-pub const DEFAULT_HOSTNAME: &str = "tetsu-rg35xxsp";
+/// The name the device has until another is typed: its profile's, which `S16hostname`
+/// sets at boot from the same device tree.
+pub fn default_hostname() -> &'static str {
+    crate::device::profile::get().hostname
+}
 /// A DNS label's limit.
 pub const MAX_HOSTNAME: usize = 63;
 
@@ -334,7 +337,7 @@ mod tests {
 
     #[test]
     fn hostnames_are_dns_labels() {
-        assert!(valid_hostname(DEFAULT_HOSTNAME));
+        assert!(valid_hostname(default_hostname()));
         assert!(valid_hostname("a") && valid_hostname("game-boy-2") && valid_hostname(&"x".repeat(63)));
         for bad in ["", "-a", "a-", "Upper", "with space", "under_score", "dot.ted", "ümlaut", &"x".repeat(64)] {
             assert!(!valid_hostname(bad), "{bad:?}");
