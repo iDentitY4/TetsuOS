@@ -23,9 +23,10 @@ without it, the device starts as an SP.
 | RG34XX-SP | `rg34xx-sp` | 720x480 screen, left stick as the D-pad |
 | RG CubeXX | `rgcubexx` | 720x720 screen: the menus use its top 480 rows for now; no RGB lights yet |
 
-Games don't get analog input yet. Units of the Plus, H and 2024 with the newer "rev6"
-screen may show nothing, as their panel setup isn't in the image yet. The RG28XX, whose
-screen is mounted turned, isn't in the image yet.
+Games don't get analog input yet. Newer units of the Plus, H and 2024 (board revision 6)
+have another screen panel, which can't be told from the older one: if the screen stays
+dark, add a second line `panel=rev6` to `device.txt`. The RG28XX, whose screen is mounted
+turned, isn't in the image yet.
 
 ### Check your memory type
 
@@ -34,9 +35,11 @@ up the right one.
 
 - **v0.1 is built for LPDDR3.** On an LPDDR4 unit it doesn't start, and the green light
   blinks about once a second.
-- **Builds after v0.1** try LPDDR4, then LPDDR3, so one image starts on both. No LPDDR4
-  unit has run one yet: if you have one, please [help test it](./testing). Once it runs,
-  Settings > SYSTEM > SYSTEM INFO shows the memory type on the MEMORY row.
+- **Builds after v0.1** try LPDDR4, then LPDDR3, so one image starts on both. One
+  tester's LPDDR4 SP has run v0.2-test.2: a game with sound, headphones, sleep and resume,
+  Wi-Fi and the power button worked ([issue #18](https://github.com/iDentitY4/TetsuOS/issues/18)). More reports are welcome:
+  [help test](./testing). Settings > SYSTEM > SYSTEM INFO shows the memory type on the
+  MEMORY row.
 
 You can read the memory type from the stock firmware card (or a muOS card) that boots on
 your unit. The first boot stage, boot0, starts 8 KiB into the card, and the 32-bit value at

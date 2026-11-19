@@ -2363,11 +2363,25 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   screens at another size. At 720x480 they fit, with the list's cover panel at its 640 px
   place; at 720x720 they use the top 480 rows. Left out: the RG40XX's and CubeXX's RGB
   lights (on UART5) and vibration motor (PWM3), the "rev6" panel of newer Plus, H and 2024
-  units (also an NV3052C, so its ID can't tell it apart), and the RG28XX, whose panel is
+  units (also an NV3052C, so its ID can't tell it apart; added later), and the RG28XX, whose panel is
   mounted turned. None of these devices has started the image. The panel setups are
   Hironori Kikuchi's (the RG40XX and CubeXX, first posted for this driver to dri-devel in
   November 2024) and Philippe Simons' (the RG34XX, and the RG34XX-SP and second panels he
   found in Anbernic's firmware), as ROCKNIX's `.panel` files carry them.
+- **The rev6 panel** (2026-11-20): newer RG35XX Plus, H and 2024 units (board revision 6)
+  have another NV3052C panel with its own setup and timings, which reports the same ID as
+  the older one, so the driver can't find it. Patch 0022 adds it (Hironori Kikuchi's
+  YLM-LBV0345001H-V2, from ROCKNIX's `.panel` file) as the `rev6` of the Plus panel's entry,
+  which the Plus, H, 2024 and Pro share; `panel_newvision_nv3052c.panel=rev6` selects it
+  (another panel is found as usual, with a warning). A `panel=rev6` line in `device.txt`
+  sets that: `boot.cmd` imports `panel` with `device`, lets only `rev6`, `v2` and
+  `nv3052c` through, and `extlinux.conf` ends its `APPEND` line with `${tetsu_panel}`,
+  which U-Boot fills in. Checked in U-Boot's sandbox with the real `boot.cmd` and
+  `extlinux.conf`: no file, CRLF lines, `panel=v2`, an unknown value and
+  `panel=rev6 init=/bin/sh` (dropped). BOOT MESSAGES and updates keep `${tetsu_panel}`.
+  The launcher paces games to the rev6 panel's 60.00 Hz (24 MHz over 800 x 500) and keeps
+  it at that in 50 Hz games. `flash.sh --panel rev6` writes the line. No revision 6 unit
+  has run it.
 
 - **Save backup** (2026-11-13): the saves kept off the card, so a dead card loses nothing.
   A backup is the same set both ways (`backup::FOLDERS` and `FILES`): `saves` (saves,

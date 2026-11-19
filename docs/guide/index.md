@@ -41,7 +41,7 @@ list the known issues.
 
 ::: warning RG35XX SP units differ
 Anbernic has shipped the RG35XX SP with different memory chips. v0.1 is built for units
-with **LPDDR3** memory; later builds also start on **LPDDR4**, but are untested there. Check
+with **LPDDR3** memory; later builds also start on **LPDDR4** (checked on one unit). Check
 yours before installing: see [Requirements](./requirements#check-your-memory-type).
 :::
 

@@ -98,6 +98,11 @@ reaches all four; patches named `rg35xx-sp` change only the SP.
   not merged), and Philippe Simons', who added the RG34XX's to it and found the RG34XX-SP's
   and the second panels in Anbernic's firmware for ROCKNIX, which later made them `.panel`
   files.
+- `linux/0022-nv3052c-add-the-rg35xx-plus-rev6-panel.patch` adds the panel of newer RG35XX
+  Plus, H and 2024 units (board revision 6), Hironori Kikuchi's YLM-LBV0345001H-V2 from the
+  same dri-devel series, as ROCKNIX's `anbernic,rg35xx-plus-rev6-panel.panel` carries it. It
+  reports the same ID as the older panel, so `panel_newvision_nv3052c.panel=rev6` picks
+  it, which `boot.cmd` sets from a `panel=rev6` line in `device.txt`. Untested.
   None of these devices has run it.
 - `bluez5_utils/0001-device-raise-le-security-on-demand.patch` keeps BlueZ from starting
   encryption as soon as a paired LE device connects, and lets the first read the device

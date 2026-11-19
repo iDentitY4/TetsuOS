@@ -9,8 +9,9 @@
 # RG35XX SP's is used, as on every card from before device.txt. It is read to the
 # kernel's address, which sysboot only fills later, so this script isn't overwritten.
 setenv device rg35xx-sp
+setenv panel
 if load ${devtype} ${devnum}:1 ${kernel_addr_r} device.txt; then
-	env import -t -r ${kernel_addr_r} ${filesize} device
+	env import -t -r ${kernel_addr_r} ${filesize} device panel
 fi
 setenv fdtfile allwinner/sun50i-h700-anbernic-${device}.dtb
 if test ! -e ${devtype} ${devnum}:${distro_rootpart} /boot/${fdtfile}; then
@@ -18,6 +19,15 @@ if test ! -e ${devtype} ${devnum}:${distro_rootpart} /boot/${fdtfile}; then
 	setenv fdtfile allwinner/sun50i-h700-anbernic-rg35xx-sp.dtb
 fi
 setenv device
+
+# A second line "panel=rev6" picks the panel of newer RG35XX Plus, H and 2024 units, which
+# the kernel can't tell from the older one; v2 and nv3052c override what it finds on an
+# SP. extlinux.conf passes tetsu_panel to the kernel. Only these values get through.
+setenv tetsu_panel
+if test "${panel}" = rev6 -o "${panel}" = v2 -o "${panel}" = nv3052c; then
+	setenv tetsu_panel panel_newvision_nv3052c.panel=${panel}
+fi
+setenv panel
 
 # extlinux.conf's FDTDIR loads ${fdtfile} from /boot. Booted without this script (the
 # extlinux bootmeth, if the RAUC one ever fails), U-Boot's own default fdtfile is the

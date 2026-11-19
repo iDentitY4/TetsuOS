@@ -225,6 +225,9 @@ mod tests {
         let serial = with_boot_messages("APPEND root=x console=ttyS0,115200\n", BootMessages::Text).unwrap();
         assert_eq!(serial, "APPEND root=x console=ttyS0,115200 console=tty1 loglevel=7\n");
         assert_eq!(with_boot_messages("LABEL x\n", BootMessages::Logo), None);
+        // The panel choice boot.scr fills in stays, at the end
+        let panel = with_boot_messages("APPEND root=x console=ttynull loglevel=5 ${tetsu_panel}\n", BootMessages::Text).unwrap();
+        assert_eq!(panel, "APPEND root=x console=tty1 loglevel=7 ${tetsu_panel}\n");
         assert_eq!(parse_boot_messages("APPEND root=x\n"), None);
     }
 }

@@ -2,9 +2,10 @@
 # Writes the built image to an SD card, erasing everything except the TETSU-DATA partition
 # with its games and saves. --format-data erases that too, making it empty. --device names
 # the device the card is for, in TETSU-BOOT's device.txt (board/h700/boot.cmd); without
-# it, the card starts as an RG35XX SP.
+# it, the card starts as an RG35XX SP. --panel rev6 adds the panel of newer RG35XX Plus,
+# H and 2024 units.
 #
-# Usage: flash.sh [--format-data] [--device rg35xx-plus] /dev/sdX
+# Usage: flash.sh [--format-data] [--device rg35xx-plus [--panel rev6]] /dev/sdX
 set -euo pipefail
 
 IMAGE="$(dirname "$0")/../output/images/sdcard.img"
@@ -16,15 +17,17 @@ MINIMUM_CARD_BYTES=$((6 * 1024 * 1024 * 1024))
 
 FORMAT_DATA=()
 MODEL=""
+PANEL=""
 while [ "$#" -gt 1 ]; do
 	case "$1" in
 	--format-data) FORMAT_DATA=(--format); shift ;;
 	--device) MODEL="${2:-}"; shift 2 ;;
+	--panel) PANEL="${2:-}"; shift 2 ;;
 	*) break ;;
 	esac
 done
 if [ "$#" -ne 1 ]; then
-	echo "usage: $0 [--format-data] [--device rg35xx-plus] /dev/sdX" >&2
+	echo "usage: $0 [--format-data] [--device rg35xx-plus [--panel rev6]] /dev/sdX" >&2
 	lsblk -d -o NAME,SIZE,RM,TRAN,MODEL >&2
 	exit 2
 fi
@@ -32,6 +35,11 @@ DEVICE="$1"
 NAME="$(basename "$DEVICE")"
 
 [ -f "$IMAGE" ] || { echo "No image at $IMAGE. Run make first." >&2; exit 1; }
+case "$PANEL" in
+"" | rev6 | v2 | nv3052c) ;;
+*) echo "--panel takes rev6, v2 or nv3052c." >&2; exit 1 ;;
+esac
+[ -z "$PANEL" ] || [ -n "$MODEL" ] || { echo "--panel needs --device." >&2; exit 1; }
 if [ -n "$MODEL" ] && [ ! -f "$DEVICE_TREES/sun50i-h700-anbernic-$MODEL.dtb" ]; then
 	echo "No device tree for $MODEL. The image has:" >&2
 	ls "$DEVICE_TREES" | sed -n 's/^sun50i-h700-anbernic-\(.*\)\.dtb$/  \1/p' >&2
@@ -91,9 +99,10 @@ if [ -n "$MODEL" ]; then
 		{ echo "$BOOT_PART isn't TETSU-BOOT: write device=$MODEL to its device.txt by hand." >&2; exit 1; }
 	MOUNT="$(mktemp -d)"
 	sudo mount -t vfat "$BOOT_PART" "$MOUNT"
-	printf 'device=%s\n' "$MODEL" | sudo tee "$MOUNT/device.txt" >/dev/null
+	{ printf 'device=%s\n' "$MODEL"; [ -z "$PANEL" ] || printf 'panel=%s\n' "$PANEL"; } |
+		sudo tee "$MOUNT/device.txt" >/dev/null
 	sudo umount "$MOUNT"
 	rmdir "$MOUNT"
-	echo "The card is for the $MODEL."
+	echo "The card is for the $MODEL${PANEL:+ with the $PANEL panel}."
 fi
 echo "Done. Put the card in the TF1 slot and power on the device."
