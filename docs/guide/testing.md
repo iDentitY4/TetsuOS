@@ -1,7 +1,8 @@
 # Testing your device
 
 Tetsu OS is developed on one RG35XX SP, which has LPDDR3 memory. Builds after v0.1 also
-start on units with **LPDDR4** memory, but no LPDDR4 unit has run one yet. If you have
+start on units with **LPDDR4** memory: one tester's LPDDR4 RG35XX SP has run v0.2-test.2
+([issue #18](https://github.com/iDentitY4/TetsuOS/issues/18)). More units, LPDDR4 or another H700 device, tell us more: if you have
 one, a test tells us whether it works. It takes about fifteen minutes, and a card that
 doesn't start does no harm.
 

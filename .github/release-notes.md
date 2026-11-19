@@ -1,7 +1,6 @@
-**Beta.** Tetsu OS has been tested on one Anbernic RG35XX SP. The image is built for
-units with **LPDDR3** memory: [check yours](https://identity4.github.io/TetsuOS/guide/requirements#check-your-memory-type)
-first, as an LPDDR4 unit won't start it (a slowly blinking green light). Units with
-another screen panel may show nothing. If yours doesn't start, please open an issue. A
+**Beta.** Tetsu OS is developed on one Anbernic RG35XX SP with LPDDR3 memory. It also
+starts on units with **LPDDR4** memory, so far checked on one tester's SP
+([#18](https://github.com/iDentitY4/TetsuOS/issues/18)). Units with another screen panel may show nothing. If yours doesn't start, please open an issue. A
 muOS or stock card still starts the device as before.
 
 ## Install

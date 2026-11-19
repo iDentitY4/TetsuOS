@@ -205,6 +205,9 @@ ADVANCED > RUN SETUP AGAIN repeats.
 - Settings > ADVANCED: SSH from another machine over Wi-Fi, games at BATTERY or
   PERFORMANCE, and the battery gauge over a whole charge with CHARGE TO below FULL
 
+LPDDR4: one tester's RG35XX SP ran v0.2-test.2 (issue #18, 2026-11-19): a game with sound,
+headphones, sleep and resume, Wi-Fi and the power button worked.
+
 ## Known issues
 
 - After a flash on 2026-11-19 the unit went to FEL (`1f3a:efe8`, no LEDs, screen off)
