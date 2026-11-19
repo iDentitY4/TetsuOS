@@ -269,6 +269,15 @@ Working on the test unit, confirmed by the user:
   the device over SSH with injected presses and screenshots: saving, loading, levels,
   quitting, resuming and Menu + Start. The user tried it with FireRed
   on 2026-11-08 and confirmed it feels right
+- GBA resume points of a different size (2026-11-19). mGBA counts a 128 KiB save buffer
+  in its state until a game without a save type in its database (Mario Kart: Super
+  Circuit, issue #18) first uses its save, and only the real save after that. A state saved
+  on leaving is then smaller than the size mGBA gives at the next start, before the game
+  runs, and the launcher refused it as the wrong size, keeping it as `.resume.unreadable`.
+  mGBA reads the length from the state itself, so a shorter state is now padded with zeros
+  to the core's size (`state_for_core` in `libretro/core.rs`), which also keeps any core
+  from reading past the end; a longer one goes as it is. FireRed was fine before, as mGBA
+  knows its save type. Tested on the PC (the padding's tests); not yet on the device
 - QUIT's START OVER (2026-11-11). Left and Right on QUIT choose KEEP PLACE (as before) or
   START OVER, which quits without the `.resume`: the save file is still written, then the
   `.resume` is removed (`save::forget_place`), so the next start begins from the game's own
@@ -2371,8 +2380,11 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   Tested on the LPDDR3 test unit (2026-11-18): the controller came up as LPDDR3 on the
   full bus with one rank (MSTR `0xC1040008`), 1 GiB, `vdd-dram` at 1.2V through 3 reboots
   and a lid sleep. The time before the kernel was 2.74 to 3.03 s over four boots, against
-  2.53 to 2.66 s recorded before, so the failed LPDDR4 try costs about 0.1 to 0.2 s. Not
-  tested: any LPDDR4 unit, a cold start from power-off with this SPL.
+  2.53 to 2.66 s recorded before, so the failed LPDDR4 try costs about 0.1 to 0.2 s. A
+  tester's LPDDR4 unit (issue #18, v0.2-test.2, 2026-11-19) came up as LPDDR4 on the full
+  bus with one rank (MSTR `0xC1080020`), 1 GiB, `vdd-dram` at 1.1V, and a game with sound,
+  headphones, lid sleep, Wi-Fi and the power button all worked. Not tested: a cold start
+  from power-off with this SPL on the LPDDR3 unit.
 - **The RAM type is reported** for testers (`device/ram.rs`): the launcher reads the DRAM
   controller's MSTR register (`0x047FB000` on the H616, H618 and H700, found by the chip's
   name in the device tree's `compatible`) through `/dev/mem` once, and its device type bits
