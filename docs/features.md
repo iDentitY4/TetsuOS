@@ -2341,6 +2341,31 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   and `aldo4` (avcc) with no consumer, while the SP's Wi-Fi chip is on them. A real 2024
   has no Wi-Fi chip; whether its mainline tree is right there is unchecked. A wrong
   `device.txt` can hang a device this way. The H's sticks are untested: the SP has none.
+- **Six more H700 devices** (2026-11-19): the RG40XX H and V, RG35XX Pro, RG34XX,
+  RG34XX-SP and RG CubeXX, from ROCKNIX's device trees, which build on its own joypad
+  driver and a generic panel driver fed by `.panel` firmware files. Kernel patch 0021 puts
+  them in mainline form: the sticks are `adc-joystick` wired as on the RG35XX H, in
+  `sun50i-h700-anbernic-rg35xx-2024-sticks.dtsi` (the RG40XX H, CubeXX and RG34XX-SP with
+  the right stick reversed, where ROCKNIX inverts it), and the panels join the NV3052C
+  driver. Each `.panel` file was decoded (a big-endian header with the size, delays, bus
+  flags and timings, then commands, each after its length) and sent whole through
+  `init_seq`, with its 60 Hz timings: the RG35XX Plus's file has the driver's own 189
+  commands, all equal but register 0x23, which sets how the NV3052C takes its timings, so
+  the setup and timings go together. The RG40XX and RG34XX-SP were also made with a second
+  panel of another controller, found as the SP's is (patch 0020); `init_seq` now waits each
+  panel's own delay after the reset (120 ms for the SP's second panel, as before). The
+  launcher has a profile for each (all with Wi-Fi; batteries 3200, 3200, 3200, 3500,
+  3300 and 3800 mAh, the RG34XX's from a single source), with the panel's rate: the new
+  panels run at 60.00 Hz, so games are paced to it, and 50 HZ GAMES AT 50 HZ only
+  stretches the RG35XX family's NV3052C mode, where it was checked (`Profile::fifty_hz`);
+  the new panels stay at 60 Hz in a PAL game. The menus take the screen's size from the
+  framebuffer: `LAUNCHER_PREVIEW_SIZE=720x480` (or `720x720`) renders the `--preview*`
+  screens at another size. At 720x480 they fit, with the list's cover panel at its 640 px
+  place; at 720x720 they use the top 480 rows. Left out: the RG40XX's and CubeXX's RGB
+  lights (on UART5) and vibration motor (PWM3), the "rev6" panel of newer Plus, H and 2024
+  units (also an NV3052C, so its ID can't tell it apart), and the RG28XX, whose panel is
+  mounted turned. None of these devices has started the image; the panel files have no
+  licence beside them in ROCKNIX's tree, as with patch 0020.
 
 - **Save backup** (2026-11-13): the saves kept off the card, so a dead card loses nothing.
   A backup is the same set both ways (`backup::FOLDERS` and `FILES`): `saves` (saves,

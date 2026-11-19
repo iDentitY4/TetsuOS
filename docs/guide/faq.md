@@ -11,9 +11,9 @@ stock firmware as before.
 
 Only the Anbernic RG35XX SP for now: v0.1 on units with LPDDR3 memory, and builds after
 it on LPDDR4 too, though no LPDDR4 unit has run one yet ([help test](./testing)). Builds
-after v0.1 are one image for the H700 family, with the RG35XX Plus, H and 2024 as
-untested, experimental devices ([requirements](./requirements#the-device)). The RG40XX,
-RG34XX, RG CubeXX and RG28XX come next.
+after v0.1 are one image for the H700 family, with the RG35XX Plus, H, 2024 and Pro, the
+RG40XX H and V, the RG34XX and RG34XX-SP and the RG CubeXX as untested, experimental
+devices ([requirements](./requirements#the-device)). The RG28XX comes later.
 
 ### Do I need BIOS files?
 

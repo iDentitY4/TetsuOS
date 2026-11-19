@@ -7,8 +7,9 @@ muOS or stock card still starts the device as before.
 ## Install
 
 1. Download `tetsu-h700-<version>-sdcard.img.gz`. It is the image for every H700 device it
-   knows: an RG35XX Plus, H or 2024 (untested) also needs a file `device.txt` on the
-   card's TETSU-BOOT partition, holding `device=rg35xx-plus`, `rg35xx-h` or `rg35xx-2024`.
+   knows: another H700 device than the RG35XX SP (untested) also needs a file
+   `device.txt` on the card's TETSU-BOOT partition, holding its name, such as
+   `device=rg40xx-h` (https://identity4.github.io/TetsuOS/guide/requirements#the-device).
 2. Write it to a microSD card with balenaEtcher, Raspberry Pi Imager or `dd`. This erases
    the card.
 3. Put the card in the slot marked TF1 and power on. The first start makes the

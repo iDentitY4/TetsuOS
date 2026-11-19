@@ -92,9 +92,10 @@ units, which nobody has tested yet:
 [help test](https://identity4.github.io/TetsuOS/guide/testing).
 [CHANGELOG.md](CHANGELOG.md) lists what each release brings. USB accessories don't work
 yet, as the USB-C port runs in device mode only. Builds after v0.1 are one image for the
-H700 family, which can also start the RG35XX Plus, H and 2024, untested so far
-([requirements](https://identity4.github.io/TetsuOS/guide/requirements#the-device)); other
-H700 devices (RG40XX, RG34XX, RG CubeXX, RG28XX) are not supported yet.
+H700 family, which can also start the RG35XX Plus, H, 2024 and Pro, the RG40XX H and V,
+the RG34XX and RG34XX-SP and the RG CubeXX, all untested so far
+([requirements](https://identity4.github.io/TetsuOS/guide/requirements#the-device)); the
+RG28XX is not supported yet.
 
 ## Building from source
 

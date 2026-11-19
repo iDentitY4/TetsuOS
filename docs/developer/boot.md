@@ -48,7 +48,8 @@ Root partitions use fixed PARTUUIDs: `54455453-02` for A and `54455453-03` for B
 ### Which device
 
 One image serves the H700 family: `/boot/allwinner/` in each slot holds the device tree of
-the RG35XX SP, Plus, H and 2024 (`BR2_LINUX_KERNEL_INTREE_DTS_NAME`), and nothing before
+each device it knows (`BR2_LINUX_KERNEL_INTREE_DTS_NAME`: the RG35XX SP, Plus, H, 2024 and
+Pro, RG40XX H and V, RG34XX and RG34XX-SP, RG CubeXX), and nothing before
 Linux tells the devices apart. `device.txt` on TETSU-BOOT names the device in one line, such
 as `device=rg35xx-plus`. `boot.scr` reads it with `env import -t -r` (so Windows line endings
 work too), sets `fdtfile` to `allwinner/sun50i-h700-anbernic-<name>.dtb` and lets
@@ -64,7 +65,8 @@ The device tree patches go in the most general device tree the hardware is in
 which the others include, Wi-Fi's keep-power in the Plus's, and the rest in the SP's.
 
 Only the SP has run this image. The Plus, H and 2024 device trees are mainline's with those
-patches, built but not started on a real device.
+patches, the others ROCKNIX's in mainline form (patch 0021); none has started on a real
+device.
 
 U-Boot's environment is two redundant 64 KiB copies (`CONFIG_ENV_REDUNDANT`); the one with a
 valid CRC and the higher counter is current. The launcher reads and writes them the same way

@@ -72,6 +72,10 @@ ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Not yet checked by the user
 
+- Six more H700 devices (2026-11-19, kernel patch 0021): the RG40XX H/V, RG35XX Pro, RG34XX,
+  RG34XX-SP and CubeXX, with panels from ROCKNIX's `.panel` files in the NV3052C driver and
+  sticks as `adc-joystick`. No such device here; the SP must still start as before
+
 - One image for the H700 family (2026-11-19, branch `h700-family`): a real Plus, H or 2024,
   `flash.sh --device`, an update through the manifest's `devices`. Checked by Claude on
   the SP: `device.txt` absent, CRLF, unknown, and the Plus's device tree on the SP

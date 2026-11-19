@@ -17,15 +17,9 @@ use libc::{ioctl, Ioctl};
 /// The display: Panfrost is `card0`.
 const DISPLAY: &str = "/dev/dri/card1";
 
-/// The NV3052C panel's rate in its own mode.
-pub const PANEL_HZ: f64 = 59.94;
-
 /// Which panel the kernel's driver found (patch 0020): `nv3052c`, `v2`, or empty if it
 /// couldn't tell, when it uses the NV3052C's setup.
 const PANEL_KIND: &str = "/sys/module/panel_newvision_nv3052c/parameters/panel";
-
-/// The second panel's rate: its 24 MHz over 720 x 560 pixels per frame.
-const V2_PANEL_HZ: f64 = 24_000_000.0 / (720.0 * 560.0);
 
 fn is_v2(kind: &str) -> bool {
     kind.trim() == "v2"
@@ -35,9 +29,11 @@ fn second_panel() -> bool {
     std::fs::read_to_string(PANEL_KIND).is_ok_and(|kind| is_v2(&kind))
 }
 
-/// The panel's rate in its own mode, which paces games.
+/// The panel's rate in its own mode, which paces games: the device's, or its second
+/// panel's (`device/profile.rs`).
 pub fn own_hz() -> f64 {
-    if second_panel() { V2_PANEL_HZ } else { PANEL_HZ }
+    let device = crate::device::profile::get();
+    if second_panel() { device.second_panel_hz } else { device.panel_hz }
 }
 
 /// Games between these rates get a matching panel rate: the 50 Hz consoles.
@@ -220,8 +216,9 @@ pub struct PanelRate {
 impl PanelRate {
     /// Sets the panel to the rate nearest `fps`, for a game in `MATCHED_FPS`. The second
     /// panel stays at its own rate: nobody has seen it take the longer blanking.
+    /// Other devices' panels stay at their own rate too, until one is seen taking it.
     pub fn for_game(fps: f64) -> Option<Self> {
-        if !MATCHED_FPS.contains(&fps) || second_panel() {
+        if !MATCHED_FPS.contains(&fps) || second_panel() || !crate::device::profile::get().fifty_hz {
             return None;
         }
         match Self::set(fps) {
@@ -356,7 +353,7 @@ mod tests {
         assert!(is_v2("v2\n"));
         assert!(!is_v2("nv3052c\n"));
         assert!(!is_v2("\n"), "a panel the driver couldn't identify has the NV3052C's setup");
-        assert!((V2_PANEL_HZ - 59.5238).abs() < 0.001);
+        assert!((crate::device::profile::RG35XX_SP.second_panel_hz - 59.5238).abs() < 0.001);
     }
 
     #[test]

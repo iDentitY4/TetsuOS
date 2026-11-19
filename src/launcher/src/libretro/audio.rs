@@ -88,7 +88,8 @@ impl Drop for Silence {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ui::panel_rate::PANEL_HZ;
+    // The RG35XX SP's panel
+    const PANEL_HZ: f64 = crate::device::profile::RG35XX_SP.panel_hz;
 
     #[test]
     fn sound_plays_slower_only_for_cores_making_less_than_the_panel_plays() {
