@@ -115,9 +115,8 @@ ADVANCED > RUN SETUP AGAIN repeats.
   DATA icon
 
 - Updates over Wi-Fi (2026-11-13): an update over Wi-Fi rather than the cable, the lid,
-  B and a low battery during one, typing a source, the German wording. Since 2026-11-18 the
-  device runs the deleted `v0.1.1-test` release build (20261117-001904) in slot B; a
-  flash starts again from A
+  B and a low battery during one, typing a source, the German wording. Since 2026-11-20 the
+  device runs a card written from the v0.2-test.3 release image, in slot A
 
 - RetroAchievements offline (2026-11-13): a real unlock without Wi-Fi, sent later from the
   menus and dated right on the site, the OFFLINE notice, the German wording
@@ -241,6 +240,13 @@ pre-release, installed through SYSTEM UPDATE into slot B with all 492 files on T
 unchanged but the source, then deleted; SYSTEM UPDATE with the default source found v0.1
 at `releases/latest` and said UP TO DATE. Installing v0.1 itself over the network wasn't
 tested, nor SSH over Wi-Fi on a release build.
+
+Test builds go out as pre-releases titled TEST, so `releases/latest` stays on v0.1 and
+SYSTEM UPDATE never offers them: v0.2-test.2 (2026-11-18, LPDDR4 and the SP's second
+panel) and v0.2-test.3 (2026-11-20, the H700 family image from `b5bd7a0`, build
+20261120-025142, files named `h700`, U-Boot as in test.2). test.3's update is signed and
+checked against `update-key.pub`; the user's smoke test on the SP passed.
+No other H700 device has run it yet.
 
 ## How the launcher is built
 
@@ -449,8 +455,8 @@ physical like the lid.
   pass it with `-i`. If locked out, the serial console still logs in (Python on
   `/dev/ttyACM0` works; Claude is in `uucp`), and cycling SSH back to USB ONLY there with
   injected presses fixes it. Leave the device on USB ONLY with no password and no keys.
-  A release build (on the device since 2026-11-18) needs a root password: the user gives
-  it in the session. Pass it through `SSH_ASKPASS` from an environment variable with
+  A release build (on the device since 2026-11-18, v0.2-test.3 since 2026-11-20) needs
+  a root password: the user gives it in the session. Pass it through `SSH_ASKPASS` from an environment variable with
   `SSH_ASKPASS_REQUIRE=force` and `PubkeyAuthentication=no`, never in a file; the serial
   console asks for it too.
 - **Pressing buttons:** take a screenshot before pressing A, because a wrong guess at
