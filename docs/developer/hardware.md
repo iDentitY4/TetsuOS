@@ -100,8 +100,9 @@ shows as a 1 Hz green blink.
 
 - **The GPU needs `CONFIG_SUN50I_H6_PRCM_PPU`,** or Panfrost fails silently. It runs at a fixed
   432 MHz.
-- **The CPU governor raises the speed slowly from idle,** so after the in-game menu the CPU is
-  held at 1008 MHz for two seconds, or games stutter.
+- **The CPU governor sees a light game as half idle,** as it waits for the panel between
+  frames: it switches speeds and misses refreshes, and the sound runs dry. Games hold the
+  CPU at 1008 MHz or more from start to end.
 - **Kernel modules are off.** Don't turn `CONFIG_MODULES` off over a config with `=m` entries:
   they all become built in.
 - **The linux-sunxi wiki returns 403 to automated fetches.** Use U-Boot's

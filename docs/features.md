@@ -768,8 +768,9 @@ Working on the test unit, confirmed by the user:
   loops for the 7800, Supervision and SG-1000 (over 300 fps). The tiles and icons, the Virtual
   Boy game from the menus with SAVE STATE, CORE OPTIONS, QUIT and a resume at the same
   screen, and RetroAchievements identifying it, were checked through the screen. The Arduboy
-  plays at about 57 fps, because schedutil keeps the CPU at 720 MHz while it needs 7.6 ms per
-  frame there with uneven frames; at 1512 MHz it played at 59.84 fps. Nobody has heard these
+  played at about 57 fps, because schedutil kept the CPU at 720 MHz while it needs 7.6 ms per
+  frame there with uneven frames; at 1512 MHz it played at 59.84 fps. Games hold at least
+  1008 MHz since 2026-11-21, which hasn't been checked with the Arduboy yet. Nobody has heard these
   consoles, played them on the buttons, or tried a real 7800, Supervision, SG-1000 or Pokemon
   Mini game
 - With more consoles a full home screen reached four rows, too short for a tile's text, so
@@ -1281,8 +1282,8 @@ Built but not yet tested on the device:
   - PERFORMANCE (`performance.rs`, `performance=`): BATTERY is `schedutil` up to 1104 MHz,
     BALANCED (default) `schedutil` up to 1512 MHz, as before, and PERFORMANCE the
     `performance` governor at 1512 MHz. The launcher sets them at start and on a change;
-    one cpufreq policy covers all four cores. The in-game menu's 1008 MHz hold stays below
-    every cap
+    one cpufreq policy covers all four cores. The 1008 MHz that games hold as their lowest
+    speed stays below every cap
   - Claude checked on the device: OFF stops the server and USB ONLY brings it back; USB
     + WI-FI is skipped with nothing set; with a key it listens on `0.0.0.0:22`, the key
     works over Wi-Fi and USB, and an empty password is refused on both; a password typed
@@ -1416,7 +1417,7 @@ Built but not yet tested on the device:
 
 - Fast-forward: holding R2 runs extra frames in each panel refresh, within 6 ms and up
   to 8 frames, keeping only the last frame's picture and sound, so sound keeps flowing.
-  A `>>` shows in the top-right corner, and the CPU is held at 1008 MHz meanwhile. A Game
+  A `>>` shows in the top-right corner; the CPU is at 1008 MHz or more, as in every game. A Game
   Boy game reached about 5x with no underruns; at an 8 ms budget it missed refreshes and
   the sound ran out. The launcher log's statistics show the speed. The user confirmed it
   works; the sound is very choppy, especially on NES, which the user accepts
@@ -2509,10 +2510,19 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
 - **Save states keep mGBA's Super Game Boy border mode.** A state saved with the border
   on loads into the borderless frame offset and cut off, so such states can't be used
   since the border was turned off. Red's were deleted on 2026-11-08.
-- **The CPU governor raises the speed slowly from idle while a game runs,** because a
-  game waits for the panel between frames. After a pause, games ran at 30 fps with audio
-  underruns for about a second, so the menu holds `scaling_min_freq` at 1008 MHz until
-  two seconds after resuming.
+- **The CPU governor sees a light game as half idle,** because a game waits for the panel
+  between frames, so games hold `scaling_min_freq` at 1008 MHz from start to end
+  (2026-11-21, `libretro::hold_cpu_speed`). After a pause, games ran at 30 fps with audio
+  underruns for about a second, which a two-second hold after the menu fixed first. Then
+  a tester (issue #18) heard stutter on Mario Kart: Super Circuit's title screen, and Claude
+  reproduced it on the SP: at 5.7 ms per frame schedutil switched between 720 and 1008 MHz
+  161 times a second, the game missed refreshes and ran at 57.6-58.5 fps, and aplay ran dry
+  every 2-6 s. A GBA game at 59.73 fps has only 0.35% to spare against the panel's 59.94 Hz.
+  With the hold, the same screen ran at 59.64-59.84 fps with no underrun in 70 s and 13
+  speed changes a second. Tetris (Game Boy, 4.4 ms) switched 196 times a second at
+  59.64-59.74 fps without underruns, so the switching alone doesn't always cost
+  refreshes. On the H700 (speed bin 5) 1008 MHz runs at 900 mV, the same as 720 and
+  480 MHz, so the hold costs only the faster clock; the battery cost wasn't measured.
 - **Plugging in USB power starts the device** (VBUS rising, set in the AXP717's efuse;
   powering off with the cable in stays off). REG 0x20 says what started it; the
   charging screen uses it. Test shutdown with the cable unplugged.

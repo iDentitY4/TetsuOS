@@ -344,8 +344,9 @@ In short here; `docs/features.md` has them in full.
 - **Audio:** `amixer` percentages are raw steps. If the `DAC` switch is off, playback
   fails with error -5. Headphones are silent while the `Speaker` path is on. The driver
   waits 700 ms for the amp when the card opens after about 5 s idle.
-- **The CPU governor raises the speed slowly from idle,** so after the in-game menu the CPU
-  is held at 1008 MHz for two seconds, or games stutter.
+- **The CPU governor sees a light game as half idle,** so it flips between 720 and 1008 MHz,
+  games miss refreshes and the sound runs dry (Mario Kart: Super Circuit's title screen,
+  issue #18). Games hold `scaling_min_freq` at 1008 MHz from start to end since 2026-11-21.
 - **Save states keep mGBA's SGB border mode,** so states from before the border was
   turned off load cut off.
 - **The display is `card1`** (Panfrost is `card0`). `kmscube -D /dev/dri/card1` needs the
