@@ -45,15 +45,14 @@ const CPU_MIN_SPEED_PATH: &str = crate::device::paths::cpufreq_path!("/scaling_m
 
 const CPU_LOWEST_SPEED_PATH: &str = crate::device::paths::cpufreq_path!("/cpuinfo_min_freq");
 
-/// The speed games normally run at, in kHz.
+/// The lowest speed while a game runs, in kHz.
 const CPU_GAME_SPEED: &str = "1008000";
 
-/// How long the CPU stays at game speed after the menu closes, while the governor
-/// catches up. It raises the speed slowly from idle, because a game waits for the
-/// panel between frames, so the first second after a pause stuttered.
-const CPU_HOLD_FRAMES: u64 = 120;
-
-/// Keeps the CPU at game speed or faster, so it is ready when the menu closes.
+/// Keeps the CPU at game speed or faster while the game runs. A game waits for the panel
+/// between frames, so the governor sees a light game as half idle: it switched between
+/// 720 and 1008 MHz about 160 times a second on Mario Kart: Super Circuit's title screen,
+/// which then missed refreshes, ran at 58 fps and ran the sound dry every few seconds.
+/// It also raised the speed too slowly after the menu and for fast-forward.
 fn hold_cpu_speed() {
     if let Err(error) = std::fs::write(CPU_MIN_SPEED_PATH, CPU_GAME_SPEED) {
         eprintln!("warning: could not hold the CPU speed: {error}");
@@ -445,6 +444,7 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
     let levels = volume_levels();
     framebuffer.clear()?;
     draw_whole_screen(framebuffer)?;
+    hold_cpu_speed();
 
     let mut next_frame = Instant::now();
     let mut play_clock = PlayClock::start(save, next_frame);
@@ -460,7 +460,6 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
         .with_states(persistence != Persistence::OwnFiles)
         .with_resuming(resume.is_some());
     let mut trigger = MenuTrigger::new();
-    let mut release_at = None;
     let mut battery = power::Monitor::new();
     let mut charge_watch = power::ChargeWatch::default();
     let mut fast_forwarding = false;
@@ -526,7 +525,6 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
         // Menu + Select does nothing without another game to switch to.
         if let Some(opening) = open_menu.filter(|&opening| opening == Opening::Menu || !switch_to.is_empty()) {
             save_play_time(&mut play_clock, console);
-            hold_cpu_speed();
             let game = Game { rom, save, cheat_source, switch_to: &switch_to };
             let mut achievements =
                 Achievements { session: &mut session, notices: &mut notices, game_notices: &mut game_notices };
@@ -545,7 +543,6 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
                 }
             }
             with_host(|host| host.rumble.release());
-            release_at = Some(frames - frames % STATS_FRAMES + CPU_HOLD_FRAMES);
             // The pause shouldn't count as slow frames, or make the game catch up.
             stats.restart();
             next_frame = stats.start;
@@ -563,12 +560,6 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
         if fast != fast_forwarding {
             draw_fast_forward(framebuffer, fast)?;
             fast_forwarding = fast;
-            // From idle, the governor is too slow to keep up with the first extra frames.
-            if fast {
-                hold_cpu_speed();
-            } else if release_at.is_none() {
-                release_cpu_speed();
-            }
         }
         let run_start = Instant::now();
         if fast {
@@ -589,13 +580,6 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
             start_probed_audio(sample_rate, fps, panel_hz);
         } else if frames.is_multiple_of(AUDIO_CHECK_FRAMES) {
             follow_audio_device();
-        }
-        if release_at == Some(frames) {
-            // Fast-forward keeps holding it until the button is let go.
-            if !fast_forwarding {
-                release_cpu_speed();
-            }
-            release_at = None;
         }
         if frames.is_multiple_of(autosave_frames(persistence)) {
             let saved = core.snapshot(persistence).and_then(|progress| save_file.update(&progress));
@@ -620,9 +604,7 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
     }
 
     with_host(|host| host.rumble.hold());
-    if release_at.is_some() || fast_forwarding {
-        release_cpu_speed();
-    }
+    release_cpu_speed();
     save_play_time(&mut play_clock, console);
     let kept = resume.as_deref().filter(|_| keep_place);
     save_progress(&mut core, persistence, &mut save_file, kept)?;

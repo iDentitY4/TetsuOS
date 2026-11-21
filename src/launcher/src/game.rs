@@ -109,7 +109,7 @@ pub(crate) fn play_game(rom: &Path, events: &Receiver<Event>) -> io::Result<Endi
     };
     battery_log::set_activity(battery_log::Activity::Menu);
     crate::backup::syncthing::resume_after_game();
-    // In case the game ended while it held the CPU speed for its menu.
+    // In case the game ended without letting go of the CPU speed it holds.
     libretro::release_cpu_speed();
     // The game's menu may have changed the display settings or the levels.
     settings::reload();
