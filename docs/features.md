@@ -60,7 +60,28 @@ Working on the test unit, confirmed by the user:
   the ninth row of SYSTEM, the only group with that many (`MAX_GROUP_SETTINGS`), which
   leaves room for one note line: its note about the power button. Claude checked on the
   device that the row shows 2 HOURS, Right saves `4h`, and the note fits under the rows
-  with SLEEP WHEN IDLE on; a sleep with a setting other than 2 hours hasn't been tried
+  with SLEEP WHEN IDLE on; a sleep with a setting other than 2 hours hasn't been tried.
+  Shorter choices (2026-11-22, issue #35): AT ONCE, 5 and 15 MINUTES (`now`, `5m`, `15m`),
+  for someone who closes the lid at the end of a session and would rather it was off.
+  AT ONCE powers off as the lid closes: the timer is due at once, so no alarm is set and
+  nothing sleeps. These three count on USB power too (`SleepPowerOff::on_usb_power`), as
+  powering off with the cable in leaves the device off; the hours still count only on
+  battery. Every power-off from sleep now goes the power button's way: SIGUSR1 to the
+  menus and a game (`killall -USR1 launcher`), 200 ms for the shutdown screen, then
+  `poweroff`. The game stops where it is (`app::powering_off`) and saves on the
+  shutdown's SIGTERM. The backlight is turned on first, as idle sleep turned it off.
+  With the real `poweroff`, opening the lid while it shuts down no longer brings the
+  menus back for a moment; only a test's `LAUNCHER_POWEROFF` lets it end the wait. With
+  SLEEP WHEN IDLE on, AT ONCE powers off when the menus go idle.
+  `LAUNCHER_LONG_SLEEP` still sets the length; whether it counts on USB power comes from
+  the setting. Claude checked on the SP on USB power, with SLEEP WHEN IDLE at 2 minutes
+  and a fake `LAUNCHER_POWEROFF`: AT ONCE went from idle straight to the shutdown screen
+  (lit, `powering off from the power button` in the log) and the command; 5 MINUTES with
+  `LAUNCHER_LONG_SLEEP=30` slept 31 s, the alarm woke it and it powered off; 1 HOUR with
+  the same 30 s kept sleeping through two alarms. The rows show AT ONCE and 15 MINUTES.
+  Not yet tried: a real lid close at AT ONCE (in the menus and in a game, and the game
+  resuming), a real power-off from sleep on USB power staying off, opening the lid while
+  it shuts down, the German wording on the device
 - Shutdown screen (2026-11-10): a power symbol in the accent colour above POWERING OFF
   (SCHALTET AUS), or REBOOTING or BATTERY EMPTY, stays on the screen until the device is
   off (`screens::shutdown_screen`, preview with `--preview-shutdown`). The power button's

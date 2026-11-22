@@ -424,9 +424,13 @@ impl ChargeLimit {
 }
 
 choices! {
-    /// How long the device sleeps on battery, with the lid closed or after the menus were
-    /// idle, before it powers off. A running game resumes at the next start.
+    /// How long the device sleeps, with the lid closed or after the menus were idle, before
+    /// it powers off. A running game resumes at the next start. The hours count only on
+    /// battery; AT ONCE and the minutes also on USB power.
     pub enum SleepPowerOff (default Hours2) {
+        AtOnce => "now", "AT ONCE";
+        Minutes5 => "5m", "5 MINUTES";
+        Minutes15 => "15m", "15 MINUTES";
         Hour1 => "1h", "1 HOUR";
         Hours2 => "2h", "2 HOURS";
         Hours4 => "4h", "4 HOURS";
@@ -437,14 +441,23 @@ choices! {
 
 impl SleepPowerOff {
     pub fn duration(self) -> Option<std::time::Duration> {
-        let hours = match self {
-            Self::Hour1 => 1,
-            Self::Hours2 => 2,
-            Self::Hours4 => 4,
-            Self::Hours8 => 8,
+        let minutes = match self {
+            Self::AtOnce => 0,
+            Self::Minutes5 => 5,
+            Self::Minutes15 => 15,
+            Self::Hour1 => 60,
+            Self::Hours2 => 2 * 60,
+            Self::Hours4 => 4 * 60,
+            Self::Hours8 => 8 * 60,
             Self::Never => return None,
         };
-        Some(std::time::Duration::from_hours(hours))
+        Some(std::time::Duration::from_mins(minutes))
+    }
+
+    /// Whether it powers off on USB power too. The hours are there so sleep doesn't drain
+    /// the battery, which USB power doesn't; the shorter times are for wanting it off.
+    pub fn on_usb_power(self) -> bool {
+        matches!(self, Self::AtOnce | Self::Minutes5 | Self::Minutes15)
     }
 }
 
@@ -1347,6 +1360,10 @@ mod tests {
         assert_eq!(SleepPowerOff::default().duration(), Some(std::time::Duration::from_hours(2)));
         assert_eq!(SleepPowerOff::Hours8.cycle(1), SleepPowerOff::Never);
         assert_eq!(SleepPowerOff::Never.duration(), None);
+        assert_eq!(SleepPowerOff::AtOnce.duration(), Some(std::time::Duration::ZERO));
+        assert_eq!(SleepPowerOff::Minutes15.duration(), Some(std::time::Duration::from_mins(15)));
+        assert_eq!(SleepPowerOff::Never.cycle(1), SleepPowerOff::AtOnce);
+        assert!(SleepPowerOff::Minutes5.on_usb_power() && !SleepPowerOff::Hour1.on_usb_power());
     }
 
     #[test]

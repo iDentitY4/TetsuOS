@@ -72,6 +72,12 @@ ADVANCED > RUN SETUP AGAIN repeats.
 
 ## Not yet checked by the user
 
+- POWER OFF AFTER SLEEP's AT ONCE, 5 and 15 MINUTES (2026-11-22, issue #35): a real lid
+  close at AT ONCE in the menus and in a game (shutdown screen, resume at the next start),
+  a real power-off from sleep on USB power staying off, opening the lid during the
+  shutdown, the German wording. Checked by Claude through idle sleep with a fake
+  power-off command (`docs/features.md`)
+
 - The rev6 panel (2026-11-20, patch 0022, `panel=rev6` in `device.txt`): no revision 6
   unit here. Checked by Claude on the SP: the setting reaches the kernel, the Plus tree with
   it selects the rev6 setup, and the SP's own tree with it still finds its panel

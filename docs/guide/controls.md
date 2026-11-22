@@ -44,7 +44,7 @@ The Menu button and the D-pad can't be remapped, so the menu always stays in rea
 | --- | --- |
 | Power button (short press) | Power off, with a shutdown screen. A game in progress resumes at the next start |
 | Power button, while off | Power on |
-| Close the lid | Sleep. A game saves its place first. Opening the lid wakes the device |
+| Close the lid | Sleep. A game saves its place first. Opening the lid wakes the device. With POWER OFF AFTER SLEEP at AT ONCE, it powers off instead |
 | Plug in USB while off | The device starts to a charging screen. The power button goes on to the menus |
 
 See [Power and battery](./power-and-battery) for sleep timers and power-off after sleep.

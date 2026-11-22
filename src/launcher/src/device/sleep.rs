@@ -138,8 +138,8 @@ fn wait_after_wake(events: &Receiver<Event>, wanted: impl Fn(&Event) -> bool) ->
     Some(false)
 }
 
-/// Overrides Settings > SYSTEM > POWER OFF AFTER SLEEP in seconds, to test it without
-/// waiting hours.
+/// Overrides the length of Settings > SYSTEM > POWER OFF AFTER SLEEP in seconds, to test it
+/// without waiting hours. Whether it counts on USB power still comes from the setting.
 const LONG_SLEEP_VARIABLE: &str = "LAUNCHER_LONG_SLEEP";
 
 const RTC_ALARM: &str = "/sys/class/rtc/rtc0/wakealarm";
@@ -157,24 +157,29 @@ fn long_sleep() -> Option<Duration> {
 #[derive(Clone, Copy)]
 struct PowerOffTimer {
     at: Option<Duration>,
+    /// Whether it powers off on USB power too (`SleepPowerOff::on_usb_power`).
+    on_usb_power: bool,
 }
 
 impl PowerOffTimer {
     fn start() -> Self {
-        PowerOffTimer { at: long_sleep().map(|length| boot_time() + length) }
+        PowerOffTimer {
+            at: long_sleep().map(|length| boot_time() + length),
+            on_usb_power: crate::settings::get().sleep_power_off.on_usb_power(),
+        }
     }
 
     fn expired(self) -> bool {
         self.at.is_some_and(|at| boot_time() >= at)
     }
 
-    /// Whether it is time to power off. On USB power the battery doesn't drain, and powering
-    /// off could start the device again, so the time moves on by another `long_sleep()`.
+    /// Whether it is time to power off. For the hours, on USB power the battery doesn't
+    /// drain, so the time moves on by another `long_sleep()` instead.
     fn due(&mut self) -> bool {
         if !self.expired() {
             return false;
         }
-        if discharging() {
+        if self.on_usb_power || discharging() {
             return true;
         }
         *self = Self::start();
@@ -217,20 +222,37 @@ fn discharging() -> bool {
     crate::device::power::read(&crate::device::power::battery_dir()).is_some_and(|reading| reading.discharging)
 }
 
-/// Powers off, then waits without sleeping: the shutdown stops this process and saves a
-/// running game. Only a test's power-off command lets an event that `ends` picks end the
-/// wait.
+/// How long the menus and a game get to draw the shutdown screen, as the power button's
+/// script waits (`/etc/acpi/PWRF/00000080`).
+const SHUTDOWN_SCREEN_WAIT: Duration = Duration::from_millis(200);
+
+/// Powers off as the power button does, then waits without sleeping: the shutdown stops
+/// this process and saves a running game. Only a test's power-off command lets an event
+/// that `ends` picks end the wait; a running game then stays stopped at the shutdown
+/// screen, as `app::powering_off` holds it.
 fn power_off(events: &Receiver<Event>, ends: impl Fn(&Event) -> bool) {
     set_alarm(None);
     println!("sleep: powering off after {} s asleep", long_sleep().unwrap_or_default().as_secs());
-    let command = crate::device::power::poweroff_command();
     crate::device::battery_log::flush_now();
+    // Idle sleep turned the screen off, and the shutdown screen should show.
+    if let Err(error) = std::fs::write(backlight_power(), "0") {
+        eprintln!("warning: could not turn the screen on: {error}");
+    }
+    // SIGUSR1 to the menus and a running game, this process too, as the power button's
+    // script sends it: both show the shutdown screen, and the game stops where it is.
+    match std::process::Command::new("killall").args(["-q", "-USR1", "launcher"]).status() {
+        Ok(_) => std::thread::sleep(SHUTDOWN_SCREEN_WAIT),
+        Err(error) => eprintln!("warning: could not show the shutdown screen: {error}"),
+    }
+    let command = crate::device::power::poweroff_command();
     if let Err(error) = std::process::Command::new(&command).status() {
         eprintln!("warning: could not run {command}: {error}");
         return;
     }
+    let testing = crate::device::power::poweroff_is_replaced();
     while let Ok(event) = events.recv() {
-        if ends(&event) {
+        // Opening the lid as the device shuts down mustn't bring the menus back meanwhile.
+        if testing && ends(&event) {
             return;
         }
     }

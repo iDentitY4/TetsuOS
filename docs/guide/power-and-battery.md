@@ -27,8 +27,13 @@ disconnects, and the USB connection stays up. Opening the lid wakes the device w
 
 **Power-off after sleep.** After 2 hours of sleep on battery, the device powers off by
 itself so sleep doesn't drain the battery; the game resumes at the next start.
-**Settings > SYSTEM > POWER OFF AFTER SLEEP** sets 1, 2, 4 or 8 HOURS, or NEVER. On USB power
-it keeps sleeping.
+**Settings > SYSTEM > POWER OFF AFTER SLEEP** sets AT ONCE, 5 or 15 MINUTES, 1, 2, 4 or 8
+HOURS, or NEVER. On USB power the hours don't count and it keeps sleeping.
+
+To have the device off at the end of a session, choose **AT ONCE**: closing the lid then
+powers off, as the power button does, and the game resumes at the next start. **5** or
+**15 MINUTES** keep a quick look away instantly back, and power off soon after. These three
+also power off on USB power.
 
 **Sleep when idle.** **Settings > SYSTEM > SLEEP WHEN IDLE** puts the device to sleep after 2,
 5, 10 or 30 minutes without a press in the menus (never in a game). The power button wakes
