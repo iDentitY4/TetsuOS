@@ -103,7 +103,7 @@ cargo run --release -- --preview home.ppm
 | `--preview-battery day\|week\|health`, `--preview-statistics`, `--preview-charging` | Battery and statistics |
 | `--preview-gallery`, `--preview-gallery-full` | Screenshot gallery |
 | `--preview-collection-tiles`, `--preview-collection`, `--preview-collections`, `--preview-collections-details`, `--preview-game-collections`, `--preview-hidden` | Collections and hidden games |
-| `--preview-setup 0..3`, `--preview-set-time`, `--preview-keyboard` | Setup, SET TIME, keyboard |
+| `--preview-setup 0..3`, `--preview-set-time`, `--preview-keyboard`, `--preview-search` | Setup, SET TIME, the password keyboard, SEARCH |
 | `--preview-shutdown`, `--preview-splash`, `--preview-boot-animation`, `--preview-volume`, `--preview-buttons`, `--preview-card` | System screens |
 
 The screenshots in this documentation are made this way.

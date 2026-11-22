@@ -677,7 +677,7 @@ pub(crate) fn clock_minute(launcher: &Launcher) -> Option<String> {
 }
 
 /// As long as a game's name is likely to be typed.
-const MAX_SEARCH_LENGTH: usize = 40;
+pub(crate) const MAX_SEARCH_LENGTH: usize = 40;
 
 /// What woke the launcher up.
 pub(crate) enum Wake {

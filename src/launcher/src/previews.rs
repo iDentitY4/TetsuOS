@@ -393,6 +393,22 @@ pub(crate) fn write_keyboard_preview(path: &str) -> io::Result<()> {
     write_ppm(&screens::keyboard_screen(width, height, &view, &keyboard, &screen_frame(battery)), path)
 }
 
+/// Renders SEARCH partway through typing a name, as `app::search_games` draws it.
+pub(crate) fn write_search_preview(path: &str) -> io::Result<()> {
+    let mut keyboard = keyboard::Keyboard::new(crate::app::MAX_SEARCH_LENGTH, |text| !text.trim().is_empty());
+    keyboard.text = "mario".into();
+    keyboard.press(Button::Down);
+    keyboard.press(Button::Down);
+    keyboard.press(Button::Right);
+    keyboard.press(Button::Right);
+    keyboard.press(Button::Right);
+    let (width, height) = preview_size();
+    let battery = Some(Battery { percent: 95, charging: true, minutes_left: None });
+    let subtitle = i18n::trf("GAMES FOUND: {}", &[&4]);
+    let view = screens::KeyboardView { icon: &icons::SEARCH, title: i18n::tr("SEARCH"), subtitle: &subtitle, valid_note: "" };
+    write_ppm(&screens::keyboard_screen(width, height, &view, &keyboard, &screen_frame(battery)), path)
+}
+
 /// Renders a step of the setup, with sample text under its rows.
 pub(crate) fn write_setup_preview(step: usize, path: &str) -> io::Result<()> {
     let (width, height) = preview_size();
