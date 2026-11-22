@@ -99,6 +99,7 @@ fn main() -> ExitCode {
         [flag, path] if flag == "--preview-gallery-full" => previews::write_gallery_preview(true, path),
         [flag, path] if flag == "--preview-bluetooth" => previews::write_bluetooth_preview(path),
         [flag, path] if flag == "--preview-keyboard" => write_keyboard_preview(path),
+        [flag, path] if flag == "--preview-search" => previews::write_search_preview(path),
         [flag, path] if flag == "--preview-backup" => write_ppm(&backup::backup_screen::preview(), path),
         [flag, path] if flag == "--preview-update" => write_ppm(&update::preview(false), path),
         [flag, path] if flag == "--preview-update-installing" => write_ppm(&update::preview(true), path),
@@ -160,7 +161,7 @@ fn main() -> ExitCode {
         _ => {
             eprintln!(
                 "usage: launcher [--preview | --preview-list | --preview-recent | --preview-settings FILE.ppm\n\
-                 \x20              | --preview-buttons | --preview-wifi | --preview-keyboard FILE.ppm\n\
+                 \x20              | --preview-buttons | --preview-wifi | --preview-keyboard | --preview-search FILE.ppm\n\
                  \x20              | --preview-pause | --preview-switcher[-covers] | --preview-controls | --preview-core-options FILE.ppm\n\
                  \x20              | --preview-cheats | --preview-achievements | --preview-notice FILE.ppm\n\
                  \x20              | --preview-splash FILE.ppm | --core-options CORE\n\

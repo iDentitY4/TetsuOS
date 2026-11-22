@@ -27,7 +27,7 @@ X on the home screen or in a list opens the keyboard and shows how many games ma
 type. A game matches when every typed word is in its name, in any order, ignoring case and
 accents. It searches every console, even those with a hidden tile.
 
-![The on-screen keyboard](/screenshots/keyboard.png)
+![Searching with the on-screen keyboard](/screenshots/search.png)
 
 ## A game's details
 
