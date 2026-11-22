@@ -30,7 +30,7 @@ use super::ffi::{
     LogCallback, RawDiskControl, RumbleInterface, UpdateDisplay, Variable, c_text, launcher_core_log,
     read_options_v1, read_options_v2,
 };
-use super::scale::{PixelFormat, Scaler, picture_size};
+use super::scale::{PixelFormat, Scaler, picture_size, shape_aspect};
 use super::core::c_path;
 
 const GHOSTING_OPTION: &str = core_options::FRONTEND_OWNED[0];
@@ -121,7 +121,7 @@ pub(super) struct Host {
     /// That picture's own pixels, row by row, for a screenshot. `frame` has the effects in it.
     pub(super) source: Vec<u8>,
     target: (usize, usize),
-    setup: CoreSetup,
+    pub(super) setup: CoreSetup,
     /// The options the core declared, as it last declared them.
     pub(super) declarations: Declarations,
     /// Options the core asked not to show now.
@@ -458,7 +458,8 @@ pub(super) unsafe extern "C" fn video_refresh(
         let source = unsafe {
             std::slice::from_raw_parts(data.cast::<u8>(), pitch * (height - 1) + width * bytes_per_pixel)
         };
-        let size = picture_size((width, height), host.target, host.display.scaling, host.setup.aspect);
+        let aspect = shape_aspect(host.display.shape, host.setup.aspect, host.target);
+        let size = picture_size((width, height), host.target, host.display.scaling, aspect);
         host.frame.resize(size.0 * size.1, 0);
         host.frame_size = size;
         host.source_size = (width, height);

@@ -304,6 +304,7 @@ impl Group {
             // 50 HZ GAMES AT 50 HZ is one setting for every console, so USE FOR ALL CONSOLES
             // doesn't copy it and it comes after.
             Self::Display => &[
+                Setting::Shape,
                 Setting::Scaling,
                 Setting::Effect,
                 Setting::Ghosting,
@@ -382,6 +383,7 @@ pub enum Setting {
     MenuSounds,
     BootJingle,
     Language,
+    Shape,
     Scaling,
     Effect,
     Ghosting,
@@ -461,6 +463,7 @@ impl Setting {
             Self::MenuSounds => "MENU SOUNDS",
             Self::BootJingle => "BOOT JINGLE",
             Self::Language => "LANGUAGE",
+            Self::Shape => "SHAPE",
             Self::Scaling => "SCALING",
             Self::Effect => "SCREEN EFFECT",
             Self::Ghosting => "LCD GHOSTING",
@@ -575,6 +578,7 @@ impl Setting {
                 | Self::SleepPowerOff
                 | Self::ShowCovers
                 | Self::ScreenshotCovers
+                | Self::Shape
                 | Self::Scaling
                 | Self::Effect
                 | Self::Ghosting
@@ -710,6 +714,7 @@ pub enum Command {
     Language(i32),
     IdleSleep(i32),
     SleepPowerOff(i32),
+    Shape(i32),
     Scaling(i32),
     Effect(i32),
     Ghosting(i32),
@@ -1418,6 +1423,7 @@ impl Launcher {
             Setting::SleepPowerOff => Command::SleepPowerOff(step),
             Setting::ShowCovers => Command::ToggleCovers,
             Setting::ScreenshotCovers => Command::ToggleScreenshotCovers,
+            Setting::Shape => Command::Shape(step),
             Setting::Scaling => Command::Scaling(step),
             Setting::Effect => Command::Effect(step),
             Setting::Ghosting => Command::Ghosting(step),
@@ -1537,6 +1543,7 @@ impl Launcher {
                 | Setting::SleepPowerOff
                 | Setting::ShowCovers
                 | Setting::ScreenshotCovers
+                | Setting::Shape
                 | Setting::Scaling
                 | Setting::Effect
                 | Setting::Ghosting
@@ -2217,13 +2224,15 @@ mod tests {
         // IN GAME's first row opens DISPLAY, and B goes back to IN GAME.
         press_all(&mut launcher, &library, &[Button::B, Button::Right, Button::A, Button::A]);
         assert_eq!(launcher.screen(), Screen::SettingsGroup(Group::Display));
+        assert_eq!(launcher.press(Button::Right, &library), Command::Shape(1));
+        launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Right, &library), Command::Scaling(1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Left, &library), Command::Effect(-1));
         launcher.press(Button::Down, &library);
         assert_eq!(launcher.press(Button::Right, &library), Command::Ghosting(1));
         // DISPLAY's last row, Up from the first, turns 50 Hz games' rate on and off.
-        press_all(&mut launcher, &library, &[Button::Up, Button::Up, Button::Up]);
+        press_all(&mut launcher, &library, &[Button::Up, Button::Up, Button::Up, Button::Up]);
         assert_eq!(launcher.setting_selected(Group::Display), Some(Setting::FiftyHz));
         assert_eq!(launcher.press(Button::Left, &library), Command::ToggleFiftyHz);
         press_all(&mut launcher, &library, &[Button::Down, Button::Down, Button::Down]);

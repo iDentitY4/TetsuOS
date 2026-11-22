@@ -110,6 +110,7 @@ use crate::ingame::pause;
         keys.extend(labels(&crate::wifi::network::MacMode::ALL, crate::wifi::network::MacMode::label));
         keys.extend(clock::WEEKDAYS);
         keys.extend(clock::MONTHS);
+        keys.extend(labels(s::Shape::ALL, s::Shape::label));
         keys.extend(labels(s::Scaling::ALL, s::Scaling::label));
         keys.extend(labels(s::Effect::ALL, s::Effect::label));
         keys.extend(labels(s::Ghosting::ALL, s::Ghosting::label));

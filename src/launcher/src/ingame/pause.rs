@@ -27,6 +27,7 @@ pub enum Item {
     ProgressNotices,
     OtherNotices,
     Brightness,
+    Shape,
     Scaling,
     Effect,
     Ghosting,
@@ -56,7 +57,7 @@ pub const LISTS: [List; 4] = [List::Main, List::Display, List::Options, List::Ac
 /// without `RetroAchievements` without `Item::Achievements` and its list, and games on cores other than
 /// mGBA without `Item::Ghosting`, and games with no other recent game without `Item::SwitchGame`.
 /// Only `PlayStation` games have discs, so no game shows them all.
-pub const ITEMS: [Item; 22] = [
+pub const ITEMS: [Item; 23] = [
     Item::Resume,
     Item::SaveState,
     Item::LoadState,
@@ -68,6 +69,7 @@ pub const ITEMS: [Item; 22] = [
     Item::SwitchGame,
     Item::Quit,
     Item::Brightness,
+    Item::Shape,
     Item::Scaling,
     Item::Effect,
     Item::Ghosting,
@@ -100,6 +102,7 @@ impl Item {
             Self::ProgressNotices => "PROGRESS",
             Self::OtherNotices => "OTHER MESSAGES",
             Self::Brightness => "BRIGHTNESS",
+            Self::Shape => "SHAPE",
             Self::Scaling => "SCALING",
             Self::Effect => "SCREEN EFFECT",
             Self::Ghosting => "LCD GHOSTING",
@@ -115,7 +118,7 @@ impl Item {
     /// The list the item is in.
     pub fn list(self) -> List {
         match self {
-            Self::Brightness | Self::Scaling | Self::Effect | Self::Ghosting | Self::Border => List::Display,
+            Self::Brightness | Self::Shape | Self::Scaling | Self::Effect | Self::Ghosting | Self::Border => List::Display,
             Self::Controls | Self::CoreOptions | Self::Cheats => List::Options,
             Self::AchievementList | Self::UnlockNotices | Self::ProgressNotices | Self::OtherNotices => List::Achievements,
             Self::Resume
@@ -183,6 +186,7 @@ pub enum Action {
     Disc(usize),
     Screenshot,
     Brightness(i32),
+    Shape(i32),
     Scaling(i32),
     Effect(i32),
     Ghosting(i32),
@@ -354,6 +358,7 @@ impl PauseMenu {
                     Item::Disc => self.disc = (self.disc as i32 + step).rem_euclid(self.discs as i32) as usize,
                     Item::Quit if self.resumable => self.start_over = !self.start_over,
                     Item::Brightness => return Action::Brightness(step),
+                    Item::Shape => return Action::Shape(step),
                     Item::Scaling => return Action::Scaling(step),
                     Item::Effect => return Action::Effect(step),
                     Item::Ghosting => return Action::Ghosting(step),
@@ -403,7 +408,7 @@ impl PauseMenu {
                     }
                     Item::Quit if self.start_over => Action::StartOver,
                     Item::Quit => Action::Quit,
-                    Item::Brightness | Item::Scaling | Item::Effect | Item::Ghosting | Item::Border => {
+                    Item::Brightness | Item::Shape | Item::Scaling | Item::Effect | Item::Ghosting | Item::Border => {
                         Action::Nothing
                     }
                 }
@@ -523,6 +528,7 @@ mod tests {
     fn left_and_right_adjust_levels() {
         assert_eq!(menu_at(Item::Brightness).press(Button::Right), Action::Brightness(1));
         assert_eq!(menu_at(Item::Brightness).press(Button::A), Action::Nothing);
+        assert_eq!(menu_at(Item::Shape).press(Button::Left), Action::Shape(-1));
         assert_eq!(menu_at(Item::Scaling).press(Button::Right), Action::Scaling(1));
         assert_eq!(menu_at(Item::Effect).press(Button::Left), Action::Effect(-1));
     }

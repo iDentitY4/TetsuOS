@@ -799,6 +799,7 @@ pub(crate) fn act(
             settings::change_brightness(steps);
             save_levels();
         }
+        Action::Shape(steps) => change_settings(|s| s.display.shape = s.display.shape.cycle(steps)),
         Action::Scaling(steps) => change_settings(|s| s.display.scaling = s.display.scaling.cycle(steps)),
         Action::Effect(steps) => change_settings(|s| s.display.effect = s.display.effect.cycle(steps)),
         Action::Ghosting(steps) => change_settings(|s| s.display.ghosting = s.display.ghosting.cycle(steps)),

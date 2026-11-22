@@ -575,6 +575,7 @@ pub(crate) fn setting_value(setting: Setting, settings: &Settings) -> Option<Str
         Setting::IdleSleep => return Some(idle_sleep_label(settings.idle_minutes)),
         Setting::SleepPowerOff => settings.sleep_power_off.label(),
         Setting::Language => settings.language.label(),
+        Setting::Shape => settings.display.shape.label(),
         Setting::Scaling => settings.display.scaling.label(),
         Setting::Effect => settings.display.effect.label(),
         Setting::Ghosting => settings.display.ghosting.label(),

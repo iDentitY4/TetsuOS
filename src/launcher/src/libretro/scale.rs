@@ -1,6 +1,6 @@
 //! Scaling a core's picture to the panel, with the CRT and LCD effects.
 
-use crate::settings::{Effect, Scaling};
+use crate::settings::{Effect, Scaling, Shape};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(super) enum PixelFormat {
@@ -15,6 +15,31 @@ fn fit(source_w: usize, source_h: usize, target_w: usize, target_h: usize) -> (u
         (target_w, target_w * source_h / source_w)
     } else {
         (target_h * source_w / source_h, target_h)
+    }
+}
+
+/// What `Shape::Auto` gives a console with this `CoreSetup::aspect`: 4:3 for one whose
+/// pixels aren't square, square pixels for the others.
+pub(crate) fn resolve_shape(shape: Shape, console_aspect: Option<(usize, usize)>) -> Shape {
+    match shape {
+        Shape::Auto if console_aspect.is_some() => Shape::Tv,
+        Shape::Auto => Shape::Pixels,
+        other => other,
+    }
+}
+
+/// The shape `picture_size` takes for a chosen shape on a `target` sized panel: none for
+/// square pixels, or the shape to fill.
+pub(super) fn shape_aspect(
+    shape: Shape,
+    console_aspect: Option<(usize, usize)>,
+    target: (usize, usize),
+) -> Option<(usize, usize)> {
+    match resolve_shape(shape, console_aspect) {
+        Shape::Pixels => None,
+        Shape::Full => Some(target),
+        // Every console with a shape of its own has 4:3, the shape AUTO gives it.
+        Shape::Tv | Shape::Auto => Some((4, 3)),
     }
 }
 
@@ -487,6 +512,26 @@ mod tests {
         // European games have 256 lines.
         assert_eq!(picture_size((320, 256), panel, Scaling::Fit, four_three), (640, 480));
         assert_eq!(picture_size((320, 224), panel, Scaling::Integer, four_three), (640, 480));
+    }
+
+    #[test]
+    fn a_shape_picks_square_pixels_a_television_or_the_whole_screen() {
+        let four_three = Some((4, 3));
+        // AUTO keeps each console's own shape, as before the setting.
+        assert_eq!(shape_aspect(Shape::Auto, None, (640, 480)), None);
+        assert_eq!(shape_aspect(Shape::Auto, four_three, (640, 480)), four_three);
+        assert_eq!(shape_aspect(Shape::Pixels, four_three, (640, 480)), None);
+        assert_eq!(shape_aspect(Shape::Tv, None, (720, 720)), four_three);
+        assert_eq!(shape_aspect(Shape::Full, None, (720, 480)), Some((720, 480)));
+        // An NES game's 256x240 at 4:3 and full screen on 640x480 and 720x480; INTEGER
+        // can't change the shape, so it fits.
+        for scaling in [Scaling::Fit, Scaling::Integer] {
+            assert_eq!(picture_size((256, 240), (640, 480), scaling, shape_aspect(Shape::Tv, None, (640, 480))), (640, 480));
+            assert_eq!(picture_size((256, 240), (720, 480), scaling, shape_aspect(Shape::Tv, None, (720, 480))), (640, 480));
+            assert_eq!(picture_size((256, 240), (720, 480), scaling, shape_aspect(Shape::Full, None, (720, 480))), (720, 480));
+            assert_eq!(picture_size((256, 224), (720, 720), scaling, shape_aspect(Shape::Full, None, (720, 720))), (720, 720));
+        }
+        assert_eq!(picture_size((256, 224), (640, 480), Scaling::Fit, shape_aspect(Shape::Pixels, None, (640, 480))), (548, 480));
     }
 
     #[test]

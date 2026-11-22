@@ -321,7 +321,7 @@ Working on the test unit, confirmed by the user:
   The main list has RESUME, SAVE STATE, LOAD STATE, CHANGE DISC, SCREENSHOT, DISPLAY,
   OPTIONS, ACHIEVEMENTS and QUIT, at most 9 rows (`pause::MOST_ROWS`) of 32 lines instead
   of 22. DISPLAY opens a list with BRIGHTNESS, SCALING, SCREEN EFFECT, LCD GHOSTING and
-  BORDER, and OPTIONS one with CONTROLS, CORE OPTIONS and CHEATS (`pause::List`); the title
+  BORDER (and SHAPE since 2026-11-22), and OPTIONS one with CONTROLS, CORE OPTIONS and CHEATS (`pause::List`); the title
   names the list. Rows that open a list or page show `>`. B goes back from a list to the
   row that opened it, and from the main list resumes; Menu resumes from any list. Opening
   the menu again starts on RESUME in the main list. A page that CONTROLS, CORE OPTIONS or
@@ -1409,6 +1409,21 @@ Built but not yet tested on the device:
   GPU would mean replacing fbdev with DRM, so it wasn't done. Claude checked each effect
   in screenshots of FireRed run from copies of its saves, and the user confirmed they
   look much better
+- SHAPE (2026-11-22, issue #33), the first row of IN GAME > DISPLAY and the in-game
+  menu's DISPLAY list, kept per console like the others (`Shape` in `settings.rs`, `shape=`
+  and a fifth part of `display.<console>=`). AUTO (the default) is each console's own:
+  4:3 for those with `CoreSetup::aspect`, square pixels for the others, as before; the
+  in-game menu shows what it gives, as AUTO (4:3). PIXELS keeps the picture's own shape,
+  4:3 gives it a television's and FULL SCREEN stretches it to the whole screen
+  (`scale::shape_aspect`, which `picture_size` takes). INTEGER can't change a shape, so
+  with 4:3 or FULL SCREEN on a picture of another shape it fits, as for the PlayStation.
+  A console's line leaves the part out for AUTO, so a launcher from before it (an update's
+  other slot) still reads the line; one with a shape it drops, keeping the defaults.
+  Screenshots and covers keep the console's own shape. On 640x480 an NES game at 4:3 and
+  FULL SCREEN is the same 640x480; on 720x480 or 720x720 they differ. Checked with
+  `cargo test` and previews of both lists in English and German; not yet on a device:
+  how each shape looks in a game, borders and CRT and LCD with 4:3 and FULL SCREEN, and
+  a change while a game runs
 - The sound probe never lowers the samples per frame below the core's timing. Starting
   games make less sound: LeafGreen measured 1065 against 1097, and lowering the rate made
   it wait on the audio at 58.1 fps. FireRed now plays at its full 65536 Hz
