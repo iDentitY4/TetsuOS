@@ -235,7 +235,7 @@ new file mode 100644
 index 00000000..b49bcfe0
 --- /dev/null
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg40xx-h.dts
-@@ -0,0 +1,35 @@
+@@ -0,0 +1,67 @@
 +// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
 +/*
 + * Copyright (C) 2024 Philippe Simons <simons.philippe@gmail.com>.
@@ -266,6 +266,38 @@ index 00000000..b49bcfe0
 +
 +&stick_ry {
 +	abs-range = <0 4096>;
++};
++
++/*
++ * X is on PA2 and Y on PA3, as on the RG35XX SP: the shared device tree has them the
++ * other way round, which a tester's BUTTON TEST showed (issue #30)
++ */
++&gpio_keys_gamepad {
++	button-x {
++		gpios = <&pio 0 2 GPIO_ACTIVE_LOW>; /* PA2 */
++	};
++
++	button-y {
++		gpios = <&pio 0 3 GPIO_ACTIVE_LOW>; /* PA3 */
++	};
++};
++
++/* The vibration motor, on PWM channel 3 at PI13, as ROCKNIX's device tree has it */
++/ {
++	vibrator {
++		compatible = "pwm-vibrator";
++		pwms = <&pwm 3 1000000 0>;
++		pwm-names = "enable";
++		pinctrl-0 = <&pwm3_pi13_pin>;
++		pinctrl-names = "default";
++	};
++};
++
++&pio {
++	pwm3_pi13_pin: pwm3-pi13-pin {
++		pins = "PI13";
++		function = "pwm3";
++	};
 +};
 +
 +&panel {

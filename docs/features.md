@@ -1089,6 +1089,10 @@ Built but not yet tested on the device:
 - Sleep when idle: Settings > SYSTEM > SLEEP WHEN IDLE: OFF (default), 2, 5, 10 or 30
   minutes without a press in the launcher's own screens (home, lists, settings), not in
   games, the Wi-Fi screen, the keyboard or a download (`Wake::Idle`, `sleep_until_woken`).
+  The time counts from the end of what a press started, so the menus coming back from a
+  game don't sleep at once: until 2026-11-22 it counted from the press that started the
+  game, and a tester's RG40XX H slept straight after a game longer than the setting
+  (issue #30).
   It turns the backlight off through `bl_power`, leaves Wi-Fi as lid sleep does, and
   sleeps with `freeze`. The power button wakes it: only it and the lid are wakeup
   sources, and patch 0010 drops the waking press so it doesn't shut down. If the lid
@@ -1283,7 +1287,7 @@ Built but not yet tested on the device:
     BALANCED (default) `schedutil` up to 1512 MHz, as before, and PERFORMANCE the
     `performance` governor at 1512 MHz. The launcher sets them at start and on a change;
     one cpufreq policy covers all four cores. The 1008 MHz that games hold as their lowest
-    speed stays below every cap
+    speed stays below every cap, and a game that raises it stops at the cap
   - Claude checked on the device: OFF stops the server and USB ONLY brings it back; USB
     + WI-FI is skipped with nothing set; with a key it listens on `0.0.0.0:22`, the key
     works over Wi-Fi and USB, and an empty password is refused on both; a password typed
@@ -2366,8 +2370,11 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   the new panels stay at 60 Hz in a PAL game. The menus take the screen's size from the
   framebuffer: `LAUNCHER_PREVIEW_SIZE=720x480` (or `720x720`) renders the `--preview*`
   screens at another size. At 720x480 they fit, with the list's cover panel at its 640 px
-  place; at 720x720 they use the top 480 rows. Left out: the RG40XX's and CubeXX's RGB
-  lights (on UART5) and vibration motor (PWM3), the "rev6" panel of newer Plus, H and 2024
+  place; at 720x720 they use the top 480 rows. Since 2026-11-22 (issue #30) the RG40XX H
+  has X on PA2 and Y on PA3, as the SP does, and its vibration motor, a `pwm-vibrator` on
+  PWM channel 3 at PI13 as in ROCKNIX's device tree; the RG40XX V and CubeXX don't, as
+  nobody has checked them. Left out: the RG40XX's and CubeXX's RGB
+  lights (on UART5), the CubeXX's and RG40XX V's vibration motors (PWM3), the "rev6" panel of newer Plus, H and 2024
   units (also an NV3052C, so its ID can't tell it apart; added later), and the RG28XX, whose panel is
   mounted turned. None of these devices has started the image. The panel setups are
   Hironori Kikuchi's (the RG40XX and CubeXX, first posted for this driver to dri-devel in
@@ -2516,7 +2523,7 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   since the border was turned off. Red's were deleted on 2026-11-08.
 - **The CPU governor sees a light game as half idle,** because a game waits for the panel
   between frames, so games hold `scaling_min_freq` at 1008 MHz from start to end
-  (2026-11-21, `libretro::hold_cpu_speed`). After a pause, games ran at 30 fps with audio
+  (2026-11-21, `libretro/cpu_floor.rs`). After a pause, games ran at 30 fps with audio
   underruns for about a second, which a two-second hold after the menu fixed first. Then
   a tester (issue #18) heard stutter on Mario Kart: Super Circuit's title screen, and Claude
   reproduced it on the SP: at 5.7 ms per frame schedutil switched between 720 and 1008 MHz
@@ -2527,6 +2534,16 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   59.64-59.74 fps without underruns, so the switching alone doesn't always cost
   refreshes. On the H700 (speed bin 5) 1008 MHz runs at 900 mV, the same as 720 and
   480 MHz, so the hold costs only the faster clock; the battery cost wasn't measured.
+  Since 2026-11-22 the lowest speed also rises during a game that can't keep up
+  (`libretro/cpu_floor.rs`). A tester's RG40XX H ran Kirby Super Star and Star Fox (SNES,
+  SA-1 and Super FX) at 30 fps on BALANCED (issue #30): 18 ms of work a frame at 1008 MHz
+  missed every refresh, so each frame waited for the next one, the CPU looked half idle
+  and schedutil never went above the floor. Now each second (60 frames) is measured, not
+  counting the in-game menu or fast-forward; after two seconds in a row below 95% of the
+  panel's rate, the floor goes to the slowest speed that fits a frame's work into 85% of
+  a refresh (at least one step up), up to PERFORMANCE's cap, and the log says so
+  (`cpu: ...`). It doesn't come down until the game ends. Untested on a device: whether
+  Kirby Super Star reaches full speed this way (18 ms at 1008 MHz asks for 1320 MHz).
 - **Plugging in USB power starts the device** (VBUS rising, set in the AXP717's efuse;
   powering off with the cable in stays off). REG 0x20 says what started it; the
   charging screen uses it. Test shutdown with the cable unplugged.
@@ -2535,7 +2552,8 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   TF-A then writes the correct register.
 - **X and Y pins:** the face buttons are X top, Y left, A right, B bottom, as confirmed
   by the user. The shared device tree has X on PA3 and Y on PA2, but this unit has them
-  the other way round, so patch 0008 swaps the pins. Another SP may differ.
+  the other way round, so patch 0008 swaps the pins. Another SP may differ. A tester's
+  RG40XX H has them the same way as the SP (issue #30), so patch 0021 swaps them too.
 - **Kernel modules are off, and nothing could load them anyway,** since there is no
   `mdev` or `eudev`. Add new drivers to `linux.fragment` as `=y`. Don't turn
   `CONFIG_MODULES` off in a fragment over a config that has `=m` entries: each one

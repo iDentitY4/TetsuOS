@@ -71,3 +71,5 @@ set current.
 | BATTERY | up to 1104 MHz | 8 and 16-bit consoles, longer play |
 | BALANCED (default) | up to 1512 MHz, as needed | Everything |
 | PERFORMANCE | 1512 MHz always | Demanding games that stutter, such as the Arduboy |
+
+A game that can't keep up raises the CPU's speed by itself, within the choice's limit.
