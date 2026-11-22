@@ -346,7 +346,8 @@ In short here; `docs/features.md` has them in full.
   waits 700 ms for the amp when the card opens after about 5 s idle.
 - **The CPU governor sees a light game as half idle,** so it flips between 720 and 1008 MHz,
   games miss refreshes and the sound runs dry (Mario Kart: Super Circuit's title screen,
-  issue #18). Games hold `scaling_min_freq` at 1008 MHz from start to end since 2026-11-21.
+  issue #18). Games hold `scaling_min_freq` at 1008 MHz from start to end since 2026-11-21,
+  raised during a game that keeps missing refreshes since 2026-11-22 (`libretro/cpu_floor.rs`).
 - **Save states keep mGBA's SGB border mode,** so states from before the border was
   turned off load cut off.
 - **The display is `card1`** (Panfrost is `card0`). `kmscube -D /dev/dri/card1` needs the

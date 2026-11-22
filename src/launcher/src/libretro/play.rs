@@ -31,6 +31,7 @@ use super::scale::picture_in_area;
 use super::core::Core;
 use super::save::{autosave_frames, forget_place, load_resume, resume_path, save_progress};
 use super::audio::{AUDIO_PROBE_FRAMES, playback_rate, start_audio};
+use super::cpu_floor::{release_cpu_speed, CpuFloor};
 use crate::ui::panel_rate::{PanelRate, own_hz};
 use super::menu::{Achievements, AfterMenu, Game, chosen_options, hardcore_off_notice, pause};
 
@@ -40,32 +41,6 @@ pub(super) static TERMINATING: LazyLock<Arc<AtomicBool>> = LazyLock::new(|| Arc:
 const STATS_FRAMES: u64 = 600;
 
 const CPU_SPEED_PATH: &str = crate::device::paths::CPU_SPEED;
-
-const CPU_MIN_SPEED_PATH: &str = crate::device::paths::cpufreq_path!("/scaling_min_freq");
-
-const CPU_LOWEST_SPEED_PATH: &str = crate::device::paths::cpufreq_path!("/cpuinfo_min_freq");
-
-/// The lowest speed while a game runs, in kHz.
-const CPU_GAME_SPEED: &str = "1008000";
-
-/// Keeps the CPU at game speed or faster while the game runs. A game waits for the panel
-/// between frames, so the governor sees a light game as half idle: it switched between
-/// 720 and 1008 MHz about 160 times a second on Mario Kart: Super Circuit's title screen,
-/// which then missed refreshes, ran at 58 fps and ran the sound dry every few seconds.
-/// It also raised the speed too slowly after the menu and for fast-forward.
-fn hold_cpu_speed() {
-    if let Err(error) = std::fs::write(CPU_MIN_SPEED_PATH, CPU_GAME_SPEED) {
-        eprintln!("warning: could not hold the CPU speed: {error}");
-    }
-}
-
-/// Lets the governor choose the CPU speed freely again.
-pub fn release_cpu_speed() {
-    let lowest = std::fs::read_to_string(CPU_LOWEST_SPEED_PATH).unwrap_or_default();
-    if let Err(error) = std::fs::write(CPU_MIN_SPEED_PATH, lowest.trim()) {
-        eprintln!("warning: could not release the CPU speed: {error}");
-    }
-}
 
 /// How a game ended.
 #[derive(Clone, PartialEq, Debug)]
@@ -445,7 +420,7 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
     let levels = volume_levels();
     framebuffer.clear()?;
     draw_whole_screen(framebuffer)?;
-    hold_cpu_speed();
+    let mut cpu_floor = CpuFloor::hold();
 
     let mut next_frame = Instant::now();
     let mut play_clock = PlayClock::start(save, next_frame);
@@ -547,6 +522,7 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
             with_host(|host| host.rumble.release());
             // The pause shouldn't count as slow frames, or make the game catch up.
             stats.restart();
+            cpu_floor.restart();
             next_frame = stats.start;
             frames -= frames % STATS_FRAMES;
             with_host(|host| {
@@ -567,13 +543,20 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
         let run_start = Instant::now();
         if fast {
             stats.fast_frames += u64::from(run_extra_frames(&mut core, &mut session, run_start));
+            cpu_floor.restart();
         }
         core.run_frame();
         if let Some(session) = session.as_mut() {
             session.do_frame();
         }
         stats.run_time += run_start.elapsed();
+        let vsync_before = stats.vsync_time;
         show_frame(framebuffer, panel_rate.as_ref(), &mut stats, &mut vsync_works)?;
+        if !fast {
+            // Without the panel's pace, the game runs at its own rate.
+            let expected_hz = if vsync_works { panel_hz } else { fps };
+            cpu_floor.frame(run_start.elapsed().saturating_sub(stats.vsync_time - vsync_before), expected_hz);
+        }
 
         frames += 1;
         if play_clock.tick(Instant::now()) {

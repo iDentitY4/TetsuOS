@@ -3,6 +3,7 @@
 mod audio;
 mod border;
 mod core;
+mod cpu_floor;
 mod ffi;
 mod host;
 mod menu;
@@ -14,4 +15,5 @@ pub(crate) use self::border::draw as draw_border;
 pub(crate) use self::core::c_path;
 pub(crate) use self::save::resume_path;
 pub use self::core::print_core_options;
-pub use self::play::{play, release_cpu_speed, render, Ending, GameSpec};
+pub use self::cpu_floor::release_cpu_speed;
+pub use self::play::{play, render, Ending, GameSpec};

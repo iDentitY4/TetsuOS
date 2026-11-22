@@ -1563,7 +1563,8 @@ pub(crate) fn run_launcher() -> io::Result<()> {
         else {
             return Ok(());
         };
-        if matches!(wake, Wake::Event(_) | Wake::Repeat(..)) {
+        let pressed = matches!(wake, Wake::Event(_) | Wake::Repeat(..));
+        if pressed {
             watch.last_press = Instant::now();
         }
         if let Wake::Card(change) = wake {
@@ -1625,6 +1626,12 @@ pub(crate) fn run_launcher() -> io::Result<()> {
         }
         if account_changed {
             launcher.achievements_logged_in = achievements::Account::read(Path::new(achievements::ACCOUNT_PATH)).is_some();
+        }
+        // A game or a screen of its own may have run for a long while on this press, so
+        // the idle time starts again from its end, or SLEEP WHEN IDLE would sleep straight
+        // after a long game (issue #30).
+        if pressed {
+            watch.last_press = Instant::now();
         }
     }
 }

@@ -1,7 +1,8 @@
 //! Settings > ADVANCED > PERFORMANCE: the CPU governor and its top speed. The launcher
 //! sets them when it starts and when the setting changes; they stay set while a game
 //! runs in its own process. A game raises the lowest speed while it runs
-//! (`libretro::hold_cpu_speed`), which stays below every top speed here.
+//! (`libretro/cpu_floor.rs`), which stays below every top speed here, and raises it
+//! further when a game keeps missing refreshes, never above the top speed.
 
 use crate::settings::CpuLevel;
 use std::path::Path;
