@@ -14,6 +14,12 @@ use std::ffi::OsString;
 use std::io;
 use std::path::{Path, PathBuf};
 
+/// Whether holding R2 fast-forwards on a console. Not on the `PlayStation`, whose games
+/// use R2 themselves (issue #30).
+pub fn r2_fast_forwards(console: Option<&str>) -> bool {
+    console != Some("ps1")
+}
+
 /// The buttons a layout can change. The d-pad stays as it is, as a game can't be steered
 /// otherwise and this keeps the page to one screen, but a button can press a d-pad direction.
 pub const REMAPPABLE: [Button; 10] = [
@@ -284,13 +290,20 @@ pub struct ControlsMenu {
     /// Kept when the scope goes back to the console, so going through the choices by
     /// accident doesn't lose it while the page is open.
     game: Option<Layout>,
+    /// Whether an unchanged R2 also fast-forwards on this console, which R2's note says.
+    fast_forward: bool,
 }
 
 impl ControlsMenu {
     /// Opens on what is in use: the game's own layout if it has one.
     pub fn new(console: Layout, game: Option<Layout>) -> Self {
         let scope = if game.is_some() { Scope::Game } else { Scope::Console };
-        Self { selected: 0, scope, console, game }
+        Self { selected: 0, scope, console, game, fast_forward: true }
+    }
+
+    /// For a console where R2 doesn't fast-forward, so its row has no note about it.
+    pub fn without_fast_forward(self) -> Self {
+        Self { fast_forward: false, ..self }
     }
 
     pub fn scope(&self) -> Scope {
@@ -342,7 +355,7 @@ impl ControlsMenu {
     /// A note about the selected row, for what its value can't say.
     pub fn note(&self) -> Option<&'static str> {
         match self.selected() {
-            Row::Button(index) if REMAPPABLE[index] == Button::R2 => Some(tr("UNCHANGED, R2 ALSO FAST-FORWARDS")),
+            Row::Button(index) if REMAPPABLE[index] == Button::R2 && self.fast_forward => Some(tr("UNCHANGED, R2 ALSO FAST-FORWARDS")),
             _ => None,
         }
     }
@@ -631,6 +644,15 @@ mod tests {
         assert_eq!(menu.note(), None);
         at(&mut menu, Row::Button(index(Button::R2)));
         assert!(menu.note().is_some());
+    }
+
+    #[test]
+    fn r2_fast_forwards_on_every_console_but_the_playstation() {
+        assert!(r2_fast_forwards(Some("snes")) && r2_fast_forwards(None));
+        assert!(!r2_fast_forwards(Some("ps1")));
+        let mut menu = ControlsMenu::new(Layout::default(), None).without_fast_forward();
+        at(&mut menu, Row::Button(index(Button::R2)));
+        assert_eq!(menu.note(), None, "no fast-forward to mention");
     }
 
     #[test]

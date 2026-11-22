@@ -29,7 +29,7 @@ row. Any other button calls it off.
 | Menu (tap) | Pause and open the [in-game menu](./playing#the-in-game-menu) |
 | Menu + Start | Leave the game straight away, keeping your place |
 | Menu + Select | Open the [game switcher](./playing#switching-games) |
-| R2 (hold) | Fast-forward, shown as `>>` in the corner |
+| R2 (hold) | Fast-forward, shown as `>>` in the corner (not on the PlayStation) |
 | Volume | Change the volume |
 | Select | On WonderSwan: rotate the picture for vertical games |
 

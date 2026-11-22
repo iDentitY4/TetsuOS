@@ -81,7 +81,8 @@ pub enum Ending {
 /// Where the battery warning goes: a corner that is border for every system's picture.
 const WARNING_POSITION: (usize, usize) = (6, 6);
 
-/// Holding this runs the game faster. No supported system uses it.
+/// Holding this runs the game faster, on every console but the `PlayStation`, whose games
+/// use it (`controls::r2_fast_forwards`).
 const FAST_FORWARD_BUTTON: Button = Button::R2;
 
 /// How long each panel refresh may spend on extra frames while fast-forwarding. With the
@@ -463,6 +464,7 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
     let mut battery = power::Monitor::new();
     let mut charge_watch = power::ChargeWatch::default();
     let mut fast_forwarding = false;
+    let r2_fast_forwards = controls::r2_fast_forwards(console);
     let mut ending = Ending::Quit;
     // QUIT's START OVER drops the place, so the next start begins from the game's save.
     let mut keep_place = true;
@@ -554,7 +556,8 @@ pub fn play(game: &GameSpec, framebuffer: &mut Framebuffer) -> io::Result<Ending
         }
         // A button changed in the layout is for the game alone. PC games, which save by
         // themselves, run in real time, and Doom changes weapons with R2.
-        let fast = with_host(|host| host.controls.is_held(FAST_FORWARD_BUTTON) && host.layout.is_unchanged(FAST_FORWARD_BUTTON))
+        let fast = r2_fast_forwards
+            && with_host(|host| host.controls.is_held(FAST_FORWARD_BUTTON) && host.layout.is_unchanged(FAST_FORWARD_BUTTON))
             && !session.as_ref().is_some_and(Session::restricts)
             && persistence != Persistence::OwnFiles;
         if fast != fast_forwarding {

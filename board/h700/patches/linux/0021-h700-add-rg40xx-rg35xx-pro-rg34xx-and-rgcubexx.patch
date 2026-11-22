@@ -235,7 +235,7 @@ new file mode 100644
 index 00000000..b49bcfe0
 --- /dev/null
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg40xx-h.dts
-@@ -0,0 +1,28 @@
+@@ -0,0 +1,35 @@
 +// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
 +/*
 + * Copyright (C) 2024 Philippe Simons <simons.philippe@gmail.com>.
@@ -252,7 +252,14 @@ index 00000000..b49bcfe0
 +	compatible = "anbernic,rg40xx-h", "allwinner,sun50i-h700";
 +};
 +
-+/* The right stick runs the other way from the RG35XX H's */
++/*
++ * The left stick's up and down and the right stick run the other way from the
++ * RG35XX H's; a tester's RG40XX H had up and down reversed (issue #30)
++ */
++&stick_ly {
++	abs-range = <4096 0>;
++};
++
 +&stick_rx {
 +	abs-range = <4096 0>;
 +};

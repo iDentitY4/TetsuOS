@@ -1420,7 +1420,9 @@ Built but not yet tested on the device:
   A `>>` shows in the top-right corner; the CPU is at 1008 MHz or more, as in every game. A Game
   Boy game reached about 5x with no underruns; at an 8 ms budget it missed refreshes and
   the sound ran out. The launcher log's statistics show the speed. The user confirmed it
-  works; the sound is very choppy, especially on NES, which the user accepts
+  works; the sound is very choppy, especially on NES, which the user accepts. Not on the
+  PlayStation since 2026-11-22 (`controls::r2_fast_forwards`): its games use R2, and a
+  tester found it taken (issue #30); its CONTROLS page leaves R2's note out
 - Sound rate from measured samples. The first 30 frames run silent while the frontend
   counts samples per frame, then aplay starts at the matching rate (`playback_rate`).
   mGBA reports 61.17 fps for Super Game Boy games but makes sound as at 59.73, so the
@@ -1773,8 +1775,8 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   extra frames count as frames. A turbo button's cycle starts over with each press, so a quick tap
   always reaches the game. `Host::controls` stays the real buttons, for Menu + Start and the
   menu. R2 fast-forwards only while its row is unchanged; a changed R2, including R2 with
-  turbo, is for the game alone, which the page notes on that row. A PlayStation game with R2
-  unchanged still sees it and fast-forwards, as before. There is no global default, and
+  turbo, is for the game alone, which the page notes on that row. On the PlayStation R2 is
+  always the game's, and the row has no note. There is no global default, and
   nothing in the launcher's Settings: controls are set from inside a game.
 
   The menu gained a row, so `PAUSE_ROW` went from 30 to 27 lines to stay on its panel.
@@ -2347,7 +2349,9 @@ links to a missing library. Claude checked over SSH that `kmscube` still runs at
   driver and a generic panel driver fed by `.panel` firmware files. Kernel patch 0021 puts
   them in mainline form: the sticks are `adc-joystick` wired as on the RG35XX H, in
   `sun50i-h700-anbernic-rg35xx-2024-sticks.dtsi` (the RG40XX H, CubeXX and RG34XX-SP with
-  the right stick reversed, where ROCKNIX inverts it), and the panels join the NV3052C
+  the right stick reversed, where ROCKNIX inverts it; the RG40XX H also with the left
+  stick's up and down reversed, which its first tester found the wrong way round, issue
+  #30), and the panels join the NV3052C
   driver. Each `.panel` file was decoded (a big-endian header with the size, delays, bus
   flags and timings, then commands, each after its length) and sent whole through
   `init_seq`, with its 60 Hz timings: the RG35XX Plus's file has the driver's own 189
