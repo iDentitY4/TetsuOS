@@ -31,6 +31,11 @@ pub fn battery_dir() -> PathBuf {
     std::env::var_os(BATTERY_DIR_VARIABLE).map_or_else(|| PathBuf::from(crate::device::profile::get().battery), PathBuf::from)
 }
 
+/// Whether a test replaced the power-off command (`LAUNCHER_POWEROFF`).
+pub fn poweroff_is_replaced() -> bool {
+    std::env::var_os(POWEROFF_VARIABLE).is_some()
+}
+
 pub fn poweroff_command() -> String {
     std::env::var(POWEROFF_VARIABLE).unwrap_or_else(|_| "poweroff".to_string())
 }

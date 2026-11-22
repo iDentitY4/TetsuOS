@@ -63,7 +63,7 @@ and SORT GAMES BY. See [Making it yours](../guide/library#making-it-yours).
 | SYSTEM INFO | Battery, storage, game count, memory with the RAM type, CPU, network addresses, uptime, kernel, build and version. X saves logs to the card |
 | BUTTON TEST | Shows each button as it is pressed |
 | SLEEP WHEN IDLE | OFF (default), 2, 5, 10 or 30 minutes in the menus |
-| POWER OFF AFTER SLEEP | 1, 2 (default), 4 or 8 HOURS or NEVER, on battery |
+| POWER OFF AFTER SLEEP | AT ONCE, 5 or 15 MINUTES (also on USB power), 1, 2 (default), 4 or 8 HOURS (on battery) or NEVER |
 | SYSTEM UPDATE | See [Upgrading](../guide/upgrading) |
 | REBOOT / POWER OFF | A twice |
 
