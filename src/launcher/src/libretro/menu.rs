@@ -385,9 +385,10 @@ fn screenshot_message(save: &Path) -> String {
 
 /// The CONTROLS page, with the console's layout and the game's.
 fn open_controls(save: &Path) -> ControlsMenu {
-    let console = with_host(|host| host.console);
-    let console = console.map_or(Layout::default(), |console| settings::get().controls_for(console));
-    ControlsMenu::new(console, controls::read_game_layout(save))
+    let key = with_host(|host| host.console);
+    let console = key.map_or(Layout::default(), |console| settings::get().controls_for(console));
+    let menu = ControlsMenu::new(console, controls::read_game_layout(save));
+    if controls::r2_fast_forwards(key) { menu } else { menu.without_fast_forward() }
 }
 
 /// The CORE OPTIONS page, with the console's choices and the game's.

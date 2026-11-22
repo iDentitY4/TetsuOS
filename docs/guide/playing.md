@@ -60,7 +60,7 @@ gives handhelds a bezel and other consoles black.
 ## Fast-forward
 
 Hold **R2** to run the game up to about five times faster. Sound keeps going, but choppy.
-Fast-forward is off in hardcore mode, and for Doom, which uses R2 itself.
+Fast-forward is off in hardcore mode, and for PlayStation games and Doom, which use R2 themselves.
 
 ## Switching games
 
