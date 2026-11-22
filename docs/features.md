@@ -79,8 +79,8 @@ Working on the test unit, confirmed by the user:
   (lit, `powering off from the power button` in the log) and the command; 5 MINUTES with
   `LAUNCHER_LONG_SLEEP=30` slept 31 s, the alarm woke it and it powered off; 1 HOUR with
   the same 30 s kept sleeping through two alarms. The rows show AT ONCE and 15 MINUTES.
-  The user confirmed on 2026-11-22 that closing the lid at AT ONCE powered the device off.
-  Not yet tried: AT ONCE in a game and the game resuming at the next start, a real power-off from sleep on USB power staying off, opening the lid while
+  The user confirmed on 2026-11-22 that closing the lid at AT ONCE powered the device off,
+  and that in a game it powered off and the game resumed at the next start. Not yet tried: a real power-off from sleep on USB power staying off, opening the lid while
   it shuts down, the German wording on the device
 - Shutdown screen (2026-11-10): a power symbol in the accent colour above POWERING OFF
   (SCHALTET AUS), or REBOOTING or BATTERY EMPTY, stays on the screen until the device is

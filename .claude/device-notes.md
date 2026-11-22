@@ -73,7 +73,7 @@ ADVANCED > RUN SETUP AGAIN repeats.
 ## Not yet checked by the user
 
 - POWER OFF AFTER SLEEP's AT ONCE, 5 and 15 MINUTES (2026-11-22, issue #35): the user saw
-  a lid close at AT ONCE power off. Not yet: AT ONCE in a game (resume at the next start),
+  a lid close at AT ONCE power off, also in a game, which resumed at the next start. Not yet:
   a real power-off from sleep on USB power staying off, opening the lid during the
   shutdown, the German wording. Checked by Claude through idle sleep with a fake
   power-off command (`docs/features.md`)
