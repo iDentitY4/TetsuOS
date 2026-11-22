@@ -11,7 +11,7 @@ use crate::ui::font;
 use crate::i18n::{tr, trf};
 use crate::ingame::pause::{Item, List, PauseMenu, MOST_ROWS};
 use crate::ui::screens::{self, OptionsLayout, OPTION_VALUE_COLUMNS};
-use crate::settings::{Border, GameDisplay, SwitcherStyle};
+use crate::settings::{Border, GameDisplay, Shape, SwitcherStyle};
 use crate::ingame::switcher::{SwitchPage, LARGE_COVER, SMALL_COVER};
 use crate::library::systems::SYSTEMS;
 use crate::ui::{icons, image::Image};
@@ -25,6 +25,7 @@ pub struct PauseView<'a> {
     pub display: GameDisplay,
     /// What AUTO gives this game's console.
     pub auto_border: Border,
+    pub auto_shape: Shape,
     /// Where the game shows each kind of achievement notice, or Settings' choice.
     pub notices: GameNotices,
 }
@@ -112,6 +113,8 @@ pub fn pause_screen(
             continue;
         }
         let value = match item {
+            Item::Shape if view.display.shape == Shape::Auto => trf("AUTO ({})", &[&view.auto_shape.label()]),
+            Item::Shape => view.display.shape.label().to_string(),
             Item::Scaling => view.display.scaling.label().to_string(),
             Item::Effect => view.display.effect.label().to_string(),
             Item::Ghosting => view.display.ghosting.label().to_string(),
@@ -475,6 +478,7 @@ mod tests {
             brightness_percent: None,
             display: GameDisplay::default(),
             auto_border: Border::Bezel,
+            auto_shape: Shape::Pixels,
             notices: GameNotices::default(),
         }
     }

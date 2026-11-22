@@ -96,6 +96,20 @@ choices! {
 }
 
 choices! {
+    /// The shape a game's picture is shown at.
+    pub enum Shape (default Auto) {
+        /// The console's own: 4:3 for those whose pixels aren't square, square pixels for the others.
+        Auto => "auto", "AUTO";
+        /// Square pixels, so the picture keeps its size's shape.
+        Pixels => "pixels", "PIXELS";
+        /// A television's shape, which home consoles' games were made to look right on.
+        Tv => "4:3", "4:3";
+        /// Stretched to the whole screen.
+        Full => "full", "FULL SCREEN";
+    }
+}
+
+choices! {
     /// A look laid over a game's picture.
     pub enum Effect (default None) {
         None => "none", "NONE";
@@ -498,6 +512,7 @@ pub const MAX_TITLE_LENGTH: usize = 24;
 /// How games are shown.
 #[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct GameDisplay {
+    pub shape: Shape,
     pub scaling: Scaling,
     pub effect: Effect,
     pub ghosting: Ghosting,
@@ -655,9 +670,9 @@ const CONSOLE_DISPLAY_PREFIX: &str = "display.";
 /// Starts the line for a console's layout, as in `controls.gba=normal,a:b,x:a*`.
 const CONSOLE_CONTROLS_PREFIX: &str = "controls.";
 
-/// A console's scaling, effect, ghosting and border. With any of them unknown, the whole
-/// line is ignored, as a console with its own choice uses them all. Lines from before the
-/// border have three, and keep the default border.
+/// A console's scaling, effect, ghosting, border and shape. With any of them unknown, the
+/// whole line is ignored, as a console with its own choice uses them all. Lines from before
+/// the border have three, and keep the default border; lines without a shape keep AUTO.
 fn parse_display(value: &str) -> Option<GameDisplay> {
     let mut parts = value.split(',').map(str::trim);
     let display = GameDisplay {
@@ -667,6 +682,10 @@ fn parse_display(value: &str) -> Option<GameDisplay> {
         border: match parts.next() {
             Some(key) => Border::from_key(key)?,
             None => Border::default(),
+        },
+        shape: match parts.next() {
+            Some(key) => Shape::from_key(key)?,
+            None => Shape::default(),
         },
     };
     parts.next().is_none().then_some(display)
@@ -712,6 +731,7 @@ fn parse(text: &str) -> Settings {
             }
             "ghosting" => choose(&mut settings.display.ghosting, Ghosting::from_key(value)),
             "border" => choose(&mut settings.display.border, Border::from_key(value)),
+            "shape" => choose(&mut settings.display.shape, Shape::from_key(value)),
             "timezone" => settings.zone = clock::zone_named(value).map(|zone| zone.name),
             "clock" => choose(&mut settings.clock, ClockFormat::from_key(value)),
             "accent" => choose(&mut settings.accent, Accent::from_key(value)),
@@ -771,9 +791,16 @@ fn format(settings: &Settings) -> String {
     lines.push(format!("effect={}", settings.display.effect.key()));
     lines.push(format!("ghosting={}", settings.display.ghosting.key()));
     lines.push(format!("border={}", settings.display.border.key()));
+    lines.push(format!("shape={}", settings.display.shape.key()));
     for (console, display) in &settings.console_displays {
+        // AUTO goes without its part, so a launcher from before the shape, as an update's
+        // other slot may run, still reads the line.
+        let shape = match display.shape {
+            Shape::Auto => String::new(),
+            shape => format!(",{}", shape.key()),
+        };
         lines.push(format!(
-            "{CONSOLE_DISPLAY_PREFIX}{console}={},{},{},{}",
+            "{CONSOLE_DISPLAY_PREFIX}{console}={},{},{},{}{shape}",
             display.scaling.key(),
             display.effect.key(),
             display.ghosting.key(),
@@ -1151,6 +1178,25 @@ mod tests {
     }
 
     #[test]
+    fn a_consoles_shape_survives_the_file_and_auto_keeps_the_old_line() {
+        let mut settings = Settings::default();
+        settings.set_console_display("nes", GameDisplay { shape: Shape::Tv, ..GameDisplay::default() });
+        settings.set_console_display("snes", GameDisplay { shape: Shape::Full, ..GameDisplay::default() });
+        settings.set_console_display("gb", GameDisplay::default());
+        settings.display.shape = Shape::Pixels;
+        let text = format(&settings);
+        assert!(text.contains("display.nes=fit,none,smart,auto,4:3\n"), "{text}");
+        assert!(text.contains("display.snes=fit,none,smart,auto,full\n"), "{text}");
+        assert!(text.contains("display.gb=fit,none,smart,auto\n"), "{text}");
+        assert!(text.contains("shape=pixels\n"), "{text}");
+        let read = parse(&text);
+        assert_eq!(read.console_displays, settings.console_displays);
+        assert_eq!(read.display.shape, Shape::Pixels);
+        assert_eq!(parse("display.nes=fit,none,off,auto\n").display_for("nes").shape, Shape::Auto);
+        assert_eq!(parse("shape=oval\n").display.shape, Shape::Auto);
+    }
+
+    #[test]
     fn resetting_clears_the_consoles_displays() {
         let mut settings = Settings::default();
         settings.set_console_display("gb", GameDisplay { effect: Effect::Lcd, ..GameDisplay::default() });
@@ -1175,7 +1221,7 @@ mod tests {
 
     #[test]
     fn settings_survive_a_round_trip() {
-        let display = GameDisplay { scaling: Scaling::Integer, effect: Effect::Lcd, ghosting: Ghosting::Full, border: Border::Theme };
+        let display = GameDisplay { scaling: Scaling::Integer, effect: Effect::Lcd, ghosting: Ghosting::Full, border: Border::Theme, shape: Shape::Full };
         let settings = Settings {
             volume: Some(25),
             brightness: Some(1250),

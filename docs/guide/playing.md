@@ -46,10 +46,16 @@ default for consoles you haven't changed, and USE FOR ALL CONSOLES resets them a
 
 | Setting | Choices |
 | --- | --- |
+| SHAPE | AUTO (the console's own), PIXELS (square pixels), 4:3 (a TV's shape) or FULL SCREEN (stretched to the whole screen) |
 | SCALING | FIT fills the screen with sharp, even pixels; INTEGER uses whole multiples only |
 | SCREEN EFFECT | NONE, CRT (scanlines) or LCD (a soft pixel grid) |
 | LCD GHOSTING | Game Boy family: OFF, SMART (only flickering pixels) or FULL |
 | BORDER | AUTO, OFF, BEZEL or THEME |
+
+**Shape**: AUTO shows some consoles, such as the PlayStation and Mega Drive, at 4:3, and
+the others with square pixels, as before; the menu shows which, as AUTO (4:3). NES and
+SNES games were made for a TV too, so 4:3 shows them as they looked there. INTEGER only keeps
+square pixels: with 4:3 or FULL SCREEN it fits instead.
 
 **Borders** fill the screen around small pictures. BEZEL draws the body of the handheld
 around its screen, in a colour that console came in; THEME uses your theme's colours. AUTO

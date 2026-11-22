@@ -253,6 +253,7 @@ fn draw_menu(
                 brightness_percent: settings::brightness_percent(),
                 display: with_host(|host| host.display),
                 auto_border: with_host(|host| super::border::resolve(crate::settings::Border::Auto, host.console)),
+                auto_shape: with_host(|host| super::scale::resolve_shape(crate::settings::Shape::Auto, host.setup.aspect)),
                 notices,
             };
             pause_screens::pause_screen(width, height, frame, frame_size, &view, theme)
@@ -518,6 +519,7 @@ pub(super) fn pause(
                 settings::change_brightness(steps);
                 settings_changed = true;
             }
+            Action::Shape(steps) => change_display(|display| display.shape = display.shape.cycle(steps)),
             Action::Scaling(steps) => change_display(|display| display.scaling = display.scaling.cycle(steps)),
             Action::Effect(steps) => change_display(|display| display.effect = display.effect.cycle(steps)),
             Action::Ghosting(steps) => change_display(|display| display.ghosting = display.ghosting.cycle(steps)),

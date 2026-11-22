@@ -22,7 +22,7 @@ group, B goes back, and Start closes Settings. Settings that can't be undone nee
 
 | Setting | Choices |
 | --- | --- |
-| DISPLAY | Default SCALING, SCREEN EFFECT, LCD GHOSTING and BORDER for consoles you haven't set in a game. USE FOR ALL CONSOLES resets every console to these |
+| DISPLAY | Default SHAPE, SCALING, SCREEN EFFECT, LCD GHOSTING and BORDER for consoles you haven't set in a game. USE FOR ALL CONSOLES resets every console to these |
 | VIBRATION | The motor's strength, or off |
 | GAME SWITCHER | LIST or COVERS |
 | ACHIEVEMENTS | On or off for every game, ACCOUNT, HARDCORE, and where UNLOCKS, PROGRESS and OTHER MESSAGES show. See [RetroAchievements](../guide/achievements) |
