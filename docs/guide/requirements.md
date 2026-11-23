@@ -4,15 +4,14 @@
 
 An **Anbernic RG35XX SP** (Allwinner H700).
 
-Builds after v0.1 are one image for the H700 family, which also carries other devices'
-device trees. Nobody has started one of them yet: they are experimental. To try one, write
-its name into a file `device.txt` on the card's TETSU-BOOT partition after writing the
-image, as `device=rg40xx-h` ([installation](./installation#another-h700-device-experimental));
-without it, the device starts as an SP.
+Builds after v0.1 also carry the other H700 devices below. Nobody has started one of
+them yet: they are experimental. Each release has a card image per device, named after
+it, such as `tetsu-rg40xx-h-<version>-sdcard.img.gz`: download the one for yours
+([installation](./installation#_1-download-an-image)).
 
-| Device | `device.txt` | Notes |
+| Device | Name | Notes |
 | --- | --- | --- |
-| RG35XX SP | none, or `rg35xx-sp` | Tested |
+| RG35XX SP | `rg35xx-sp` | Tested |
 | RG35XX Plus | `rg35xx-plus` | |
 | RG35XX H | `rg35xx-h` | The left stick works like the D-pad |
 | RG35XX 2024 | `rg35xx-2024` | No Wi-Fi: the menus leave out Wi-Fi, Bluetooth and what needs them, SYSTEM UPDATE too |
@@ -25,7 +24,8 @@ without it, the device starts as an SP.
 
 Games don't get analog input yet. Newer units of the Plus, H and 2024 (board revision 6)
 have another screen panel, which can't be told from the older one: if the screen stays
-dark, add a second line `panel=rev6` to `device.txt`. The RG28XX, whose screen is mounted
+dark, write the device's `-rev6` image instead, such as
+`tetsu-rg35xx-plus-rev6-<version>-sdcard.img.gz`. The RG28XX, whose screen is mounted
 turned, isn't in the image yet.
 
 ### Check your memory type

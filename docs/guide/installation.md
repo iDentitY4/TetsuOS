@@ -18,7 +18,7 @@ test builds, for [testing your device](./testing).
 
 | File | What it is |
 | --- | --- |
-| `tetsu-h700-<version>-sdcard.img.gz` (up to v0.1 `tetsu-rg35xxsp-…`), such as `tetsu-rg35xxsp-v0.1-sdcard.img.gz` | The card image for a new install |
+| `tetsu-<device>-<version>-sdcard.img.gz`, such as `tetsu-rg35xx-sp-v0.2-sdcard.img.gz` (up to v0.1 only `tetsu-rg35xxsp-…`) | The card image for a new install, one per device: take your device's ([the names](./requirements#the-device)). `-rev6` ones are for newer RG35XX Plus, H and 2024 units whose screen stays dark with the other |
 | `SHA256SUMS-h700` (up to v0.1 `SHA256SUMS-rg35xxsp`) | Checksums, to check the download |
 | `tetsu-h700-<build>.img.gz`, `manifest.txt`, `manifest.sig` | The signed update that [SYSTEM UPDATE](./upgrading) downloads. You don't need these to install |
 | `tetsu-h700-<version>-sources.tar.part*`, `-licences.csv` | The sources of the GPL and other components, and their licences |
@@ -82,11 +82,11 @@ A card flashed before 2026-11-08 has a data partition named `RGDATA`. It needs
 
 ### Another H700 device (experimental)
 
-The image starts an RG35XX SP as it is. For another H700 device, which nobody has tried
-yet, open the card's **TETSU-BOOT** partition on the PC after writing it and add a file
-`device.txt` holding one line with the device's name from the
-[requirements](./requirements#the-device), such as `device=rg40xx-h`. `flash.sh` writes it
-for you with `--device rg40xx-h`. A newer RG35XX Plus, H or 2024 (board revision 6) whose
+A downloaded image already knows its device. The one you build starts an RG35XX SP as it
+is. For another H700 device, which nobody has tried yet, `flash.sh` writes a file
+`device.txt` to the card's **TETSU-BOOT** partition with `--device rg40xx-h`, holding one
+line with the device's name from the [requirements](./requirements#the-device), such as
+`device=rg40xx-h`; you can also add it on the PC after writing the card. A newer RG35XX Plus, H or 2024 (board revision 6) whose
 screen stays dark also needs a second line, `panel=rev6` (`flash.sh --panel rev6`). Without the file, or with a name it doesn't know, the device starts as an SP.
 Name the right device: with another device's name, it can start and then stop about 30
 seconds later, as Linux turns off power it thinks is unused. Delete `device.txt` on the

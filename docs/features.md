@@ -2370,6 +2370,24 @@ applies `patches/buildroot/` when it extracts Buildroot.
   1.2 V (0006), and no lid or vibrator, as the Plus has none. Not checked: a real Plus, H
   or 2024, the screen with the Plus's tree, `flash.sh --device`, and an update installed
   through the new `devices` check.
+- **A card image per device** (2026-11-23): so nobody writes `device.txt` by hand, a
+  release has `tetsu-<device>-<version>-sdcard.img.gz` for each device tree in the image,
+  and `-rev6` ones for the RG35XX Plus, H and 2024 with `panel=rev6` as a second line.
+  `scripts/device-images.sh` takes TETSU-BOOT out of `sdcard.img` (the MBR's first entry),
+  adds `device.txt` with Buildroot's `mcopy`, and writes the bytes before it, the new
+  TETSU-BOOT and the bytes after it through `gzip -9 -n`, 13 images at once (29 s on the
+  PC, about 76 MB each). The SP's has no `device.txt`, like every card from before it.
+  Detecting the device instead was left for later: nothing found tells the devices apart
+  before Linux, and in Linux the Plus, Pro,
+  RG40XX V and RG34XX differ only by their panel, whose ID nobody has read on them, so a
+  guess that can't be checked here could leave a device dark or powering off after 30 s.
+  For that later, SAVE LOGS TO CARD's `system.txt` has a `hardware` section: the analog
+  inputs' raw values, the cards and SDIO chips, the I2C chips, the input devices and, with
+  debugfs mounted, the GPIOs. Not yet run on the device.
+  The update stays one for every device. Checked on the PC: the SP's image is the
+  original byte for byte, and the RG40XX H's, CubeXX's and Plus rev6's match it outside
+  TETSU-BOOT, have the right `device.txt` and pass `fsck.vfat`. Not checked: a device
+  started from one, and the release workflow running it.
 - **What differs between H700 devices** (2026-11-19): the profile says whether the device
   has the RTL8821CS (`wireless`, false on the RG35XX 2024) and its default hostname.
   Without the chip, `launcher::groups()` leaves WI-FI and BLUETOOTH off the settings grid
