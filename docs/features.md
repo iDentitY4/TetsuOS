@@ -1654,7 +1654,11 @@ package so Panfrost no longer needs the LLVM option, and the precompiled shaders
 longer select OpenCL or the SPIR-V LLVM translator. Mesa on the device links only
 `libSPIRV-Tools.so`. Building LLVM and Clang for the device took about 2 of the 5 hours
 of a GitHub build without ccache, and about 55 minutes with it. The top `Makefile`
-applies `patches/buildroot/` when it extracts Buildroot.
+applies `patches/buildroot/` when it extracts Buildroot. The first such build on GitHub
+(the v0.2 tag, 2026-11-23) stopped in host-mesa3d's configure: OpenCL had selected
+`BR2_PACKAGE_LLVM_RTTI`, so a fresh host-llvm now came without RTTI, and Mesa refuses to
+mix the two. The PC hadn't seen it, as its host-llvm was from before. The patch now passes
+host-mesa3d `-Dcpp_rtti` to match, as Buildroot does for the target Mesa.
 
 - **Translations** (2026-11-09): Settings > GENERAL > LANGUAGE switches the launcher and
   the in-game menu between English and German at once, with no restart. It is kept in
