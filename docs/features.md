@@ -1113,7 +1113,9 @@ Built but not yet tested on the device:
   The time counts from the end of what a press started, so the menus coming back from a
   game don't sleep at once: until 2026-11-22 it counted from the press that started the
   game, and a tester's RG40XX H slept straight after a game longer than the setting
-  (issue #30).
+  (issue #30). Claude checked the fix on the SP at 2 minutes: after almost 3 minutes of
+  Kirby Super Star and QUIT, the menus stayed awake and slept 2 minutes after the quit;
+  the user's power button press woke them.
   It turns the backlight off through `bl_power`, leaves Wi-Fi as lid sleep does, and
   sleeps with `freeze`. The power button wakes it: only it and the lid are wakeup
   sources, and patch 0010 drops the waking press so it doesn't shut down. If the lid
@@ -2586,8 +2588,13 @@ applies `patches/buildroot/` when it extracts Buildroot.
   counting the in-game menu or fast-forward; after two seconds in a row below 95% of the
   panel's rate, the floor goes to the slowest speed that fits a frame's work into 85% of
   a refresh (at least one step up), up to PERFORMANCE's cap, and the log says so
-  (`cpu: ...`). It doesn't come down until the game ends. Untested on a device: whether
-  Kirby Super Star reaches full speed this way (18 ms at 1008 MHz asks for 1320 MHz).
+  (`cpu: ...`). It doesn't come down until the game ends. Claude checked it on the SP
+  (2026-11-22) with Kirby Super Star on BALANCED: 30.0 fps at 1008 MHz with 17.9 ms a
+  frame, then after two seconds `lowest speed now 1416 MHz`, and 59.44-59.45 fps from
+  then on, the governor going on to 1512 MHz; the floor was back at 480 MHz after the
+  game. Kirby is at the edge even so: about one refresh in 120 is still missed, and aplay
+  logs a short underrun every 10 s, against constant 200 ms ones at 30 fps. Not yet
+  checked: how it sounds, and the RG40XX H.
 - **Plugging in USB power starts the device** (VBUS rising, set in the AXP717's efuse;
   powering off with the cable in stays off). REG 0x20 says what started it; the
   charging screen uses it. Test shutdown with the cable unplugged.

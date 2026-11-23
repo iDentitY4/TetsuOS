@@ -130,8 +130,8 @@ pub fn release_cpu_speed() {
 mod tests {
     use super::*;
 
-    const H700: [u32; 12] =
-        [480_000, 600_000, 720_000, 792_000, 936_000, 1_008_000, 1_032_000, 1_104_000, 1_200_000, 1_320_000, 1_416_000, 1_512_000];
+    /// The SP's `scaling_available_frequencies`.
+    const H700: [u32; 8] = [480_000, 720_000, 1_008_000, 1_032_000, 1_104_000, 1_200_000, 1_416_000, 1_512_000];
 
     fn ms(value: f64) -> Duration {
         Duration::from_secs_f64(value / 1000.0)
@@ -141,7 +141,7 @@ mod tests {
     fn a_slow_game_gets_the_slowest_speed_that_fits() {
         let refresh = ms(1000.0 / 60.0);
         // Kirby Super Star on the RG40XX H: 18 ms at 1008 MHz needs about 1281 MHz.
-        assert_eq!(wanted_speed(&H700, 1_008_000, 1_512_000, ms(18.0), refresh), Some(1_320_000));
+        assert_eq!(wanted_speed(&H700, 1_008_000, 1_512_000, ms(18.0), refresh), Some(1_416_000));
         // Just over: still at least the next speed up.
         assert_eq!(wanted_speed(&H700, 1_008_000, 1_512_000, ms(14.0), refresh), Some(1_032_000));
         // More than the top can do: the top.
