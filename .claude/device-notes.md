@@ -86,10 +86,17 @@ ADVANCED > RUN SETUP AGAIN repeats.
   RG34XX-SP and CubeXX, with panels from ROCKNIX's `.panel` files in the NV3052C driver and
   sticks as `adc-joystick`. No such device here; the SP must still start as before
 
-- One image for the H700 family (2026-11-19, branch `h700-family`): a real Plus, H or 2024,
-  `flash.sh --device`, an update through the manifest's `devices`. Checked by Claude on
-  the SP: `device.txt` absent, CRLF, unknown, and the Plus's device tree on the SP
-  (`docs/features.md`)
+- v0.2's card image (2026-11-24): published without the smoke test. Nothing of the
+  release image has started on a device; its update did, from v0.1 (below)
+
+- The image picker on the docs' home page (2026-11-24): on the published site, and on a
+  real phone. Checked by Claude in headless Chrome against the v0.2 release
+
+- One image for the H700 family (2026-11-19), a card image per device since v0.2
+  (`scripts/device-images.sh`): a real Plus, H or 2024, `flash.sh --device`, any device
+  started from its own image. Checked by Claude on the SP: `device.txt` absent, CRLF,
+  unknown, the Plus's device tree on the SP, and an update through the manifest's
+  `devices` (v0.1 to v0.2) (`docs/features.md`)
 
 - TETSU-DATA on the first start (2026-11-14): a card written with balenaEtcher or another
   image writer, a new card and one with another system's files on it. Checked by Claude
@@ -121,9 +128,9 @@ ADVANCED > RUN SETUP AGAIN repeats.
   DATA icon
 
 - Updates over Wi-Fi (2026-11-13): an update over Wi-Fi rather than the cable, the lid,
-  B and a low battery during one, typing a source, the German wording. Since 2026-11-20 the
-  device runs a card written from the v0.2-test.3 release image, in slot A, with a
-  development build of `main` pushed over its root filesystem since 2026-11-23
+  B and a low battery during one, the German wording. Since 2026-11-24 the SP runs a card
+  written from v0.1 and updated to v0.2 through SYSTEM UPDATE (slot B, LPDDR3 at 1.1 V on
+  v0.1's U-Boot): write the v0.2 card image to it before anything else
 
 - RetroAchievements offline (2026-11-13): a real unlock without Wi-Fi, sent later from the
   menus and dated right on the site, the OFFLINE notice, the German wording
@@ -216,6 +223,12 @@ headphones, sleep and resume, Wi-Fi and the power button worked.
 
 ## Known issues
 
+- An SP updated from v0.1 to v0.2 through SYSTEM UPDATE runs its LPDDR3 at 1.1 V instead
+  of 1.2 V (2026-11-24): v0.1's U-Boot sets mainline's fixed 1.1 V, which v0.1's kernel
+  raised and v0.2's keeps. The user chose notes over a fix: the v0.2 release notes, the
+  changelog and `upgrading.md` tell v0.1 users to write the card image. SYSTEM UPDATE
+  still offers v0.2 to v0.1 devices
+
 - After a flash on 2026-11-19 the unit went to FEL (`1f3a:efe8`, no LEDs, screen off)
   twice with the card in TF1 and its SPL matching the image; the reset button started it
   normally. The cause is unknown; if it happens, press reset before suspecting the build
@@ -241,15 +254,23 @@ headphones, sleep and resume, Wi-Fi and the power button worked.
 
 1. Rewind, moved to the end by the user
 
-v0.1, the first beta, is published as the latest release since 2026-11-18
-(`docs/developer/releases.md`). Its update test: `v0.1.1-test`, signed and published as a
-pre-release, installed through SYSTEM UPDATE into slot B with all 492 files on TETSU-DATA
-unchanged but the source, then deleted; SYSTEM UPDATE with the default source found v0.1
-at `releases/latest` and said UP TO DATE. Installing v0.1 itself over the network wasn't
-tested, nor SSH over Wi-Fi on a release build.
+v0.2, the second beta, is the latest release since 2026-11-24 (`84860ba`, build
+20261123-225449, an annotated tag; `docs/developer/releases.md`): a card image per device
+(13 with the `-rev6` ones), one signed update for every device, verified against
+`update-key.pub`. Its update test: the SP on a freshly written v0.1 card took it through
+SYSTEM UPDATE from the PC over USB (typed source) into slot B, with all 460 files on
+TETSU-DATA kept but the battery log and the settings (rewritten in v0.2's format, v0.1's
+in `settings-backup.txt`), and found the 1.1 V above. Not tested: the smoke test of the
+release image, SYSTEM UPDATE from `releases/latest` over Wi-Fi, SSH over Wi-Fi on a
+release build. Its first build failed on host-mesa3d without RTTI (fixed in #43), and a
+plain tag first named it `84860ba` (#44).
 
-Test builds go out as pre-releases titled TEST, so `releases/latest` stays on v0.1 and
-SYSTEM UPDATE never offers them: v0.2-test.2 (2026-11-18, LPDDR4 and the SP's second
+v0.1, the first beta (2026-11-18): its update test was `v0.1.1-test`, signed and published
+as a pre-release, installed through SYSTEM UPDATE into slot B with all 492 files on
+TETSU-DATA unchanged but the source, then deleted.
+
+Test builds go out as pre-releases titled TEST, so `releases/latest` stays on the last
+release and SYSTEM UPDATE never offers them: v0.2-test.2 (2026-11-18, LPDDR4 and the SP's second
 panel) and v0.2-test.3 (2026-11-20, the H700 family image from `b5bd7a0`, build
 20261120-025142, files named `h700`, U-Boot as in test.2). test.3's update is signed and
 checked against `update-key.pub`; the user's smoke test on the SP passed.
@@ -417,7 +438,8 @@ In short here; `docs/features.md` has them in full.
 - `docs/features.md`: every feature in detail
 - `docs/`: also the VitePress documentation site (user guide, reference, developer guide;
   `docs/.vitepress/config.mts` has the sidebar, `docs/public/screenshots/` the `--preview*`
-  renders), published by `.github/workflows/docs.yml`
+  renders, `docs/.vitepress/theme/` the home page's image picker and its `devices.ts`),
+  published by `.github/workflows/docs.yml`
 - `.github/workflows/release.yml`: a `v*` tag makes a release build of each board's image,
   unsigned update and GPL sources (`make legal-info`) in a draft release with
   `.github/release-notes.md` (`docs/developer/releases.md`)
@@ -469,7 +491,7 @@ physical like the lid.
   pass it with `-i`. If locked out, the serial console still logs in (Python on
   `/dev/ttyACM0` works; Claude is in `uucp`), and cycling SSH back to USB ONLY there with
   injected presses fixes it. Leave the device on USB ONLY with no password and no keys.
-  A release build (on the device since 2026-11-18, v0.2-test.3 since 2026-11-20) needs
+  A release build (on the device since 2026-11-18, v0.2 since 2026-11-24) needs
   a root password: the user gives it in the session. `push.sh` keeps `/etc/shadow`, so
   the password stays after a development build is pushed over it (2026-11-23). Pass it through `SSH_ASKPASS` from an environment variable with
   `SSH_ASKPASS_REQUIRE=force` and `PubkeyAuthentication=no`, never in a file; the serial
