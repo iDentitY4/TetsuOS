@@ -121,10 +121,20 @@ keeps the images as the run's artifacts for 3 days instead of making a release. 
 
 Hosted runners for a public repository have 4 cores and free minutes, and a job stops
 after 6 hours. A first build compiles host LLVM and Clang for Mesa, which may take longer
-than that. The
-build step stops after 300 minutes, and `dl/` and `ccache/` are saved even when it fails,
-so running the failed job again goes further each time, until one finishes. The caches
-share GitHub's 10 GB per repository.
+than that, and so does a build without ccache: about 5 hours, 4 of them LLVM and Clang
+for the host and the device. The build stops itself after 285 minutes, and `dl/` and
+`ccache/` are saved even when it fails, so running the failed job again goes further each
+time, until one finishes. The caches share GitHub's 10 GB per repository, and GitHub
+removes one unused for 7 days.
+
+**ccache comes from main.** A tag's run can restore caches saved on `main` or on the same
+tag, never another tag's. So each release reuses the ccache of the last run by hand on
+`main`, and saves its own where no other tag can use it. Start a run by hand on `main`
+when Actions > Caches has no `ccache-<board>-…` entry for `refs/heads/main`: after a
+board's name changes (from `rg35xxsp` to `h700` on 2026-11-19 left v0.2-test.3 to .5
+without one, and test.5 timed out), or when it has gone unused for 7 days. A cold run may
+need to be run again once before it finishes. A release's restore counts as a use, so
+regular releases keep it.
 
 **More boards:** a board is a SoC family, with one image for all its devices (`board/h700/`
 so far). A new device of the family is a device tree in `BR2_LINUX_KERNEL_INTREE_DTS_NAME`
