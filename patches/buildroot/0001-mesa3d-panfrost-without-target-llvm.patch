@@ -10,6 +10,11 @@ translator, which a build from scratch spends about two hours on.
 So BR2_PACKAGE_MESA3D_NEEDS_PRECOMP_COMPILER selects SPIRV-Tools only,
 and the Gallium Panfrost driver needs only what host-llvm needs.
 
+Without OpenCL nothing selects BR2_PACKAGE_LLVM_RTTI any more, so
+host-llvm is built without RTTI, and host-mesa3d now sets cpp_rtti to
+match, as the target mesa3d already does. Otherwise its configure stops
+with "LLVM was built without RTTI, so Mesa must also disable RTTI".
+
 Upstream-Status: Pending
 
 --- a/package/mesa3d/Config.in
@@ -58,3 +63,18 @@ Upstream-Status: Pending
  endif
  
  ifeq ($(BR2_PACKAGE_MESA3D_VULKAN_DRIVER),)
+@@ -349,6 +349,14 @@
+ 	-Dglx=disabled \
+ 	-Dvulkan-drivers=""
+ 
++# host-llvm has RTTI only with BR2_PACKAGE_LLVM_RTTI, and Mesa's C++
++# must match it.
++ifeq ($(BR2_PACKAGE_LLVM_RTTI),y)
++HOST_MESA3D_CONF_OPTS += -Dcpp_rtti=true
++else
++HOST_MESA3D_CONF_OPTS += -Dcpp_rtti=false
++endif
++
+ HOST_MESA3D_DEPENDENCIES = \
+ 	host-libclc \
+ 	host-libdrm \

@@ -8,4 +8,6 @@ Each patch's header says why and whether it was sent upstream.
 
 - `0001-mesa3d-panfrost-without-target-llvm.patch`: Panfrost's shaders are precompiled
   by host-mesa3d, so the device needs no LLVM, Clang, libclc or SPIR-V LLVM translator.
-  Buildroot built them anyway, about 2 of the 5 hours of a build without ccache.
+  Buildroot built them anyway, about 2 of the 5 hours of a build without ccache. Without
+  OpenCL nothing turns on LLVM's RTTI, so host-mesa3d's `cpp_rtti` follows
+  `BR2_PACKAGE_LLVM_RTTI`, as the target Mesa's does.
