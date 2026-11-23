@@ -1639,12 +1639,20 @@ reached `init` at 2.16 seconds, down from 2.86. Removing `console=ttyS0` from
 at 115200 baud took most of the time. With a serial adapter, add it back to see kernel
 messages on that port.
 
-The root filesystem contents went from 255 MB to 40 MB. Buildroot's Panfrost option forces
+The root filesystem contents went from 255 MB to 40 MB. Buildroot's Panfrost option forced
 LLVM, and through Mesa's OpenCL option Clang and libclc, but Panfrost's shaders are
-precompiled on the PC. `external.mk` builds Mesa with `-Dllvm=disabled`, and
-`post-build.sh` deletes the unused libraries and tools, then fails the build if anything
-links to a missing library. Claude checked over SSH that `kmscube` still runs at
-59.94 fps on Panfrost. The rootfs partition is still a fixed 1 GiB.
+precompiled on the PC. Mesa was built with `-Dllvm=disabled`, and `post-build.sh` deleted
+the unused libraries and tools, then fails the build if anything links to a missing
+library. Claude checked over SSH that `kmscube` still runs at 59.94 fps on Panfrost. The
+rootfs partition is still a fixed 1 GiB.
+
+Since 2026-11-23 they aren't built for the device at all, only for the PC, where
+host-mesa3d precompiles the shaders: `patches/buildroot/0001` changes Buildroot's Mesa
+package so Panfrost no longer needs the LLVM option, and the precompiled shaders no
+longer select OpenCL or the SPIR-V LLVM translator. Mesa on the device links only
+`libSPIRV-Tools.so`. Building LLVM and Clang for the device took about 2 of the 5 hours
+of a GitHub build without ccache, and about 55 minutes with it. The top `Makefile`
+applies `patches/buildroot/` when it extracts Buildroot.
 
 - **Translations** (2026-11-09): Settings > GENERAL > LANGUAGE switches the launcher and
   the in-game menu between English and German at once, with no restart. It is kept in

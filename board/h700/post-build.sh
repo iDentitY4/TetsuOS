@@ -7,15 +7,8 @@ TARGET="$1"
 BOARD_DIR="$(dirname "$(readlink -f "$0")")"
 READELF="$(ls "$HOST_DIR"/bin/*-buildroot-linux-gnu-readelf | head -n 1)"
 
-# Panfrost forces Mesa's OpenCL option, which brings Clang and libclc, and Mesa
-# is built without LLVM (see external.mk). Their tools aren't needed either.
+# Mesa links only libSPIRV-Tools.so of SPIRV-Tools, which installs more.
 REMOVE=(
-	usr/lib/libclang.so* usr/lib/libclang-cpp.so* usr/share/clc
-	usr/lib/libLLVM.so* usr/lib/libLLVM-*.so usr/lib/libLTO.so* usr/lib/libRemarks.so*
-	usr/lib/libLLVMSPIRVLib.so* usr/bin/llvm-spirv
-	usr/bin/diagtool usr/bin/amdgpu-arch usr/bin/nvptx-arch usr/bin/offload-arch
-	usr/bin/analyze-build usr/bin/intercept-build usr/bin/scan-build-py usr/bin/hmaptool
-	usr/lib/libear usr/lib/libscanbuild
 	usr/bin/spirv-* usr/lib/libSPIRV-Tools-diff.so usr/lib/libSPIRV-Tools-link.so
 	usr/lib/libSPIRV-Tools-lint.so usr/lib/libSPIRV-Tools-opt.so
 	usr/lib/libSPIRV-Tools-reduce.so usr/lib/libSPIRV-Tools-shared.so

@@ -1,10 +1,5 @@
 include $(sort $(wildcard $(BR2_EXTERNAL_TETSU_PATH)/package/*/*.mk))
 
-# Panfrost's shaders are precompiled on the build machine by host-mesa3d, so the
-# driver doesn't need LLVM on the device. Buildroot still requires the LLVM option
-# for Panfrost, so this turns it off in Mesa itself. Meson keeps the last -D value.
-MESA3D_CONF_OPTS += -Dllvm=disabled
-
 # The boot logo, shown centred until the launcher starts. It is a plain-text PPM,
 # made with `launcher --preview-splash`, because the kernel's converter reads no other.
 define TETSU_BOOT_LOGO

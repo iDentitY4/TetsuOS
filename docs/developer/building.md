@@ -26,8 +26,8 @@ cd TetsuOS
 make
 ```
 
-The first run downloads Buildroot 2026.08.1 (checked against its SHA-256), builds the cross
-toolchain into `output-toolchain/`, joins the configuration and builds everything. The
+The first run downloads Buildroot 2026.08.1 (checked against its SHA-256), applies
+`patches/buildroot/` to it, builds the cross toolchain into `output-toolchain/`, joins the configuration and builds everything. The
 card image is **`output/images/sdcard.img`**.
 
 | Command | What it does |
@@ -63,6 +63,10 @@ Buildroot doesn't notice every change on its own:
 - **BlueZ options** need `bluez5_utils-dirclean`: a reconfigure keeps stale plugin lists.
 - **A package turned off** leaves its files in `output/target`. Delete them using
   `output/build/packages-file-list.txt`.
+- **Buildroot patches** (`patches/buildroot/`): a new or changed one makes the next
+  `make` or `make config` extract Buildroot again and apply them all. A package whose
+  options or dependencies it changes needs its `-dirclean`, and a package it turns off
+  needs its files deleted as above.
 - **Patches:** check that a patch applies with Buildroot's
   `support/scripts/apply-patches.sh`, which rejects the fuzz that plain `patch` allows.
 

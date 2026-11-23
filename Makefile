@@ -2,6 +2,10 @@ BUILDROOT_VERSION := 2026.08.1
 BUILDROOT_SHA256 := 38a6c152490096018720a9ade379ee1e571c9bf5f93a3657a166566945a98b0d
 BUILDROOT_TARBALL := dl/buildroot-$(BUILDROOT_VERSION).tar.gz
 BUILDROOT_DIR := buildroot-$(BUILDROOT_VERSION)
+# Changes to Buildroot itself (patches/buildroot/README.md). A new or changed patch
+# extracts Buildroot again and applies them all.
+BUILDROOT_PATCHES := $(sort $(wildcard patches/buildroot/*.patch))
+BUILDROOT_STAMP := $(BUILDROOT_DIR)/.stamp_tetsu_patches
 
 # The device to build for: board/$(BOARD)/buildroot.config is its part of the
 # configuration, after configs/common.config. One board per SoC family: h700 so far.
@@ -21,12 +25,12 @@ all: $(OUTPUT)/.config $(TOOLCHAIN_GCC)
 	$(BR)
 
 # Writes the full configuration from the two parts. Changing either needs this again.
-config $(OUTPUT)/.config: | $(BUILDROOT_DIR)/Makefile
+config $(OUTPUT)/.config: $(BUILDROOT_STAMP)
 	mkdir -p $(OUTPUT)
 	cat configs/common.config board/$(BOARD)/buildroot.config > $(DEFCONFIG)
 	$(BR) defconfig BR2_DEFCONFIG=$(DEFCONFIG)
 
-toolchain $(TOOLCHAIN_GCC): | $(BUILDROOT_DIR)/Makefile
+toolchain $(TOOLCHAIN_GCC): | $(BUILDROOT_STAMP)
 	$(BR_TOOLCHAIN) toolchain_a53_defconfig
 	$(BR_TOOLCHAIN) toolchain
 
@@ -35,11 +39,15 @@ toolchain $(TOOLCHAIN_GCC): | $(BUILDROOT_DIR)/Makefile
 menuconfig linux-menuconfig savedefconfig: $(OUTPUT)/.config
 	$(BR) $@
 
-$(BUILDROOT_DIR)/Makefile:
+$(BUILDROOT_TARBALL):
 	mkdir -p dl
-	curl -fL -o $(BUILDROOT_TARBALL) https://buildroot.org/downloads/buildroot-$(BUILDROOT_VERSION).tar.gz
+	curl -fL -o $@ https://buildroot.org/downloads/buildroot-$(BUILDROOT_VERSION).tar.gz
+
+$(BUILDROOT_STAMP): $(BUILDROOT_TARBALL) $(BUILDROOT_PATCHES)
 	echo "$(BUILDROOT_SHA256)  $(BUILDROOT_TARBALL)" | sha256sum -c -
+	rm -rf $(BUILDROOT_DIR)
 	tar xzf $(BUILDROOT_TARBALL)
+	$(BUILDROOT_DIR)/support/scripts/apply-patches.sh $(BUILDROOT_DIR) patches/buildroot
 	touch $@
 
 # The sources and licences a release must offer (docs/developer/releases.md): the board's
