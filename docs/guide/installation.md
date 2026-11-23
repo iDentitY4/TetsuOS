@@ -4,16 +4,17 @@ Installing Tetsu OS means writing an image to a microSD card and adding the
 **TETSU-DATA** partition, where your games and saves live. Nothing is installed on the
 device itself: take the card out, and the stock firmware starts as before.
 
-::: warning Check your memory type first
-v0.1 starts only on units with LPDDR3 memory; later builds also start on LPDDR4. See
-[Check your memory type](./requirements#check-your-memory-type). To test a build on an
-LPDDR4 unit, see [Testing your device](./testing).
+::: tip Memory type
+Since v0.2 the RG35XX SP's two memory types, LPDDR3 and LPDDR4, both start from the same
+image. v0.1 starts only on LPDDR3: see
+[Check your memory type](./requirements#check-your-memory-type).
 :::
 
 ## 1. Download an image
 
-Open the project's [Releases page](https://github.com/iDentitY4/TetsuOS/releases) and
-download the card image of the newest release. Skip any marked **Pre-release**: those are
+The [image picker on the home page](/#download) names your device's card image and links
+to it. Or open the project's [Releases page](https://github.com/iDentitY4/TetsuOS/releases)
+and download the card image of the newest release. Skip any marked **Pre-release**: those are
 test builds, for [testing your device](./testing).
 
 | File | What it is |

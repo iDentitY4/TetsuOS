@@ -3,9 +3,9 @@
 ## The device doesn't start
 
 **Nothing on the screen, green light blinking about once a second.** The memory setup
-failed. With v0.1, the unit most likely has LPDDR4 memory, which v0.1 can't set up: see
-[Check your memory type](./requirements#check-your-memory-type). Later builds try both
-types, so with one of them, please [report it](./testing#_4-send-the-report).
+failed. With v0.1, the unit most likely has LPDDR4 memory, which v0.1 can't set up: write
+v0.2 or later (see [Check your memory type](./requirements#check-your-memory-type)). Those
+try both types, so if one of them blinks, please [report it](./testing#_4-send-the-report).
 
 **Nothing at all.** Check that the card is in **TF1**, and write it again. Make sure the
 battery has some charge: plug in the cable for a few minutes.

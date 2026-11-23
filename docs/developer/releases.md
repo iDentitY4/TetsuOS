@@ -144,7 +144,8 @@ regular releases keep it.
 **More boards:** a board is a SoC family, with one build for all its devices (`board/h700/`
 so far), which `scripts/device-images.sh` copies into a card image per device. A new device
 of the family is a device tree in `BR2_LINUX_KERNEL_INTREE_DTS_NAME`, which gives it its
-image, and a profile in `device/profile.rs`; `make-update.sh` lists every device tree's name in
+image, a profile in `device/profile.rs` and a line in `docs/.vitepress/theme/devices.ts`
+for the home page's image picker; `make-update.sh` lists every device tree's name in
 the manifest's `devices`. A new family is a row in the matrix with its own `board/<family>/`.
 SYSTEM UPDATE asks every device for `manifest.txt`, and a release's files share one folder,
 so before a second family the launcher needs a name per family for it (for example

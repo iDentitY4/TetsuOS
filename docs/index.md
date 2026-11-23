@@ -4,12 +4,15 @@ layout: home
 hero:
   name: Tetsu OS
   text: A Linux distribution for retro handhelds
-  tagline: Boots to its own game launcher in under four seconds. Built with Buildroot and Rust for the Anbernic RG35XX SP.
+  tagline: Boots to its own game launcher in under four seconds. Built with Buildroot and Rust for the Anbernic RG35XX SP and, untested so far, the other Anbernic H700 handhelds.
   image:
     src: /logo.png
     alt: The Tetsu OS logo, a pixel-art iron kettle with a gamepad's D-pad and buttons on its side
   actions:
     - theme: brand
+      text: Download
+      link: '#download'
+    - theme: alt
       text: Install
       link: /guide/installation
     - theme: alt

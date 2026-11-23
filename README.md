@@ -61,19 +61,17 @@ You need an RG35XX SP, a spare microSD card of at least 6 GB (16 GB or more leav
 games) and a computer with a card reader. Tetsu OS runs from the card and leaves the
 device's own firmware alone: take the card out and the stock system starts as before.
 
-1. **Check your memory type.** RG35XX SP units ship with LPDDR3 or LPDDR4 memory, and
-   v0.1 is built for **LPDDR3**; later builds also start on LPDDR4, so far checked on one
-   unit.
-   [Requirements](https://identity4.github.io/TetsuOS/guide/requirements#check-your-memory-type)
-   shows how to check from the stock card in a minute.
-2. **Download** the newest `tetsu-<device>-…-sdcard.img.gz` for your device (`tetsu-rg35xxsp-…` up to v0.1) from
-   [Releases](https://github.com/iDentitY4/TetsuOS/releases).
-3. **Write it to the card** with [balenaEtcher](https://etcher.balena.io) or
+1. **Download** the card image for your device: the
+   [image picker](https://identity4.github.io/TetsuOS/#download) names the right file, or
+   take `tetsu-<device>-<version>-sdcard.img.gz` from
+   [Releases](https://github.com/iDentitY4/TetsuOS/releases/latest). Since v0.2 it starts
+   on RG35XX SP units with either memory type, LPDDR3 or LPDDR4.
+2. **Write it to the card** with [balenaEtcher](https://etcher.balena.io) or
    [Raspberry Pi Imager](https://www.raspberrypi.com/software/) ("Use custom"). This
    erases the card.
-4. **Boot.** Put the card in the **TF1** slot and press power. A short setup asks for the
+3. **Boot.** Put the card in the **TF1** slot and press power. A short setup asks for the
    language, Wi-Fi and time zone.
-5. **Add games.** Copy them to the `roms` folder of the card's **TETSU-DATA** drive:
+4. **Add games.** Copy them to the `roms` folder of the card's **TETSU-DATA** drive:
    connect the USB cable and open Settings > SYSTEM > USB STORAGE, use WI-FI TRANSFER
    from a browser, or put the card in your computer.
    [Adding games](https://identity4.github.io/TetsuOS/guide/adding-games)
@@ -88,14 +86,14 @@ and the [FAQ](https://identity4.github.io/TetsuOS/guide/faq).
 ## Status
 
 Tetsu OS is in **beta** and developed on a single LPDDR3 RG35XX SP. Most features are
-checked on that unit, but expect rough edges. Builds after v0.1 also start on LPDDR4
+checked on that unit, but expect rough edges. Since v0.2 it also starts on LPDDR4
 units; one tester's LPDDR4 SP ran v0.2-test.2 with games, sound, headphones, sleep, Wi-Fi
 and the power button working ([#18](https://github.com/iDentitY4/TetsuOS/issues/18)). More reports help:
 [help test](https://identity4.github.io/TetsuOS/guide/testing).
 [CHANGELOG.md](CHANGELOG.md) lists what each release brings. USB accessories don't work
-yet, as the USB-C port runs in device mode only. Builds after v0.1 are one image for the
-H700 family, which can also start the RG35XX Plus, H, 2024 and Pro, the RG40XX H and V,
-the RG34XX and RG34XX-SP and the RG CubeXX, all untested so far
+yet, as the USB-C port runs in device mode only. Since v0.2 there are also images for
+the RG35XX Plus, H, 2024 and Pro, the RG40XX H and V, the RG34XX and RG34XX-SP and the RG
+CubeXX, all untested so far
 ([requirements](https://identity4.github.io/TetsuOS/guide/requirements#the-device)); the
 RG28XX is not supported yet.
 

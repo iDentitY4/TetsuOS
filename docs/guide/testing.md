@@ -1,9 +1,9 @@
 # Testing your device
 
-Tetsu OS is developed on one RG35XX SP, which has LPDDR3 memory. Builds after v0.1 also
-start on units with **LPDDR4** memory: one tester's LPDDR4 RG35XX SP has run v0.2-test.2
-([issue #18](https://github.com/iDentitY4/TetsuOS/issues/18)). The test builds also carry
-**other H700 devices**: the RG35XX Plus, H, 2024 and Pro, the RG40XX H and V, the RG34XX
+Tetsu OS is developed on one RG35XX SP, which has LPDDR3 memory. Since v0.2 it also
+starts on units with **LPDDR4** memory: one tester's LPDDR4 RG35XX SP has run v0.2-test.2
+([issue #18](https://github.com/iDentitY4/TetsuOS/issues/18)). Since v0.2 there are also images
+for **other H700 devices**: the RG35XX Plus, H, 2024 and Pro, the RG40XX H and V, the RG34XX
 and RG34XX-SP and the RG CubeXX, which nobody has started yet. If you have one of them, or
 an SP, a test tells us whether it works. It takes about fifteen minutes, and a card that
 doesn't start does no harm.
@@ -15,10 +15,11 @@ doesn't start does no harm.
   to expect, but you can test without it.
 - **A spare microSD card** of at least 6 GB. Writing the image erases it. Don't use the
   stock firmware card.
-- **The test image:** the newest pre-release marked **TEST** on the
-  [Releases page](https://github.com/iDentitY4/TetsuOS/releases), in the file named after
-  your device, such as `tetsu-rg40xx-h-<version>-sdcard.img.gz`
-  ([the names](./requirements#the-device)). Write it as shown in
+- **The image:** your device's card image from the newest release, which the
+  [image picker](/#download) finds for you, such as `tetsu-rg40xx-h-<version>-sdcard.img.gz`
+  ([the names](./requirements#the-device)). If the
+  [Releases page](https://github.com/iDentitY4/TetsuOS/releases) has a newer pre-release
+  marked **TEST**, take that one instead. Write it as shown in
   [Installation](./installation#_2-write-the-card). Test builds up to v0.2-test.5 have one
   image for every device: on a device other than the RG35XX SP, open the card's
   **TETSU-BOOT** drive afterwards and add a file `device.txt` holding its name, such as
