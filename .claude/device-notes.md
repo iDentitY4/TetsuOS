@@ -122,7 +122,8 @@ ADVANCED > RUN SETUP AGAIN repeats.
 
 - Updates over Wi-Fi (2026-11-13): an update over Wi-Fi rather than the cable, the lid,
   B and a low battery during one, typing a source, the German wording. Since 2026-11-20 the
-  device runs a card written from the v0.2-test.3 release image, in slot A
+  device runs a card written from the v0.2-test.3 release image, in slot A, with a
+  development build of `main` pushed over its root filesystem since 2026-11-23
 
 - RetroAchievements offline (2026-11-13): a real unlock without Wi-Fi, sent later from the
   menus and dated right on the site, the OFFLINE notice, the German wording
@@ -252,7 +253,11 @@ SYSTEM UPDATE never offers them: v0.2-test.2 (2026-11-18, LPDDR4 and the SP's se
 panel) and v0.2-test.3 (2026-11-20, the H700 family image from `b5bd7a0`, build
 20261120-025142, files named `h700`, U-Boot as in test.2). test.3's update is signed and
 checked against `update-key.pub`; the user's smoke test on the SP passed.
-No other H700 device has run it yet.
+v0.2-test.4 (2026-11-22, `7ab3896`, build 20261122-014443) added the CPU floor in games.
+v0.2-test.5 (2026-11-23, `6e6fb5a`, build 20261123-144437) has the RG40XX H fixes, the
+raised CPU floor, SHAPE and the shorter POWER OFF AFTER SLEEP choices; U-Boot as in test.2.
+Its update is signed and verified against `update-key.pub`; no smoke test of its image
+yet. No H700 device other than the SP has run a test build yet.
 
 ## How the launcher is built
 
@@ -465,7 +470,8 @@ physical like the lid.
   `/dev/ttyACM0` works; Claude is in `uucp`), and cycling SSH back to USB ONLY there with
   injected presses fixes it. Leave the device on USB ONLY with no password and no keys.
   A release build (on the device since 2026-11-18, v0.2-test.3 since 2026-11-20) needs
-  a root password: the user gives it in the session. Pass it through `SSH_ASKPASS` from an environment variable with
+  a root password: the user gives it in the session. `push.sh` keeps `/etc/shadow`, so
+  the password stays after a development build is pushed over it (2026-11-23). Pass it through `SSH_ASKPASS` from an environment variable with
   `SSH_ASKPASS_REQUIRE=force` and `PubkeyAuthentication=no`, never in a file; the serial
   console asks for it too.
 - **Pressing buttons:** take a screenshot before pressing A, because a wrong guess at
