@@ -5,10 +5,11 @@ muOS or stock card still starts the device as before.
 
 ## Install
 
-1. Download `tetsu-h700-<version>-sdcard.img.gz`. It is the image for every H700 device it
-   knows: another H700 device than the RG35XX SP (untested) also needs a file
-   `device.txt` on the card's TETSU-BOOT partition, holding its name, such as
-   `device=rg40xx-h` (https://identity4.github.io/TetsuOS/guide/requirements#the-device).
+1. Download the card image named after your device, such as
+   `tetsu-rg35xx-sp-<version>-sdcard.img.gz` (the names:
+   https://identity4.github.io/TetsuOS/guide/requirements#the-device). Devices other than
+   the RG35XX SP are untested. A newer RG35XX Plus, H or 2024 whose screen stays dark
+   needs the `-rev6` one.
 2. Write it to a microSD card with balenaEtcher, Raspberry Pi Imager or `dd`. This erases
    the card.
 3. Put the card in the slot marked TF1 and power on. The first start makes the
@@ -39,11 +40,11 @@ type your own); without one, root can't log in over SSH or the USB serial consol
 
 | File | For |
 | --- | --- |
-| `tetsu-<device>-<version>-sdcard.img.gz` | New installs |
-| `manifest.txt`, `manifest.sig`, `tetsu-<device>-<build>.img.gz` | SYSTEM UPDATE |
-| `SHA256SUMS-<device>` | Checking downloads |
-| `tetsu-<device>-<version>-sources.tar.part*` | The sources of the GPL and other components: `cat` the parts together into one tar |
-| `tetsu-<device>-<version>-licences.csv` | Every component's licence |
+| `tetsu-<device>-<version>-sdcard.img.gz` | New installs, one per device |
+| `manifest.txt`, `manifest.sig`, `tetsu-h700-<build>.img.gz` | SYSTEM UPDATE, the same for every device |
+| `SHA256SUMS-h700` | Checking downloads |
+| `tetsu-h700-<version>-sources.tar.part*` | The sources of the GPL and other components: `cat` the parts together into one tar |
+| `tetsu-h700-<version>-licences.csv` | Every component's licence |
 
 Tetsu OS's own code is MIT. The emulator cores keep their own licences: Snes9x, Genesis
 Plus GX and PicoDrive may not be used commercially.

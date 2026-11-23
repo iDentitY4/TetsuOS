@@ -145,12 +145,13 @@ jobs:
           path: ccache
           key: ccache-${{ matrix.board }}-${{ github.run_id }}-${{ github.run_attempt }}
 
-      - name: Card image and update
+      - name: Card images and update
         run: |
           mkdir release
-          name="tetsu-$BOARD-${GITHUB_REF_NAME//\//-}"
-          echo "NAME=$name" >> "$GITHUB_ENV"
-          gzip -9 -n -c output/images/sdcard.img > "release/$name-sdcard.img.gz"
+          version="${GITHUB_REF_NAME//\//-}"
+          echo "NAME=tetsu-$BOARD-$version" >> "$GITHUB_ENV"
+          # One card image per device, with its device.txt on TETSU-BOOT
+          scripts/device-images.sh output/images/sdcard.img output/images/allwinner release "$version"
           scripts/make-update.sh --unsigned
           mv output/images/update/* release/
           ls -l release

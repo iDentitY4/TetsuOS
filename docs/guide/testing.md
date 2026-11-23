@@ -16,12 +16,13 @@ doesn't start does no harm.
 - **A spare microSD card** of at least 6 GB. Writing the image erases it. Don't use the
   stock firmware card.
 - **The test image:** the newest pre-release marked **TEST** on the
-  [Releases page](https://github.com/iDentitY4/TetsuOS/releases). Write it as shown in
-  [Installation](./installation#_2-write-the-card).
-- **On a device other than the RG35XX SP:** after writing the card, open its
-  **TETSU-BOOT** drive on the computer and add a file `device.txt` holding your device's
-  name, such as `device=rg40xx-h`. [Requirements](./requirements#the-device) lists the
-  names. Without it, the device starts as an SP, which may not work on yours.
+  [Releases page](https://github.com/iDentitY4/TetsuOS/releases), in the file named after
+  your device, such as `tetsu-rg40xx-h-<version>-sdcard.img.gz`
+  ([the names](./requirements#the-device)). Write it as shown in
+  [Installation](./installation#_2-write-the-card). Test builds up to v0.2-test.5 have one
+  image for every device: on a device other than the RG35XX SP, open the card's
+  **TETSU-BOOT** drive afterwards and add a file `device.txt` holding its name, such as
+  `device=rg40xx-h`.
 
 ::: tip Nothing on the device changes
 Tetsu OS runs from the card. The internal storage is not touched: take the card out, and
@@ -37,8 +38,8 @@ and the green light for a minute:
 | --- | --- |
 | The logo, then the setup | It works. Go on to [step 2](#_2-check-the-memory). |
 | No picture, and the green light blinks about once a second | The memory setup failed: neither memory type worked. |
-| The green light stays on, but the screen stays dark or garbled | The memory works, but something later doesn't, often the screen. On an RG35XX Plus, H or 2024, add a second line `panel=rev6` to `device.txt` and try again: newer units have another screen. On an SP, the build detects which of its two screens yours has, and this is how a wrong guess would look. |
-| It starts, then stops about 30 seconds later | Usually a wrong name in `device.txt`: check it against your device. |
+| The green light stays on, but the screen stays dark or garbled | The memory works, but something later doesn't, often the screen. On an RG35XX Plus, H or 2024, write the device's `-rev6` image and try again: newer units have another screen. On an SP, the build detects which of its two screens yours has, and this is how a wrong guess would look. |
+| It starts, then stops about 30 seconds later | Usually the image of another device: check the file's name against your device. |
 | Nothing at all | Check the card is in TF1 and the battery is charged, and try again. If that doesn't help, press the reset button once. |
 
 If it doesn't start, take the card out and put it in your computer. A drive named
@@ -74,7 +75,7 @@ Each of these takes a minute or two. Note anything that doesn't work as you'd ex
 On **SYSTEM INFO**, press **X**. It saves the logs to the card's **TETSU-BOOT** drive, in
 `logs`. They hold no passwords or keys. Then
 [open a hardware test report](https://github.com/iDentitY4/TetsuOS/issues/new?template=hardware-test.yml)
-and attach `logs/system.txt`, `logs/launcher.log` and `bootlog.txt`. Say what your
-`device.txt` holds, if you made one.
+and attach `logs/system.txt`, `logs/launcher.log` and `bootlog.txt`. Say which image
+you wrote.
 
 A report that it works is as useful as one that it doesn't. Thank you!

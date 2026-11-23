@@ -40,7 +40,7 @@ aren't marked as pre-releases, which `releases/latest/download/` would skip.
 
    | Asset | For |
    | --- | --- |
-   | `tetsu-<board>-<tag>-sdcard.img.gz` | New installs |
+   | `tetsu-<device>[-rev6]-<tag>-sdcard.img.gz` | New installs, one per device (`scripts/device-images.sh`) |
    | `manifest.txt`, `manifest.sig`, `tetsu-<board>-<build>.img.gz` | SYSTEM UPDATE |
    | `SHA256SUMS-<board>` | Checking downloads |
    | `tetsu-<board>-<tag>-sources.tar.part*` | `make legal-info`'s sources, in parts of 1.9 GB (GitHub's limit is 2 GB); `cat` joins them |
@@ -59,7 +59,7 @@ aren't marked as pre-releases, which `releases/latest/download/` would skip.
    P=$PWD; make -C buildroot-2026.08.1 O=$P/output BR2_EXTERNAL=$P BR2_DL_DIR=$P/dl launcher-rebuild
    make
    scripts/make-update.sh
-   gzip -9 -n -c output/images/sdcard.img > tetsu-h700-v0.2-sdcard.img.gz
+   scripts/device-images.sh output/images/sdcard.img output/images/allwinner release v0.2
    make legal-info
    ```
 
@@ -115,7 +115,8 @@ keeps the images as the run's artifacts for 3 days instead of making a release. 
 - **draft**, for a tag, makes the draft release from `.github/release-notes.md`.
 - **board** runs once per board in its matrix (only `h700` so far), on its own
   runner: it frees disk space (a runner has about 14 GB free; the build and sources need
-  about 40), runs `make`, then `scripts/make-update.sh --unsigned`. The signing key never
+  about 40), runs `make`, then `scripts/device-images.sh`, which makes a card image per
+  device with its `device.txt` on TETSU-BOOT, and `scripts/make-update.sh --unsigned`. The signing key never
   goes to GitHub. For a tag, it also runs `make legal-info` and uploads everything to the
   draft.
 
@@ -136,9 +137,10 @@ without one, and test.5 timed out), or when it has gone unused for 7 days. A col
 need to be run again once before it finishes. A release's restore counts as a use, so
 regular releases keep it.
 
-**More boards:** a board is a SoC family, with one image for all its devices (`board/h700/`
-so far). A new device of the family is a device tree in `BR2_LINUX_KERNEL_INTREE_DTS_NAME`
-and a profile in `device/profile.rs`; `make-update.sh` lists every device tree's name in
+**More boards:** a board is a SoC family, with one build for all its devices (`board/h700/`
+so far), which `scripts/device-images.sh` copies into a card image per device. A new device
+of the family is a device tree in `BR2_LINUX_KERNEL_INTREE_DTS_NAME`, which gives it its
+image, and a profile in `device/profile.rs`; `make-update.sh` lists every device tree's name in
 the manifest's `devices`. A new family is a row in the matrix with its own `board/<family>/`.
 SYSTEM UPDATE asks every device for `manifest.txt`, and a release's files share one folder,
 so before a second family the launcher needs a name per family for it (for example
@@ -150,6 +152,8 @@ itself stays the H700's, as v0.1 devices ask for it.
 - `scripts/flash.sh` only writes the locally built `output/images/sdcard.img`. Users who
   download an image write it with an image writer, and the device adds TETSU-DATA on its
   first start (`/usr/sbin/data-partition`).
+- The device isn't detected: each device has its own card image instead, as nothing
+  found so far tells them apart before Linux, and in Linux most differ only by the panel.
 - Only one RG35XX SP has been tested: units with other RAM or another panel may not
   start. The release notes say so.
 - RetroAchievements hardcore needs the client registered with RetroAchievements by its user

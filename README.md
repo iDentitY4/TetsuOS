@@ -66,7 +66,7 @@ device's own firmware alone: take the card out and the stock system starts as be
    unit.
    [Requirements](https://identity4.github.io/TetsuOS/guide/requirements#check-your-memory-type)
    shows how to check from the stock card in a minute.
-2. **Download** the newest `tetsu-h700-…-sdcard.img.gz` (`tetsu-rg35xxsp-…` up to v0.1) from
+2. **Download** the newest `tetsu-<device>-…-sdcard.img.gz` for your device (`tetsu-rg35xxsp-…` up to v0.1) from
    [Releases](https://github.com/iDentitY4/TetsuOS/releases).
 3. **Write it to the card** with [balenaEtcher](https://etcher.balena.io) or
    [Raspberry Pi Imager](https://www.raspberrypi.com/software/) ("Use custom"). This

@@ -410,7 +410,7 @@ In short here; `docs/features.md` has them in full.
 - `src/launcher/`: the Rust launcher; `testdata/` has the PNG test images, `lang/` the
   translations, `rcheevos/` the RetroAchievements library that `build.rs` compiles in
 - `src/launcher/src/setup.rs`: the setup on a new install
-- `scripts/`: `flash.sh`, `push.sh`, `make-update.sh`, `serve-update.sh` and `sign-release.sh` (signed
+- `scripts/`: `flash.sh`, `push.sh`, `device-images.sh` (a release's card image per device), `make-update.sh`, `serve-update.sh` and `sign-release.sh` (signed
   updates; the private key is `~/.config/tetsu/update-key.pem`, never on GitHub), `press.py`, `screenshot.py`, `boxart.py`,
   `data-partition.sh`, and `jingles/`, which makes the boot jingle candidates and
   `src/launcher/sounds/boot-jingle.s16`
