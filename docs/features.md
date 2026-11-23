@@ -2392,6 +2392,15 @@ host-mesa3d `-Dcpp_rtti` to match, as Buildroot does for the target Mesa.
   original byte for byte, and the RG40XX H's, CubeXX's and Plus rev6's match it outside
   TETSU-BOOT, have the right `device.txt` and pass `fsck.vfat`. Not checked: a device
   started from one, and the release workflow running it.
+- **The image picker** (2026-11-24) on the docs' home page (`#download`, also the nav
+  bar's Download): a device list, a screen choice for the Plus, H and 2024, the file's
+  name and size, and links to it, the checksums and the writing steps, with a warning for
+  devices nobody has started. `docs/.vitepress/theme/ImagePicker.vue` asks GitHub's API
+  for `releases/latest` in the browser, so a new release needs no docs change; without an
+  answer it shows the name with `<version>` and links to the Releases page.
+  `devices.ts` lists the devices; `?device=rg40xx-h` picks one. Checked in headless
+  Chrome at 1280 and 390 px, light and dark, with the SP and the Plus; all 13 choices name
+  a file v0.2 has.
 - **What differs between H700 devices** (2026-11-19): the profile says whether the device
   has the RTL8821CS (`wireless`, false on the RG35XX 2024) and its default hostname.
   Without the chip, `launcher::groups()` leaves WI-FI and BLUETOOTH off the settings grid

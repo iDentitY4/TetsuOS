@@ -29,7 +29,7 @@ export default defineConfig({
       { text: 'Guide', link: '/guide/', activeMatch: '/guide/' },
       { text: 'Reference', link: '/reference/systems', activeMatch: '/reference/' },
       { text: 'Developers', link: '/developer/', activeMatch: '/developer/' },
-      { text: 'Download', link: `${repo}/releases` },
+      { text: 'Download', link: '/#download' },
     ],
     sidebar: {
       '/guide/': [
