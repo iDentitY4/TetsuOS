@@ -17,9 +17,13 @@ aren't marked as pre-releases, which `releases/latest/download/` would skip.
    **draft** release, with `.github/release-notes.md` as the notes:
 
    ```bash
-   git tag v0.1
+   git tag -a v0.1 -m "Tetsu OS v0.1"
    git -c credential.helper='!gh auth git-credential' push https://github.com/iDentitY4/TetsuOS.git v0.1
    ```
+
+   The tag must be annotated (`-a`): Buildroot names the version after the newest
+   annotated tag, and SYSTEM INFO and the update's `revision` show the commit instead for a
+   plain one, as a first v0.2 build did.
 
    See [The release workflow](#the-release-workflow) for how long that takes.
 
