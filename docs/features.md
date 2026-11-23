@@ -2563,6 +2563,14 @@ host-mesa3d `-Dcpp_rtti` to match, as Buildroot does for the target Mesa.
   bus with one rank (MSTR `0xC1080020`), 1 GiB, `vdd-dram` at 1.1V, and a game with sound,
   headphones, lid sleep, Wi-Fi and the power button all worked. Not tested: a cold start
   from power-off with this SPL on the LPDDR3 unit.
+  **v0.1's bootloader with this system leaves LPDDR3 at 1.1V.** v0.1's U-Boot has neither
+  patch, so U-Boot proper sets mainline's fixed 1.1V; v0.1's kernel had a fixed 1.2V
+  (its patch 0006) and raised it again, but this range keeps the 1.1V. Found in the v0.2
+  update test (2026-11-24): the SP on a fresh v0.1 card took v0.2 through SYSTEM UPDATE
+  into slot B, started, and logged `ram: LPDDR3, vdd-dram 1.10 V`. SYSTEM UPDATE doesn't
+  install U-Boot, so the v0.2 release notes and the upgrading guide tell v0.1 users to
+  write the card image instead; the user chose that over a kernel or `boot.scr` fix.
+  SYSTEM UPDATE still offers v0.2 to v0.1 devices.
 - **The RAM type is reported** for testers (`device/ram.rs`): the launcher reads the DRAM
   controller's MSTR register (`0x047FB000` on the H616, H618 and H700, found by the chip's
   name in the device tree's `compatible`) through `/dev/mem` once, and its device type bits
