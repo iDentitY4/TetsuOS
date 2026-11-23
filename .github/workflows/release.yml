@@ -8,6 +8,11 @@
 # build (with host LLVM and Clang) may take longer than that. The caches (downloads,
 # ccache, the toolchain) are saved even when the build stops, so a run started again goes
 # further, until one finishes. After that, builds take a fraction of the time.
+#
+# A tag's run can only restore caches saved on main or on that same tag, not on another
+# tag. So ccache only carries from one release to the next through a run by hand on main:
+# start one after a change to the cache keys (such as a board's name) or when the caches
+# list has no ccache-<board> entry from main (unused caches go after 7 days).
 name: Release
 
 on:
@@ -120,9 +125,14 @@ jobs:
           restore-keys: ccache-${{ matrix.board }}-
 
       - name: Build
-        # Stops in time to save the caches before the job's limit
+        # Stops in time to save the caches before the job's limit. timeout stops the whole
+        # build, every compiler with it: after a step's own timeout compilers went on
+        # writing to ccache, and the cache's tar failed with "file changed as we read it".
         timeout-minutes: 300
-        run: make
+        run: |
+          timeout --kill-after=2m 285m make
+          ccache_bin=output/host/bin/ccache
+          [ ! -x "$ccache_bin" ] || "$ccache_bin" --show-stats
 
       - if: always() && steps.dl.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
