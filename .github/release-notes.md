@@ -19,15 +19,23 @@ before.
    TETSU-DATA partition from the rest of the card and runs the setup.
 4. Add games over USB (Settings > DATA > USB STORAGE) or Wi-Fi (WI-FI TRANSFER).
 
-## Updating from v0.1
+## Updating from v0.1: write the card image
 
-Settings > SYSTEM > SYSTEM UPDATE offers this version over Wi-Fi. Games, saves, states and
-settings stay. If the new version doesn't start three times in a row, the device goes back
-to v0.1 by itself.
+**On a device with v0.1, write this version's card image instead of using SYSTEM
+UPDATE.** Writing it keeps TETSU-DATA, with your games, saves, states and settings
+(https://identity4.github.io/TetsuOS/guide/upgrading#writing-a-new-image).
 
-SYSTEM UPDATE doesn't install the bootloader, which changed in this version: it now tells
-LPDDR4 memory from LPDDR3. An RG35XX SP that already runs v0.1 doesn't need it. Writing
-this version's card image installs it, and keeps TETSU-DATA with your games and saves.
+The bootloader changed, and SYSTEM UPDATE doesn't install it. v0.1's bootloader sets the
+memory to 1.1 V, which v0.1's own system raised to the 1.2 V that LPDDR3 memory needs.
+This version keeps the voltage its own bootloader set, so on v0.1's bootloader the memory
+stays at 1.1 V. SYSTEM UPDATE still offers this version to v0.1 devices, and it starts and
+runs that way, but memory below its voltage can make the device crash or damage files. If
+you have already updated this way, write the card image. To check afterwards, press X on
+Settings > SYSTEM > SYSTEM INFO: `logs/system.txt` on the card's TETSU-BOOT drive then says
+`vdd-dram 1.20 V` on its `ram` line.
+
+From this version on, SYSTEM UPDATE works as before: devices with this card image can take
+the next versions through it.
 
 ## What's new since v0.1
 

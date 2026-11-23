@@ -47,6 +47,14 @@ SYSTEM UPDATE needs the bootloader from 2026-11-13 or later. On an older card it
 SYSTEM UPDATE doesn't update the bootloader itself. When a release notes a bootloader
 change, write the new image to the card.
 
+::: warning From v0.1 to v0.2: write the image
+v0.2 needs its own bootloader. On v0.1's, SYSTEM UPDATE installs v0.2 and it starts, but the
+memory runs at 1.1 V instead of the 1.2 V it needs, which can make the device crash or
+damage files. Write the v0.2 card image instead, as below. If you have already updated,
+write it now. X on SYSTEM INFO saves the logs to the card's TETSU-BOOT drive, where
+`logs/system.txt` then says `vdd-dram 1.20 V` on its `ram` line.
+:::
+
 ## Writing a new image
 
 Write the new card image as in [Installation](./installation#_2-write-the-card), with an
