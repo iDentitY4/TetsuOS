@@ -2381,6 +2381,9 @@ applies `patches/buildroot/` when it extracts Buildroot.
   before Linux, and in Linux the Plus, Pro,
   RG40XX V and RG34XX differ only by their panel, whose ID nobody has read on them, so a
   guess that can't be checked here could leave a device dark or powering off after 30 s.
+  For that later, SAVE LOGS TO CARD's `system.txt` has a `hardware` section: the analog
+  inputs' raw values, the cards and SDIO chips, the I2C chips, the input devices and, with
+  debugfs mounted, the GPIOs. Not yet run on the device.
   The update stays one for every device. Checked on the PC: the SP's image is the
   original byte for byte, and the RG40XX H's, CubeXX's and Plus rev6's match it outside
   TETSU-BOOT, have the right `device.txt` and pass `fsck.vfat`. Not checked: a device

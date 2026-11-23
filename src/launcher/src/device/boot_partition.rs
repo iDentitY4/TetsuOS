@@ -155,6 +155,22 @@ pub fn set_boot_messages(messages: BootMessages) -> io::Result<()> {
     Ok(())
 }
 
+/// What tells one H700 device from another, for finding the device without `device.txt`
+/// later: the analog inputs (sticks), the cards and SDIO chips, the I2C chips and the input
+/// devices the device tree made, and the GPIOs where debugfs is mounted. The panel's ID is
+/// in the kernel's log. Only reads, and each line goes on when a path is missing.
+const HARDWARE: &str = r#"
+for f in /sys/bus/iio/devices/*/in_voltage*_raw; do [ -e "$f" ] && echo "$f $(cat "$f")"; done
+for d in /sys/bus/mmc/devices/*; do
+	[ -e "$d" ] && echo "$d $(cat "$d/type" "$d/name" "$d/vendor" "$d/device" 2>/dev/null | tr '\n' ' ')"
+done
+for d in /sys/bus/sdio/devices/*; do [ -e "$d" ] && echo "$d $(cat "$d/vendor" "$d/device" | tr '\n' ' ')"; done
+for d in /sys/bus/i2c/devices/*; do [ -e "$d/name" ] && echo "$d $(cat "$d/name")"; done
+grep '^N:' /proc/bus/input/devices
+[ -e /sys/kernel/debug/gpio ] && cat /sys/kernel/debug/gpio
+true
+"#;
+
 /// Copies what a problem report needs into `logs` on the partition: the launcher's log,
 /// the kernel's, and a summary of the system. Returns the folder's name on the card.
 pub fn save_logs() -> io::Result<String> {
@@ -180,6 +196,7 @@ pub fn save_logs() -> io::Result<String> {
         ("memory", read(crate::device::paths::MEMORY)),
         ("processes", run("ps", &[])),
         ("network", run("ifconfig", &[])),
+        ("hardware", run("sh", &["-c", HARDWARE])),
     ] {
         system.push_str(&format!("== {title}\n{text}\n"));
     }
