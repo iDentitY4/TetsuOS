@@ -162,10 +162,11 @@ jobs:
           cp output/legal-info/manifest.csv "release/$NAME-licences.csv"
           # Release files can be 2 GB at most: the tar in parts, joined with cat
           mkdir sources
-          # Buildroot's own source too, which legal-info can't save from a tarball's folder
+          # Buildroot's own source too, which legal-info can't save from a tarball's folder,
+          # with the patches the build applies to it
           buildroot="dl/buildroot-$(sed -n 's/^BUILDROOT_VERSION := //p' Makefile).tar.gz"
-          tar -cf - --transform 's,^output-toolchain/legal-info,toolchain-legal-info,;s,^output/legal-info,legal-info,;s,^dl/,,' \
-            output/legal-info output-toolchain/legal-info "$buildroot" |
+          tar -cf - --transform 's,^output-toolchain/legal-info,toolchain-legal-info,;s,^output/legal-info,legal-info,;s,^dl/,,;s,^patches/buildroot,buildroot-patches,' \
+            output/legal-info output-toolchain/legal-info "$buildroot" patches/buildroot |
             split -b 1900M -d -a 2 - "sources/$NAME-sources.tar.part"
           ls -l sources
 

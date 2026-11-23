@@ -397,7 +397,8 @@ In short here; `docs/features.md` has them in full.
   (origins in `patches/README.md`), `rootfs-overlay/` (init scripts), `extlinux.conf`,
   `genimage.cfg`, `post-image.sh`, `post-build.sh` (drops unused Mesa dependencies),
   `logo.ppm`
-- `external.mk`: includes the packages, builds Mesa without LLVM, installs the logo
+- `external.mk`: includes the packages, installs the logo; `patches/buildroot/`: changes
+  to Buildroot itself (Panfrost without LLVM on the device), applied by the `Makefile`
 - `package/launcher/`, `package/libretro-*/`: Buildroot packages for the app and the cores;
   `package/freedoom/` the bundled Doom games; `package/syncthing/` the official static
   Syncthing build

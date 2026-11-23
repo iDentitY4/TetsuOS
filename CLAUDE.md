@@ -14,7 +14,8 @@ tested); read the part you touch. Working on the real device: `.claude/device-no
 - `board/h700/`: kernel and U-Boot config fragments, `patches/`, `rootfs-overlay/`
   (init scripts in `etc/init.d/`, helpers in `usr/sbin/`), `post-build.sh`, `genimage.cfg`
 - `configs/common.config` + `board/<board>/buildroot.config`: the Buildroot config and
-  every version pin; `package/`: Buildroot packages (launcher, cores, Syncthing, Freedoom)
+  every version pin; `package/`: Buildroot packages (launcher, cores, Syncthing, Freedoom);
+  `patches/buildroot/`: changes to Buildroot itself, applied by the `Makefile`
 - `scripts/`: flashing, pushing to the device, signed updates; `docs/`: the VitePress site
 - `.github/workflows/`: `ci.yml` (the launcher's tests and clippy on every pull request),
   `docs.yml` (the site), `release.yml` (a `v*` tag builds a draft release:
