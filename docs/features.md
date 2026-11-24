@@ -2401,6 +2401,14 @@ host-mesa3d `-Dcpp_rtti` to match, as Buildroot does for the target Mesa.
   `devices.ts` lists the devices; `?device=rg40xx-h` picks one. Checked in headless
   Chrome at 1280 and 390 px, light and dark, with the SP and the Plus; all 13 choices name
   a file v0.2 has.
+- **The docs site's look** (2026-11-24): the launcher's own, chosen from four retro
+  directions. Dark by default (the switch still offers light), the launcher's blue-grey
+  and teal, square tiles with the teal selection frame on hover, and Silkscreen in
+  capitals for headings, navigation and buttons; running text stays in the default sans.
+  The font comes from `@fontsource/silkscreen` (OFL-1.1) and is served with the site, so
+  pages ask no font host. The feature cards show the launcher's icons, drawn as SVG from
+  `icons.rs` by `scripts/docs-icons.py`. Checked in headless Chrome at 1280 and 400 px,
+  light and dark, on the home page and guide pages. Not checked: a real phone, Safari.
 - **What differs between H700 devices** (2026-11-19): the profile says whether the device
   has the RTL8821CS (`wireless`, false on the RG35XX 2024) and its default hostname.
   Without the chip, `launcher::groups()` leaves WI-FI and BLUETOOTH off the settings grid

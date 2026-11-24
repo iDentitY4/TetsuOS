@@ -17,6 +17,7 @@ const screens = [
 </script>
 
 <template>
+  <p class="home-hint" aria-hidden="true">Click opens - / search</p>
   <div class="home-screens">
     <img v-for="screen in screens" :key="screen.src" :src="withBase(screen.src)" :alt="screen.alt" />
   </div>

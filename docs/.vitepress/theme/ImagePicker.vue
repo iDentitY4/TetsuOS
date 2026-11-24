@@ -110,8 +110,7 @@ onMounted(async () => {
   max-width: 640px;
   margin: 48px auto;
   padding: 24px;
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 12px;
+  border: 3px solid var(--vp-c-brand-1);
   background: var(--vp-c-bg-soft);
 }
 
@@ -124,8 +123,11 @@ onMounted(async () => {
 
 h2 {
   margin: 0;
+  font-family: var(--tetsu-pixel);
   font-size: 24px;
-  font-weight: 600;
+  font-weight: 400;
+  text-transform: uppercase;
+  color: var(--vp-c-brand-1);
   border: none;
   padding: 0;
 }
@@ -156,8 +158,8 @@ select {
   flex: 1 1 220px;
   min-width: 0;
   padding: 8px 10px;
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 8px;
+  border: 2px solid var(--vp-c-divider);
+  border-radius: 0;
   background: var(--vp-c-bg);
   color: var(--vp-c-text-1);
   font: inherit;
@@ -181,16 +183,17 @@ fieldset label {
 .status {
   margin: 0;
   padding: 8px 12px;
-  border-radius: 8px;
   font-size: 14px;
 }
 
 .status.ok {
   background: var(--vp-c-tip-soft);
+  box-shadow: inset 3px 0 var(--vp-c-brand-1);
 }
 
 .status.warn {
   background: var(--vp-c-warning-soft);
+  box-shadow: inset 3px 0 var(--vp-c-warning-1);
 }
 
 .file {
@@ -221,12 +224,12 @@ fieldset label {
 .button {
   display: inline-block;
   padding: 0 18px;
-  line-height: 38px;
-  border-radius: 20px;
-  font-size: 14px;
-  font-weight: 600;
+  line-height: 36px;
+  font-family: var(--tetsu-pixel);
+  font-size: 13px;
+  text-transform: uppercase;
   text-decoration: none;
-  border: 1px solid transparent;
+  border: 3px solid transparent;
   transition: background-color 0.25s;
 }
 
@@ -237,16 +240,18 @@ fieldset label {
 
 .button.brand:hover {
   background: var(--vp-button-brand-hover-bg);
+  color: var(--vp-button-brand-hover-text);
 }
 
 .button.alt {
-  background: var(--vp-button-alt-bg);
-  color: var(--vp-button-alt-text);
-  border-color: var(--vp-button-alt-border);
+  background: var(--vp-c-bg);
+  color: var(--vp-c-text-1);
+  border-color: var(--tetsu-line);
 }
 
 .button.alt:hover {
-  background: var(--vp-button-alt-hover-bg);
+  border-color: var(--vp-c-brand-1);
+  color: var(--vp-c-brand-1);
 }
 
 a:not(.button) {

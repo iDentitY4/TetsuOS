@@ -13,6 +13,8 @@ export default defineConfig({
   base,
   cleanUrls: true,
   lastUpdated: true,
+  // Dark first, like the launcher; the switch in the header still offers light
+  appearance: 'dark',
   // The repository's own notes, read on GitHub rather than published as pages
   srcExclude: ['**/README.md'],
   head: [

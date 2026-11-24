@@ -3,6 +3,7 @@ import type { Theme } from 'vitepress'
 import DefaultTheme from 'vitepress/theme'
 import HomeScreens from './HomeScreens.vue'
 import ImagePicker from './ImagePicker.vue'
+import '@fontsource/silkscreen/latin-400.css'
 import './custom.css'
 
 export default {
