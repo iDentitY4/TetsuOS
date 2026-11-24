@@ -2405,10 +2405,14 @@ host-mesa3d `-Dcpp_rtti` to match, as Buildroot does for the target Mesa.
   directions. Dark by default (the switch still offers light), the launcher's blue-grey
   and teal, square tiles with the teal selection frame on hover, and Silkscreen in
   capitals for headings, navigation and buttons; running text stays in the default sans.
-  The font comes from `@fontsource/silkscreen` (OFL-1.1) and is served with the site, so
-  pages ask no font host. The feature cards show the launcher's icons, drawn as SVG from
-  `icons.rs` by `scripts/docs-icons.py`. Checked in headless Chrome at 1280 and 400 px,
-  light and dark, on the home page and guide pages. Not checked: a real phone, Safari.
+  Silkscreen draws one font pixel per 1/8 em, so it is set only at 16, 24, 32, 40 and
+  48 px, where its pixels stay whole; code in a heading keeps its case. The hero shows the
+  launcher's home screen rather than the logo. The font comes from `@fontsource/silkscreen`
+  (OFL-1.1) and is served with the site, so pages ask no font host. The feature cards show
+  the launcher's icons on a patch of its dark screen in both modes, drawn as SVG from
+  `icons.rs` by `scripts/docs-icons.py`. Checked in headless Chrome at 1280, 1000 and
+  400 px, light and dark, on the home page and guide pages. Not checked: a real phone,
+  Safari.
 - **What differs between H700 devices** (2026-11-19): the profile says whether the device
   has the RTL8821CS (`wireless`, false on the RG35XX 2024) and its default hostname.
   Without the chip, `launcher::groups()` leaves WI-FI and BLUETOOTH off the settings grid

@@ -1,11 +1,17 @@
 /* The launcher's look: its dark blue-grey, its teal selection frame, square tiles and a
    pixel font (Silkscreen) in capitals for headings, navigation and buttons, as on the
-   device. Running text stays in the default sans for reading. */
+   device. Running text stays in the default sans for reading.
+
+   Silkscreen draws on an 8-unit grid (one font pixel is 1/8 em), so it is only sharp at
+   16, 24, 32, 40 or 48 px: keep its sizes and line heights to those. */
 
 :root {
   --tetsu-pixel: 'Silkscreen', ui-monospace, monospace;
   --tetsu-frame: 3px;
   --tetsu-line: #cdd3dc;
+  /* The device's screen behind the launcher's icons, the same in light and dark */
+  --tetsu-screen: #161a22;
+  --tetsu-screen-line: #2f3644;
 
   --vp-c-brand-1: #17807a;
   --vp-c-brand-2: #1f8f86;
@@ -65,11 +71,39 @@
   font-family: var(--tetsu-pixel);
   font-weight: 400;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
 }
 
-/* Pixel art and the pixel font stay sharp */
-.VPHero .image-src,
+/* Code in a heading keeps its case: flash.sh is not FLASH.SH */
+.vp-doc h1 code,
+.vp-doc h2 code,
+.vp-doc h3 code {
+  text-transform: none;
+  font-size: 0.75em;
+  vertical-align: 0.1em;
+}
+
+/* The smallest sharp size, for everything that isn't a heading */
+.VPNavBarTitle .title,
+.VPNavBarMenuLink,
+.VPNavBarMenuGroup .text,
+.VPNavScreenMenuLink,
+.VPButton,
+.VPButton.medium,
+.VPButton.big,
+.VPFeature .title,
+.VPFeature .link-text-value,
+.VPSidebarItem.level-0 > .item .text,
+.VPDocAsideOutline .outline-title,
+.pager-link .desc,
+.vp-doc .custom-block-title,
+.vp-doc h3,
+.home-hint {
+  font-size: 16px;
+  line-height: 24px;
+}
+
+/* Pixel art stays sharp */
 .VPNavBarTitle .logo,
 .VPFeature .VPImage {
   image-rendering: pixelated;
@@ -78,7 +112,6 @@
 /* ---- The header: the launcher's teal line under its title ---- */
 
 .VPNavBarTitle .title {
-  font-size: 18px;
   color: var(--vp-c-brand-1);
 }
 
@@ -93,11 +126,6 @@
   border-bottom: 2px solid var(--vp-c-brand-1);
 }
 
-.VPNavBarMenuLink,
-.VPNavBarMenuGroup .text {
-  font-size: 13px;
-}
-
 .DocSearch-Button {
   border-radius: 0;
 }
@@ -105,19 +133,63 @@
 /* ---- The home page ---- */
 
 .VPHero .name {
+  font-size: 40px;
+  line-height: 48px;
   color: var(--vp-c-brand-1);
 }
 
 .VPHero .text {
   margin-top: 8px;
-  font-size: 22px;
-  line-height: 1.3;
+  font-size: 24px;
+  line-height: 32px;
   color: var(--vp-c-text-1);
 }
 
 @media (min-width: 640px) {
-  .VPHero .text {
-    font-size: 28px;
+  .VPHero .name {
+    font-size: 48px;
+    line-height: 56px;
+  }
+}
+
+/* The launcher's home screen beside the text, at three quarters of its size (scaled
+   smoothly: nearest-neighbour shrinking breaks its pixel font), in the bezel the other
+   screenshots have */
+.VPHero .image {
+  margin: 0 0 40px;
+}
+
+.VPHero .image-container {
+  width: auto;
+  height: auto;
+}
+
+.hero-screen {
+  display: block;
+  box-sizing: content-box;
+  width: 480px;
+  max-width: calc(100% - 12px);
+  height: auto;
+  margin: 0 auto;
+  border: 6px solid var(--tetsu-screen-line);
+  background: var(--tetsu-screen);
+}
+
+@media (min-width: 960px) {
+  .VPHero.has-image .main {
+    width: auto;
+    max-width: 560px;
+    flex-shrink: 1;
+  }
+
+  .VPHero .image {
+    flex: 0 1 492px;
+    margin: 0 0 0 32px;
+  }
+
+  .VPHero .image-container {
+    justify-content: flex-end;
+    transform: none;
   }
 }
 
@@ -127,7 +199,6 @@
 .VPButton.big {
   border-radius: 0;
   border-width: var(--tetsu-frame);
-  font-size: 13px;
 }
 
 .VPHero .actions .VPButton.alt {
@@ -140,61 +211,75 @@
   color: var(--vp-c-brand-1);
 }
 
-/* Feature cards: the home screen's tiles; the one under the pointer is selected */
+/* Feature cards: the home screen's tiles; the one under the pointer or keyboard is
+   selected */
 .VPFeatures .VPFeature {
   border-radius: 0;
   border: var(--tetsu-frame) solid transparent;
   background-color: var(--vp-c-bg-soft);
 }
 
-.VPFeatures .VPFeature.link:hover {
+.VPFeatures .VPFeature.link:hover,
+.VPFeatures .VPFeature.link:focus-visible {
   border-color: var(--vp-c-brand-1);
+  outline: none;
 }
 
-.VPFeatures .VPFeature.link:hover .title {
+.VPFeatures .VPFeature.link:hover .title,
+.VPFeatures .VPFeature.link:focus-visible .title {
   color: var(--vp-c-brand-1);
 }
 
-.VPFeatures .VPFeature .title {
-  font-size: 15px;
-  line-height: 1.4;
+/* Each icon on a patch of the device's screen, as the launcher draws it */
+.VPFeatures .VPFeature .VPImage {
+  box-sizing: content-box;
+  padding: 8px;
+  background: var(--tetsu-screen);
+  border: 2px solid var(--tetsu-screen-line);
 }
 
-.VPFeatures .VPFeature .link-text-value {
-  font-size: 12px;
+/* The link's name is enough; the font has no arrow */
+.VPFeatures .VPFeature .link-text-icon {
+  display: none;
 }
 
 /* The device's button hints, under the tiles */
 .home-hint {
-  margin: 28px auto 0;
+  margin: 32px auto 0;
   padding: 0 24px;
   text-align: center;
-  font-size: 13px;
   color: var(--vp-c-text-2);
+}
+
+/* ---- Keyboard focus: the teal frame, square ---- */
+
+.VPButton:focus-visible,
+.VPNavBarMenuLink:focus-visible,
+.VPSidebarItem .link:focus-visible,
+.pager-link:focus-visible {
+  outline: 3px solid var(--vp-c-brand-1);
+  outline-offset: 2px;
+  border-radius: 0;
 }
 
 /* ---- Guide pages ---- */
 
 .vp-doc h1 {
-  font-size: 28px;
-  line-height: 1.3;
+  font-size: 32px;
+  line-height: 40px;
   color: var(--vp-c-brand-1);
 }
 
 .vp-doc h2 {
-  font-size: 21px;
-  line-height: 1.35;
+  font-size: 24px;
+  line-height: 32px;
   border-top-width: 2px;
-}
-
-.vp-doc h3 {
-  font-size: 16px;
-  line-height: 1.4;
 }
 
 @media (min-width: 768px) {
   .vp-doc h1 {
-    font-size: 34px;
+    font-size: 40px;
+    line-height: 48px;
   }
 }
 
@@ -209,12 +294,7 @@
 }
 
 .VPSidebarItem.level-0 > .item .text {
-  font-size: 13px;
   color: var(--vp-c-text-2);
-}
-
-.VPDocAsideOutline .outline-title {
-  font-size: 12px;
 }
 
 /* Square code blocks and notes, framed like the tiles */
@@ -243,10 +323,6 @@
 .vp-doc .custom-block.tip {
   border-color: var(--vp-c-brand-1);
   background-color: var(--vp-c-brand-soft);
-}
-
-.vp-doc .custom-block-title {
-  font-size: 13px;
 }
 
 .vp-doc table {

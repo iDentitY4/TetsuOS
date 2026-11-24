@@ -54,7 +54,7 @@ its games and saves there. Anything else 4 GiB into the card is erased, as writi
 image erases a card anyway. The card needs at least 6 GiB.
 :::
 
-### Option B: flash.sh on Linux
+### Option B: `flash.sh` on Linux
 
 `scripts/flash.sh` writes the image and adds TETSU-DATA in one go, and refuses disks that
 look internal or are mounted. Unmount the card's partitions first, then:

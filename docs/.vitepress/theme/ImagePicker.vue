@@ -125,6 +125,7 @@ h2 {
   margin: 0;
   font-family: var(--tetsu-pixel);
   font-size: 24px;
+  line-height: 32px;
   font-weight: 400;
   text-transform: uppercase;
   color: var(--vp-c-brand-1);
@@ -226,11 +227,17 @@ fieldset label {
   padding: 0 18px;
   line-height: 36px;
   font-family: var(--tetsu-pixel);
-  font-size: 13px;
+  font-size: 16px;
   text-transform: uppercase;
   text-decoration: none;
   border: 3px solid transparent;
   transition: background-color 0.25s;
+}
+
+.button:focus-visible,
+select:focus-visible {
+  outline: 3px solid var(--vp-c-brand-1);
+  outline-offset: 2px;
 }
 
 .button.brand {
