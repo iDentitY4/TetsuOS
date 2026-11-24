@@ -9,6 +9,7 @@
     "docs:preview": "vitepress preview docs"
   },
   "devDependencies": {
+    "@fontsource/silkscreen": "5.2.8",
     "vitepress": "1.6.4"
   }
 }

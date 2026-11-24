@@ -70,5 +70,11 @@ cargo run --release -- --preview-list /tmp/list.ppm
 magick /tmp/list.ppm ../../docs/public/screenshots/list.png
 ```
 
+The site's look follows the launcher's: `docs/.vitepress/theme/custom.css` sets its colours,
+square tiles and the Silkscreen pixel font for headings (self-hosted from
+`@fontsource/silkscreen`). The home page's feature icons are the launcher's own, drawn as
+SVG from `src/launcher/src/ui/icons.rs` by `scripts/docs-icons.py`; run it again after
+changing one, or with names (`scripts/docs-icons.py WIFI DOOM`) for others.
+
 Pushes to `main` that change `docs/` publish the site to GitHub Pages through
 `.github/workflows/docs.yml`.
