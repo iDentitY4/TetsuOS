@@ -1,0 +1,26 @@
+Subject: [PATCH 2/3] sunxi: A133: load BL31 at the start of DRAM
+
+TF-A's A133 port (plat/allwinner/sun50i_a133, on its master branch
+since commit a584e8632, June 2026) builds BL31 to run from DRAM
+(SUNXI_BL31_IN_DRAM), at 0x40000000 as on the H616. The A133 took the
+SUN50I_GEN_H6 default of 0x104000 in SRAM A2, so the SPL loaded BL31
+where it doesn't run. The TrimUI Smart Pro port
+(github.com/leow149/trimui-a133-mainline-port, u-boot patch 0001)
+makes the same change.
+---
+ arch/arm/mach-sunxi/Kconfig | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/arm/mach-sunxi/Kconfig b/arch/arm/mach-sunxi/Kconfig
+index 32e06172..b889c16a 100644
+--- a/arch/arm/mach-sunxi/Kconfig
++++ b/arch/arm/mach-sunxi/Kconfig
+@@ -267,7 +267,7 @@ config SUNXI_RVBAR_ALTERNATIVE
+ config SUNXI_BL31_BASE
+ 	hex
+ 	default 0x00044000 if MACH_SUN50I || MACH_SUN50I_H5
+-	default 0x40000000 if MACH_SUN50I_H616
++	default 0x40000000 if MACH_SUN50I_H616 || MACH_SUN50I_A133
+ 	default 0x00104000 if SUN50I_GEN_H6
+ 	default 0x00054000 if MACH_SUN55I_A523
+ 	default 0x0

@@ -1,0 +1,168 @@
+Subject: [PATCH] arm64: dts: allwinner: add the TrimUI Brick
+
+The TrimUI Brick has an A133P with an AXP717 PMIC, a TCS4838 for the
+CPU, LPDDR3 and a microSD slot. This first device tree has what is
+needed to reach it over USB: the microSD slot (card detect on PF6,
+supplied by CLDO3), the AXP717 with the RAM and I/O rails, and the
+USB-C port as a USB device.
+
+It has no CPU operating points, because the TCS4838 has no driver
+yet and cpufreq would raise the clock without the voltage. The eMMC,
+which holds the vendor's system, is left disabled, and so are the
+display, sound, buttons and Wi-Fi. The values come from the vendor
+device tree of a running unit (TetsuOS issue #48).
+---
+ arch/arm64/boot/dts/allwinner/Makefile        |   1 +
+ .../allwinner/sun50i-a133-trimui-brick.dts    | 131 ++++++++++++++++++
+ 2 files changed, 132 insertions(+)
+ create mode 100644 arch/arm64/boot/dts/allwinner/sun50i-a133-trimui-brick.dts
+
+diff --git a/arch/arm64/boot/dts/allwinner/Makefile b/arch/arm64/boot/dts/allwinner/Makefile
+index 53e6b70..eea337f 100644
+--- a/arch/arm64/boot/dts/allwinner/Makefile
++++ b/arch/arm64/boot/dts/allwinner/Makefile
+@@ -25,6 +25,7 @@ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-a64-teres-i.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h64-remix-mini-pc.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-a100-allwinner-perf1.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-a133-liontron-h-a133l.dtb
++dtb-$(CONFIG_ARCH_SUNXI) += sun50i-a133-trimui-brick.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h5-bananapi-m2-plus.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h5-bananapi-m2-plus-v1.2.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h5-emlid-neutis-n5-devboard.dtb
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-a133-trimui-brick.dts b/arch/arm64/boot/dts/allwinner/sun50i-a133-trimui-brick.dts
+new file mode 100644
+index 0000000..eac8853
+--- /dev/null
++++ b/arch/arm64/boot/dts/allwinner/sun50i-a133-trimui-brick.dts
+@@ -0,0 +1,131 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * TrimUI Brick (TG3040): Allwinner A133P, AXP717 PMIC, a TCS4838 for the
++ * CPU, LPDDR3, a microSD slot, eMMC, a 1024x768 MIPI DSI panel and an
++ * XRadio XR829 for Wi-Fi and Bluetooth.
++ *
++ * A first bring-up: the SD card, the PMIC and the USB-C port as a USB
++ * device, so that the board can be reached over USB. Everything here comes
++ * from the vendor's device tree of a running unit.
++ *
++ * The eMMC (mmc2), with the vendor's system on it, must stay disabled until
++ * the system knows it: Tetsu OS's /usr/sbin/cards takes the controller at
++ * 0x4022000 for the H700's second card slot, and would mount and share the
++ * eMMC as a removable card.
++ */
++
++/dts-v1/;
++
++#include "sun50i-a100.dtsi"
++
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/interrupt-controller/irq.h>
++
++/ {
++	model = "TrimUI Brick";
++	compatible = "trimui,brick", "allwinner,sun50i-a100";
++
++	aliases {
++		mmc0 = &mmc0;
++	};
++
++	reserved-memory {
++		#address-cells = <2>;
++		#size-cells = <2>;
++		ranges;
++
++		/*
++		 * TF-A's A133 port runs BL31 from the start of DRAM, in up to
++		 * 256 KiB. It adds this itself, but not every bootloader
++		 * passes it on.
++		 */
++		secmon@40000000 {
++			reg = <0x0 0x40000000 0x0 0x40000>;
++			no-map;
++		};
++	};
++
++	reg_vcc5v: regulator-vcc5v {
++		compatible = "regulator-fixed";
++		regulator-name = "vcc-5v";
++		regulator-min-microvolt = <5000000>;
++		regulator-max-microvolt = <5000000>;
++		regulator-always-on;
++	};
++};
++
++/*
++ * No CPU operating points: the CPU is supplied by the TCS4838, which has no
++ * driver yet, so cpufreq could raise the clock without the voltage. The CPU
++ * stays at the clock U-Boot set.
++ */
++
++/* microSD, card detect on PF6 */
++&mmc0 {
++	vmmc-supply = <&reg_cldo3>;
++	cd-gpios = <&pio 5 6 GPIO_ACTIVE_LOW>; /* PF6 */
++	bus-width = <4>;
++	status = "okay";
++};
++
++&r_i2c0 {
++	status = "okay";
++
++	axp717: pmic@34 {
++		compatible = "x-powers,axp717";
++		reg = <0x34>;
++		interrupt-controller;
++		#interrupt-cells = <1>;
++		interrupt-parent = <&r_intc>;
++		interrupts = <0 IRQ_TYPE_LEVEL_LOW>;
++
++		vin1-supply = <&reg_vcc5v>;
++		vin2-supply = <&reg_vcc5v>;
++		vin3-supply = <&reg_vcc5v>;
++		vin4-supply = <&reg_vcc5v>;
++
++		axp_adc: adc {
++			compatible = "x-powers,axp717-adc";
++			#io-channel-cells = <1>;
++		};
++
++		/*
++		 * Only the rails this bring-up needs. The rest stay as the
++		 * PMIC starts them, which Linux leaves alone while they
++		 * aren't described here.
++		 */
++		regulators {
++			/*
++			 * vdd-dram. The SPL sets the voltage for the RAM it
++			 * finds (1.2V for LPDDR3); a range keeps it there.
++			 */
++			reg_dcdc3: dcdc3 {
++				regulator-always-on;
++				regulator-min-microvolt = <1100000>;
++				regulator-max-microvolt = <1200000>;
++				regulator-name = "vdd-dram";
++			};
++
++			/* vcc-io and the microSD slot, 3.3V in the vendor's */
++			reg_cldo3: cldo3 {
++				regulator-always-on;
++				regulator-min-microvolt = <3300000>;
++				regulator-max-microvolt = <3300000>;
++				regulator-name = "vcc-io";
++			};
++		};
++	};
++};
++
++/*
++ * The USB-C port as a USB device only. EHCI0 and OHCI0 share PHY 0 and
++ * stay disabled (as in the dtsi), so they never switch it to host mode.
++ */
++&usb_otg {
++	dr_mode = "peripheral";
++	status = "okay";
++};
++
++&usbphy {
++	status = "okay";
++};

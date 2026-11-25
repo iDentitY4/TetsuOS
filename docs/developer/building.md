@@ -39,7 +39,11 @@ card image is **`output/images/sdcard.img`**.
 | `make preview` | Render the launcher's home screen to `launcher-preview.ppm` on the PC |
 | `make clean` | Remove `output/`, keeping the toolchain and `ccache/` |
 
-`BOARD=` picks the board; only `rg35xxsp` exists so far.
+`BOARD=` picks the board: `h700` (the default: the RG35XX SP and the other H700
+devices) or `a133`, the TrimUI Brick, which is only a bring-up so far
+([Hardware notes](hardware#trimui-brick)). Another board than `h700` builds into
+`output-<board>/`, so `make BOARD=a133` makes `output-a133/images/sdcard.img` and leaves
+the H700 build alone. The scripts in `scripts/` use `output/` only.
 
 ::: tip `make` aliases
 If `make` is a shell alias on your machine, use `command make`.

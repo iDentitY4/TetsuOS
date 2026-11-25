@@ -4,7 +4,9 @@
 set -euo pipefail
 
 TARGET="$1"
-BOARD_DIR="$(dirname "$(readlink -f "$0")")"
+# Another board's post-build.sh runs this one with its own folder, for its extlinux.conf
+# and boot.cmd
+BOARD_DIR="${TETSU_BOARD_DIR:-$(dirname "$(readlink -f "$0")")}"
 READELF="$(ls "$HOST_DIR"/bin/*-buildroot-linux-gnu-readelf | head -n 1)"
 
 # Mesa links only libSPIRV-Tools.so of SPIRV-Tools, which installs more.

@@ -8,9 +8,11 @@ BUILDROOT_PATCHES := $(sort $(wildcard patches/buildroot/*.patch))
 BUILDROOT_STAMP := $(BUILDROOT_DIR)/.stamp_tetsu_patches
 
 # The device to build for: board/$(BOARD)/buildroot.config is its part of the
-# configuration, after configs/common.config. One board per SoC family: h700 so far.
+# configuration, after configs/common.config. One board per SoC family: h700, and a133
+# (the TrimUI Brick, a bring-up). The H700 builds into output/, which the scripts use;
+# another board into output-<board>/.
 BOARD ?= h700
-OUTPUT := $(CURDIR)/output
+OUTPUT := $(CURDIR)/output$(if $(filter-out h700,$(BOARD)),-$(BOARD))
 DEFCONFIG := $(OUTPUT)/tetsu_defconfig
 BR := $(MAKE) -C $(BUILDROOT_DIR) O=$(OUTPUT) BR2_EXTERNAL=$(CURDIR) BR2_DL_DIR=$(CURDIR)/dl
 
