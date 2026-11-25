@@ -1,5 +1,6 @@
 # Builds the documentation in docs/ with VitePress and publishes it to GitHub Pages.
-# Needs Settings > Pages > Source set to "GitHub Actions" once.
+# Needs Settings > Pages > Source set to "GitHub Actions" once, and the custom domain
+# (tetsu-os.org) entered there: a deployment from Actions ignores a CNAME file.
 name: Documentation
 
 on:

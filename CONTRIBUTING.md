@@ -1,9 +1,9 @@
 # Contributing to Tetsu OS
 
 Thanks for helping. Bug reports, testing on other RG35XX SP units, translations and pull
-requests are all welcome. The [developer guide](https://identity4.github.io/TetsuOS/developer/)
+requests are all welcome. The [developer guide](https://tetsu-os.org/developer/)
 explains the build, the launcher's code and the hardware; its
-[Contributing](https://identity4.github.io/TetsuOS/developer/contributing) page has the
+[Contributing](https://tetsu-os.org/developer/contributing) page has the
 details for translations, new consoles and new settings.
 
 ## Reporting a bug
@@ -30,7 +30,7 @@ Security problems go through [private reporting](SECURITY.md), not public issues
 
    Kernel and package patches must apply with Buildroot's
    `support/scripts/apply-patches.sh`. A full image is `make` at the top (see
-   [Building](https://identity4.github.io/TetsuOS/developer/building)).
+   [Building](https://tetsu-os.org/developer/building)).
 3. Say what you tested on a real device and what you didn't. Sound, the lid, sleep, Wi-Fi
    and anything you hold in your hands can only be checked there.
 4. Update the docs: `docs/features.md` for how a feature works and was tested, and the
@@ -70,7 +70,7 @@ Security problems go through [private reporting](SECURITY.md), not public issues
    ```
 
 Releases are tags on `main` (`v0.1`, `v0.2`, ...); see
-[Making a release](https://identity4.github.io/TetsuOS/developer/releases).
+[Making a release](https://tetsu-os.org/developer/releases).
 
 ## Licence
 

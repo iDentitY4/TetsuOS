@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thank you for testing. [Testing your device](https://identity4.github.io/TetsuOS/guide/testing) explains the steps. A report that it works is as useful as one that it doesn't.
+        Thank you for testing. [Testing your device](https://tetsu-os.org/guide/testing) explains the steps. A report that it works is as useful as one that it doesn't.
         Please don't link to or attach games or BIOS files.
   - type: input
     id: build
@@ -38,13 +38,13 @@ body:
     id: device-txt
     attributes:
       label: device.txt
-      description: What the file on the card's TETSU-BOOT drive holds, if you made one. [Which name](https://identity4.github.io/TetsuOS/guide/requirements#the-device)
+      description: What the file on the card's TETSU-BOOT drive holds, if you made one. [Which name](https://tetsu-os.org/guide/requirements#the-device)
       placeholder: device=rg40xx-h
   - type: dropdown
     id: stock-memory
     attributes:
       label: Memory type on the stock card
-      description: "The value at 0x3c in boot0: 7 is LPDDR3, 8 is LPDDR4. [How to check](https://identity4.github.io/TetsuOS/guide/requirements#check-your-memory-type)"
+      description: "The value at 0x3c in boot0: 7 is LPDDR3, 8 is LPDDR4. [How to check](https://tetsu-os.org/guide/requirements#check-your-memory-type)"
       options:
         - LPDDR4 (8)
         - LPDDR3 (7)

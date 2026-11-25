@@ -11,7 +11,7 @@ What changes for users in each release. The format follows
 The second beta. Tested on one RG35XX SP with LPDDR3 memory; one tester's SP with LPDDR4
 has run a test build. **On a device with v0.1, write the card image instead of using
 SYSTEM UPDATE:** v0.2 needs its new bootloader, and on v0.1's the memory runs at 1.1 V
-instead of 1.2 V ([upgrading](https://identity4.github.io/TetsuOS/guide/upgrading)).
+instead of 1.2 V ([upgrading](https://tetsu-os.org/guide/upgrading)).
 
 ### Devices
 

@@ -10,15 +10,15 @@
 </p>
 
 <p align="center">
-  <a href="https://identity4.github.io/TetsuOS/"><img src="https://github.com/iDentitY4/TetsuOS/actions/workflows/docs.yml/badge.svg" alt="Documentation"></a>
+  <a href="https://tetsu-os.org/"><img src="https://github.com/iDentitY4/TetsuOS/actions/workflows/docs.yml/badge.svg" alt="Documentation"></a>
   <a href="https://github.com/iDentitY4/TetsuOS/releases"><img src="https://img.shields.io/github/v/release/iDentitY4/TetsuOS?include_prereleases&label=release" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
 </p>
 
 <p align="center">
-  <a href="https://identity4.github.io/TetsuOS/"><b>Documentation</b></a> ·
-  <a href="https://identity4.github.io/TetsuOS/guide/installation">Installation</a> ·
-  <a href="https://identity4.github.io/TetsuOS/reference/systems">Supported systems</a> ·
+  <a href="https://tetsu-os.org/"><b>Documentation</b></a> ·
+  <a href="https://tetsu-os.org/guide/installation">Installation</a> ·
+  <a href="https://tetsu-os.org/reference/systems">Supported systems</a> ·
   <a href="https://github.com/iDentitY4/TetsuOS/releases">Download</a>
 </p>
 
@@ -37,7 +37,7 @@ kettle.
 - **Fast start.** The launcher is up 3.8 seconds after pressing power, or 6.4 with the boot
   jingle and its animation.
 - **25 consoles**, from the Atari 2600 and NES to the Game Boy Advance and PlayStation,
-  plus Doom (Freedoom) and Cave Story ready to play. [All systems](https://identity4.github.io/TetsuOS/reference/systems)
+  plus Doom (Freedoom) and Cave Story ready to play. [All systems](https://tetsu-os.org/reference/systems)
 - **Resume everywhere.** Quitting, closing the lid, switching games or a power cut bring
   you back to the same spot.
 - **A full in-game menu:** save slots, CRT and LCD effects and bezels, button remapping
@@ -53,7 +53,7 @@ kettle.
   the new one doesn't start.
 - **English and German.**
 
-The [user guide](https://identity4.github.io/TetsuOS/guide/) covers each of these.
+The [user guide](https://tetsu-os.org/guide/) covers each of these.
 
 ## Getting started
 
@@ -62,7 +62,7 @@ games) and a computer with a card reader. Tetsu OS runs from the card and leaves
 device's own firmware alone: take the card out and the stock system starts as before.
 
 1. **Download** the card image for your device: the
-   [image picker](https://identity4.github.io/TetsuOS/#download) names the right file, or
+   [image picker](https://tetsu-os.org/#download) names the right file, or
    take `tetsu-<device>-<version>-sdcard.img.gz` from
    [Releases](https://github.com/iDentitY4/TetsuOS/releases/latest). Since v0.2 it starts
    on RG35XX SP units with either memory type, LPDDR3 or LPDDR4.
@@ -74,14 +74,14 @@ device's own firmware alone: take the card out and the stock system starts as be
 4. **Add games.** Copy them to the `roms` folder of the card's **TETSU-DATA** drive:
    connect the USB cable and open Settings > SYSTEM > USB STORAGE, use WI-FI TRANSFER
    from a browser, or put the card in your computer.
-   [Adding games](https://identity4.github.io/TetsuOS/guide/adding-games)
+   [Adding games](https://tetsu-os.org/guide/adding-games)
 
 In the menus, **A** opens, **B** goes back and **Start** opens Settings. In a game, tap
 **Menu** for the in-game menu, hold **R2** to fast-forward and press **Menu + Start** to
-leave. More in [Controls](https://identity4.github.io/TetsuOS/guide/controls).
+leave. More in [Controls](https://tetsu-os.org/guide/controls).
 
-Something not working? See [Troubleshooting](https://identity4.github.io/TetsuOS/guide/troubleshooting)
-and the [FAQ](https://identity4.github.io/TetsuOS/guide/faq).
+Something not working? See [Troubleshooting](https://tetsu-os.org/guide/troubleshooting)
+and the [FAQ](https://tetsu-os.org/guide/faq).
 
 ## Status
 
@@ -89,12 +89,12 @@ Tetsu OS is in **beta** and developed on a single LPDDR3 RG35XX SP. Most feature
 checked on that unit, but expect rough edges. Since v0.2 it also starts on LPDDR4
 units; one tester's LPDDR4 SP ran v0.2-test.2 with games, sound, headphones, sleep, Wi-Fi
 and the power button working ([#18](https://github.com/iDentitY4/TetsuOS/issues/18)). More reports help:
-[help test](https://identity4.github.io/TetsuOS/guide/testing).
+[help test](https://tetsu-os.org/guide/testing).
 [CHANGELOG.md](CHANGELOG.md) lists what each release brings. USB accessories don't work
 yet, as the USB-C port runs in device mode only. Since v0.2 there are also images for
 the RG35XX Plus, H, 2024 and Pro, the RG40XX H and V, the RG34XX and RG34XX-SP and the RG
 CubeXX, all untested so far
-([requirements](https://identity4.github.io/TetsuOS/guide/requirements#the-device)); the
+([requirements](https://tetsu-os.org/guide/requirements#the-device)); the
 RG28XX is not supported yet.
 
 ## Building from source
@@ -109,7 +109,7 @@ make        # the first build also makes a cross toolchain, so it takes a while
 scripts/flash.sh /dev/sdX   # or write output/images/sdcard.img with any image writer
 ```
 
-The [developer guide](https://identity4.github.io/TetsuOS/developer/) covers the build,
+The [developer guide](https://tetsu-os.org/developer/) covers the build,
 updating the device over USB, the boot process, the launcher's code and the hardware notes.
 
 ## Contributing

@@ -11,7 +11,7 @@ before.
 
 1. Download the card image named after your device, such as
    `tetsu-rg35xx-sp-<version>-sdcard.img.gz` (the names:
-   https://identity4.github.io/TetsuOS/guide/requirements#the-device). A newer RG35XX
+   https://tetsu-os.org/guide/requirements#the-device). A newer RG35XX
    Plus, H or 2024 whose screen stays dark needs the `-rev6` one.
 2. Write it to a microSD card with balenaEtcher, Raspberry Pi Imager or `dd`. This erases
    the card.
@@ -23,7 +23,7 @@ before.
 
 **On a device with v0.1, write this version's card image instead of using SYSTEM
 UPDATE.** Writing it keeps TETSU-DATA, with your games, saves, states and settings
-(https://identity4.github.io/TetsuOS/guide/upgrading#writing-a-new-image).
+(https://tetsu-os.org/guide/upgrading#writing-a-new-image).
 
 The bootloader changed, and SYSTEM UPDATE doesn't install it. v0.1's bootloader sets the
 memory to 1.1 V, which v0.1's own system raised to the 1.2 V that LPDDR3 memory needs.
