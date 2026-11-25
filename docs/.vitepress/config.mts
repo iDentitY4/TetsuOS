@@ -2,9 +2,10 @@ import { defineConfig } from 'vitepress'
 
 const repo = 'https://github.com/iDentitY4/TetsuOS'
 
-// Served from GitHub Pages at https://identity4.github.io/TetsuOS/. DOCS_BASE overrides it,
-// such as '/' for a custom domain.
-const base = process.env.DOCS_BASE ?? '/TetsuOS/'
+// Served from GitHub Pages at https://tetsu-os.org/, the custom domain set in the
+// repository's Settings > Pages. DOCS_BASE overrides the base, such as '/TetsuOS/' for
+// serving it from a github.io address instead.
+const base = process.env.DOCS_BASE ?? '/'
 
 export default defineConfig({
   title: 'Tetsu OS',

@@ -57,7 +57,7 @@ This site is [VitePress](https://vitepress.dev). Pages are Markdown in `docs/`:
 
 ```bash
 npm install
-npm run docs:dev      # live preview at http://localhost:5173/TetsuOS/
+npm run docs:dev      # live preview at http://localhost:5173/
 npm run docs:build    # static site in docs/.vitepress/dist
 ```
 
@@ -77,4 +77,6 @@ SVG from `src/launcher/src/ui/icons.rs` by `scripts/docs-icons.py`; run it again
 changing one, or with names (`scripts/docs-icons.py WIFI DOOM`) for others.
 
 Pushes to `main` that change `docs/` publish the site to GitHub Pages through
-`.github/workflows/docs.yml`.
+`.github/workflows/docs.yml`. It is served at [tetsu-os.org](https://tetsu-os.org), a
+custom domain set in the repository's Settings > Pages; the old
+`identity4.github.io/TetsuOS/` address redirects there.
