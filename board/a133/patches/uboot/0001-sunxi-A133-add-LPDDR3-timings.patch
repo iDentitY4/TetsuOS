@@ -1,0 +1,174 @@
+Subject: [PATCH 1/3] sunxi: A133: add LPDDR3 timings
+
+Some TrimUI Bricks have LPDDR3, but the A133 driver only had DDR4 and
+LPDDR4 timings to choose from. The controller is the H616's, and the
+Brick's boot0 sets LPDDR3 up as the H616's does (MR1 0x83, MR2 0x1c,
+MR3 0x2), so the H616 LPDDR3 timings are used unchanged.
+
+The driver's LPDDR3 mode registers selected RL 12 and WL 6, while its
+PHY setup is for RL 14 and WL 8. That path never ran, as no timings
+could select it. It now writes the values boot0 writes.
+---
+ arch/arm/mach-sunxi/Kconfig                   |  9 ++
+ arch/arm/mach-sunxi/dram_sun50i_a133.c        | 11 ++-
+ arch/arm/mach-sunxi/dram_timings/Makefile     |  1 +
+ .../arm/mach-sunxi/dram_timings/a133_lpddr3.c | 97 +++++++++++++++++++
+ 4 files changed, 115 insertions(+), 3 deletions(-)
+ create mode 100644 arch/arm/mach-sunxi/dram_timings/a133_lpddr3.c
+
+diff --git a/arch/arm/mach-sunxi/Kconfig b/arch/arm/mach-sunxi/Kconfig
+index b0c5d3cd..32e06172 100644
+--- a/arch/arm/mach-sunxi/Kconfig
++++ b/arch/arm/mach-sunxi/Kconfig
+@@ -697,6 +697,15 @@ config SUNXI_DRAM_A133_LPDDR4
+ 	  This option is the LPDDR4 timing used by the boot0 on A133 devices
+ 	  which use an LPDDR4 timing.
+ 
++config SUNXI_DRAM_A133_LPDDR3
++	bool "LPDDR3 boot0 timings on the A133 DRAM controller"
++	select SUNXI_DRAM_LPDDR3
++	depends on DRAM_SUN50I_A133
++	help
++	  This option is the LPDDR3 timing used by the boot0 on A133 devices
++	  which use LPDDR3, such as some TrimUI Bricks. It is the same as
++	  the H616's LPDDR3 timing.
++
+ config SUNXI_DRAM_DDR2_V3S
+ 	bool "DDR2 found in V3s chip"
+ 	select SUNXI_DRAM_DDR2
+diff --git a/arch/arm/mach-sunxi/dram_sun50i_a133.c b/arch/arm/mach-sunxi/dram_sun50i_a133.c
+index ca3e2513..21536e51 100644
+--- a/arch/arm/mach-sunxi/dram_sun50i_a133.c
++++ b/arch/arm/mach-sunxi/dram_sun50i_a133.c
+@@ -766,9 +766,14 @@ static void mctl_dfi_init(const struct dram_para *para)
+ 		mctl_mr_write(MRCTRL0_MR_ADDR(6), 0x862 & (~BIT(7)));
+ 		break;
+ 	case SUNXI_DRAM_TYPE_LPDDR3:
+-		mctl_mr_write_lpddr3(1, 0xc3);	/* MR1: nWR=8, BL8 */
+-		mctl_mr_write_lpddr3(2, 0xa);	/* MR2: RL=12, WL=6 */
+-		mctl_mr_write_lpddr3(3, 0x2);	/* MR3: 40 0hms PD/PU */
++		/*
++		 * As boot0 sets them. mctl_phy_init() sets the PHY up for RL 14
++		 * and WL 8, and a133_lpddr3.c the controller,
++		 * so MR2 must select them too.
++		 */
++		mctl_mr_write_lpddr3(1, 0x83);	/* MR1: nWR=12, BL8 */
++		mctl_mr_write_lpddr3(2, 0x1c);	/* MR2: RL=14, WL=8, nWRE */
++		mctl_mr_write_lpddr3(3, 0x2);	/* MR3: 40 Ohms PD/PU */
+ 		mctl_mr_write_lpddr3(11, para->mr11);
+ 		break;
+ 	case SUNXI_DRAM_TYPE_LPDDR4:
+diff --git a/arch/arm/mach-sunxi/dram_timings/Makefile b/arch/arm/mach-sunxi/dram_timings/Makefile
+index 5de9fd5a..c4a3ea0a 100644
+--- a/arch/arm/mach-sunxi/dram_timings/Makefile
++++ b/arch/arm/mach-sunxi/dram_timings/Makefile
+@@ -8,5 +8,6 @@ obj-$(CONFIG_SUNXI_DRAM_H616_LPDDR3)	+= h616_lpddr3.o
+ obj-$(CONFIG_SUNXI_DRAM_H616_LPDDR4)	+= h616_lpddr4_2133.o
+ obj-$(CONFIG_SUNXI_DRAM_A133_DDR4)	+= a133_ddr4.o
+ obj-$(CONFIG_SUNXI_DRAM_A133_LPDDR4)	+= a133_lpddr4.o
++obj-$(CONFIG_SUNXI_DRAM_A133_LPDDR3)	+= a133_lpddr3.o
+ obj-$(CONFIG_SUNXI_DRAM_A523_DDR3)	+= a523_ddr3.o
+ obj-$(CONFIG_SUNXI_DRAM_A523_LPDDR4)	+= a523_lpddr4.o
+diff --git a/arch/arm/mach-sunxi/dram_timings/a133_lpddr3.c b/arch/arm/mach-sunxi/dram_timings/a133_lpddr3.c
+new file mode 100644
+index 00000000..53f30808
+--- /dev/null
++++ b/arch/arm/mach-sunxi/dram_timings/a133_lpddr3.c
+@@ -0,0 +1,97 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * sun50i A133 LPDDR3 timings
++ *
++ * The A133's controller is the same DesignWare uMCTL2 as the H616's, and
++ * Allwinner's boot0 sets LPDDR3 up the same way on both: MR1 0x83, MR2 0x1c
++ * (RL 14, WL 8) and MR3 0x2, which is what the boot0 of a TrimUI Brick with
++ * LPDDR3 hands to Linux. So these are the H616 LPDDR3 timings
++ * (h616_lpddr3.c, by Jernej Skrabec), unchanged: ns_to_t() is the same on
++ * both, so at the same clock they program the same cycles.
++ *
++ * Based on h616_lpddr3.c:
++ * (C) Copyright 2020 Jernej Skrabec <jernej.skrabec@siol.net>
++ */
++
++#include <asm/arch/dram.h>
++#include <asm/arch/cpu.h>
++
++void mctl_set_timing_params(const struct dram_para *para)
++{
++	struct sunxi_mctl_ctl_reg * const mctl_ctl =
++			(struct sunxi_mctl_ctl_reg *)SUNXI_DRAM_CTL0_BASE;
++
++	u8 tccd		= 2;
++	u8 tfaw		= ns_to_t(50);
++	u8 trrd		= max(ns_to_t(6), 4);
++	u8 trcd		= ns_to_t(24);
++	u8 trc		= ns_to_t(70);
++	u8 txp		= max(ns_to_t(8), 3);
++	u8 trtp		= max(ns_to_t(8), 2);
++	u8 trp		= ns_to_t(27);
++	u8 tras		= ns_to_t(41);
++	u16 trefi	= ns_to_t(7800) / 64;
++	u16 trfc	= ns_to_t(210);
++	u16 txsr	= 88;
++
++	u8 tmrw		= 5;
++	u8 tmrd		= 5;
++	u8 tmod		= max(ns_to_t(15), 12);
++	u8 tcke		= max(ns_to_t(6), 3);
++	u8 tcksrx	= max(ns_to_t(12), 4);
++	u8 tcksre	= max(ns_to_t(12), 4);
++	u8 tckesr	= tcke + 2;
++	u8 trasmax	= (para->clk / 2) / 16;
++	u8 txs		= ns_to_t(360) / 32;
++	u8 txsdll	= 16;
++	u8 txsabort	= 4;
++	u8 txsfast	= 4;
++	/* RL 14 and WL 8 in controller cycles, as MR2 0x1c sets */
++	u8 tcl		= 7;
++	u8 tcwl		= 4;
++	u8 t_rdata_en	= 12;
++	u8 t_wr_lat	= 6;
++
++	u8 twtp		= 16;
++	u8 twr2rd	= trtp + 9;
++	u8 trd2wr	= 13;
++
++	writel((twtp << 24) | (tfaw << 16) | (trasmax << 8) | tras,
++	       &mctl_ctl->dramtmg[0]);
++	writel((txp << 16) | (trtp << 8) | trc, &mctl_ctl->dramtmg[1]);
++	writel((tcwl << 24) | (tcl << 16) | (trd2wr << 8) | twr2rd,
++	       &mctl_ctl->dramtmg[2]);
++	writel((tmrw << 20) | (tmrd << 12) | tmod, &mctl_ctl->dramtmg[3]);
++	writel((trcd << 24) | (tccd << 16) | (trrd << 8) | trp,
++	       &mctl_ctl->dramtmg[4]);
++	writel((tcksrx << 24) | (tcksre << 16) | (tckesr << 8) | tcke,
++	       &mctl_ctl->dramtmg[5]);
++	/* Value suggested by ZynqMP manual and used by libdram */
++	writel((txp + 2) | 0x02020000, &mctl_ctl->dramtmg[6]);
++	writel((txsfast << 24) | (txsabort << 16) | (txsdll << 8) | txs,
++	       &mctl_ctl->dramtmg[8]);
++	writel(0x00020208, &mctl_ctl->dramtmg[9]);
++	writel(0xE0C05, &mctl_ctl->dramtmg[10]);
++	writel(0x440C021C, &mctl_ctl->dramtmg[11]);
++	writel(8, &mctl_ctl->dramtmg[12]);
++	writel(0xA100002, &mctl_ctl->dramtmg[13]);
++	writel(txsr, &mctl_ctl->dramtmg[14]);
++
++	writel(0x4f0112, &mctl_ctl->init[0]);
++	writel(0x420000, &mctl_ctl->init[1]);
++	writel(0xd05, &mctl_ctl->init[2]);
++	/* MR1 0x83, MR2 0x1c, MR3 0x2: also written by mctl_dfi_init() */
++	writel(0x83001c, &mctl_ctl->init[3]);
++	writel(0x00010000, &mctl_ctl->init[4]);
++
++	writel(0, &mctl_ctl->dfimisc);
++	clrsetbits_le32(&mctl_ctl->rankctl, 0xff0, 0x660);
++
++	/* Configure DFI timing */
++	writel(t_wr_lat | 0x2000000 | (t_rdata_en << 16) | 0x808000,
++	       &mctl_ctl->dfitmg0);
++	writel(0x100202, &mctl_ctl->dfitmg1);
++
++	/* set refresh timing */
++	writel((trefi << 16) | trfc, &mctl_ctl->rfshtmg);
++}

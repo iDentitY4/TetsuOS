@@ -1,0 +1,22 @@
+# Added to trimui_brick_defconfig (patches/uboot/0003), which has the RAM settings.
+
+# Boot straight away. The default waits 2 seconds for a key on the serial console.
+CONFIG_BOOTDELAY=0
+
+# DCDC2 is on at boot and its use is unknown (the vendor's device tree only names it
+# axp2202-dcdc2), but the SPL always programs it, and 0 would turn it off. Under the
+# vendor's system its register (0x84) reads 0xa8: 900 mV, plus bit 7, which the SPL keeps
+# (patches/uboot/0004). U-Boot's AXP717 default would be 1000 mV.
+CONFIG_AXP_DCDC2_VOLT=900
+
+# A/B root slots with fallback, as on the H700 (board/h700/uboot.fragment has the details):
+# the RAUC bootmeth boots the first slot in BOOT_ORDER with tries left, and the other one
+# after 3 failed tries. The count is kept on TETSU-BOOT (partition 1), in two copies.
+CONFIG_BOOTMETH_RAUC=y
+CONFIG_BOOTMETH_RAUC_BOOT_ORDER="A B"
+CONFIG_BOOTMETH_RAUC_PARTITIONS="2,2 3,3"
+CONFIG_BOOTMETH_RAUC_DEFAULT_TRIES=3
+CONFIG_BOOTMETH_RAUC_RESET_ALL_ZERO_TRIES=y
+CONFIG_ENV_FAT_DEVICE_AND_PART=":1"
+CONFIG_ENV_REDUNDANT=y
+CONFIG_BOOTCOMMAND="bootflow scan; run distro_bootcmd"
