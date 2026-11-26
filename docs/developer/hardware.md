@@ -120,10 +120,10 @@ without a serial adapter. So far nothing of it has run on a Brick.
 | SoC | Allwinner A133P: 4× Cortex-A53, a PowerVR GPU (`pvrsrvkm` in the vendor's system; not needed, as the launcher draws in software) |
 | RAM | LPDDR3 at 672 MHz on the tester's unit; the vendor's device tree has settings for DDR3, DDR4 and LPDDR4 too, so units differ |
 | Display | 1024x768 MIPI DSI, 4 lanes, OTM1289A, 60.2 Hz. Not in mainline yet |
-| PMIC | AXP717 (the vendor calls it the AXP2202) on the PRCM's I2C at 0x34. The CPU's own regulator is a TCS4838 at 0x41 |
+| PMIC | AXP717 (the vendor calls it the AXP2202) on the PRCM's I2C at 0x34: register 0x03 reads 0xff, as TF-A expects of one. The CPU's own regulator is a TCS4838 at 0x41 |
 | Wi-Fi / Bluetooth | XRadio XR829 (SDIO `0a9e:2282`), with no mainline driver |
 | Storage | microSD (`mmc0`, card detect PF6) and eMMC (`mmc2`, the vendor's system) |
-| Buttons | Volume keys on the LRADC; the others through a vendor program, not yet known how |
+| Buttons | Volume keys on the LRADC; the others through `trimui_inputd`, a vendor program that makes them a uinput device ("TRIMUI Player1"). It opens no serial port or GPIO device, so where it reads them is not known yet |
 
 What it takes, from what mainline lacks:
 
@@ -134,9 +134,13 @@ What it takes, from what mainline lacks:
   DRAM at 0x40000000, where U-Boot now puts it (`patches/uboot/0002`).
 - **The CPU's voltage.** U-Boot doesn't drive the TCS4838, so the SPL runs the CPU at
   816 MHz rather than 1008 MHz, and the device tree has no operating points, so Linux
-  stays there too.
-- **DCDC2.** The SPL always programs it, to 1000 mV, and what it powers on the Brick isn't
-  known. Its voltage under the vendor's system must be read before a card goes out.
+  stays there too. Under the vendor's system its registers read 0xeb and 0x17, which in
+  the Silergy SYR82x layout (712.5 mV plus 12.5 mV steps, as its range in the vendor's
+  device tree suggests) are 1250 mV, in use, and 1000 mV. Those were set by the vendor's
+  cpufreq, so the voltage it starts at is still unknown; 816 MHz needs 0.94 V at most.
+- **DCDC2.** The SPL always programs it. What it powers on the Brick isn't known, but
+  under the vendor's system its register reads 0xa8: 900 mV, with bit 7 set. The SPL sets
+  900 mV and keeps the other bits (`patches/uboot/0004`).
 - **The eMMC stays disabled.** `/usr/sbin/cards` takes the controller at 0x4022000 for the
   H700's TF2, which on the A133 is the eMMC: it would be mounted and shared as a second
   card. The Brick tries the microSD card first, so a test card leaves the vendor's system

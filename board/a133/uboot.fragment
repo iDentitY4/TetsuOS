@@ -4,10 +4,10 @@
 CONFIG_BOOTDELAY=0
 
 # DCDC2 is on at boot and its use is unknown (the vendor's device tree only names it
-# axp2202-dcdc2), but the SPL always programs it, and 0 would turn it off. 1000 mV is the
-# AXP717 default here and what the TrimUI Smart Pro's vdd-gpu-sys runs at. It must be
-# checked against the tester's reading of the PMIC's register 0x84 before a card goes out.
-CONFIG_AXP_DCDC2_VOLT=1000
+# axp2202-dcdc2), but the SPL always programs it, and 0 would turn it off. Under the
+# vendor's system its register (0x84) reads 0xa8: 900 mV, plus bit 7, which the SPL keeps
+# (patches/uboot/0004). U-Boot's AXP717 default would be 1000 mV.
+CONFIG_AXP_DCDC2_VOLT=900
 
 # A/B root slots with fallback, as on the H700 (board/h700/uboot.fragment has the details):
 # the RAUC bootmeth boots the first slot in BOOT_ORDER with tries left, and the other one

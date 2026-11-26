@@ -17,6 +17,9 @@ in them come from the vendor's device tree of a running Brick (its `/dram` node,
 - `uboot/0003-sunxi-add-the-TrimUI-Brick.patch` adds `trimui_brick_defconfig`, with the
   RAM settings, the CPU at 816 MHz and the RAM rail at 1.2V, and the Brick's device tree
   (the same as the Linux one) to `dts/upstream`.
+- `uboot/0004-power-axp-set-only-a-DCDC-s-voltage-field-in-the-SPL.patch` makes the SPL
+  change only a DCDC's voltage bits. It wrote the whole register, which cleared bit 7 of
+  the Brick's DCDC2 (0xa8 under the vendor's system, 900 mV).
 
 ## Linux
 

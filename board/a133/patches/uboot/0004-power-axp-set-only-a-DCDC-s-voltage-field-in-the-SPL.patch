@@ -1,0 +1,39 @@
+Subject: [PATCH] power: axp: set only a DCDC's voltage field in the SPL
+
+axp_set_dcdc() wrote the whole voltage register, clearing the bits
+outside its voltage mask. On a TrimUI Brick's AXP717, DCDC2's register
+(0x84) reads 0xa8 under the vendor's system: 900 mV, with bit 7 set,
+and Linux's driver only ever changes bits 6:0. The SPL now reads the
+register and changes the voltage field alone.
+---
+ drivers/power/axp_spl.c | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/power/axp_spl.c b/drivers/power/axp_spl.c
+index 0162ef5e..bb51ce7a 100644
+--- a/drivers/power/axp_spl.c
++++ b/drivers/power/axp_spl.c
+@@ -130,6 +130,7 @@ static u8 axp_mvolt_to_cfg(int mvolt, const struct axp_reg_desc_spl *reg)
+ static int axp_set_dcdc(int dcdc_num, unsigned int mvolt)
+ {
+ 	const struct axp_reg_desc_spl *reg;
++	u8 val;
+ 	int ret;
+ 
+ 	if (dcdc_num < 1 || dcdc_num > ARRAY_SIZE(axp_spl_dcdc_regulators))
+@@ -140,7 +141,14 @@ static int axp_set_dcdc(int dcdc_num, unsigned int mvolt)
+ 	if (mvolt == 0)
+ 		return pmic_bus_clrbits(reg->enable_reg, reg->enable_mask);
+ 
+-	ret = pmic_bus_write(reg->volt_reg, axp_mvolt_to_cfg(mvolt, reg));
++	/* Only the voltage field: the register's other bits aren't ours */
++	ret = pmic_bus_read(reg->volt_reg, &val);
++	if (ret)
++		return ret;
++
++	val &= ~reg->volt_mask;
++	val |= axp_mvolt_to_cfg(mvolt, reg) & reg->volt_mask;
++	ret = pmic_bus_write(reg->volt_reg, val);
+ 	if (ret)
+ 		return ret;
+ 
